@@ -360,7 +360,7 @@ export function LogsView() {
 }
 
 /* ============ USER DETAIL PANEL (notes/tags/credits/payments/referrer) ============ */
-export function UserDetailPanel({ userId, username, avatar }: { userId: string; username: string; avatar: string | null }) {
+export function UserDetailPanel({ userId, username, avatar, variant = "desktop" }: { userId: string; username: string; avatar: string | null; variant?: "desktop" | "embedded" }) {
   const [tags, setTags] = useState<any[]>([]);
   const [allTags, setAllTags] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
@@ -368,28 +368,23 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
   const [credit, setCredit] = useState(0);
   const [creditAmt, setCreditAmt] = useState("");
   const [creditNote, setCreditNote] = useState("");
-  const [payments, setPayments] = useState<any[]>([]);
-  const [payDue, setPayDue] = useState("");
-  const [payPaid, setPayPaid] = useState("");
   const [totals, setTotals] = useState({ loaded: 0, paid: 0 });
   const [referrer, setReferrer] = useState<{ id: string; username: string } | null>(null);
   const [pickRef, setPickRef] = useState(false);
 
   async function loadAll() {
-    const [t, all, n, c, p, tx, ref] = await Promise.all([
+    const [t, all, n, c, tx, ref] = await Promise.all([
       sb.from("user_tags").select("tag_id, tags(id,name,color)").eq("user_id", userId),
       sb.from("tags").select("*"),
       sb.from("user_notes").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
       sb.from("user_credits").select("balance").eq("user_id", userId).maybeSingle(),
-      sb.from("payments").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
       sb.from("credit_transactions").select("amount, type").eq("user_id", userId),
       sb.from("referrals").select("referrer_id").eq("referred_id", userId).maybeSingle(),
     ]);
     setTags((t.data ?? []).map((r: any) => r.tags));
     setAllTags(all.data ?? []);
     setNotes(n.data ?? []);
-    setCredit(c.data?.balance ?? 0);
-    setPayments(p.data ?? []);
+    setCredit(Number(c.data?.balance ?? 0));
     const loaded = (tx.data ?? []).filter((r: any) => Number(r.amount) > 0).reduce((s: number, r: any) => s + Number(r.amount), 0);
     const paidTx = (tx.data ?? []).filter((r: any) => r.type === "paid" || Number(r.amount) < 0).reduce((s: number, r: any) => s + Math.abs(Number(r.amount)), 0);
     setTotals({ loaded, paid: paidTx });
@@ -418,22 +413,11 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
   }
   async function adjust(sign: number) {
     const amt = parseFloat(creditAmt);
-    if (!amt) return;
+    if (!amt || amt <= 0) return toast.error("Enter amount");
     const { error } = await sb.rpc("adjust_credits", {
       _user_id: userId, _amount: sign * amt, _type: sign > 0 ? "add" : "paid", _note: creditNote || null,
     });
-    if (error) toast.error(error.message); else { setCreditAmt(""); setCreditNote(""); loadAll(); toast.success("Updated"); }
-  }
-  async function addPayment() {
-    const due = parseFloat(payDue) || 0;
-    const paid = parseFloat(payPaid) || 0;
-    const me = (await supabase.auth.getUser()).data.user?.id;
-    const status = paid >= due ? "paid" : paid > 0 ? "partial" : "pending";
-    await sb.from("payments").insert({ user_id: userId, admin_id: me, amount_due: due, amount_paid: paid, status });
-    setPayDue(""); setPayPaid(""); loadAll();
-  }
-  async function setPayStatus(id: string, status: string) {
-    await sb.from("payments").update({ status, updated_at: new Date().toISOString() }).eq("id", id); loadAll();
+    if (error) toast.error(error.message); else { setCreditAmt(""); setCreditNote(""); loadAll(); toast.success(sign > 0 ? "Credit loaded" : "Marked paid"); }
   }
   async function setRef(refId: string) {
     if (refId === userId) return toast.error("Can't refer self");
@@ -445,35 +429,33 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
     else { toast.success("Referrer set"); setPickRef(false); loadAll(); }
   }
 
-  const outstanding = payments.reduce((s, p) => s + (Number(p.amount_due) - Number(p.amount_paid)), 0);
-
-  return (
-    <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto">
+  const Body = (
+    <>
       <div className="p-5 text-center border-b border-border">
         <div className="flex justify-center mb-2"><Avatar name={username} url={avatar} size={72} /></div>
         <p className="font-bold">{username}</p>
-        <p className="text-xs text-muted-foreground font-mono">{userId.slice(0, 12)}…</p>
-        <div className="flex justify-center gap-2 mt-2 flex-wrap">
+        <div className="flex justify-center gap-1 mt-2 flex-wrap">
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary font-semibold">Credits {credit}</span>
-          {outstanding > 0 && (
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-destructive/15 text-destructive font-semibold">Unpaid {outstanding.toFixed(2)}</span>
-          )}
+          {tags.map((t: any) => t && (
+            <span key={t.id} className="text-[11px] px-2 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>
+          ))}
         </div>
       </div>
 
-      {/* Referred by */}
+      {/* Credits — editable load / paid */}
       <section className="p-4 border-b border-border">
-        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">Referred by</p>
-        {referrer ? (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-medium truncate">{referrer.username}</span>
-            <Button size="sm" variant="outline" onClick={() => setPickRef(true)}>Change</Button>
-          </div>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setPickRef(true)} className="w-full">
-            <Plus className="h-3 w-3 mr-1" /> Set referrer
-          </Button>
-        )}
+        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2 flex items-center gap-1"><Wallet className="h-3 w-3" /> Credit</p>
+        <p className="text-3xl font-bold">{credit}</p>
+        <div className="grid grid-cols-2 gap-2 text-[11px] my-3">
+          <div className="bg-secondary rounded-lg p-2"><p className="text-muted-foreground">Total loaded</p><p className="font-bold text-sm">{totals.loaded.toFixed(2)}</p></div>
+          <div className="bg-secondary rounded-lg p-2"><p className="text-muted-foreground">Total paid</p><p className="font-bold text-sm">{totals.paid.toFixed(2)}</p></div>
+        </div>
+        <Input value={creditAmt} onChange={(e) => setCreditAmt(e.target.value)} placeholder="Amount" type="number" inputMode="decimal" className="h-10 mb-2" />
+        <Input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="Note (optional)" className="h-10 mb-2" />
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => adjust(1)} className="flex-1">Load</Button>
+          <Button size="sm" variant="outline" onClick={() => adjust(-1)} className="flex-1">Paid</Button>
+        </div>
       </section>
 
       {/* Tags */}
@@ -494,48 +476,19 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
         </div>
       </section>
 
-      {/* Credits */}
+      {/* Referred by */}
       <section className="p-4 border-b border-border">
-        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2 flex items-center gap-1"><Wallet className="h-3 w-3" /> Credits</p>
-        <p className="text-2xl font-bold">{credit}</p>
-        <div className="grid grid-cols-2 gap-2 text-[11px] my-2">
-          <div className="bg-secondary rounded-lg p-2"><p className="text-muted-foreground">Total loaded</p><p className="font-bold text-sm">{totals.loaded.toFixed(2)}</p></div>
-          <div className="bg-secondary rounded-lg p-2"><p className="text-muted-foreground">Total paid</p><p className="font-bold text-sm">{totals.paid.toFixed(2)}</p></div>
-        </div>
-        <Input value={creditAmt} onChange={(e) => setCreditAmt(e.target.value)} placeholder="Amount" type="number" className="h-9 text-sm mb-2" />
-        <Input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="Note (optional)" className="h-9 text-sm mb-2" />
-        <div className="flex gap-1">
-          <Button size="sm" onClick={() => adjust(1)} className="flex-1">+ Load</Button>
-          <Button size="sm" variant="outline" onClick={() => adjust(-1)} className="flex-1">− Mark paid</Button>
-        </div>
-      </section>
-
-      {/* Payments */}
-      <section className="p-4 border-b border-border">
-        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2 flex items-center gap-1"><CreditCard className="h-3 w-3" /> Payments</p>
-        <p className="text-xs text-muted-foreground mb-2">Outstanding: <span className="font-bold text-foreground">{outstanding.toFixed(2)}</span></p>
-        <div className="flex gap-1 mb-1">
-          <Input value={payDue} onChange={(e) => setPayDue(e.target.value)} placeholder="Due" type="number" className="h-9 text-sm" />
-          <Input value={payPaid} onChange={(e) => setPayPaid(e.target.value)} placeholder="Paid" type="number" className="h-9 text-sm" />
-        </div>
-        <Button size="sm" onClick={addPayment} className="w-full mb-2">Add record</Button>
-        <div className="space-y-1 max-h-40 overflow-y-auto">
-          {payments.filter((p) => p.status !== "paid").map((p) => (
-            <div key={p.id} className="text-xs p-2 bg-secondary rounded-lg">
-              <div className="flex justify-between">
-                <span>Due {p.amount_due} · Paid {p.amount_paid}</span>
-                <select value={p.status} onChange={(e) => setPayStatus(p.id, e.target.value)} className="bg-transparent text-xs">
-                  <option value="pending">pending</option>
-                  <option value="partial">partial</option>
-                  <option value="paid">paid</option>
-                </select>
-              </div>
-            </div>
-          ))}
-          {payments.filter((p) => p.status !== "paid").length === 0 && (
-            <p className="text-[11px] text-muted-foreground text-center py-1">No unpaid records.</p>
-          )}
-        </div>
+        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">Referred by</p>
+        {referrer ? (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium truncate">{referrer.username}</span>
+            <Button size="sm" variant="outline" onClick={() => setPickRef(true)}>Change</Button>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => setPickRef(true)} className="w-full">
+            <Plus className="h-3 w-3 mr-1" /> Set referrer
+          </Button>
+        )}
       </section>
 
       {/* Notes */}
@@ -557,6 +510,15 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
       </section>
 
       {pickRef && <UserPickerDialog excludeId={userId} onPick={setRef} onClose={() => setPickRef(false)} />}
+    </>
+  );
+
+  if (variant === "embedded") {
+    return <div className="h-full overflow-y-auto bg-card">{Body}</div>;
+  }
+  return (
+    <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto">
+      {Body}
     </aside>
   );
 }
