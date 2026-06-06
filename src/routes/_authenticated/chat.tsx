@@ -1,9 +1,9 @@
-import { createFileRoute, Link, Outlet, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useParams, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
-import { Search, MessageCircle } from "lucide-react";
+import { Search, MessageCircle, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export const Route = createFileRoute("/_authenticated/chat")({
