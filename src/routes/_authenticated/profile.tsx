@@ -107,7 +107,15 @@ function ProfilePage() {
     toast.success(`${label} copied!`);
   }
 
-  if (!profile) return <AppShell><div className="p-8 text-muted-foreground">Loading…</div></AppShell>;
+  if (authLoading || !profile) {
+    return (
+      <AppShell>
+        <div className="h-full flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
