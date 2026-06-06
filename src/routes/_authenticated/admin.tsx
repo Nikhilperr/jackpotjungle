@@ -462,6 +462,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     </div>
   );
 }
+function InboxEmpty() {
   return (
     <div className="h-full flex flex-col items-center justify-center text-center px-6 text-muted-foreground">
       <Inbox className="h-12 w-12 mb-3 opacity-50" />
