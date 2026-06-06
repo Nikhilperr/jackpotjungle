@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { AppShell } from "@/components/messenger/AppShell";
+import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Avatar } from "./chat";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -121,7 +121,10 @@ function FriendsPage() {
       <div className="h-full overflow-y-auto">
         <div className="max-w-2xl mx-auto p-6 space-y-8">
           <div>
-            <h1 className="text-2xl font-bold mb-1">Add a friend</h1>
+            <div className="flex items-center gap-2 mb-1">
+              <HamburgerButton />
+              <h1 className="text-2xl font-bold">Add a friend</h1>
+            </div>
             <p className="text-sm text-muted-foreground mb-4">Enter a friend code like <code className="bg-secondary px-2 py-0.5 rounded">JJM-123456</code></p>
             <form onSubmit={findByCode} className="flex gap-2">
               <div className="relative flex-1">

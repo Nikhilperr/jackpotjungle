@@ -1,17 +1,21 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { MessageCircle, Users, User as UserIcon, LogOut, Shield } from "lucide-react";
+import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRole } from "@/hooks/useRole";
 import { usePresence } from "@/hooks/usePresence";
-import type { ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
+
+const DrawerCtx = createContext<{ open: () => void }>({ open: () => {} });
+export const useAppDrawer = () => useContext(DrawerCtx);
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { isAdmin } = useRole();
+  const [open, setOpen] = useState(false);
   usePresence();
 
   async function signOut() {
@@ -32,76 +36,83 @@ export function AppShell({ children }: { children: ReactNode }) {
   ];
   if (isAdmin) navItems.push({ to: "/admin", icon: Shield, label: "Admin" });
 
-  // Detect if we are inside an open conversation on mobile (hide bottom nav for full-screen chat feel)
-  const inConversation =
-    /^\/chat\/(page|[^/]+)/.test(pathname) && pathname !== "/chat";
-
-  return (
-    <div className="flex h-[100dvh] bg-background flex-col md:flex-row">
-      {/* Desktop side rail */}
-      <aside className="hidden md:flex w-20 border-r border-border flex-col items-center py-4 gap-2 bg-card">
-        <Link to="/chat" className="h-10 w-10 rounded-full bg-primary flex items-center justify-center mb-4">
+  const Drawer = (
+    <aside className="w-72 h-full bg-card border-r border-border flex flex-col">
+      <div className="px-4 py-5 flex items-center gap-3 border-b border-border">
+        <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center">
           <MessageCircle className="h-5 w-5 text-primary-foreground" />
-        </Link>
+        </div>
+        <div className="flex-1">
+          <p className="font-bold">Jackpot Jungle</p>
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Messenger</p>
+        </div>
+        <button
+          onClick={() => setOpen(false)}
+          className="md:hidden h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-secondary"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <nav className="flex-1 px-2 py-3 space-y-1">
         {navItems.map((n) => {
           const active = pathname.startsWith(n.to);
           return (
             <Link
               key={n.to}
               to={n.to}
-              className={`h-12 w-12 rounded-2xl flex items-center justify-center transition-colors ${
-                active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary"
+              onClick={() => setOpen(false)}
+              className={`w-full h-11 rounded-lg flex items-center gap-3 px-3 text-sm font-medium transition-colors ${
+                active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
               }`}
-              title={n.label}
             >
-              <n.icon className="h-5 w-5" />
+              <n.icon className="h-5 w-5 shrink-0" />
+              <span>{n.label}</span>
             </Link>
           );
         })}
-        <div className="mt-auto flex flex-col items-center gap-2">
-          <ThemeToggle />
-          <button
-            onClick={signOut}
-            className="h-12 w-12 rounded-2xl flex items-center justify-center text-muted-foreground hover:bg-secondary hover:text-destructive"
-            title="Sign out"
-          >
-            <LogOut className="h-5 w-5" />
-          </button>
-        </div>
-      </aside>
+      </nav>
+      <div className="px-3 py-3 border-t border-border flex items-center gap-2">
+        <ThemeToggle />
+        <button
+          onClick={signOut}
+          className="flex-1 h-11 rounded-lg flex items-center gap-3 px-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        >
+          <LogOut className="h-5 w-5 shrink-0" />
+          <span>Sign out</span>
+        </button>
+      </div>
+    </aside>
+  );
 
-      <main className="flex-1 min-w-0 min-h-0">{children}</main>
+  return (
+    <DrawerCtx.Provider value={{ open: () => setOpen(true) }}>
+      <div className="flex h-[100dvh] bg-background">
+        {/* Desktop persistent sidebar */}
+        <div className="hidden md:flex">{Drawer}</div>
 
-      {/* Mobile bottom tab bar */}
-      {!inConversation && (
-        <nav className="md:hidden border-t border-border bg-card flex items-center justify-around px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
-          {navItems.map((n) => {
-            const active = pathname.startsWith(n.to);
-            return (
-              <Link
-                key={n.to}
-                to={n.to}
-                className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-lg ${
-                  active ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                <n.icon className="h-5 w-5" />
-                <span className="text-[10px] font-medium">{n.label}</span>
-              </Link>
-            );
-          })}
-          <button
-            onClick={signOut}
-            className="flex-1 flex flex-col items-center gap-0.5 py-2 text-muted-foreground"
-          >
-            <LogOut className="h-5 w-5" />
-            <span className="text-[10px] font-medium">Sign out</span>
-          </button>
-          <div className="flex flex-col items-center justify-center px-1">
-            <ThemeToggle />
+        {/* Mobile drawer */}
+        {open && (
+          <div className="md:hidden fixed inset-0 z-50 flex">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
+            <div className="relative z-10">{Drawer}</div>
           </div>
-        </nav>
-      )}
-    </div>
+        )}
+
+        <main className="flex-1 min-w-0 min-h-0 flex flex-col">{children}</main>
+      </div>
+    </DrawerCtx.Provider>
+  );
+}
+
+export function HamburgerButton() {
+  const { open } = useAppDrawer();
+  return (
+    <button
+      onClick={open}
+      className="md:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1"
+      aria-label="Open menu"
+    >
+      <Menu className="h-5 w-5" />
+    </button>
   );
 }
