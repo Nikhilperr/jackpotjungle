@@ -39,10 +39,31 @@ function ChatLayout() {
       if (!u.user || !mounted) return;
       setMeId(u.user.id);
       await load(u.user.id);
+      await loadPage(u.user.id);
     })();
 
+    async function loadPage(myId: string) {
+      const { data: conv } = await supabase
+        .from("page_conversations")
+        .select("id")
+        .eq("user_id", myId)
+        .maybeSingle();
+      if (!conv) return;
+      const { data: last } = await supabase
+        .from("page_messages")
+        .select("content, created_at, from_page, seen")
+        .eq("conversation_id", conv.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      const arr = last ?? [];
+      const first = arr[0];
+      if (mounted) {
+        setPageLast({ content: first?.content ?? null, at: first?.created_at ?? null });
+        setPageUnread(arr.filter((m) => m.from_page && !m.seen).length);
+      }
+    }
+
     async function load(myId: string) {
-      // get friendships
       const { data: friends } = await supabase
         .from("friendships")
         .select("user_a, user_b");
@@ -53,7 +74,6 @@ function ChatLayout() {
         .from("profiles")
         .select("id, username, avatar_url, online")
         .in("id", friendIds);
-      // last messages
       const { data: msgs } = await supabase
         .from("messages")
         .select("sender_id, receiver_id, content, created_at, seen")
@@ -76,7 +96,6 @@ function ChatLayout() {
       }
     }
 
-    // realtime: any new message refreshes the list
     const channel = supabase
       .channel("conv-list")
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
@@ -84,6 +103,9 @@ function ChatLayout() {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => {
         supabase.auth.getUser().then(({ data }) => { if (data.user) load(data.user.id); });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, () => {
+        supabase.auth.getUser().then(({ data }) => { if (data.user) loadPage(data.user.id); });
       })
       .subscribe();
 
