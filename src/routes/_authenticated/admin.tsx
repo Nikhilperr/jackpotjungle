@@ -270,9 +270,14 @@ function NavLink({ to, icon: Icon, label, onClick }: { to: string; icon: typeof 
 /* ---------------- PAGE INBOX (all admins share) ---------------- */
 
 function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void }) {
+  const navigate = useNavigate();
   const [convs, setConvs] = useState<ConvRow[]>([]);
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [allTags, setAllTags] = useState<Array<{ id: string; name: string; color: string }>>([]);
+  const [userTagMap, setUserTagMap] = useState<Record<string, string[]>>({});
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   async function load() {
     const { data: convList } = await supabase
@@ -284,14 +289,23 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     const convIds = convList.map((c) => c.id);
     if (userIds.length === 0) { setConvs([]); return; }
 
-    const [{ data: profiles }, { data: msgs }] = await Promise.all([
+    const [{ data: profiles }, { data: msgs }, { data: tagsData }, { data: utRows }] = await Promise.all([
       supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds),
       supabase
         .from("page_messages")
         .select("conversation_id, content, created_at, seen, from_page")
         .in("conversation_id", convIds)
         .order("created_at", { ascending: false }),
+      supabase.from("tags").select("id, name, color").order("name"),
+      supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds),
     ]);
+
+    setAllTags(tagsData ?? []);
+    const map: Record<string, string[]> = {};
+    (utRows ?? []).forEach((r: any) => {
+      (map[r.user_id] = map[r.user_id] || []).push(r.tag_id);
+    });
+    setUserTagMap(map);
 
     const byUser = new Map((profiles ?? []).map((p) => [p.id, p]));
     const rows: ConvRow[] = convList.map((c) => {
@@ -320,14 +334,18 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       .channel("admin-page-inbox")
       .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "page_conversations" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_tags" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "tags" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meId]);
 
-  const filtered = convs.filter((u) =>
-    !search || u.username.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = convs.filter((u) => {
+    if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
+    if (tagFilter && !(userTagMap[u.userId] ?? []).includes(tagFilter)) return false;
+    return true;
+  });
   const active = convs.find((u) => u.conversationId === activeId) ?? null;
 
   return (
@@ -337,8 +355,15 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2 mb-3 sm:mb-1">
             <button
+              onClick={() => navigate({ to: "/chat" })}
+              className="sm:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-2"
+              aria-label="Back"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <button
               onClick={onOpenNav}
-              className="md:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-2"
+              className="md:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary"
             >
               <Menu className="h-5 w-5" />
             </button>
@@ -356,10 +381,33 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               className="pl-9 rounded-full bg-secondary border-transparent"
             />
           </div>
+          {allTags.length > 0 && (
+            <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
+              <button
+                onClick={() => setTagFilter(null)}
+                className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${tagFilter === null ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
+              >
+                All
+              </button>
+              {allTags.map((t) => {
+                const on = tagFilter === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setTagFilter(on ? null : t.id)}
+                    className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${on ? "border-transparent text-white" : "border-border text-muted-foreground"}`}
+                    style={on ? { background: t.color } : {}}
+                  >
+                    {t.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">No conversations yet.</p>
+            <p className="p-6 text-center text-sm text-muted-foreground">No conversations.</p>
           ) : filtered.map((u) => (
             <button
               key={u.conversationId}
@@ -378,6 +426,15 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
                   {u.lastMessage ?? "No messages yet"}
                 </p>
+                {(userTagMap[u.userId] ?? []).length > 0 && (
+                  <div className="flex gap-1 mt-1 flex-wrap">
+                    {(userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
+                      const t = allTags.find((x) => x.id === tid);
+                      if (!t) return null;
+                      return <span key={tid} className="text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>;
+                    })}
+                  </div>
+                )}
               </div>
               {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
             </button>
@@ -388,18 +445,23 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       {/* Conversation pane — full screen on mobile when open */}
       <div className={`${active ? "flex" : "hidden sm:flex"} flex-1 min-w-0 flex-col bg-background min-h-0`}>
         {active ? (
-          <Conversation meId={meId} conv={active} onBack={() => setActiveId(null)} />
+          <Conversation meId={meId} conv={active} onBack={() => setActiveId(null)} onOpenDetail={() => setDetailOpen(true)} />
         ) : (
           <InboxEmpty />
         )}
       </div>
 
       {active && <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} />}
+
+      {/* Mobile/tablet: detail sheet (panel is hidden lg:flex by default) */}
+      <Sheet open={detailOpen && !!active} onOpenChange={setDetailOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden">
+          {active && <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" />}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
-
-function InboxEmpty() {
   return (
     <div className="h-full flex flex-col items-center justify-center text-center px-6 text-muted-foreground">
       <Inbox className="h-12 w-12 mb-3 opacity-50" />
