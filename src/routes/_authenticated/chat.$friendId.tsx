@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { format, formatDistanceToNow } from "date-fns";
+import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 
 export const Route = createFileRoute("/_authenticated/chat/$friendId")({
   component: ChatView,
@@ -15,8 +16,10 @@ type Message = {
   id: string;
   sender_id: string;
   receiver_id: string;
-  content: string;
+  content: string | null;
+  image_url: string | null;
   seen: boolean;
+  delivered: boolean;
   created_at: string;
 };
 type Profile = { id: string; username: string; avatar_url: string | null; online: boolean; last_seen: string };
@@ -28,7 +31,15 @@ function ChatView() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [friendTyping, setFriendTyping] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const lastTypingSentRef = useRef(0);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -52,19 +63,21 @@ function ChatView() {
         .limit(500);
       if (mounted) setMessages((msgs as Message[]) ?? []);
 
-      // mark received messages as seen
-      await supabase.from("messages").update({ seen: true })
+      // mark received messages as delivered + seen
+      await supabase.from("messages").update({ seen: true, delivered: true } as any)
         .eq("sender_id", friendId).eq("receiver_id", u.user.id).eq("seen", false);
     })();
 
     return () => { mounted = false; };
   }, [friendId]);
 
-  // realtime subscription
+  // realtime + typing
   useEffect(() => {
     if (!meId) return;
-    const channel = supabase
-      .channel(`chat-${meId}-${friendId}`)
+    const pairKey = [meId, friendId].sort().join("-");
+
+    const msgChannel = supabase
+      .channel(`chat-${pairKey}`)
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
         (payload) => {
@@ -73,7 +86,7 @@ function ChatView() {
               (m.sender_id === friendId && m.receiver_id === meId)) {
             setMessages((prev) => prev.some((x) => x.id === m.id) ? prev : [...prev, m]);
             if (m.receiver_id === meId) {
-              supabase.from("messages").update({ seen: true }).eq("id", m.id).then();
+              supabase.from("messages").update({ seen: true, delivered: true } as any).eq("id", m.id).then();
             }
           }
         })
@@ -84,12 +97,38 @@ function ChatView() {
           setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
         })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    const typingChannel = supabase
+      .channel(`typing-${pairKey}`, { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: "typing" }, (payload) => {
+        if ((payload.payload as { from: string })?.from === friendId) {
+          setFriendTyping(true);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => setFriendTyping(false), 2500);
+        }
+      })
+      .subscribe();
+    typingChannelRef.current = typingChannel;
+
+    return () => {
+      supabase.removeChannel(msgChannel);
+      supabase.removeChannel(typingChannel);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
   }, [meId, friendId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, friendTyping]);
+
+  function onDraftChange(v: string) {
+    setDraft(v);
+    const now = Date.now();
+    if (typingChannelRef.current && meId && now - lastTypingSentRef.current > 1500) {
+      lastTypingSentRef.current = now;
+      typingChannelRef.current.send({ type: "broadcast", event: "typing", payload: { from: meId } });
+    }
+  }
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -97,6 +136,7 @@ function ChatView() {
     setSending(true);
     const content = draft.trim();
     setDraft("");
+    setShowEmoji(false);
     const { error } = await supabase.from("messages").insert({
       sender_id: meId,
       receiver_id: friendId,
@@ -107,6 +147,27 @@ function ChatView() {
       console.error(error);
     }
     setSending(false);
+  }
+
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !meId) return;
+    if (!file.type.startsWith("image/")) return;
+    if (file.size > 8 * 1024 * 1024) { alert("Max 8 MB"); return; }
+    setUploading(true);
+    const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+    const path = `${meId}/${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("chat-images").upload(path, file, { contentType: file.type });
+    if (upErr) { setUploading(false); console.error(upErr); return; }
+    const { data: pub } = supabase.storage.from("chat-images").getPublicUrl(path);
+    await supabase.from("messages").insert({
+      sender_id: meId,
+      receiver_id: friendId,
+      content: "",
+      image_url: pub.publicUrl,
+    } as any);
+    setUploading(false);
   }
 
   if (!friend) return <div className="h-full flex items-center justify-center text-muted-foreground">Loading…</div>;
@@ -124,11 +185,13 @@ function ChatView() {
         <div className="min-w-0">
           <p className="font-semibold truncate">{friend.username}</p>
           <p className="text-xs text-muted-foreground truncate">
-            {friend.online
-              ? "Active now"
-              : friend.last_seen
-                ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}`
-                : "Offline"}
+            {friendTyping
+              ? "Typing…"
+              : friend.online
+                ? "Active now"
+                : friend.last_seen
+                  ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}`
+                  : "Offline"}
           </p>
         </div>
       </header>
@@ -153,36 +216,106 @@ function ChatView() {
                 </div>
               )}
               <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[70%] px-4 py-2 rounded-3xl ${
-                    mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"
-                  }`}
-                >
-                  <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
-                </div>
+                {m.image_url ? (
+                  <button
+                    onClick={() => setPreview(m.image_url)}
+                    className="max-w-[70%] rounded-3xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
+                  </button>
+                ) : (
+                  <div
+                    className={`max-w-[70%] px-4 py-2 rounded-3xl ${
+                      mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"
+                    }`}
+                  >
+                    <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
+                  </div>
+                )}
               </div>
               {isLastMine && (
                 <div className="flex justify-end pr-1 pt-0.5">
-                  <span className="text-[11px] text-muted-foreground">{m.seen ? "Seen" : "Sent"}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {m.seen ? "Seen" : m.delivered ? "Delivered" : "Sent"}
+                  </span>
                 </div>
               )}
             </div>
           );
         })}
+        {friendTyping && (
+          <div className="flex justify-start pt-1">
+            <div className="bg-bubble-them text-bubble-them-foreground px-4 py-2 rounded-3xl">
+              <span className="inline-flex gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "300ms" }} />
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
+      {showEmoji && (
+        <div className="border-t border-border bg-card">
+          <EmojiPicker
+            onEmojiClick={(d) => onDraftChange(draft + d.emoji)}
+            theme={Theme.AUTO}
+            emojiStyle={EmojiStyle.NATIVE}
+            width="100%"
+            height={320}
+            previewConfig={{ showPreview: false }}
+            skinTonesDisabled
+            lazyLoadEmojis
+          />
+        </div>
+      )}
+
       <form onSubmit={send} className="p-3 border-t border-border flex items-center gap-2 bg-card">
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50"
+          aria-label="Send image"
+        >
+          {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+        <button
+          type="button"
+          onClick={() => setShowEmoji((v) => !v)}
+          className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary ${showEmoji ? "text-primary" : "text-muted-foreground"}`}
+          aria-label="Emoji"
+        >
+          <Smile className="h-5 w-5" />
+        </button>
         <Input
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => onDraftChange(e.target.value)}
           placeholder="Aa"
           className="rounded-full bg-secondary border-transparent"
-          autoFocus
         />
         <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0">
           <Send className="h-4 w-4" />
         </Button>
       </form>
+
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setPreview(null)}
+        >
+          <button
+            onClick={() => setPreview(null)}
+            className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <img src={preview} alt="" className="max-h-full max-w-full object-contain" />
+        </div>
+      )}
     </div>
   );
 }

@@ -54,7 +54,7 @@ function AuthPage() {
 }
 
 function LoginForm({ onSwitch }: { onSwitch: () => void }) {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -62,6 +62,13 @@ function LoginForm({ onSwitch }: { onSwitch: () => void }) {
     e.preventDefault();
     setBusy(true);
     try {
+      let email = identifier.trim();
+      if (!email.includes("@")) {
+        const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
+        const res = await lookupEmailByUsername({ data: { username: email } });
+        if (!res.email) throw new Error("No account with that username.");
+        email = res.email;
+      }
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       toast.success("Welcome back!");
@@ -75,12 +82,11 @@ function LoginForm({ onSwitch }: { onSwitch: () => void }) {
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       <Input
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Username or email"
+        value={identifier}
+        onChange={(e) => setIdentifier(e.target.value)}
         required
-        autoComplete="email"
+        autoComplete="username"
         className="h-12 rounded-xl text-base"
       />
       <Input

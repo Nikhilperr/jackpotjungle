@@ -2,12 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
-import { Avatar } from "./chat";
+import { Avatar } from "@/components/messenger/Avatar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Copy, Camera, Loader2 } from "lucide-react";
+import { Copy, Camera, Loader2, Bell, BellOff } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({ meta: [{ title: "Profile — JJ Messenger" }] }),
@@ -29,6 +30,8 @@ function ProfilePage() {
   const [username, setUsername] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [permission, setPermission] = useState<NotificationPermission>("default");
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -36,10 +39,29 @@ function ProfilePage() {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return;
       setEmail(u.user.email ?? null);
-      const { data } = await supabase.from("profiles").select("id, username, avatar_url, friend_code, referral_code, created_at").eq("id", u.user.id).maybeSingle();
-      if (data) { setProfile(data as Profile); setUsername(data.username); }
+      const { data } = await supabase.from("profiles").select("id, username, avatar_url, friend_code, referral_code, created_at, notif_enabled" as any).eq("id", u.user.id).maybeSingle();
+      if (data) { setProfile(data as unknown as Profile); setUsername((data as any).username); setNotifEnabled((data as any).notif_enabled ?? true); }
+      if (typeof window !== "undefined" && "Notification" in window) setPermission(Notification.permission);
     })();
   }, []);
+
+  async function toggleNotif(v: boolean) {
+    if (!profile) return;
+    setNotifEnabled(v);
+    await supabase.from("profiles").update({ notif_enabled: v } as any).eq("id", profile.id);
+    if (v && typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      const p = await Notification.requestPermission();
+      setPermission(p);
+    }
+  }
+
+  async function requestPerm() {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    const p = await Notification.requestPermission();
+    setPermission(p);
+    if (p === "granted") toast.success("Browser notifications enabled.");
+  }
+
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -133,6 +155,26 @@ function ProfilePage() {
               {saving ? "Saving…" : "Save changes"}
             </Button>
           </form>
+
+          <div className="bg-secondary rounded-2xl p-5 space-y-4">
+            <h2 className="font-semibold flex items-center gap-2">
+              {notifEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />} Notifications
+            </h2>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">New message alerts</p>
+                <p className="text-xs text-muted-foreground">Get notified when someone messages you.</p>
+              </div>
+              <Switch checked={notifEnabled} onCheckedChange={toggleNotif} />
+            </div>
+            {notifEnabled && permission !== "granted" && (
+              <Button type="button" variant="outline" size="sm" onClick={requestPerm} className="rounded-full">
+                {permission === "denied" ? "Notifications blocked in browser" : "Enable browser notifications"}
+              </Button>
+            )}
+          </div>
+
+
 
           <p className="text-xs text-center text-muted-foreground">
             Member since {new Date(profile.created_at).toLocaleDateString()}
