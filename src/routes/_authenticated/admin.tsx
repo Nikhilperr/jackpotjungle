@@ -389,7 +389,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         )}
       </div>
 
-      {active && <UserInfoPanel conv={active} />}
+      {active && <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} />}
     </div>
   );
 }
