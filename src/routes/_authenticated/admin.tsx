@@ -25,6 +25,14 @@ import {
   LogOut,
   Loader2,
   ImageIcon,
+  Tag as TagIcon,
+  MessageSquareQuote,
+  Megaphone,
+  Bell,
+  Bot,
+  Activity,
+  Gift,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { formatDistanceToNow } from "date-fns";
@@ -39,6 +47,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  TagsView,
+  QuickRepliesView,
+  BroadcastsView,
+  FollowupsView,
+  AutoResponsesView,
+  LogsView,
+  UserDetailPanel,
+  SuperAdminView,
+  ReferralsAdminView,
+} from "@/components/admin/AdminViews";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   ssr: false,
@@ -46,7 +65,17 @@ export const Route = createFileRoute("/_authenticated/admin")({
   component: AdminPage,
 });
 
-type Tab = "inbox" | "admins";
+type Tab =
+  | "inbox"
+  | "quickreplies"
+  | "tags"
+  | "broadcasts"
+  | "followups"
+  | "autoresp"
+  | "referrals"
+  | "logs"
+  | "admins"
+  | "super";
 
 type ConvRow = {
   conversationId: string;
@@ -114,8 +143,19 @@ function AdminPage() {
       <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
         <p className="px-3 pt-1 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Business</p>
         <SideBtn active={tab === "inbox"} onClick={() => { setTab("inbox"); setNavOpen(false); }} icon={Inbox} label="Page Inbox" />
+        <SideBtn active={tab === "quickreplies"} onClick={() => { setTab("quickreplies"); setNavOpen(false); }} icon={MessageSquareQuote} label="Quick Replies" />
+        <SideBtn active={tab === "tags"} onClick={() => { setTab("tags"); setNavOpen(false); }} icon={TagIcon} label="Tags" />
+        <SideBtn active={tab === "broadcasts"} onClick={() => { setTab("broadcasts"); setNavOpen(false); }} icon={Megaphone} label="Broadcasts" />
+        <SideBtn active={tab === "followups"} onClick={() => { setTab("followups"); setNavOpen(false); }} icon={Bell} label="Follow-ups" />
+        <SideBtn active={tab === "autoresp"} onClick={() => { setTab("autoresp"); setNavOpen(false); }} icon={Bot} label="Auto-response" />
+        <SideBtn active={tab === "referrals"} onClick={() => { setTab("referrals"); setNavOpen(false); }} icon={Gift} label="Referrals" />
+        <SideBtn active={tab === "logs"} onClick={() => { setTab("logs"); setNavOpen(false); }} icon={Activity} label="Logs" />
         {isSuperAdmin && (
-          <SideBtn active={tab === "admins"} onClick={() => { setTab("admins"); setNavOpen(false); }} icon={UsersIcon} label="Admins" />
+          <>
+            <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Super admin</p>
+            <SideBtn active={tab === "admins"} onClick={() => { setTab("admins"); setNavOpen(false); }} icon={UsersIcon} label="Admin team" />
+            <SideBtn active={tab === "super"} onClick={() => { setTab("super"); setNavOpen(false); }} icon={SettingsIcon} label="System settings" />
+          </>
         )}
         <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Messenger</p>
         <NavLink to="/chat" icon={MessageCircle} label="Chats" onClick={() => setNavOpen(false)} />
@@ -148,12 +188,17 @@ function AdminPage() {
         </div>
       )}
 
-      <main className="flex-1 min-w-0 flex flex-col">
-        {tab === "inbox" ? (
-          <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} />
-        ) : (
-          <AdminsView onOpenNav={() => setNavOpen(true)} />
-        )}
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        {tab === "inbox" && <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} />}
+        {tab === "quickreplies" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Quick Replies"><QuickRepliesView meId={user.id} /></ScrollWrap>}
+        {tab === "tags" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Tags"><TagsView /></ScrollWrap>}
+        {tab === "broadcasts" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Broadcasts"><BroadcastsView /></ScrollWrap>}
+        {tab === "followups" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Follow-ups"><FollowupsView meId={user.id} /></ScrollWrap>}
+        {tab === "autoresp" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Auto-response"><AutoResponsesView meId={user.id} /></ScrollWrap>}
+        {tab === "referrals" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Referrals"><ReferralsAdminView /></ScrollWrap>}
+        {tab === "logs" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Logs"><LogsView /></ScrollWrap>}
+        {tab === "admins" && <AdminsView onOpenNav={() => setNavOpen(true)} />}
+        {tab === "super" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Super admin"><SuperAdminView /></ScrollWrap>}
       </main>
 
       <AlertDialog open={confirmOut} onOpenChange={setConfirmOut}>
@@ -170,6 +215,20 @@ function AdminPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function ScrollWrap({ onOpenNav, title, children }: { onOpenNav: () => void; title: string; children: React.ReactNode }) {
+  return (
+    <div className="h-full flex flex-col min-h-0">
+      <div className="md:hidden sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2 shrink-0">
+        <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary">
+          <Menu className="h-5 w-5" />
+        </button>
+        <h2 className="font-bold">{title}</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto">{children}</div>
     </div>
   );
 }
@@ -330,7 +389,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         )}
       </div>
 
-      {active && <UserInfoPanel conv={active} />}
+      {active && <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} />}
     </div>
   );
 }
@@ -483,37 +542,6 @@ function Conversation({ meId, conv, onBack }: { meId: string; conv: ConvRow; onB
   );
 }
 
-function UserInfoPanel({ conv }: { conv: ConvRow }) {
-  return (
-    <aside className="w-72 border-l border-border bg-card hidden lg:flex flex-col">
-      <div className="p-6 text-center border-b border-border">
-        <div className="flex justify-center mb-3">
-          <Avatar name={conv.username} url={conv.avatar_url} size={80} />
-        </div>
-        <p className="font-bold text-lg">{conv.username}</p>
-        <p className={`text-xs mt-2 ${conv.online ? "text-green-500" : "text-muted-foreground"}`}>
-          {conv.online ? "● Active now" : `Last seen ${formatDistanceToNow(new Date(conv.last_seen), { addSuffix: true })}`}
-        </p>
-      </div>
-      <div className="p-5 space-y-4 text-sm">
-        <InfoRow label="User ID" value={conv.userId.slice(0, 8) + "…"} />
-        <div className="pt-2 border-t border-border">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Quick actions</p>
-          <p className="text-xs text-muted-foreground italic">Notes, tags, credits & payments — coming next step.</p>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-medium">{value}</p>
-    </div>
-  );
-}
 
 /* ---------------- ADMINS (super admin only) ---------------- */
 
