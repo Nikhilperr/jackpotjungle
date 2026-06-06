@@ -33,7 +33,7 @@ function ProfilePage() {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return;
-      const { data } = await supabase.from("profiles").select("*").eq("id", u.user.id).maybeSingle();
+      const { data } = await supabase.from("profiles").select("id, username, avatar_url, friend_code, referral_code, online, last_seen, created_at").eq("id", u.user.id).maybeSingle();
       if (data) { setProfile(data as Profile); setUsername(data.username); }
     })();
   }, []);
