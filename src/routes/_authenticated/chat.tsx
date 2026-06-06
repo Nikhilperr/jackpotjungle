@@ -23,10 +23,14 @@ type Conversation = {
 
 function ChatLayout() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [pageUnread, setPageUnread] = useState(0);
+  const [pageLast, setPageLast] = useState<{ content: string | null; at: string | null }>({ content: null, at: null });
   const [search, setSearch] = useState("");
-  const [meId, setMeId] = useState<string | null>(null);
+  const [, setMeId] = useState<string | null>(null);
   const params = useParams({ strict: false }) as { friendId?: string };
+  const location = useLocation();
   const activeId = params.friendId;
+  const isPageActive = location.pathname.endsWith("/chat/page");
 
   useEffect(() => {
     let mounted = true;
