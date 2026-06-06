@@ -341,24 +341,26 @@ function InboxEmpty() {
   );
 }
 
+type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean };
+
 function Conversation({ meId, conv, onBack }: { meId: string; conv: ConvRow; onBack: () => void }) {
-  const [messages, setMessages] = useState<Array<{ id: string; sender_id: string; content: string; created_at: string; seen: boolean; from_page: boolean }>>([]);
+  const [messages, setMessages] = useState<PageMsg[]>([]);
   const [text, setText] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [recUploading, setRecUploading] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   async function load() {
     const { data } = await supabase
       .from("page_messages")
-      .select("id, sender_id, content, created_at, seen, from_page")
+      .select("id, sender_id, content, image_url, audio_url, created_at, seen, from_page")
       .eq("conversation_id", conv.conversationId)
       .order("created_at", { ascending: true });
-    setMessages(data ?? []);
-    await supabase
-      .from("page_messages")
-      .update({ seen: true })
-      .eq("conversation_id", conv.conversationId)
-      .eq("from_page", false)
-      .eq("seen", false);
+    setMessages((data as PageMsg[]) ?? []);
+    await supabase.from("page_messages").update({ seen: true })
+      .eq("conversation_id", conv.conversationId).eq("from_page", false).eq("seen", false);
   }
 
   useEffect(() => {
@@ -379,21 +381,47 @@ function Conversation({ meId, conv, onBack }: { meId: string; conv: ConvRow; onB
     const content = text.trim();
     setText("");
     const { error } = await supabase.from("page_messages").insert({
-      conversation_id: conv.conversationId,
-      sender_id: meId,
-      from_page: true,
-      content,
+      conversation_id: conv.conversationId, sender_id: meId, from_page: true, content,
     });
     if (error) toast.error(error.message);
+  }
+
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    if (file.size > 8 * 1024 * 1024) { toast.error("Max 8 MB"); return; }
+    setUploading(true);
+    try {
+      const { uploadAndSign } = await import("@/lib/chat-media");
+      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
+      const { error } = await supabase.from("page_messages").insert({
+        conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: null, image_url: url,
+      } as any);
+      if (error) toast.error(error.message);
+    } catch (err: any) { toast.error(err?.message ?? "Upload failed"); }
+    setUploading(false);
+  }
+
+  async function onVoice(blob: Blob, mime: string, ext: string) {
+    setRecUploading(true);
+    try {
+      const { uploadAndSign } = await import("@/lib/chat-media");
+      const url = await uploadAndSign("chat-audio", meId, blob, ext, mime);
+      const { error } = await supabase.from("page_messages").insert({
+        conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: null, audio_url: url,
+      } as any);
+      if (error) toast.error(error.message);
+    } catch (err: any) { toast.error(err?.message ?? "Voice upload failed"); }
+    setRecUploading(false);
   }
 
   return (
     <>
       <div className="px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="sm:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1"
-        >
+        <button onClick={onBack} className="sm:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1">
           <ArrowLeft className="h-5 w-5" />
         </button>
         <Avatar name={conv.username} url={conv.avatar_url} size={36} />
@@ -410,24 +438,44 @@ function Conversation({ meId, conv, onBack }: { meId: string; conv: ConvRow; onB
           const mine = m.from_page;
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                {m.content}
-              </div>
+              {m.image_url ? (
+                <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
+                  <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
+                </button>
+              ) : m.audio_url ? (
+                <div className={`max-w-[80%] px-3 py-2 rounded-2xl ${mine ? "bg-bubble-me" : "bg-bubble-them"}`}>
+                  <audio controls src={m.audio_url} className="h-10 max-w-[260px]" />
+                </div>
+              ) : (
+                <div className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
+                  {m.content}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
       <form onSubmit={send} className="p-3 border-t border-border bg-card flex items-center gap-2">
-        <Input
-          placeholder="Reply as Jackpot Jungle…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className="rounded-full bg-secondary border-transparent h-11"
-        />
-        <Button type="submit" size="icon" className="rounded-full h-11 w-11 shrink-0">
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+          className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
+          {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+        <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
+        <Input placeholder="Reply as Jackpot Jungle…" value={text} onChange={(e) => setText(e.target.value)}
+          className="rounded-full bg-secondary border-transparent h-11" />
+        <Button type="submit" size="icon" disabled={!text.trim()} className="rounded-full h-11 w-11 shrink-0">
           <Send className="h-4 w-4" />
         </Button>
       </form>
+      {preview && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
+          <button onClick={() => setPreview(null)} className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
+          <img src={preview} alt="" className="max-h-full max-w-full object-contain" />
+        </div>
+      )}
     </>
   );
 }
