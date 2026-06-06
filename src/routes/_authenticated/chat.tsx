@@ -5,6 +5,7 @@ import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
 import { Search, MessageCircle, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { Avatar } from "@/components/messenger/Avatar";
 import { useRole } from "@/hooks/useRole";
 
 export const Route = createFileRoute("/_authenticated/chat")({
