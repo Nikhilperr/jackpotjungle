@@ -88,6 +88,7 @@ type ConvRow = {
   lastMessage: string | null;
   lastAt: string | null;
   unread: number;
+  credit: number;
 };
 
 function AdminPage() {
