@@ -51,7 +51,7 @@ function AuthPage() {
 }
 
 function SignInForm() {
-  const [id, setId] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -59,17 +59,6 @@ function SignInForm() {
     e.preventDefault();
     setBusy(true);
     try {
-      let email = id;
-      if (!id.includes("@")) {
-        const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
-        const res = await lookupEmailByUsername({ data: { username: id } });
-        if (!res.email) {
-          toast.error("No account found with that username.");
-          return;
-        }
-        email = res.email;
-      }
-
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       toast.success("Welcome back!");
@@ -83,8 +72,8 @@ function SignInForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <Label htmlFor="id">Username or email</Label>
-        <Input id="id" value={id} onChange={(e) => setId(e.target.value)} required autoComplete="username" />
+        <Label htmlFor="email">Email</Label>
+        <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
       </div>
       <div>
         <Label htmlFor="pw">Password</Label>
