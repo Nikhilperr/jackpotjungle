@@ -9,14 +9,44 @@ import { formatDistanceToNow } from "date-fns";
 import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { sendBroadcast, deleteAdminUser, setUserBlocked, resetUserPassword } from "@/lib/admin-super.functions";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const sb: any = supabase;
+
+/* ============ CONFIRM DIALOG HOOK ============ */
+function useConfirm() {
+  const [state, setState] = useState<{ open: boolean; title: string; desc?: string; confirmText?: string; destructive?: boolean; resolve?: (v: boolean) => void }>({ open: false, title: "" });
+  const ask = (opts: { title: string; desc?: string; confirmText?: string; destructive?: boolean }) =>
+    new Promise<boolean>((resolve) => setState({ open: true, ...opts, resolve }));
+  const node = (
+    <AlertDialog open={state.open} onOpenChange={(o) => { if (!o) { state.resolve?.(false); setState((s) => ({ ...s, open: false })); } }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{state.title}</AlertDialogTitle>
+          {state.desc && <AlertDialogDescription>{state.desc}</AlertDialogDescription>}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => { state.resolve?.(false); setState((s) => ({ ...s, open: false })); }}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className={state.destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+            onClick={() => { state.resolve?.(true); setState((s) => ({ ...s, open: false })); }}
+          >{state.confirmText ?? "Confirm"}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+  return { ask, node };
+}
 
 /* ============ TAGS ============ */
 export function TagsView() {
   const [tags, setTags] = useState<any[]>([]);
   const [name, setName] = useState("");
   const [color, setColor] = useState("#6366f1");
+  const { ask, node: confirmNode } = useConfirm();
   async function load() {
     const { data } = await sb.from("tags").select("*").order("name");
     setTags(data ?? []);
@@ -27,13 +57,14 @@ export function TagsView() {
     const { error } = await sb.from("tags").insert({ name: name.trim(), color });
     if (error) toast.error(error.message); else { setName(""); load(); }
   }
-  async function del(id: string) {
-    if (!confirm("Delete tag?")) return;
+  async function del(id: string, label: string) {
+    if (!(await ask({ title: "Delete tag?", desc: `“${label}” will be removed from all users.`, confirmText: "Delete", destructive: true }))) return;
     await sb.from("tags").delete().eq("id", id);
     load();
   }
   return (
     <div className="p-6 max-w-2xl mx-auto">
+      {confirmNode}
       <h2 className="text-xl font-bold mb-1">User tags</h2>
       <p className="text-sm text-muted-foreground mb-4">Tags help group users for broadcasts & filtering.</p>
       <div className="flex gap-2 mb-4">
@@ -46,7 +77,7 @@ export function TagsView() {
           <div key={t.id} className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
             <span className="h-4 w-4 rounded-full" style={{ background: t.color }} />
             <span className="flex-1 font-medium text-sm">{t.name}</span>
-            <button onClick={() => del(t.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+            <button onClick={() => del(t.id, t.name)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
           </div>
         ))}
         {tags.length === 0 && <p className="text-sm text-center text-muted-foreground py-6">No tags yet.</p>}
@@ -60,6 +91,7 @@ export function QuickRepliesView({ meId }: { meId: string }) {
   const [items, setItems] = useState<any[]>([]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const { ask, node: confirmNode } = useConfirm();
   async function load() {
     const { data } = await sb.from("quick_replies").select("*").order("created_at", { ascending: false });
     setItems(data ?? []);
@@ -70,13 +102,14 @@ export function QuickRepliesView({ meId }: { meId: string }) {
     const { error } = await sb.from("quick_replies").insert({ admin_id: meId, title: title.trim(), content: content.trim() });
     if (error) toast.error(error.message); else { setTitle(""); setContent(""); load(); }
   }
-  async function del(id: string) {
-    if (!confirm("Delete reply?")) return;
+  async function del(id: string, label: string) {
+    if (!(await ask({ title: "Delete quick reply?", desc: `“${label}” will be permanently removed.`, confirmText: "Delete", destructive: true }))) return;
     await sb.from("quick_replies").delete().eq("id", id);
     load();
   }
   return (
     <div className="p-6 max-w-3xl mx-auto">
+      {confirmNode}
       <h2 className="text-xl font-bold mb-1">Quick reply templates</h2>
       <p className="text-sm text-muted-foreground mb-4">Reusable canned messages, shared across admins.</p>
       <div className="bg-card border border-border rounded-2xl p-4 mb-6 space-y-2">
@@ -92,7 +125,7 @@ export function QuickRepliesView({ meId }: { meId: string }) {
                 <p className="font-semibold text-sm">{q.title}</p>
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{q.content}</p>
               </div>
-              <button onClick={() => del(q.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={() => del(q.id, q.title)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
         ))}
@@ -400,7 +433,7 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop" 
   useEffect(() => {
     loadAll();
     const ch = sb
-      .channel(`user-detail-${userId}`)
+      .channel(`user-detail-${userId}-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "user_credits", filter: `user_id=eq.${userId}` }, () => loadAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_transactions", filter: `user_id=eq.${userId}` }, () => loadAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` }, () => loadAll())
@@ -592,6 +625,7 @@ export function SuperAdminView() {
   const resetFn = useServerFn(resetUserPassword);
   const [pwdFor, setPwdFor] = useState<string | null>(null);
   const [pwd, setPwd] = useState("");
+  const { ask, node: confirmNode } = useConfirm();
 
   async function load() {
     const { data: roles } = await sb.from("user_roles").select("user_id, role").in("role", ["admin", "super_admin"]);
@@ -604,7 +638,7 @@ export function SuperAdminView() {
   useEffect(() => { load(); }, []);
 
   async function del(uid: string) {
-    if (!confirm("Permanently delete this admin account?")) return;
+    if (!(await ask({ title: "Delete admin account?", desc: "This permanently removes the admin user. This cannot be undone.", confirmText: "Delete", destructive: true }))) return;
     try { await delFn({ data: { userId: uid } }); toast.success("Deleted"); load(); }
     catch (e: any) { toast.error(e?.message); }
   }
@@ -620,6 +654,7 @@ export function SuperAdminView() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
+      {confirmNode}
       <h2 className="text-xl font-bold mb-1">Super admin settings</h2>
       <p className="text-sm text-muted-foreground mb-4">Manage admin accounts: block, reset password, delete.</p>
       <div className="bg-card border border-border rounded-2xl divide-y divide-border">

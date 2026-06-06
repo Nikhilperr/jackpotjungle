@@ -712,6 +712,7 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
   const [rows, setRows] = useState<AdminRow[]>([]);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<AdminRow | null>(null);
 
   async function load() {
     const { data: roles } = await supabase
@@ -738,8 +739,10 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
 
   useEffect(() => { load(); }, []);
 
-  async function revoke(row: AdminRow) {
-    if (!confirm(`Revoke ${row.role} from ${row.username}?`)) return;
+  async function doRevoke() {
+    const row = revokeTarget;
+    if (!row) return;
+    setRevokeTarget(null);
     const { error } = await supabase
       .from("user_roles")
       .delete()
@@ -797,7 +800,7 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
                   {r.role === "super_admin" ? "Super admin" : "Admin"}
                 </span>
                 <button
-                  onClick={() => revoke(r)}
+                  onClick={() => setRevokeTarget(r)}
                   className="h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                   title="Revoke role"
                 >
@@ -810,6 +813,21 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
       </div>
 
       {addOpen && <AddAdminDialog onClose={() => { setAddOpen(false); load(); }} />}
+
+      <AlertDialog open={!!revokeTarget} onOpenChange={(o) => { if (!o) setRevokeTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke {revokeTarget?.role.replace("_", " ")}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {revokeTarget?.username} will lose {revokeTarget?.role === "super_admin" ? "super admin" : "admin"} access immediately.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={doRevoke}>Revoke</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
