@@ -21,6 +21,7 @@ type Conversation = {
   lastMessage: string | null;
   lastAt: string | null;
   unread: number;
+  allText: string;
 };
 
 function ChatLayout() {
