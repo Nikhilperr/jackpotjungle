@@ -69,8 +69,18 @@ function LoginForm({ onSwitch }: { onSwitch: () => void }) {
         if (!res.email) throw new Error("No account with that username.");
         email = res.email;
       }
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data: signed, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
+      // Best-effort login log
+      try {
+        if (signed.user) {
+          await (supabase as any).from("login_logs").insert({
+            user_id: signed.user.id,
+            user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null,
+            success: true,
+          });
+        }
+      } catch {}
       toast.success("Welcome back!");
     } catch (err: any) {
       toast.error(err.message ?? "Login failed.");
