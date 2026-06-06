@@ -58,6 +58,7 @@ import {
   UserDetailPanel,
   SuperAdminView,
   ReferralsAdminView,
+  AdminProfileView,
 } from "@/components/admin/AdminViews";
 
 export const Route = createFileRoute("/_authenticated/admin")({
@@ -76,7 +77,8 @@ type Tab =
   | "referrals"
   | "logs"
   | "admins"
-  | "super";
+  | "super"
+  | "profile";
 
 type ConvRow = {
   conversationId: string;
