@@ -201,6 +201,7 @@ function AdminPage() {
         {tab === "logs" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Logs"><LogsView /></ScrollWrap>}
         {tab === "admins" && <AdminsView onOpenNav={() => setNavOpen(true)} />}
         {tab === "super" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Super admin"><SuperAdminView /></ScrollWrap>}
+        {tab === "profile" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={user.id} email={user.email ?? null} /></ScrollWrap>}
       </main>
 
       <AlertDialog open={confirmOut} onOpenChange={setConfirmOut}>
