@@ -63,7 +63,7 @@ function ProfilePage() {
           <div className="flex flex-col items-center text-center pt-4">
             <Avatar name={profile.username} url={profile.avatar_url} size={96} />
             <h1 className="mt-4 text-2xl font-bold">{profile.username}</h1>
-            <p className="text-sm text-muted-foreground">{profile.email}</p>
+            <p className="text-sm text-muted-foreground">{email}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
