@@ -5,6 +5,7 @@ import { AppShell } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
 import { Search, MessageCircle, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { useRole } from "@/hooks/useRole";
 
 export const Route = createFileRoute("/_authenticated/chat")({
   head: () => ({ meta: [{ title: "Chats — JJ Messenger" }] }),
@@ -31,6 +32,8 @@ function ChatLayout() {
   const location = useLocation();
   const activeId = params.friendId;
   const isPageActive = location.pathname.endsWith("/chat/page");
+  const { isAdmin } = useRole();
+  const hasActive = !!activeId || isPageActive;
 
   useEffect(() => {
     let mounted = true;
@@ -119,7 +122,7 @@ function ChatLayout() {
   return (
     <AppShell>
       <div className="flex h-full">
-        <div className="w-full max-w-sm border-r border-border flex flex-col">
+        <div className={`${hasActive ? "hidden md:flex" : "flex"} w-full md:max-w-sm md:border-r md:border-border flex-col min-h-0`}>
           <div className="p-4 border-b border-border">
             <h2 className="text-xl font-bold mb-3">Chats</h2>
             <div className="relative">
@@ -133,30 +136,32 @@ function ChatLayout() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
-            <Link
-              to="/chat/page"
-              className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors ${isPageActive ? "bg-secondary" : ""}`}
-            >
-              <div className="relative shrink-0">
-                <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
-                  <Sparkles className="h-6 w-6 text-primary-foreground" />
+            {!isAdmin && (
+              <Link
+                to="/chat/page"
+                className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors ${isPageActive ? "bg-secondary" : ""}`}
+              >
+                <div className="relative shrink-0">
+                  <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
+                    <Sparkles className="h-6 w-6 text-primary-foreground" />
+                  </div>
                 </div>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline justify-between gap-2">
-                  <p className={`truncate ${pageUnread > 0 ? "font-bold" : "font-semibold"}`}>Jackpot Jungle</p>
-                  {pageLast.at && (
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {formatDistanceToNow(new Date(pageLast.at), { addSuffix: false })}
-                    </span>
-                  )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className={`truncate ${pageUnread > 0 ? "font-bold" : "font-semibold"}`}>Jackpot Jungle</p>
+                    {pageLast.at && (
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {formatDistanceToNow(new Date(pageLast.at), { addSuffix: false })}
+                      </span>
+                    )}
+                  </div>
+                  <p className={`text-sm truncate ${pageUnread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                    {pageLast.content ?? "Official page · Tap to message us"}
+                  </p>
                 </div>
-                <p className={`text-sm truncate ${pageUnread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                  {pageLast.content ?? "Official page · Tap to message us"}
-                </p>
-              </div>
-              {pageUnread > 0 && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{pageUnread}</span>}
-            </Link>
+                {pageUnread > 0 && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{pageUnread}</span>}
+              </Link>
+            )}
 
             {filtered.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
@@ -195,8 +200,8 @@ function ChatLayout() {
             )}
           </div>
         </div>
-        <div className="flex-1 min-w-0">
-          {activeId || isPageActive ? <Outlet /> : <EmptyState />}
+        <div className={`${hasActive ? "flex" : "hidden md:flex"} flex-1 min-w-0 min-h-0 flex-col`}>
+          {hasActive ? <Outlet /> : <EmptyState />}
         </div>
       </div>
     </AppShell>
