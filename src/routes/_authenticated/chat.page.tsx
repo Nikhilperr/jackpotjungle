@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 
 export const Route = createFileRoute("/_authenticated/chat/page")({
@@ -101,13 +101,16 @@ function PageChatView() {
 
   return (
     <div className="h-full flex flex-col">
-      <header className="px-5 py-3 border-b border-border flex items-center gap-3 bg-card">
-        <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center">
+      <header className="px-3 md:px-5 py-3 border-b border-border flex items-center gap-3 bg-card">
+        <Link to="/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
+        <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center shrink-0">
           <Sparkles className="h-5 w-5 text-primary-foreground" />
         </div>
-        <div>
-          <p className="font-semibold">Jackpot Jungle</p>
-          <p className="text-xs text-muted-foreground">Official page · We usually reply within a few hours</p>
+        <div className="min-w-0">
+          <p className="font-semibold truncate">Jackpot Jungle</p>
+          <p className="text-xs text-muted-foreground truncate">Official page · We usually reply within a few hours</p>
         </div>
       </header>
 

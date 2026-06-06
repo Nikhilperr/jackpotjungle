@@ -1,11 +1,11 @@
-import { createFileRoute, useParams } from "@tanstack/react-router";
+import { createFileRoute, useParams, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
+import { Send, ArrowLeft } from "lucide-react";
 import { Avatar } from "./chat";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 
 export const Route = createFileRoute("/_authenticated/chat/$friendId")({
   component: ChatView,
@@ -113,11 +113,23 @@ function ChatView() {
 
   return (
     <div className="h-full flex flex-col">
-      <header className="px-5 py-3 border-b border-border flex items-center gap-3 bg-card">
-        <Avatar name={friend.username} url={friend.avatar_url} size={40} />
-        <div>
-          <p className="font-semibold">{friend.username}</p>
-          <p className="text-xs text-muted-foreground">{friend.online ? "Active now" : "Offline"}</p>
+      <header className="px-3 md:px-5 py-3 border-b border-border flex items-center gap-3 bg-card">
+        <Link to="/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
+        <div className="relative">
+          <Avatar name={friend.username} url={friend.avatar_url} size={40} />
+          {friend.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+        </div>
+        <div className="min-w-0">
+          <p className="font-semibold truncate">{friend.username}</p>
+          <p className="text-xs text-muted-foreground truncate">
+            {friend.online
+              ? "Active now"
+              : friend.last_seen
+                ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}`
+                : "Offline"}
+          </p>
         </div>
       </header>
 
