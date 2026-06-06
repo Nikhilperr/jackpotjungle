@@ -10,6 +10,7 @@ export function useRole() {
   useEffect(() => {
     let mounted = true;
     async function load() {
+      if (mounted) setLoading(true);
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) { if (mounted) { setRoles([]); setLoading(false); } return; }
       const { data } = await supabase
