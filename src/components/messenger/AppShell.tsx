@@ -6,6 +6,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRole } from "@/hooks/useRole";
 import { usePresence } from "@/hooks/usePresence";
 import { createContext, useContext, useState, type ReactNode } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const DrawerCtx = createContext<{ open: () => void }>({ open: () => {} });
 export const useAppDrawer = () => useContext(DrawerCtx);
@@ -16,6 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { isAdmin } = useRole();
   const [open, setOpen] = useState(false);
+  const [confirmOut, setConfirmOut] = useState(false);
   usePresence();
 
   async function signOut() {
