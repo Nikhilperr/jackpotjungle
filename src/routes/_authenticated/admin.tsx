@@ -64,6 +64,7 @@ function AdminPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("inbox");
   const [navOpen, setNavOpen] = useState(false);
+  const [confirmOut, setConfirmOut] = useState(false);
 
   useEffect(() => {
     if (!loading && !isAdmin) navigate({ to: "/chat", replace: true });
