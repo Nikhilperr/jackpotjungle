@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useRole } from "@/hooks/useRole";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -17,12 +18,15 @@ type Mode = "login" | "signup";
 
 function AuthPage() {
   const { user, loading } = useAuth();
+  const { isAdmin, loading: roleLoading } = useRole();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("login");
 
   useEffect(() => {
-    if (!loading && user) navigate({ to: "/chat" });
-  }, [user, loading, navigate]);
+    if (loading || roleLoading) return;
+    if (user) navigate({ to: isAdmin ? "/admin" : "/chat" });
+  }, [user, loading, isAdmin, roleLoading, navigate]);
+
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-8 relative">

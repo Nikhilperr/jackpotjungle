@@ -1,14 +1,16 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { MessageCircle, Users, User as UserIcon, LogOut } from "lucide-react";
+import { MessageCircle, Users, User as UserIcon, LogOut, Shield } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRole } from "@/hooks/useRole";
 import type { ReactNode } from "react";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { isAdmin } = useRole();
 
   async function signOut() {
     await qc.cancelQueries();
@@ -17,11 +19,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate({ to: "/auth", replace: true });
   }
 
-  const navItems = [
+  const navItems: Array<{ to: string; icon: typeof MessageCircle; label: string }> = [
     { to: "/chat", icon: MessageCircle, label: "Chats" },
     { to: "/friends", icon: Users, label: "Friends" },
     { to: "/profile", icon: UserIcon, label: "Profile" },
   ];
+  if (isAdmin) navItems.push({ to: "/admin", icon: Shield, label: "Admin" });
 
   return (
     <div className="flex h-screen bg-background">
