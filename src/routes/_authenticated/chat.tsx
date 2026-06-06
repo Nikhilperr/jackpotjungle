@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Outlet, useParams, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { AppShell } from "@/components/messenger/AppShell";
+import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
 import { Search, MessageCircle, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -124,7 +124,10 @@ function ChatLayout() {
       <div className="flex h-full">
         <div className={`${hasActive ? "hidden md:flex" : "flex"} w-full md:max-w-sm md:border-r md:border-border flex-col min-h-0`}>
           <div className="p-4 border-b border-border">
-            <h2 className="text-xl font-bold mb-3">Chats</h2>
+            <div className="flex items-center gap-2 mb-3">
+              <HamburgerButton />
+              <h2 className="text-xl font-bold">Chats</h2>
+            </div>
             <div className="relative">
               <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
