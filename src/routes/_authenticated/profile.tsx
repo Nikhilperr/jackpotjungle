@@ -156,6 +156,26 @@ function ProfilePage() {
             </Button>
           </form>
 
+          <div className="bg-secondary rounded-2xl p-5 space-y-4">
+            <h2 className="font-semibold flex items-center gap-2">
+              {notifEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />} Notifications
+            </h2>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">New message alerts</p>
+                <p className="text-xs text-muted-foreground">Get notified when someone messages you.</p>
+              </div>
+              <Switch checked={notifEnabled} onCheckedChange={toggleNotif} />
+            </div>
+            {notifEnabled && permission !== "granted" && (
+              <Button type="button" variant="outline" size="sm" onClick={requestPerm} className="rounded-full">
+                {permission === "denied" ? "Notifications blocked in browser" : "Enable browser notifications"}
+              </Button>
+            )}
+          </div>
+
+
+
           <p className="text-xs text-center text-muted-foreground">
             Member since {new Date(profile.created_at).toLocaleDateString()}
           </p>
