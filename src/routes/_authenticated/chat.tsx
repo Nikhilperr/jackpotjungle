@@ -133,10 +133,35 @@ function ChatLayout() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
+            <Link
+              to="/chat/page"
+              className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors ${isPageActive ? "bg-secondary" : ""}`}
+            >
+              <div className="relative shrink-0">
+                <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
+                  <Sparkles className="h-6 w-6 text-primary-foreground" />
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className={`truncate ${pageUnread > 0 ? "font-bold" : "font-semibold"}`}>Jackpot Jungle</p>
+                  {pageLast.at && (
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {formatDistanceToNow(new Date(pageLast.at), { addSuffix: false })}
+                    </span>
+                  )}
+                </div>
+                <p className={`text-sm truncate ${pageUnread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                  {pageLast.content ?? "Official page · Tap to message us"}
+                </p>
+              </div>
+              {pageUnread > 0 && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{pageUnread}</span>}
+            </Link>
+
             {filtered.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
                 {conversations.length === 0
-                  ? "No conversations yet. Add a friend to start chatting."
+                  ? "Add a friend with their friend code to chat 1-on-1."
                   : "No matches."}
               </div>
             ) : (
@@ -171,7 +196,7 @@ function ChatLayout() {
           </div>
         </div>
         <div className="flex-1 min-w-0">
-          {activeId ? <Outlet /> : <EmptyState />}
+          {activeId || isPageActive ? <Outlet /> : <EmptyState />}
         </div>
       </div>
     </AppShell>
