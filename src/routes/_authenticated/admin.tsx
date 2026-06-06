@@ -431,15 +431,18 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
                   {u.lastMessage ?? "No messages yet"}
                 </p>
-                {(userTagMap[u.userId] ?? []).length > 0 && (
-                  <div className="flex gap-1 mt-1 flex-wrap">
-                    {(userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
-                      const t = allTags.find((x) => x.id === tid);
-                      if (!t) return null;
-                      return <span key={tid} className="text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>;
-                    })}
-                  </div>
-                )}
+                <div className="flex gap-1 mt-1 flex-wrap items-center">
+                  {u.credit > 0 && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
+                      Credit ${u.credit.toFixed(2)}
+                    </span>
+                  )}
+                  {(userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
+                    const t = allTags.find((x) => x.id === tid);
+                    if (!t) return null;
+                    return <span key={tid} className="text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>;
+                  })}
+                </div>
               </div>
               {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
             </button>
