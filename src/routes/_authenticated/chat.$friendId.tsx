@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send, ArrowLeft } from "lucide-react";
-import { Avatar } from "./chat";
+import { Avatar } from "@/components/messenger/Avatar";
 import { format, formatDistanceToNow } from "date-fns";
 
 export const Route = createFileRoute("/_authenticated/chat/$friendId")({
