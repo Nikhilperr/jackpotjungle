@@ -126,7 +126,7 @@ function InboxView({ meId }: { meId: string }) {
   async function load() {
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, username, avatar_url, online, last_seen")
+      .select("id, username, avatar_url, online, last_seen, email")
       .neq("id", meId)
       .order("last_seen", { ascending: false });
     if (!profiles) return;
