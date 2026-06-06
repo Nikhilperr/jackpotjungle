@@ -625,6 +625,7 @@ export function SuperAdminView() {
   const resetFn = useServerFn(resetUserPassword);
   const [pwdFor, setPwdFor] = useState<string | null>(null);
   const [pwd, setPwd] = useState("");
+  const { ask, node: confirmNode } = useConfirm();
 
   async function load() {
     const { data: roles } = await sb.from("user_roles").select("user_id, role").in("role", ["admin", "super_admin"]);
