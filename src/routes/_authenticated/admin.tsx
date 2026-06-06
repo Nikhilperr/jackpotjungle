@@ -221,9 +221,13 @@ function AdminPage() {
 }
 
 function ScrollWrap({ onOpenNav, title, children }: { onOpenNav: () => void; title: string; children: React.ReactNode }) {
+  const navigate = useNavigate();
   return (
     <div className="h-full flex flex-col min-h-0">
       <div className="md:hidden sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2 shrink-0">
+        <button onClick={() => navigate({ to: "/chat" })} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary" aria-label="Back">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
         <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary">
           <Menu className="h-5 w-5" />
         </button>
