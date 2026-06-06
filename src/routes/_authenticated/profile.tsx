@@ -40,7 +40,7 @@ function ProfilePage() {
       if (!u.user) return;
       setEmail(u.user.email ?? null);
       const { data } = await supabase.from("profiles").select("id, username, avatar_url, friend_code, referral_code, created_at, notif_enabled" as any).eq("id", u.user.id).maybeSingle();
-      if (data) { setProfile(data as Profile); setUsername((data as any).username); setNotifEnabled((data as any).notif_enabled ?? true); }
+      if (data) { setProfile(data as unknown as Profile); setUsername((data as any).username); setNotifEnabled((data as any).notif_enabled ?? true); }
       if (typeof window !== "undefined" && "Notification" in window) setPermission(Notification.permission);
     })();
   }, []);
