@@ -27,17 +27,17 @@ export const setUserBlocked = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { userId: string; blocked: boolean }) => d)
   .handler(async ({ data, context }) => {
-    await assertSuperAdmin(context.supabase, context.userId);
+    // Admins or super admins can block/unblock regular users.
+    const { data: roleRows } = await context.supabase
+      .from("user_roles").select("role").eq("user_id", context.userId);
+    const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
+    if (!isAdmin) throw new Error("Admins only");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({ is_blocked: data.blocked })
       .eq("id", data.userId);
     if (error) throw new Error(error.message);
-    // Optional: ban via auth admin
-    await supabaseAdmin.auth.admin.updateUserById(data.userId, {
-      ban_duration: data.blocked ? "876000h" : "none",
-    } as any);
     return { ok: true };
   });
 
