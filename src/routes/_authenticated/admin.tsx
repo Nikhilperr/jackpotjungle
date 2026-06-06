@@ -162,7 +162,7 @@ function AdminPage() {
           </>
         )}
         <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
-        <NavLink to="/profile" icon={UserIcon} label="My profile" onClick={() => setNavOpen(false)} />
+        <SideBtn active={tab === "profile"} onClick={() => { setTab("profile"); setNavOpen(false); }} icon={UserIcon} label="My profile" />
       </nav>
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
