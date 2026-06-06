@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRole } from "@/hooks/useRole";
 import { usePresence } from "@/hooks/usePresence";
+import { useChatNotifications } from "@/hooks/useChatNotifications";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import {
   AlertDialog,
@@ -28,6 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
   usePresence();
+  useChatNotifications();
 
   async function signOut() {
     await supabase
