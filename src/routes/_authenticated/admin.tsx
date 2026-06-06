@@ -411,8 +411,24 @@ function Conversation({ meId, conv, onBack }: { meId: string; conv: ConvRow; onB
   const [uploading, setUploading] = useState(false);
   const [recUploading, setRecUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [quickReplies, setQuickReplies] = useState<Array<{ id: string; title: string; content: string }>>([]);
+  const [suggestIdx, setSuggestIdx] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    supabase.from("quick_replies").select("id, title, content").then(({ data }) => setQuickReplies(data ?? []));
+  }, []);
+
+  const trimmed = text.trim().toLowerCase();
+  const suggestions = trimmed && !text.includes("\n")
+    ? quickReplies.filter((q) => q.title.toLowerCase().includes(trimmed)).slice(0, 5)
+    : [];
+
+  function applyReply(q: { content: string }) {
+    setText(q.content);
+    setSuggestIdx(0);
+  }
 
   async function load() {
     const { data } = await supabase
