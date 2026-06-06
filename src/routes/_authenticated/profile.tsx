@@ -30,6 +30,8 @@ function ProfilePage() {
   const [username, setUsername] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [permission, setPermission] = useState<NotificationPermission>("default");
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -37,10 +39,29 @@ function ProfilePage() {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return;
       setEmail(u.user.email ?? null);
-      const { data } = await supabase.from("profiles").select("id, username, avatar_url, friend_code, referral_code, created_at").eq("id", u.user.id).maybeSingle();
-      if (data) { setProfile(data as Profile); setUsername(data.username); }
+      const { data } = await supabase.from("profiles").select("id, username, avatar_url, friend_code, referral_code, created_at, notif_enabled" as any).eq("id", u.user.id).maybeSingle();
+      if (data) { setProfile(data as Profile); setUsername((data as any).username); setNotifEnabled((data as any).notif_enabled ?? true); }
+      if (typeof window !== "undefined" && "Notification" in window) setPermission(Notification.permission);
     })();
   }, []);
+
+  async function toggleNotif(v: boolean) {
+    if (!profile) return;
+    setNotifEnabled(v);
+    await supabase.from("profiles").update({ notif_enabled: v } as any).eq("id", profile.id);
+    if (v && typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      const p = await Notification.requestPermission();
+      setPermission(p);
+    }
+  }
+
+  async function requestPerm() {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    const p = await Notification.requestPermission();
+    setPermission(p);
+    if (p === "granted") toast.success("Browser notifications enabled.");
+  }
+
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
