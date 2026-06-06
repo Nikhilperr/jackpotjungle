@@ -638,7 +638,7 @@ export function SuperAdminView() {
   useEffect(() => { load(); }, []);
 
   async function del(uid: string) {
-    if (!confirm("Permanently delete this admin account?")) return;
+    if (!(await ask({ title: "Delete admin account?", desc: "This permanently removes the admin user. This cannot be undone.", confirmText: "Delete", destructive: true }))) return;
     try { await delFn({ data: { userId: uid } }); toast.success("Deleted"); load(); }
     catch (e: any) { toast.error(e?.message); }
   }
