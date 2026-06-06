@@ -14,13 +14,117 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      friend_requests: {
+        Row: {
+          created_at: string
+          id: string
+          receiver_id: string
+          sender_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          receiver_id: string
+          sender_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          receiver_id?: string
+          sender_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      friendships: {
+        Row: {
+          created_at: string
+          user_a: string
+          user_b: string
+        }
+        Insert: {
+          created_at?: string
+          user_a: string
+          user_b: string
+        }
+        Update: {
+          created_at?: string
+          user_a?: string
+          user_b?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          receiver_id: string
+          seen: boolean
+          sender_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          receiver_id: string
+          seen?: boolean
+          sender_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          receiver_id?: string
+          seen?: boolean
+          sender_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          friend_code: string
+          id: string
+          last_seen: string
+          online: boolean
+          referral_code: string
+          username: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          friend_code: string
+          id: string
+          last_seen?: string
+          online?: boolean
+          referral_code: string
+          username: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          friend_code?: string
+          id?: string
+          last_seen?: string
+          online?: boolean
+          referral_code?: string
+          username?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      gen_code: { Args: { prefix: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
