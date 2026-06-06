@@ -17,7 +17,6 @@ export const Route = createFileRoute("/_authenticated/profile")({
 type Profile = {
   id: string;
   username: string;
-  email: string | null;
   friend_code: string;
   referral_code: string;
   avatar_url: string | null;
@@ -26,6 +25,7 @@ type Profile = {
 
 function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -33,7 +33,8 @@ function ProfilePage() {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return;
-      const { data } = await supabase.from("profiles").select("*").eq("id", u.user.id).maybeSingle();
+      setEmail(u.user.email ?? null);
+      const { data } = await supabase.from("profiles").select("id, username, avatar_url, friend_code, referral_code, created_at").eq("id", u.user.id).maybeSingle();
       if (data) { setProfile(data as Profile); setUsername(data.username); }
     })();
   }, []);
@@ -62,7 +63,7 @@ function ProfilePage() {
           <div className="flex flex-col items-center text-center pt-4">
             <Avatar name={profile.username} url={profile.avatar_url} size={96} />
             <h1 className="mt-4 text-2xl font-bold">{profile.username}</h1>
-            <p className="text-sm text-muted-foreground">{profile.email}</p>
+            <p className="text-sm text-muted-foreground">{email}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
