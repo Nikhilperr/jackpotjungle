@@ -25,7 +25,6 @@ import {
   LogOut,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import {
   AlertDialog,
