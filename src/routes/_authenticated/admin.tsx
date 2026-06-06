@@ -97,21 +97,26 @@ function AdminPage() {
           <X className="h-4 w-4" />
         </button>
       </div>
-      <nav className="flex-1 px-2 py-3 space-y-1">
+      <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
+        <p className="px-3 pt-1 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Business</p>
         <SideBtn active={tab === "inbox"} onClick={() => { setTab("inbox"); setNavOpen(false); }} icon={Inbox} label="Page Inbox" />
         {isSuperAdmin && (
           <SideBtn active={tab === "admins"} onClick={() => { setTab("admins"); setNavOpen(false); }} icon={UsersIcon} label="Admins" />
         )}
+        <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Messenger</p>
+        <NavLink to="/chat" icon={MessageCircle} label="Chats" onClick={() => setNavOpen(false)} />
+        <NavLink to="/friends" icon={UsersIcon} label="Friends" onClick={() => setNavOpen(false)} />
+        <NavLink to="/profile" icon={UserIcon} label="Profile" onClick={() => setNavOpen(false)} />
       </nav>
-      <div className="px-2 py-3 border-t border-border flex items-center gap-2">
-        <button
-          onClick={() => navigate({ to: "/chat" })}
-          className="flex-1 h-10 rounded-lg flex items-center gap-2 px-3 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4 shrink-0" />
-          <span>Messenger</span>
-        </button>
+      <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
+        <button
+          onClick={signOut}
+          className="flex-1 h-10 rounded-lg flex items-center gap-2 px-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          <span>Sign out</span>
+        </button>
       </div>
     </aside>
   );
