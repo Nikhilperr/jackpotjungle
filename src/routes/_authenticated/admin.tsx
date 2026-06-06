@@ -580,7 +580,14 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
         >
           <Avatar name={conv.username} url={conv.avatar_url} size={36} />
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm truncate">{conv.username}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-sm truncate">{conv.username}</p>
+              {conv.credit > 0 && (
+                <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
+                  Credit ${conv.credit.toFixed(2)}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground truncate">{conv.online ? "Active now" : `Last seen ${formatDistanceToNow(new Date(conv.last_seen), { addSuffix: true })}`}</p>
           </div>
         </button>
