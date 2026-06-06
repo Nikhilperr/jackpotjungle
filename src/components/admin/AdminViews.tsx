@@ -9,8 +9,37 @@ import { formatDistanceToNow } from "date-fns";
 import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { sendBroadcast, deleteAdminUser, setUserBlocked, resetUserPassword } from "@/lib/admin-super.functions";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const sb: any = supabase;
+
+/* ============ CONFIRM DIALOG HOOK ============ */
+function useConfirm() {
+  const [state, setState] = useState<{ open: boolean; title: string; desc?: string; confirmText?: string; destructive?: boolean; resolve?: (v: boolean) => void }>({ open: false, title: "" });
+  const ask = (opts: { title: string; desc?: string; confirmText?: string; destructive?: boolean }) =>
+    new Promise<boolean>((resolve) => setState({ open: true, ...opts, resolve }));
+  const node = (
+    <AlertDialog open={state.open} onOpenChange={(o) => { if (!o) { state.resolve?.(false); setState((s) => ({ ...s, open: false })); } }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{state.title}</AlertDialogTitle>
+          {state.desc && <AlertDialogDescription>{state.desc}</AlertDialogDescription>}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => { state.resolve?.(false); setState((s) => ({ ...s, open: false })); }}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className={state.destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+            onClick={() => { state.resolve?.(true); setState((s) => ({ ...s, open: false })); }}
+          >{state.confirmText ?? "Confirm"}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+  return { ask, node };
+}
 
 /* ============ TAGS ============ */
 export function TagsView() {
