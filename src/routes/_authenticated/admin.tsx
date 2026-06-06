@@ -290,7 +290,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     const convIds = convList.map((c) => c.id);
     if (userIds.length === 0) { setConvs([]); return; }
 
-    const [{ data: profiles }, { data: msgs }, { data: tagsData }, { data: utRows }] = await Promise.all([
+    const [{ data: profiles }, { data: msgs }, { data: tagsData }, { data: utRows }, { data: credRows }] = await Promise.all([
       supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds),
       supabase
         .from("page_messages")
@@ -299,6 +299,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         .order("created_at", { ascending: false }),
       supabase.from("tags").select("id, name, color").order("name"),
       supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds),
+      supabase.from("user_credits").select("user_id, balance").in("user_id", userIds),
     ]);
 
     setAllTags(tagsData ?? []);
@@ -308,6 +309,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     });
     setUserTagMap(map);
 
+    const creditMap = new Map<string, number>((credRows ?? []).map((c: any) => [c.user_id, Number(c.balance) || 0]));
     const byUser = new Map((profiles ?? []).map((p) => [p.id, p]));
     const rows: ConvRow[] = convList.map((c) => {
       const p = byUser.get(c.user_id);
@@ -324,6 +326,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         lastMessage: last?.content ?? null,
         lastAt: last?.created_at ?? null,
         unread,
+        credit: creditMap.get(c.user_id) ?? 0,
       };
     });
     setConvs(rows);
