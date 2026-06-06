@@ -474,6 +474,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
   const [preview, setPreview] = useState<string | null>(null);
   const [quickReplies, setQuickReplies] = useState<Array<{ id: string; title: string; content: string }>>([]);
   const [suggestIdx, setSuggestIdx] = useState(0);
+  const [unsendId, setUnsendId] = useState<string | null>(null);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
