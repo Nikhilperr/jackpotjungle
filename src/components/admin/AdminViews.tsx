@@ -654,6 +654,7 @@ export function SuperAdminView() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
+      {confirmNode}
       <h2 className="text-xl font-bold mb-1">Super admin settings</h2>
       <p className="text-sm text-muted-foreground mb-4">Manage admin accounts: block, reset password, delete.</p>
       <div className="bg-card border border-border rounded-2xl divide-y divide-border">
