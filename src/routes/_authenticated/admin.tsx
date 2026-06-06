@@ -712,6 +712,7 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
   const [rows, setRows] = useState<AdminRow[]>([]);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<AdminRow | null>(null);
 
   async function load() {
     const { data: roles } = await supabase
@@ -738,8 +739,10 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
 
   useEffect(() => { load(); }, []);
 
-  async function revoke(row: AdminRow) {
-    if (!confirm(`Revoke ${row.role} from ${row.username}?`)) return;
+  async function doRevoke() {
+    const row = revokeTarget;
+    if (!row) return;
+    setRevokeTarget(null);
     const { error } = await supabase
       .from("user_roles")
       .delete()
