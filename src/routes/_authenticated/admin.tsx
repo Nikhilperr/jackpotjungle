@@ -340,6 +340,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       .on("postgres_changes", { event: "*", schema: "public", table: "page_conversations" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "user_tags" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "tags" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_credits" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
