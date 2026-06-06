@@ -19,10 +19,10 @@ export function useChatNotifications() {
       myId = u.user.id;
       const { data: prof } = await supabase
         .from("profiles")
-        .select("notif_enabled")
+        .select("notif_enabled" as any)
         .eq("id", myId)
         .maybeSingle();
-      enabled = prof?.notif_enabled ?? true;
+      enabled = (prof as any)?.notif_enabled ?? true;
 
       channel = supabase
         .channel(`notif-${myId}`)

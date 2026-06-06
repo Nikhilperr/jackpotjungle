@@ -64,7 +64,7 @@ function ChatView() {
       if (mounted) setMessages((msgs as Message[]) ?? []);
 
       // mark received messages as delivered + seen
-      await supabase.from("messages").update({ seen: true, delivered: true })
+      await supabase.from("messages").update({ seen: true, delivered: true } as any)
         .eq("sender_id", friendId).eq("receiver_id", u.user.id).eq("seen", false);
     })();
 
@@ -86,7 +86,7 @@ function ChatView() {
               (m.sender_id === friendId && m.receiver_id === meId)) {
             setMessages((prev) => prev.some((x) => x.id === m.id) ? prev : [...prev, m]);
             if (m.receiver_id === meId) {
-              supabase.from("messages").update({ seen: true, delivered: true }).eq("id", m.id).then();
+              supabase.from("messages").update({ seen: true, delivered: true } as any).eq("id", m.id).then();
             }
           }
         })
@@ -166,7 +166,7 @@ function ChatView() {
       receiver_id: friendId,
       content: "",
       image_url: pub.publicUrl,
-    });
+    } as any);
     setUploading(false);
   }
 
