@@ -710,7 +710,7 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
   const [username, setUsername] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const fileRef = (typeof window !== "undefined") ? { current: null as HTMLInputElement | null } : { current: null };
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   async function load() {
     const { data } = await sb.from("profiles")
