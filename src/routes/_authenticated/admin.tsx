@@ -605,6 +605,7 @@ type AdminRow = {
 };
 
 function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<AdminRow[]>([]);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
