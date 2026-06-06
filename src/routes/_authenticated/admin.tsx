@@ -161,6 +161,19 @@ function SideBtn({
   );
 }
 
+function NavLink({ to, icon: Icon, label, onClick }: { to: string; icon: typeof Inbox; label: string; onClick: () => void }) {
+  return (
+    <Link
+      to={to}
+      onClick={onClick}
+      className="w-full h-10 rounded-lg flex items-center gap-3 px-3 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span>{label}</span>
+    </Link>
+  );
+}
+
 /* ---------------- PAGE INBOX (all admins share) ---------------- */
 
 function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void }) {
