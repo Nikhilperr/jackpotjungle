@@ -91,6 +91,7 @@ export function QuickRepliesView({ meId }: { meId: string }) {
   const [items, setItems] = useState<any[]>([]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const { ask, node: confirmNode } = useConfirm();
   async function load() {
     const { data } = await sb.from("quick_replies").select("*").order("created_at", { ascending: false });
     setItems(data ?? []);
@@ -101,13 +102,14 @@ export function QuickRepliesView({ meId }: { meId: string }) {
     const { error } = await sb.from("quick_replies").insert({ admin_id: meId, title: title.trim(), content: content.trim() });
     if (error) toast.error(error.message); else { setTitle(""); setContent(""); load(); }
   }
-  async function del(id: string) {
-    if (!confirm("Delete reply?")) return;
+  async function del(id: string, label: string) {
+    if (!(await ask({ title: "Delete quick reply?", desc: `“${label}” will be permanently removed.`, confirmText: "Delete", destructive: true }))) return;
     await sb.from("quick_replies").delete().eq("id", id);
     load();
   }
   return (
     <div className="p-6 max-w-3xl mx-auto">
+      {confirmNode}
       <h2 className="text-xl font-bold mb-1">Quick reply templates</h2>
       <p className="text-sm text-muted-foreground mb-4">Reusable canned messages, shared across admins.</p>
       <div className="bg-card border border-border rounded-2xl p-4 mb-6 space-y-2">
@@ -123,7 +125,7 @@ export function QuickRepliesView({ meId }: { meId: string }) {
                 <p className="font-semibold text-sm">{q.title}</p>
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{q.content}</p>
               </div>
-              <button onClick={() => del(q.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={() => del(q.id, q.title)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
         ))}
