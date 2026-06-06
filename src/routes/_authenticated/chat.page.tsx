@@ -3,14 +3,25 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Sparkles, ArrowLeft } from "lucide-react";
+import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X } from "lucide-react";
 import { format } from "date-fns";
+import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
+import { uploadAndSign } from "@/lib/chat-media";
 
 export const Route = createFileRoute("/_authenticated/chat/page")({
   component: PageChatView,
 });
 
-type Msg = { id: string; sender_id: string; from_page: boolean; content: string; seen: boolean; created_at: string };
+type Msg = {
+  id: string;
+  sender_id: string;
+  from_page: boolean;
+  content: string | null;
+  image_url: string | null;
+  audio_url: string | null;
+  seen: boolean;
+  created_at: string;
+};
 
 function PageChatView() {
   const [meId, setMeId] = useState<string | null>(null);
@@ -18,6 +29,10 @@ function PageChatView() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [recUploading, setRecUploading] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,35 +42,20 @@ function PageChatView() {
       if (!u.user || !mounted) return;
       setMeId(u.user.id);
 
-      let { data: conv } = await supabase
-        .from("page_conversations")
-        .select("id")
-        .eq("user_id", u.user.id)
-        .maybeSingle();
+      let { data: conv } = await supabase.from("page_conversations").select("id").eq("user_id", u.user.id).maybeSingle();
       if (!conv) {
-        const ins = await supabase
-          .from("page_conversations")
-          .insert({ user_id: u.user.id })
-          .select("id")
-          .single();
+        const ins = await supabase.from("page_conversations").insert({ user_id: u.user.id }).select("id").single();
         conv = ins.data;
       }
       if (!conv || !mounted) return;
       setConvId(conv.id);
 
-      const { data: msgs } = await supabase
-        .from("page_messages")
-        .select("id, sender_id, from_page, content, seen, created_at")
-        .eq("conversation_id", conv.id)
-        .order("created_at", { ascending: true });
-      if (mounted) setMessages(msgs ?? []);
+      const { data: msgs } = await supabase.from("page_messages")
+        .select("id, sender_id, from_page, content, image_url, audio_url, seen, created_at")
+        .eq("conversation_id", conv.id).order("created_at", { ascending: true });
+      if (mounted) setMessages((msgs as Msg[]) ?? []);
 
-      await supabase
-        .from("page_messages")
-        .update({ seen: true })
-        .eq("conversation_id", conv.id)
-        .eq("from_page", true)
-        .eq("seen", false);
+      await supabase.from("page_messages").update({ seen: true }).eq("conversation_id", conv.id).eq("from_page", true).eq("seen", false);
     })();
     return () => { mounted = false; };
   }, []);
@@ -64,17 +64,11 @@ function PageChatView() {
     if (!convId) return;
     const ch = supabase
       .channel(`user-page-${convId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "page_messages", filter: `conversation_id=eq.${convId}` },
-        (payload) => {
-          const m = payload.new as Msg;
-          setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
-          if (m.from_page) {
-            supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
-          }
-        }
-      )
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "page_messages", filter: `conversation_id=eq.${convId}` }, (payload) => {
+        const m = payload.new as Msg;
+        setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+        if (m.from_page) supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
+      })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [convId]);
@@ -89,14 +83,34 @@ function PageChatView() {
     setSending(true);
     const content = draft.trim();
     setDraft("");
-    const { error } = await supabase.from("page_messages").insert({
-      conversation_id: convId,
-      sender_id: meId,
-      from_page: false,
-      content,
-    });
+    const { error } = await supabase.from("page_messages").insert({ conversation_id: convId, sender_id: meId, from_page: false, content });
     if (error) { setDraft(content); console.error(error); }
     setSending(false);
+  }
+
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !meId || !convId) return;
+    if (!file.type.startsWith("image/")) return;
+    if (file.size > 8 * 1024 * 1024) { alert("Max 8 MB"); return; }
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
+      await supabase.from("page_messages").insert({ conversation_id: convId, sender_id: meId, from_page: false, content: null, image_url: url } as any);
+    } catch (err) { console.error(err); alert("Upload failed."); }
+    setUploading(false);
+  }
+
+  async function onVoice(blob: Blob, mime: string, ext: string) {
+    if (!meId || !convId) return;
+    setRecUploading(true);
+    try {
+      const url = await uploadAndSign("chat-audio", meId, blob, ext, mime);
+      await supabase.from("page_messages").insert({ conversation_id: convId, sender_id: meId, from_page: false, content: null, audio_url: url } as any);
+    } catch (err) { console.error(err); alert("Voice upload failed."); }
+    setRecUploading(false);
   }
 
   return (
@@ -132,13 +146,19 @@ function PageChatView() {
                 </div>
               )}
               <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[70%] px-4 py-2 rounded-3xl ${
-                    mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"
-                  }`}
-                >
-                  <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
-                </div>
+                {m.image_url ? (
+                  <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-3xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
+                    <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
+                  </button>
+                ) : m.audio_url ? (
+                  <div className={`max-w-[80%] px-3 py-2 rounded-3xl ${mine ? "bg-bubble-me" : "bg-bubble-them"}`}>
+                    <audio controls src={m.audio_url} className="h-10 max-w-[260px]" />
+                  </div>
+                ) : (
+                  <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
+                    <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -146,17 +166,27 @@ function PageChatView() {
       </div>
 
       <form onSubmit={send} className="p-3 border-t border-border flex items-center gap-2 bg-card">
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Message Jackpot Jungle"
-          className="rounded-full bg-secondary border-transparent"
-          autoFocus
-        />
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+          className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
+          {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+        <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
+        <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Jackpot Jungle"
+          className="rounded-full bg-secondary border-transparent" />
         <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0">
           <Send className="h-4 w-4" />
         </Button>
       </form>
+
+      {preview && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
+          <button onClick={() => setPreview(null)} className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
+          <img src={preview} alt="" className="max-h-full max-w-full object-contain" />
+        </div>
+      )}
     </div>
   );
 }

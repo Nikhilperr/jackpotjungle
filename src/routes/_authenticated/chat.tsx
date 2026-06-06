@@ -81,7 +81,7 @@ function ChatLayout() {
         .in("id", friendIds);
       const { data: msgs } = await supabase
         .from("messages")
-        .select("sender_id, receiver_id, content, created_at, seen")
+        .select("sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
         .or(friendIds.map((id) => `and(sender_id.eq.${id},receiver_id.eq.${myId}),and(sender_id.eq.${myId},receiver_id.eq.${id})`).join(","))
         .order("created_at", { ascending: false })
         .limit(500);
@@ -89,11 +89,12 @@ function ChatLayout() {
       (profiles ?? []).forEach((p) => {
         byFriend[p.id] = { friendId: p.id, username: p.username, avatar_url: p.avatar_url, online: p.online, lastMessage: null, lastAt: null, unread: 0, allText: "" };
       });
-      (msgs ?? []).forEach((m) => {
+      (msgs ?? []).forEach((m: any) => {
         const fid = m.sender_id === myId ? m.receiver_id : m.sender_id;
         const c = byFriend[fid];
         if (!c) return;
-        if (!c.lastAt) { c.lastMessage = m.content; c.lastAt = m.created_at; }
+        const preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
+        if (!c.lastAt) { c.lastMessage = preview; c.lastAt = m.created_at; }
         if (m.content) c.allText += " " + m.content.toLowerCase();
         if (m.receiver_id === myId && !m.seen) c.unread++;
       });

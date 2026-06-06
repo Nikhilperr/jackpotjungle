@@ -35,14 +35,23 @@ function ProfilePage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    let mounted = true;
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u.user) return;
+      if (!u.user || !mounted) return;
       setEmail(u.user.email ?? null);
-      const { data } = await supabase.from("profiles").select("id, username, avatar_url, friend_code, referral_code, created_at, notif_enabled" as any).eq("id", u.user.id).maybeSingle();
-      if (data) { setProfile(data as unknown as Profile); setUsername((data as any).username); setNotifEnabled((data as any).notif_enabled ?? true); }
+      const { data } = await supabase.from("profiles")
+        .select("id, username, avatar_url, friend_code, referral_code, created_at, notif_enabled" as any)
+        .eq("id", u.user.id).maybeSingle();
+      if (!mounted) return;
+      if (data) {
+        setProfile(data as unknown as Profile);
+        setUsername((data as any).username);
+        setNotifEnabled((data as any).notif_enabled ?? true);
+      }
       if (typeof window !== "undefined" && "Notification" in window) setPermission(Notification.permission);
     })();
+    return () => { mounted = false; };
   }, []);
 
   async function toggleNotif(v: boolean) {
@@ -80,17 +89,18 @@ function ProfilePage() {
     if (!file.type.startsWith("image/")) return toast.error("Please choose an image.");
     if (file.size > 5 * 1024 * 1024) return toast.error("Max 5MB.");
     setUploading(true);
-    const ext = file.name.split(".").pop()?.toLowerCase() || "png";
-    const path = `${profile.id}/avatar-${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
-    if (upErr) { setUploading(false); return toast.error(upErr.message); }
-    const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
-    const url = pub.publicUrl;
-    const { error: updErr } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", profile.id);
+    try {
+      const { uploadAndSign } = await import("@/lib/chat-media");
+      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      const url = await uploadAndSign("avatars", profile.id, file, ext, file.type);
+      const { error: updErr } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", profile.id);
+      if (updErr) throw updErr;
+      setProfile({ ...profile, avatar_url: url });
+      toast.success("Profile picture updated.");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Upload failed");
+    }
     setUploading(false);
-    if (updErr) return toast.error(updErr.message);
-    setProfile({ ...profile, avatar_url: url });
-    toast.success("Profile picture updated.");
   }
 
   function copy(text: string, label: string) {
