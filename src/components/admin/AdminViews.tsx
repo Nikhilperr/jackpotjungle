@@ -658,6 +658,7 @@ export function SuperAdminView() {
 /* ============ REFERRALS (admin view of all) ============ */
 export function ReferralsAdminView() {
   const [rows, setRows] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
   async function load() {
     const { data } = await sb.from("referrals").select("*").order("created_at", { ascending: false });
     if (!data) { setRows([]); return; }
@@ -671,12 +672,21 @@ export function ReferralsAdminView() {
     await sb.from("referrals").update({ status: "approved", bonus_amount: bonus }).eq("id", id);
     load();
   }
+  const q = search.trim().toLowerCase();
+  const filtered = q ? rows.filter((r) =>
+    (r.referrer ?? "").toLowerCase().includes(q) ||
+    (r.referred ?? "").toLowerCase().includes(q) ||
+    r.status.toLowerCase().includes(q)
+  ) : rows;
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <h2 className="text-xl font-bold mb-1">Referrals</h2>
       <p className="text-sm text-muted-foreground mb-4">Track referrals and approve bonuses.</p>
+      <div className="relative mb-3">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by referrer, referred, or status…" className="rounded-full bg-secondary border-transparent" />
+      </div>
       <div className="bg-card border border-border rounded-2xl divide-y divide-border">
-        {rows.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No referrals yet.</p> : rows.map((r) => (
+        {filtered.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No referrals.</p> : filtered.map((r) => (
           <div key={r.id} className="p-4 flex items-center gap-3 flex-wrap text-sm">
             <div className="flex-1 min-w-0">
               <p><span className="font-semibold">{r.referrer ?? r.referrer_id.slice(0, 8)}</span> → <span className="font-semibold">{r.referred ?? r.referred_id.slice(0, 8)}</span></p>
@@ -690,6 +700,99 @@ export function ReferralsAdminView() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ============ PROFILE (embedded inside admin) ============ */
+export function AdminProfileView({ userId, email }: { userId: string; email: string | null }) {
+  const [profile, setProfile] = useState<any | null>(null);
+  const [username, setUsername] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = (typeof window !== "undefined") ? { current: null as HTMLInputElement | null } : { current: null };
+
+  async function load() {
+    const { data } = await sb.from("profiles")
+      .select("id, username, avatar_url, friend_code, referral_code, created_at")
+      .eq("id", userId).maybeSingle();
+    if (data) { setProfile(data); setUsername(data.username); }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId]);
+
+  async function save() {
+    if (!profile) return;
+    setSaving(true);
+    const { error } = await sb.from("profiles").update({ username }).eq("id", profile.id);
+    setSaving(false);
+    if (error) return toast.error(error.message);
+    toast.success("Saved");
+    setProfile({ ...profile, username });
+  }
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f || !profile) return;
+    if (!f.type.startsWith("image/")) return toast.error("Pick an image");
+    if (f.size > 5 * 1024 * 1024) return toast.error("Max 5MB");
+    setUploading(true);
+    try {
+      const { uploadAndSign } = await import("@/lib/chat-media");
+      const ext = f.name.split(".").pop()?.toLowerCase() || "png";
+      const url = await uploadAndSign("avatars", profile.id, f, ext, f.type);
+      await sb.from("profiles").update({ avatar_url: url }).eq("id", profile.id);
+      setProfile({ ...profile, avatar_url: url });
+      toast.success("Avatar updated");
+    } catch (e: any) { toast.error(e?.message ?? "Upload failed"); }
+    setUploading(false);
+  }
+
+  function copy(text: string, label: string) {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copied`);
+  }
+
+  if (!profile) {
+    return <div className="h-full flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  }
+
+  return (
+    <div className="p-6 max-w-xl mx-auto space-y-6 animate-fade-in">
+      <div className="flex flex-col items-center text-center">
+        <div className="relative">
+          <Avatar name={profile.username} url={profile.avatar_url} size={96} />
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+            className="absolute -bottom-1 -right-1 h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:opacity-90 disabled:opacity-50">
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          </button>
+          <input ref={(el) => { fileRef.current = el; }} type="file" accept="image/*" onChange={onPick} className="hidden" />
+        </div>
+        <h1 className="mt-4 text-2xl font-bold">{profile.username}</h1>
+        <p className="text-sm text-muted-foreground">{email}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <button onClick={() => copy(profile.friend_code, "Friend code")} className="bg-secondary rounded-2xl p-4 text-left hover:bg-accent">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Friend code</p>
+          <p className="font-mono font-bold mt-1">{profile.friend_code}</p>
+        </button>
+        <button onClick={() => copy(profile.referral_code, "Referral code")} className="bg-secondary rounded-2xl p-4 text-left hover:bg-accent">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Referral code</p>
+          <p className="font-mono font-bold mt-1">{profile.referral_code}</p>
+        </button>
+      </div>
+
+      <div className="bg-secondary rounded-2xl p-5 space-y-3">
+        <p className="font-semibold">Edit profile</p>
+        <Input value={username} onChange={(e) => setUsername(e.target.value)} className="bg-card" />
+        <Button onClick={save} disabled={saving || username === profile.username} className="rounded-full">
+          {saving ? "Saving…" : "Save changes"}
+        </Button>
+      </div>
+
+      <p className="text-xs text-center text-muted-foreground">
+        Member since {new Date(profile.created_at).toLocaleDateString()}
+      </p>
     </div>
   );
 }
