@@ -567,14 +567,20 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
   return (
     <>
       <div className="px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center gap-3">
-        <button onClick={onBack} className="sm:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1">
+        <button onClick={onBack} className="sm:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1" aria-label="Back">
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <Avatar name={conv.username} url={conv.avatar_url} size={36} />
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate">{conv.username}</p>
-          <p className="text-xs text-muted-foreground">{conv.online ? "Active now" : `Last seen ${formatDistanceToNow(new Date(conv.last_seen), { addSuffix: true })}`}</p>
-        </div>
+        <button
+          onClick={onOpenDetail}
+          className="flex-1 min-w-0 flex items-center gap-3 -mx-1 px-1 py-1 rounded-lg lg:cursor-default lg:hover:bg-transparent hover:bg-secondary text-left"
+          aria-label="Open user details"
+        >
+          <Avatar name={conv.username} url={conv.avatar_url} size={36} />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm truncate">{conv.username}</p>
+            <p className="text-xs text-muted-foreground truncate">{conv.online ? "Active now" : `Last seen ${formatDistanceToNow(new Date(conv.last_seen), { addSuffix: true })}`}</p>
+          </div>
+        </button>
         <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
