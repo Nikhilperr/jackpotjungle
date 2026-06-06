@@ -765,7 +765,7 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
             className="absolute -bottom-1 -right-1 h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:opacity-90 disabled:opacity-50">
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           </button>
-          <input ref={(el) => { fileRef.current = el; }} type="file" accept="image/*" onChange={onPick} className="hidden" />
+          <input ref={fileRef} type="file" accept="image/*" onChange={onPick} className="hidden" />
         </div>
         <h1 className="mt-4 text-2xl font-bold">{profile.username}</h1>
         <p className="text-sm text-muted-foreground">{email}</p>
