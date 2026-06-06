@@ -356,13 +356,6 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2 mb-3 sm:mb-1">
             <button
-              onClick={() => navigate({ to: "/chat" })}
-              className="sm:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-2"
-              aria-label="Back"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <button
               onClick={onOpenNav}
               className="md:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary"
             >
