@@ -4,53 +4,52 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/auth")({
-  head: () => ({ meta: [{ title: "Sign in — Jackpot Jungle Messenger" }] }),
+  head: () => ({ meta: [{ title: "Log in — Jackpot Jungle Messenger" }] }),
   component: AuthPage,
 });
+
+type Mode = "login" | "signup";
 
 function AuthPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const [mode, setMode] = useState<Mode>("login");
 
   useEffect(() => {
     if (!loading && user) navigate({ to: "/chat" });
   }, [user, loading, navigate]);
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-secondary px-4">
-      <div className="w-full max-w-md">
+    <main className="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-8 relative">
+      <div className="absolute top-4 right-4"><ThemeToggle /></div>
+
+      <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex h-14 w-14 rounded-full bg-primary items-center justify-center mb-4">
-            <MessageCircle className="h-7 w-7 text-primary-foreground" />
+          <div className="inline-flex h-20 w-20 rounded-full bg-primary items-center justify-center mb-4 shadow-lg">
+            <MessageCircle className="h-10 w-10 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-bold">Jackpot Jungle Messenger</h1>
+          <h1 className="text-3xl font-bold text-foreground">Jackpot Jungle</h1>
+          <p className="text-sm text-muted-foreground mt-1">Messenger</p>
         </div>
 
-        <div className="bg-card rounded-2xl p-6 shadow-sm border">
-          <Tabs defaultValue="signin">
-            <TabsList className="grid grid-cols-2 w-full mb-6">
-              <TabsTrigger value="signin">Sign in</TabsTrigger>
-              <TabsTrigger value="signup">Create account</TabsTrigger>
-            </TabsList>
-            <TabsContent value="signin"><SignInForm /></TabsContent>
-            <TabsContent value="signup"><SignUpForm /></TabsContent>
-          </Tabs>
+        <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
+          {mode === "login" ? (
+            <LoginForm onSwitch={() => setMode("signup")} />
+          ) : (
+            <SignUpForm onSwitch={() => setMode("login")} />
+          )}
         </div>
-        <p className="text-center mt-6">
-          <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">← Back home</Link>
-        </p>
       </div>
     </main>
   );
 }
 
-function SignInForm() {
+function LoginForm({ onSwitch }: { onSwitch: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -63,30 +62,57 @@ function SignInForm() {
       if (error) throw error;
       toast.success("Welcome back!");
     } catch (err: any) {
-      toast.error(err.message ?? "Sign in failed.");
+      toast.error(err.message ?? "Login failed.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <Label htmlFor="email">Email</Label>
-        <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+    <form onSubmit={onSubmit} className="space-y-3">
+      <Input
+        type="email"
+        placeholder="Email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+        autoComplete="email"
+        className="h-12 rounded-xl text-base"
+      />
+      <Input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+        autoComplete="current-password"
+        className="h-12 rounded-xl text-base"
+      />
+      <Button type="submit" disabled={busy} className="w-full rounded-full h-12 text-base font-semibold">
+        {busy ? "Logging in…" : "Log in"}
+      </Button>
+      <div className="text-center pt-1">
+        <Link to="/forgot-password" className="text-sm text-primary hover:underline">
+          Forgot password?
+        </Link>
       </div>
-      <div>
-        <Label htmlFor="pw">Password</Label>
-        <Input id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+      <div className="relative my-4">
+        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
+        <div className="relative flex justify-center"><span className="bg-card px-3 text-xs text-muted-foreground">OR</span></div>
       </div>
-      <Button type="submit" disabled={busy} className="w-full rounded-full">
-        {busy ? "Signing in…" : "Sign in"}
+      <Button
+        type="button"
+        onClick={onSwitch}
+        variant="secondary"
+        className="w-full rounded-full h-12 text-base font-semibold"
+      >
+        Create new account
       </Button>
     </form>
   );
 }
 
-function SignUpForm() {
+function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -108,7 +134,7 @@ function SignUpForm() {
         },
       });
       if (error) throw error;
-      toast.success("Account created! Welcome to the jungle.");
+      toast.success("Account created! Welcome.");
     } catch (err: any) {
       toast.error(err.message ?? "Sign up failed.");
     } finally {
@@ -117,26 +143,55 @@ function SignUpForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <Label htmlFor="username">Username</Label>
-        <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} required minLength={3} />
-      </div>
-      <div>
-        <Label htmlFor="email">Email</Label>
-        <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      </div>
-      <div>
-        <Label htmlFor="pw2">Password</Label>
-        <Input id="pw2" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-      </div>
-      <div>
-        <Label htmlFor="confirm">Confirm password</Label>
-        <Input id="confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={6} />
-      </div>
-      <Button type="submit" disabled={busy} className="w-full rounded-full">
-        {busy ? "Creating…" : "Create account"}
+    <form onSubmit={onSubmit} className="space-y-3">
+      <h2 className="text-lg font-semibold text-foreground text-center">Create account</h2>
+      <Input
+        placeholder="Username"
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        required
+        minLength={3}
+        className="h-12 rounded-xl text-base"
+      />
+      <Input
+        type="email"
+        placeholder="Email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+        autoComplete="email"
+        className="h-12 rounded-xl text-base"
+      />
+      <Input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+        minLength={6}
+        autoComplete="new-password"
+        className="h-12 rounded-xl text-base"
+      />
+      <Input
+        type="password"
+        placeholder="Confirm password"
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        required
+        minLength={6}
+        autoComplete="new-password"
+        className="h-12 rounded-xl text-base"
+      />
+      <Button type="submit" disabled={busy} className="w-full rounded-full h-12 text-base font-semibold">
+        {busy ? "Creating…" : "Sign up"}
       </Button>
+      <button
+        type="button"
+        onClick={onSwitch}
+        className="block w-full text-center text-sm text-muted-foreground hover:text-foreground pt-1"
+      >
+        Already have an account? <span className="text-primary font-semibold">Log in</span>
+      </button>
     </form>
   );
 }
