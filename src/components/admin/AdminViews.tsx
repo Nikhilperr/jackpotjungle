@@ -400,7 +400,7 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop" 
   useEffect(() => {
     loadAll();
     const ch = sb
-      .channel(`user-detail-${userId}`)
+      .channel(`user-detail-${userId}-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "user_credits", filter: `user_id=eq.${userId}` }, () => loadAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_transactions", filter: `user_id=eq.${userId}` }, () => loadAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` }, () => loadAll())
