@@ -87,13 +87,14 @@ function ChatLayout() {
         .limit(500);
       const byFriend: Record<string, Conversation> = {};
       (profiles ?? []).forEach((p) => {
-        byFriend[p.id] = { friendId: p.id, username: p.username, avatar_url: p.avatar_url, online: p.online, lastMessage: null, lastAt: null, unread: 0 };
+        byFriend[p.id] = { friendId: p.id, username: p.username, avatar_url: p.avatar_url, online: p.online, lastMessage: null, lastAt: null, unread: 0, allText: "" };
       });
       (msgs ?? []).forEach((m) => {
         const fid = m.sender_id === myId ? m.receiver_id : m.sender_id;
         const c = byFriend[fid];
         if (!c) return;
         if (!c.lastAt) { c.lastMessage = m.content; c.lastAt = m.created_at; }
+        if (m.content) c.allText += " " + m.content.toLowerCase();
         if (m.receiver_id === myId && !m.seen) c.unread++;
       });
       if (mounted) {
@@ -117,8 +118,9 @@ function ChatLayout() {
     return () => { mounted = false; supabase.removeChannel(channel); };
   }, []);
 
+  const q = search.trim().toLowerCase();
   const filtered = conversations.filter((c) =>
-    !search || c.username.toLowerCase().includes(search.toLowerCase())
+    !q || c.username.toLowerCase().includes(q) || c.allText.includes(q)
   );
 
   return (
