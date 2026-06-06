@@ -23,7 +23,10 @@ import {
   MessageCircle,
   User as UserIcon,
   LogOut,
+  Loader2,
+  ImageIcon,
 } from "lucide-react";
+import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import {
