@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -361,6 +361,7 @@ export function LogsView() {
 
 /* ============ USER DETAIL PANEL (notes/tags/credits/payments/referrer) ============ */
 export function UserDetailPanel({ userId, username, avatar, variant = "desktop" }: { userId: string; username: string; avatar: string | null; variant?: "desktop" | "embedded" }) {
+  const blockFn = useServerFn(setUserBlocked);
   const [tags, setTags] = useState<any[]>([]);
   const [allTags, setAllTags] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
@@ -371,15 +372,17 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop" 
   const [totals, setTotals] = useState({ loaded: 0, paid: 0 });
   const [referrer, setReferrer] = useState<{ id: string; username: string } | null>(null);
   const [pickRef, setPickRef] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
 
   async function loadAll() {
-    const [t, all, n, c, tx, ref] = await Promise.all([
+    const [t, all, n, c, tx, ref, prof] = await Promise.all([
       sb.from("user_tags").select("tag_id, tags(id,name,color)").eq("user_id", userId),
       sb.from("tags").select("*"),
       sb.from("user_notes").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
       sb.from("user_credits").select("balance").eq("user_id", userId).maybeSingle(),
       sb.from("credit_transactions").select("amount, type").eq("user_id", userId),
       sb.from("referrals").select("referrer_id").eq("referred_id", userId).maybeSingle(),
+      sb.from("profiles").select("is_blocked").eq("id", userId).maybeSingle(),
     ]);
     setTags((t.data ?? []).map((r: any) => r.tags));
     setAllTags(all.data ?? []);
@@ -388,12 +391,32 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop" 
     const loaded = (tx.data ?? []).filter((r: any) => Number(r.amount) > 0).reduce((s: number, r: any) => s + Number(r.amount), 0);
     const paidTx = (tx.data ?? []).filter((r: any) => r.type === "paid" || Number(r.amount) < 0).reduce((s: number, r: any) => s + Math.abs(Number(r.amount)), 0);
     setTotals({ loaded, paid: paidTx });
+    setIsBlocked(!!prof.data?.is_blocked);
     if (ref.data?.referrer_id) {
-      const { data: prof } = await sb.from("profiles").select("id, username").eq("id", ref.data.referrer_id).maybeSingle();
-      setReferrer(prof ?? null);
+      const { data: p2 } = await sb.from("profiles").select("id, username").eq("id", ref.data.referrer_id).maybeSingle();
+      setReferrer(p2 ?? null);
     } else setReferrer(null);
   }
-  useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => {
+    loadAll();
+    const ch = sb
+      .channel(`user-detail-${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_credits", filter: `user_id=eq.${userId}` }, () => loadAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "credit_transactions", filter: `user_id=eq.${userId}` }, () => loadAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` }, () => loadAll())
+      .subscribe();
+    return () => { sb.removeChannel(ch); };
+    /* eslint-disable-next-line */
+  }, [userId]);
+
+  async function toggleBlock() {
+    try {
+      await blockFn({ data: { userId, blocked: !isBlocked } });
+      toast.success(!isBlocked ? "User blocked" : "User unblocked");
+      setIsBlocked(!isBlocked);
+    } catch (e: any) { toast.error(e?.message ?? "Failed"); }
+  }
+
 
   async function toggleTag(tagId: string) {
     const exists = tags.some((t: any) => t.id === tagId);
@@ -436,10 +459,14 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop" 
         <p className="font-bold">{username}</p>
         <div className="flex justify-center gap-1 mt-2 flex-wrap">
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary font-semibold">Credits {credit}</span>
+          {isBlocked && <span className="text-[11px] px-2 py-0.5 rounded-full bg-destructive/15 text-destructive font-semibold">Blocked</span>}
           {tags.map((t: any) => t && (
             <span key={t.id} className="text-[11px] px-2 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>
           ))}
         </div>
+        <Button size="sm" variant={isBlocked ? "outline" : "destructive"} onClick={toggleBlock} className="mt-3 w-full">
+          {isBlocked ? <><ShieldOff className="h-3 w-3 mr-1" />Unblock user</> : <><Ban className="h-3 w-3 mr-1" />Block user</>}
+        </Button>
       </div>
 
       {/* Credits — editable load / paid */}
@@ -631,6 +658,7 @@ export function SuperAdminView() {
 /* ============ REFERRALS (admin view of all) ============ */
 export function ReferralsAdminView() {
   const [rows, setRows] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
   async function load() {
     const { data } = await sb.from("referrals").select("*").order("created_at", { ascending: false });
     if (!data) { setRows([]); return; }
@@ -644,12 +672,21 @@ export function ReferralsAdminView() {
     await sb.from("referrals").update({ status: "approved", bonus_amount: bonus }).eq("id", id);
     load();
   }
+  const q = search.trim().toLowerCase();
+  const filtered = q ? rows.filter((r) =>
+    (r.referrer ?? "").toLowerCase().includes(q) ||
+    (r.referred ?? "").toLowerCase().includes(q) ||
+    r.status.toLowerCase().includes(q)
+  ) : rows;
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <h2 className="text-xl font-bold mb-1">Referrals</h2>
       <p className="text-sm text-muted-foreground mb-4">Track referrals and approve bonuses.</p>
+      <div className="relative mb-3">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by referrer, referred, or status…" className="rounded-full bg-secondary border-transparent" />
+      </div>
       <div className="bg-card border border-border rounded-2xl divide-y divide-border">
-        {rows.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No referrals yet.</p> : rows.map((r) => (
+        {filtered.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No referrals.</p> : filtered.map((r) => (
           <div key={r.id} className="p-4 flex items-center gap-3 flex-wrap text-sm">
             <div className="flex-1 min-w-0">
               <p><span className="font-semibold">{r.referrer ?? r.referrer_id.slice(0, 8)}</span> → <span className="font-semibold">{r.referred ?? r.referred_id.slice(0, 8)}</span></p>
@@ -663,6 +700,99 @@ export function ReferralsAdminView() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ============ PROFILE (embedded inside admin) ============ */
+export function AdminProfileView({ userId, email }: { userId: string; email: string | null }) {
+  const [profile, setProfile] = useState<any | null>(null);
+  const [username, setUsername] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  async function load() {
+    const { data } = await sb.from("profiles")
+      .select("id, username, avatar_url, friend_code, referral_code, created_at")
+      .eq("id", userId).maybeSingle();
+    if (data) { setProfile(data); setUsername(data.username); }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId]);
+
+  async function save() {
+    if (!profile) return;
+    setSaving(true);
+    const { error } = await sb.from("profiles").update({ username }).eq("id", profile.id);
+    setSaving(false);
+    if (error) return toast.error(error.message);
+    toast.success("Saved");
+    setProfile({ ...profile, username });
+  }
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f || !profile) return;
+    if (!f.type.startsWith("image/")) return toast.error("Pick an image");
+    if (f.size > 5 * 1024 * 1024) return toast.error("Max 5MB");
+    setUploading(true);
+    try {
+      const { uploadAndSign } = await import("@/lib/chat-media");
+      const ext = f.name.split(".").pop()?.toLowerCase() || "png";
+      const url = await uploadAndSign("avatars", profile.id, f, ext, f.type);
+      await sb.from("profiles").update({ avatar_url: url }).eq("id", profile.id);
+      setProfile({ ...profile, avatar_url: url });
+      toast.success("Avatar updated");
+    } catch (e: any) { toast.error(e?.message ?? "Upload failed"); }
+    setUploading(false);
+  }
+
+  function copy(text: string, label: string) {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copied`);
+  }
+
+  if (!profile) {
+    return <div className="h-full flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  }
+
+  return (
+    <div className="p-6 max-w-xl mx-auto space-y-6 animate-fade-in">
+      <div className="flex flex-col items-center text-center">
+        <div className="relative">
+          <Avatar name={profile.username} url={profile.avatar_url} size={96} />
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+            className="absolute -bottom-1 -right-1 h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:opacity-90 disabled:opacity-50">
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onPick} className="hidden" />
+        </div>
+        <h1 className="mt-4 text-2xl font-bold">{profile.username}</h1>
+        <p className="text-sm text-muted-foreground">{email}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <button onClick={() => copy(profile.friend_code, "Friend code")} className="bg-secondary rounded-2xl p-4 text-left hover:bg-accent">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Friend code</p>
+          <p className="font-mono font-bold mt-1">{profile.friend_code}</p>
+        </button>
+        <button onClick={() => copy(profile.referral_code, "Referral code")} className="bg-secondary rounded-2xl p-4 text-left hover:bg-accent">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Referral code</p>
+          <p className="font-mono font-bold mt-1">{profile.referral_code}</p>
+        </button>
+      </div>
+
+      <div className="bg-secondary rounded-2xl p-5 space-y-3">
+        <p className="font-semibold">Edit profile</p>
+        <Input value={username} onChange={(e) => setUsername(e.target.value)} className="bg-card" />
+        <Button onClick={save} disabled={saving || username === profile.username} className="rounded-full">
+          {saving ? "Saving…" : "Save changes"}
+        </Button>
+      </div>
+
+      <p className="text-xs text-center text-muted-foreground">
+        Member since {new Date(profile.created_at).toLocaleDateString()}
+      </p>
     </div>
   );
 }

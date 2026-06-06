@@ -58,6 +58,7 @@ import {
   UserDetailPanel,
   SuperAdminView,
   ReferralsAdminView,
+  AdminProfileView,
 } from "@/components/admin/AdminViews";
 
 export const Route = createFileRoute("/_authenticated/admin")({
@@ -76,7 +77,8 @@ type Tab =
   | "referrals"
   | "logs"
   | "admins"
-  | "super";
+  | "super"
+  | "profile";
 
 type ConvRow = {
   conversationId: string;
@@ -160,7 +162,7 @@ function AdminPage() {
           </>
         )}
         <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
-        <NavLink to="/profile" icon={UserIcon} label="My profile" onClick={() => setNavOpen(false)} />
+        <SideBtn active={tab === "profile"} onClick={() => { setTab("profile"); setNavOpen(false); }} icon={UserIcon} label="My profile" />
       </nav>
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
@@ -199,6 +201,7 @@ function AdminPage() {
         {tab === "logs" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Logs"><LogsView /></ScrollWrap>}
         {tab === "admins" && <AdminsView onOpenNav={() => setNavOpen(true)} />}
         {tab === "super" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Super admin"><SuperAdminView /></ScrollWrap>}
+        {tab === "profile" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={user.id} email={user.email ?? null} /></ScrollWrap>}
       </main>
 
       <AlertDialog open={confirmOut} onOpenChange={setConfirmOut}>
@@ -471,6 +474,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
   const [preview, setPreview] = useState<string | null>(null);
   const [quickReplies, setQuickReplies] = useState<Array<{ id: string; title: string; content: string }>>([]);
   const [suggestIdx, setSuggestIdx] = useState(0);
+  const [unsendId, setUnsendId] = useState<string | null>(null);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -585,18 +590,29 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
           <p className="text-center text-xs text-muted-foreground py-8">No messages yet.</p>
         ) : messages.map((m) => {
           const mine = m.from_page;
+          const startPress = () => {
+            if (pressTimer.current) clearTimeout(pressTimer.current);
+            pressTimer.current = setTimeout(() => setUnsendId(m.id), 550);
+          };
+          const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
+          const handlers = {
+            onPointerDown: startPress,
+            onPointerUp: cancelPress,
+            onPointerLeave: cancelPress,
+            onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setUnsendId(m.id); },
+          };
           return (
-            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} animate-fade-in`}>
               {m.image_url ? (
-                <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
+                <button {...handlers} onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary select-none">
                   <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
                 </button>
               ) : m.audio_url ? (
-                <div className={`max-w-[80%] px-3 py-2 rounded-2xl ${mine ? "bg-bubble-me" : "bg-bubble-them"}`}>
+                <div {...handlers} className={`max-w-[80%] px-3 py-2 rounded-2xl select-none ${mine ? "bg-bubble-me" : "bg-bubble-them"}`}>
                   <audio controls src={m.audio_url} className="h-10 max-w-[260px]" />
                 </div>
               ) : (
-                <div className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
+                <div {...handlers} className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
                   {m.content}
                 </div>
               )}
@@ -604,6 +620,27 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
           );
         })}
       </div>
+      <AlertDialog open={!!unsendId} onOpenChange={(o) => !o && setUnsendId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsend this message?</AlertDialogTitle>
+            <AlertDialogDescription>It will be removed for everyone in this conversation.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!unsendId) return;
+                const id = unsendId; setUnsendId(null);
+                const { error } = await supabase.from("page_messages").delete().eq("id", id);
+                if (error) toast.error(error.message);
+                else { setMessages((prev) => prev.filter((x) => x.id !== id)); toast.success("Unsent"); }
+              }}
+            >Unsend</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <form onSubmit={send} className="relative p-3 border-t border-border bg-card flex items-center gap-2">
         {suggestions.length > 0 && (
           <div className="absolute left-3 right-3 bottom-full mb-2 bg-popover border border-border rounded-xl shadow-lg overflow-hidden z-20">
