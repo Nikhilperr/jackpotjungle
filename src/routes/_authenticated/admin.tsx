@@ -542,37 +542,6 @@ function Conversation({ meId, conv, onBack }: { meId: string; conv: ConvRow; onB
   );
 }
 
-function UserInfoPanel({ conv }: { conv: ConvRow }) {
-  return (
-    <aside className="w-72 border-l border-border bg-card hidden lg:flex flex-col">
-      <div className="p-6 text-center border-b border-border">
-        <div className="flex justify-center mb-3">
-          <Avatar name={conv.username} url={conv.avatar_url} size={80} />
-        </div>
-        <p className="font-bold text-lg">{conv.username}</p>
-        <p className={`text-xs mt-2 ${conv.online ? "text-green-500" : "text-muted-foreground"}`}>
-          {conv.online ? "● Active now" : `Last seen ${formatDistanceToNow(new Date(conv.last_seen), { addSuffix: true })}`}
-        </p>
-      </div>
-      <div className="p-5 space-y-4 text-sm">
-        <InfoRow label="User ID" value={conv.userId.slice(0, 8) + "…"} />
-        <div className="pt-2 border-t border-border">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Quick actions</p>
-          <p className="text-xs text-muted-foreground italic">Notes, tags, credits & payments — coming next step.</p>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-medium">{value}</p>
-    </div>
-  );
-}
 
 /* ---------------- ADMINS (super admin only) ---------------- */
 
