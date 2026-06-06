@@ -459,10 +459,14 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop" 
         <p className="font-bold">{username}</p>
         <div className="flex justify-center gap-1 mt-2 flex-wrap">
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary font-semibold">Credits {credit}</span>
+          {isBlocked && <span className="text-[11px] px-2 py-0.5 rounded-full bg-destructive/15 text-destructive font-semibold">Blocked</span>}
           {tags.map((t: any) => t && (
             <span key={t.id} className="text-[11px] px-2 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>
           ))}
         </div>
+        <Button size="sm" variant={isBlocked ? "outline" : "destructive"} onClick={toggleBlock} className="mt-3 w-full">
+          {isBlocked ? <><ShieldOff className="h-3 w-3 mr-1" />Unblock user</> : <><Ban className="h-3 w-3 mr-1" />Block user</>}
+        </Button>
       </div>
 
       {/* Credits — editable load / paid */}
