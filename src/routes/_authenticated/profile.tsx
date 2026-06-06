@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { AppShell } from "@/components/messenger/AppShell";
+import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Avatar } from "./chat";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Copy } from "lucide-react";
+import { Copy, Camera, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({ meta: [{ title: "Profile — JJ Messenger" }] }),
@@ -28,6 +28,8 @@ function ProfilePage() {
   const [email, setEmail] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     (async () => {
@@ -49,6 +51,26 @@ function ProfilePage() {
     else { toast.success("Profile updated."); setProfile({ ...profile, username }); }
   }
 
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !profile) return;
+    if (!file.type.startsWith("image/")) return toast.error("Please choose an image.");
+    if (file.size > 5 * 1024 * 1024) return toast.error("Max 5MB.");
+    setUploading(true);
+    const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+    const path = `${profile.id}/avatar-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) { setUploading(false); return toast.error(upErr.message); }
+    const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
+    const url = pub.publicUrl;
+    const { error: updErr } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", profile.id);
+    setUploading(false);
+    if (updErr) return toast.error(updErr.message);
+    setProfile({ ...profile, avatar_url: url });
+    toast.success("Profile picture updated.");
+  }
+
   function copy(text: string, label: string) {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied!`);
@@ -59,11 +81,41 @@ function ProfilePage() {
   return (
     <AppShell>
       <div className="h-full overflow-y-auto">
+        <div className="md:hidden p-3 border-b border-border flex items-center gap-2">
+          <HamburgerButton />
+          <h1 className="font-bold">Profile</h1>
+        </div>
         <div className="max-w-xl mx-auto p-6 space-y-6">
           <div className="flex flex-col items-center text-center pt-4">
-            <Avatar name={profile.username} url={profile.avatar_url} size={96} />
+            <div className="relative">
+              <Avatar name={profile.username} url={profile.avatar_url} size={96} />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="absolute -bottom-1 -right-1 h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:opacity-90 disabled:opacity-50"
+                aria-label="Change profile picture"
+              >
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                onChange={onPickFile}
+                className="hidden"
+              />
+            </div>
             <h1 className="mt-4 text-2xl font-bold">{profile.username}</h1>
             <p className="text-sm text-muted-foreground">{email}</p>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="mt-2 text-xs text-primary hover:underline disabled:opacity-50"
+            >
+              {uploading ? "Uploading…" : "Change profile picture"}
+            </button>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
