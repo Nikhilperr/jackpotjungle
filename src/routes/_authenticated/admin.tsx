@@ -25,6 +25,14 @@ import {
   LogOut,
   Loader2,
   ImageIcon,
+  Tag as TagIcon,
+  MessageSquareQuote,
+  Megaphone,
+  Bell,
+  Bot,
+  Activity,
+  Gift,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { formatDistanceToNow } from "date-fns";
@@ -39,6 +47,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  TagsView,
+  QuickRepliesView,
+  BroadcastsView,
+  FollowupsView,
+  AutoResponsesView,
+  LogsView,
+  UserDetailPanel,
+  SuperAdminView,
+  ReferralsAdminView,
+} from "@/components/admin/AdminViews";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   ssr: false,
@@ -46,7 +65,17 @@ export const Route = createFileRoute("/_authenticated/admin")({
   component: AdminPage,
 });
 
-type Tab = "inbox" | "admins";
+type Tab =
+  | "inbox"
+  | "quickreplies"
+  | "tags"
+  | "broadcasts"
+  | "followups"
+  | "autoresp"
+  | "referrals"
+  | "logs"
+  | "admins"
+  | "super";
 
 type ConvRow = {
   conversationId: string;
