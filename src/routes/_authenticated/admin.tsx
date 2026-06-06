@@ -159,10 +159,8 @@ function AdminPage() {
             <SideBtn active={tab === "super"} onClick={() => { setTab("super"); setNavOpen(false); }} icon={SettingsIcon} label="System settings" />
           </>
         )}
-        <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Messenger</p>
-        <NavLink to="/chat" icon={MessageCircle} label="Chats" onClick={() => setNavOpen(false)} />
-        <NavLink to="/friends" icon={UsersIcon} label="Friends" onClick={() => setNavOpen(false)} />
-        <NavLink to="/profile" icon={UserIcon} label="Profile" onClick={() => setNavOpen(false)} />
+        <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
+        <NavLink to="/profile" icon={UserIcon} label="My profile" onClick={() => setNavOpen(false)} />
       </nav>
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
