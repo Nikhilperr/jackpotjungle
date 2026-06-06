@@ -411,8 +411,24 @@ function Conversation({ meId, conv, onBack }: { meId: string; conv: ConvRow; onB
   const [uploading, setUploading] = useState(false);
   const [recUploading, setRecUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [quickReplies, setQuickReplies] = useState<Array<{ id: string; title: string; content: string }>>([]);
+  const [suggestIdx, setSuggestIdx] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    supabase.from("quick_replies").select("id, title, content").then(({ data }) => setQuickReplies(data ?? []));
+  }, []);
+
+  const trimmed = text.trim().toLowerCase();
+  const suggestions = trimmed && !text.includes("\n")
+    ? quickReplies.filter((q) => q.title.toLowerCase().includes(trimmed)).slice(0, 5)
+    : [];
+
+  function applyReply(q: { content: string }) {
+    setText(q.content);
+    setSuggestIdx(0);
+  }
 
   async function load() {
     const { data } = await supabase
@@ -517,14 +533,45 @@ function Conversation({ meId, conv, onBack }: { meId: string; conv: ConvRow; onB
           );
         })}
       </div>
-      <form onSubmit={send} className="p-3 border-t border-border bg-card flex items-center gap-2">
+      <form onSubmit={send} className="relative p-3 border-t border-border bg-card flex items-center gap-2">
+        {suggestions.length > 0 && (
+          <div className="absolute left-3 right-3 bottom-full mb-2 bg-popover border border-border rounded-xl shadow-lg overflow-hidden z-20">
+            <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-secondary/50 flex items-center gap-1">
+              <MessageSquareQuote className="h-3 w-3" /> Saved replies · Tab to insert
+            </div>
+            {suggestions.map((q, i) => (
+              <button
+                key={q.id}
+                type="button"
+                onMouseEnter={() => setSuggestIdx(i)}
+                onClick={() => applyReply(q)}
+                className={`w-full text-left px-3 py-2 hover:bg-secondary ${i === suggestIdx ? "bg-secondary" : ""}`}
+              >
+                <p className="text-xs font-bold">{q.title}</p>
+                <p className="text-xs text-muted-foreground truncate">{q.content}</p>
+              </button>
+            ))}
+          </div>
+        )}
         <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
           className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
           {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
         </button>
         <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
         <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
-        <Input placeholder="Reply as Jackpot Jungle…" value={text} onChange={(e) => setText(e.target.value)}
+        <Input
+          placeholder="Reply as Jackpot Jungle…"
+          value={text}
+          onChange={(e) => { setText(e.target.value); setSuggestIdx(0); }}
+          onKeyDown={(e) => {
+            if (suggestions.length === 0) return;
+            if (e.key === "Tab" || (e.key === "Enter" && suggestions.length > 0 && text.length < suggestions[suggestIdx].content.length)) {
+              e.preventDefault();
+              applyReply(suggestions[suggestIdx]);
+            } else if (e.key === "ArrowDown") { e.preventDefault(); setSuggestIdx((i) => (i + 1) % suggestions.length); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setSuggestIdx((i) => (i - 1 + suggestions.length) % suggestions.length); }
+            else if (e.key === "Escape") { setSuggestIdx(0); }
+          }}
           className="rounded-full bg-secondary border-transparent h-11" />
         <Button type="submit" size="icon" disabled={!text.trim()} className="rounded-full h-11 w-11 shrink-0">
           <Send className="h-4 w-4" />

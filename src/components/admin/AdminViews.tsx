@@ -359,7 +359,7 @@ export function LogsView() {
   );
 }
 
-/* ============ USER DETAIL PANEL (notes/tags/credits/payments) ============ */
+/* ============ USER DETAIL PANEL (notes/tags/credits/payments/referrer) ============ */
 export function UserDetailPanel({ userId, username, avatar }: { userId: string; username: string; avatar: string | null }) {
   const [tags, setTags] = useState<any[]>([]);
   const [allTags, setAllTags] = useState<any[]>([]);
@@ -371,20 +371,32 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
   const [payments, setPayments] = useState<any[]>([]);
   const [payDue, setPayDue] = useState("");
   const [payPaid, setPayPaid] = useState("");
+  const [totals, setTotals] = useState({ loaded: 0, paid: 0 });
+  const [referrer, setReferrer] = useState<{ id: string; username: string } | null>(null);
+  const [pickRef, setPickRef] = useState(false);
 
   async function loadAll() {
-    const [t, all, n, c, p] = await Promise.all([
+    const [t, all, n, c, p, tx, ref] = await Promise.all([
       sb.from("user_tags").select("tag_id, tags(id,name,color)").eq("user_id", userId),
       sb.from("tags").select("*"),
       sb.from("user_notes").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
       sb.from("user_credits").select("balance").eq("user_id", userId).maybeSingle(),
       sb.from("payments").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
+      sb.from("credit_transactions").select("amount, type").eq("user_id", userId),
+      sb.from("referrals").select("referrer_id").eq("referred_id", userId).maybeSingle(),
     ]);
     setTags((t.data ?? []).map((r: any) => r.tags));
     setAllTags(all.data ?? []);
     setNotes(n.data ?? []);
     setCredit(c.data?.balance ?? 0);
     setPayments(p.data ?? []);
+    const loaded = (tx.data ?? []).filter((r: any) => Number(r.amount) > 0).reduce((s: number, r: any) => s + Number(r.amount), 0);
+    const paidTx = (tx.data ?? []).filter((r: any) => r.type === "paid" || Number(r.amount) < 0).reduce((s: number, r: any) => s + Math.abs(Number(r.amount)), 0);
+    setTotals({ loaded, paid: paidTx });
+    if (ref.data?.referrer_id) {
+      const { data: prof } = await sb.from("profiles").select("id, username").eq("id", ref.data.referrer_id).maybeSingle();
+      setReferrer(prof ?? null);
+    } else setReferrer(null);
   }
   useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, [userId]);
 
@@ -404,11 +416,11 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
   async function delNote(id: string) {
     await sb.from("user_notes").delete().eq("id", id); loadAll();
   }
-  async function adjust(amount: number) {
+  async function adjust(sign: number) {
     const amt = parseFloat(creditAmt);
     if (!amt) return;
     const { error } = await sb.rpc("adjust_credits", {
-      _user_id: userId, _amount: amount * amt, _type: amount > 0 ? "add" : "deduct", _note: creditNote || null,
+      _user_id: userId, _amount: sign * amt, _type: sign > 0 ? "add" : "paid", _note: creditNote || null,
     });
     if (error) toast.error(error.message); else { setCreditAmt(""); setCreditNote(""); loadAll(); toast.success("Updated"); }
   }
@@ -423,6 +435,15 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
   async function setPayStatus(id: string, status: string) {
     await sb.from("payments").update({ status, updated_at: new Date().toISOString() }).eq("id", id); loadAll();
   }
+  async function setRef(refId: string) {
+    if (refId === userId) return toast.error("Can't refer self");
+    await sb.from("referrals").delete().eq("referred_id", userId);
+    const { error } = await sb.from("referrals").insert({
+      referrer_id: refId, referred_id: userId, status: "pending", bonus_amount: 0,
+    });
+    if (error) toast.error(error.message);
+    else { toast.success("Referrer set"); setPickRef(false); loadAll(); }
+  }
 
   const outstanding = payments.reduce((s, p) => s + (Number(p.amount_due) - Number(p.amount_paid)), 0);
 
@@ -432,7 +453,28 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
         <div className="flex justify-center mb-2"><Avatar name={username} url={avatar} size={72} /></div>
         <p className="font-bold">{username}</p>
         <p className="text-xs text-muted-foreground font-mono">{userId.slice(0, 12)}…</p>
+        <div className="flex justify-center gap-2 mt-2 flex-wrap">
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary font-semibold">Credits {credit}</span>
+          {outstanding > 0 && (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-destructive/15 text-destructive font-semibold">Unpaid {outstanding.toFixed(2)}</span>
+          )}
+        </div>
       </div>
+
+      {/* Referred by */}
+      <section className="p-4 border-b border-border">
+        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">Referred by</p>
+        {referrer ? (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium truncate">{referrer.username}</span>
+            <Button size="sm" variant="outline" onClick={() => setPickRef(true)}>Change</Button>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => setPickRef(true)} className="w-full">
+            <Plus className="h-3 w-3 mr-1" /> Set referrer
+          </Button>
+        )}
+      </section>
 
       {/* Tags */}
       <section className="p-4 border-b border-border">
@@ -455,14 +497,16 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
       {/* Credits */}
       <section className="p-4 border-b border-border">
         <p className="text-xs uppercase text-muted-foreground font-semibold mb-2 flex items-center gap-1"><Wallet className="h-3 w-3" /> Credits</p>
-        <p className="text-2xl font-bold mb-2">{credit}</p>
-        <div className="flex gap-1 mb-2">
-          <Input value={creditAmt} onChange={(e) => setCreditAmt(e.target.value)} placeholder="Amount" type="number" className="h-9 text-sm" />
+        <p className="text-2xl font-bold">{credit}</p>
+        <div className="grid grid-cols-2 gap-2 text-[11px] my-2">
+          <div className="bg-secondary rounded-lg p-2"><p className="text-muted-foreground">Total loaded</p><p className="font-bold text-sm">{totals.loaded.toFixed(2)}</p></div>
+          <div className="bg-secondary rounded-lg p-2"><p className="text-muted-foreground">Total paid</p><p className="font-bold text-sm">{totals.paid.toFixed(2)}</p></div>
         </div>
+        <Input value={creditAmt} onChange={(e) => setCreditAmt(e.target.value)} placeholder="Amount" type="number" className="h-9 text-sm mb-2" />
         <Input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="Note (optional)" className="h-9 text-sm mb-2" />
         <div className="flex gap-1">
-          <Button size="sm" onClick={() => adjust(1)} className="flex-1">+ Add</Button>
-          <Button size="sm" variant="outline" onClick={() => adjust(-1)} className="flex-1">− Deduct</Button>
+          <Button size="sm" onClick={() => adjust(1)} className="flex-1">+ Load</Button>
+          <Button size="sm" variant="outline" onClick={() => adjust(-1)} className="flex-1">− Mark paid</Button>
         </div>
       </section>
 
@@ -476,7 +520,7 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
         </div>
         <Button size="sm" onClick={addPayment} className="w-full mb-2">Add record</Button>
         <div className="space-y-1 max-h-40 overflow-y-auto">
-          {payments.map((p) => (
+          {payments.filter((p) => p.status !== "paid").map((p) => (
             <div key={p.id} className="text-xs p-2 bg-secondary rounded-lg">
               <div className="flex justify-between">
                 <span>Due {p.amount_due} · Paid {p.amount_paid}</span>
@@ -488,6 +532,9 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
               </div>
             </div>
           ))}
+          {payments.filter((p) => p.status !== "paid").length === 0 && (
+            <p className="text-[11px] text-muted-foreground text-center py-1">No unpaid records.</p>
+          )}
         </div>
       </section>
 
@@ -508,7 +555,43 @@ export function UserDetailPanel({ userId, username, avatar }: { userId: string; 
           ))}
         </div>
       </section>
+
+      {pickRef && <UserPickerDialog excludeId={userId} onPick={setRef} onClose={() => setPickRef(false)} />}
     </aside>
+  );
+}
+
+function UserPickerDialog({ excludeId, onPick, onClose }: { excludeId: string; onPick: (id: string) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<any[]>([]);
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      if (!q.trim()) { setResults([]); return; }
+      const { data } = await sb.from("profiles").select("id, username, avatar_url, friend_code")
+        .or(`username.ilike.%${q}%,friend_code.ilike.%${q}%`).neq("id", excludeId).limit(8);
+      setResults(data ?? []);
+    }, 200);
+    return () => clearTimeout(t);
+  }, [q, excludeId]);
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card rounded-2xl border border-border w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold mb-3">Pick referrer</h3>
+        <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Username or friend code" className="mb-3" />
+        <div className="max-h-64 overflow-y-auto space-y-1">
+          {results.map((r) => (
+            <button key={r.id} onClick={() => onPick(r.id)} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-secondary text-left">
+              <Avatar name={r.username} url={r.avatar_url} size={32} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate">{r.username}</p>
+                <p className="text-[11px] text-muted-foreground font-mono truncate">{r.friend_code}</p>
+              </div>
+            </button>
+          ))}
+          {q && results.length === 0 && <p className="text-xs text-muted-foreground text-center py-3">No matches.</p>}
+        </div>
+      </div>
+    </div>
   );
 }
 
