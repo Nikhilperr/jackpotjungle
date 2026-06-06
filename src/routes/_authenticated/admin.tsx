@@ -33,7 +33,7 @@ type Tab = "inbox" | "admins";
 type UserRow = {
   id: string;
   username: string;
-  email: string | null;
+  email?: string | null;
   avatar_url: string | null;
   online: boolean;
   last_seen: string;
@@ -126,7 +126,7 @@ function InboxView({ meId }: { meId: string }) {
   async function load() {
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, username, avatar_url, online, last_seen, email")
+      .select("id, username, avatar_url, online, last_seen")
       .neq("id", meId)
       .order("last_seen", { ascending: false });
     if (!profiles) return;
