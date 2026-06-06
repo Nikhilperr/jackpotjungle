@@ -20,7 +20,7 @@ import {
   ArrowLeft,
   Menu,
   X,
-  MessageCircle,
+  
   User as UserIcon,
   LogOut,
   Loader2,
@@ -88,6 +88,7 @@ type ConvRow = {
   lastMessage: string | null;
   lastAt: string | null;
   unread: number;
+  credit: number;
 };
 
 function AdminPage() {
@@ -158,10 +159,8 @@ function AdminPage() {
             <SideBtn active={tab === "super"} onClick={() => { setTab("super"); setNavOpen(false); }} icon={SettingsIcon} label="System settings" />
           </>
         )}
-        <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Messenger</p>
-        <NavLink to="/chat" icon={MessageCircle} label="Chats" onClick={() => setNavOpen(false)} />
-        <NavLink to="/friends" icon={UsersIcon} label="Friends" onClick={() => setNavOpen(false)} />
-        <NavLink to="/profile" icon={UserIcon} label="Profile" onClick={() => setNavOpen(false)} />
+        <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
+        <NavLink to="/profile" icon={UserIcon} label="My profile" onClick={() => setNavOpen(false)} />
       </nav>
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
@@ -221,14 +220,10 @@ function AdminPage() {
 }
 
 function ScrollWrap({ onOpenNav, title, children }: { onOpenNav: () => void; title: string; children: React.ReactNode }) {
-  const navigate = useNavigate();
   return (
     <div className="h-full flex flex-col min-h-0">
       <div className="md:hidden sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2 shrink-0">
-        <button onClick={() => navigate({ to: "/chat" })} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary" aria-label="Back">
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary">
+        <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary" aria-label="Menu">
           <Menu className="h-5 w-5" />
         </button>
         <h2 className="font-bold">{title}</h2>
@@ -289,7 +284,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     const convIds = convList.map((c) => c.id);
     if (userIds.length === 0) { setConvs([]); return; }
 
-    const [{ data: profiles }, { data: msgs }, { data: tagsData }, { data: utRows }] = await Promise.all([
+    const [{ data: profiles }, { data: msgs }, { data: tagsData }, { data: utRows }, { data: credRows }] = await Promise.all([
       supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds),
       supabase
         .from("page_messages")
@@ -298,6 +293,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         .order("created_at", { ascending: false }),
       supabase.from("tags").select("id, name, color").order("name"),
       supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds),
+      supabase.from("user_credits").select("user_id, balance").in("user_id", userIds),
     ]);
 
     setAllTags(tagsData ?? []);
@@ -307,6 +303,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     });
     setUserTagMap(map);
 
+    const creditMap = new Map<string, number>((credRows ?? []).map((c: any) => [c.user_id, Number(c.balance) || 0]));
     const byUser = new Map((profiles ?? []).map((p) => [p.id, p]));
     const rows: ConvRow[] = convList.map((c) => {
       const p = byUser.get(c.user_id);
@@ -323,6 +320,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         lastMessage: last?.content ?? null,
         lastAt: last?.created_at ?? null,
         unread,
+        credit: creditMap.get(c.user_id) ?? 0,
       };
     });
     setConvs(rows);
@@ -336,6 +334,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       .on("postgres_changes", { event: "*", schema: "public", table: "page_conversations" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "user_tags" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "tags" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_credits" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -354,13 +353,6 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       <div className={`${active ? "hidden sm:flex" : "flex"} w-full sm:w-80 border-r border-border bg-card flex-col min-h-0`}>
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2 mb-3 sm:mb-1">
-            <button
-              onClick={() => navigate({ to: "/chat" })}
-              className="sm:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-2"
-              aria-label="Back"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
             <button
               onClick={onOpenNav}
               className="md:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary"
@@ -426,15 +418,18 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
                   {u.lastMessage ?? "No messages yet"}
                 </p>
-                {(userTagMap[u.userId] ?? []).length > 0 && (
-                  <div className="flex gap-1 mt-1 flex-wrap">
-                    {(userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
-                      const t = allTags.find((x) => x.id === tid);
-                      if (!t) return null;
-                      return <span key={tid} className="text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>;
-                    })}
-                  </div>
-                )}
+                <div className="flex gap-1 mt-1 flex-wrap items-center">
+                  {u.credit > 0 && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
+                      Credit ${u.credit.toFixed(2)}
+                    </span>
+                  )}
+                  {(userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
+                    const t = allTags.find((x) => x.id === tid);
+                    if (!t) return null;
+                    return <span key={tid} className="text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>;
+                  })}
+                </div>
               </div>
               {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
             </button>
@@ -572,7 +567,14 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
         >
           <Avatar name={conv.username} url={conv.avatar_url} size={36} />
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm truncate">{conv.username}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-sm truncate">{conv.username}</p>
+              {conv.credit > 0 && (
+                <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
+                  Credit ${conv.credit.toFixed(2)}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground truncate">{conv.online ? "Active now" : `Last seen ${formatDistanceToNow(new Date(conv.last_seen), { addSuffix: true })}`}</p>
           </div>
         </button>
@@ -718,9 +720,6 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="md:hidden sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2">
-        <button onClick={() => navigate({ to: "/chat" })} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary" aria-label="Back">
-          <ArrowLeft className="h-5 w-5" />
-        </button>
         <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary">
           <Menu className="h-5 w-5" />
         </button>

@@ -9,8 +9,10 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Copy, Camera, Loader2, Bell, BellOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_authenticated/profile")({
+  ssr: false,
   head: () => ({ meta: [{ title: "Profile — JJ Messenger" }] }),
   component: ProfilePage,
 });
@@ -25,34 +27,31 @@ type Profile = {
 };
 
 function ProfilePage() {
+  const { user, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const fileRef = useRef<HTMLInputElement>(null);
+  const email = user?.email ?? null;
 
   useEffect(() => {
+    if (!user) return;
     let mounted = true;
-    (async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user || !mounted) return;
-      setEmail(u.user.email ?? null);
-      const { data } = await supabase.from("profiles")
-        .select("id, username, avatar_url, friend_code, referral_code, created_at, notif_enabled" as any)
-        .eq("id", u.user.id).maybeSingle();
-      if (!mounted) return;
-      if (data) {
+    supabase.from("profiles")
+      .select("id, username, avatar_url, friend_code, referral_code, created_at, notif_enabled" as any)
+      .eq("id", user.id).maybeSingle()
+      .then(({ data }) => {
+        if (!mounted || !data) return;
         setProfile(data as unknown as Profile);
         setUsername((data as any).username);
         setNotifEnabled((data as any).notif_enabled ?? true);
-      }
-      if (typeof window !== "undefined" && "Notification" in window) setPermission(Notification.permission);
-    })();
+      });
+    if (typeof window !== "undefined" && "Notification" in window) setPermission(Notification.permission);
     return () => { mounted = false; };
-  }, []);
+  }, [user]);
 
   async function toggleNotif(v: boolean) {
     if (!profile) return;
@@ -108,7 +107,15 @@ function ProfilePage() {
     toast.success(`${label} copied!`);
   }
 
-  if (!profile) return <AppShell><div className="p-8 text-muted-foreground">Loading…</div></AppShell>;
+  if (authLoading || !profile) {
+    return (
+      <AppShell>
+        <div className="h-full flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
