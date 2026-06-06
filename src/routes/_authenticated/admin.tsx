@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Avatar } from "@/routes/_authenticated/chat";
+import { Avatar } from "@/components/messenger/Avatar";
 import {
   Search,
   Send,
