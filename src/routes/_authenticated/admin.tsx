@@ -17,6 +17,8 @@ import {
   Trash2,
   Plus,
   ArrowLeft,
+  Menu,
+  X,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -46,6 +48,7 @@ function AdminPage() {
   const { isAdmin, isSuperAdmin, loading } = useRole();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("inbox");
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !isAdmin) navigate({ to: "/chat", replace: true });
@@ -59,41 +62,63 @@ function AdminPage() {
     );
   }
 
-  return (
-    <div className="flex h-screen bg-background text-foreground">
-      <aside className="w-16 md:w-56 border-r border-border bg-card flex flex-col">
-        <div className="px-4 py-5 flex items-center gap-2 border-b border-border">
-          <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
-            <Shield className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div className="hidden md:block">
-            <p className="font-bold text-sm leading-tight">JJ Business</p>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              {isSuperAdmin ? "Super Admin" : "Admin"}
-            </p>
-          </div>
+  const SideNav = (
+    <aside className="w-60 md:w-56 h-full border-r border-border bg-card flex flex-col">
+      <div className="px-4 py-5 flex items-center gap-2 border-b border-border">
+        <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
+          <Shield className="h-5 w-5 text-primary-foreground" />
         </div>
-        <nav className="flex-1 px-2 py-3 space-y-1">
-          <SideBtn active={tab === "inbox"} onClick={() => setTab("inbox")} icon={Inbox} label="Page Inbox" />
-          {isSuperAdmin && (
-            <SideBtn active={tab === "admins"} onClick={() => setTab("admins")} icon={UsersIcon} label="Admins" />
-          )}
-        </nav>
-        <div className="px-2 py-3 border-t border-border flex md:flex-row flex-col items-center gap-2">
-          <button
-            onClick={() => navigate({ to: "/chat" })}
-            className="w-full h-10 rounded-lg flex items-center gap-2 px-3 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
-            title="Back to messenger"
-          >
-            <ArrowLeft className="h-4 w-4 shrink-0" />
-            <span className="hidden md:inline">Messenger</span>
-          </button>
-          <ThemeToggle />
+        <div className="flex-1">
+          <p className="font-bold text-sm leading-tight">JJ Business</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+            {isSuperAdmin ? "Super Admin" : "Admin"}
+          </p>
         </div>
-      </aside>
+        <button
+          onClick={() => setNavOpen(false)}
+          className="md:hidden h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-secondary"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <nav className="flex-1 px-2 py-3 space-y-1">
+        <SideBtn active={tab === "inbox"} onClick={() => { setTab("inbox"); setNavOpen(false); }} icon={Inbox} label="Page Inbox" />
+        {isSuperAdmin && (
+          <SideBtn active={tab === "admins"} onClick={() => { setTab("admins"); setNavOpen(false); }} icon={UsersIcon} label="Admins" />
+        )}
+      </nav>
+      <div className="px-2 py-3 border-t border-border flex items-center gap-2">
+        <button
+          onClick={() => navigate({ to: "/chat" })}
+          className="flex-1 h-10 rounded-lg flex items-center gap-2 px-3 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4 shrink-0" />
+          <span>Messenger</span>
+        </button>
+        <ThemeToggle />
+      </div>
+    </aside>
+  );
 
-      <main className="flex-1 min-w-0">
-        {tab === "inbox" ? <InboxView meId={user.id} /> : <AdminsView />}
+  return (
+    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+      {/* Desktop side nav */}
+      <div className="hidden md:flex">{SideNav}</div>
+
+      {/* Mobile drawer */}
+      {navOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setNavOpen(false)} />
+          <div className="relative z-10">{SideNav}</div>
+        </div>
+      )}
+
+      <main className="flex-1 min-w-0 flex flex-col">
+        {tab === "inbox" ? (
+          <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} />
+        ) : (
+          <AdminsView onOpenNav={() => setNavOpen(true)} />
+        )}
       </main>
     </div>
   );
@@ -110,14 +135,14 @@ function SideBtn({
       }`}
     >
       <Icon className="h-4 w-4 shrink-0" />
-      <span className="hidden md:inline">{label}</span>
+      <span>{label}</span>
     </button>
   );
 }
 
 /* ---------------- PAGE INBOX (all admins share) ---------------- */
 
-function InboxView({ meId }: { meId: string }) {
+function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void }) {
   const [convs, setConvs] = useState<ConvRow[]>([]);
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -179,12 +204,23 @@ function InboxView({ meId }: { meId: string }) {
   const active = convs.find((u) => u.conversationId === activeId) ?? null;
 
   return (
-    <div className="flex h-full">
-      <div className="w-full sm:w-80 border-r border-border bg-card flex flex-col">
+    <div className="flex h-full min-h-0">
+      {/* List — hidden on mobile when a conversation is open */}
+      <div className={`${active ? "hidden sm:flex" : "flex"} w-full sm:w-80 border-r border-border bg-card flex-col min-h-0`}>
         <div className="p-4 border-b border-border">
-          <h2 className="text-lg font-bold mb-1">Jackpot Jungle</h2>
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-3">Page Inbox</p>
-          <div className="relative">
+          <div className="flex items-center gap-2 mb-3 sm:mb-1">
+            <button
+              onClick={onOpenNav}
+              className="md:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-2"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="flex-1">
+              <h2 className="text-lg font-bold leading-tight">Jackpot Jungle</h2>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Page Inbox</p>
+            </div>
+          </div>
+          <div className="relative mt-3">
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search users"
@@ -222,8 +258,13 @@ function InboxView({ meId }: { meId: string }) {
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 flex flex-col bg-background">
-        {active ? <Conversation meId={meId} conv={active} /> : <InboxEmpty />}
+      {/* Conversation pane — full screen on mobile when open */}
+      <div className={`${active ? "flex" : "hidden sm:flex"} flex-1 min-w-0 flex-col bg-background min-h-0`}>
+        {active ? (
+          <Conversation meId={meId} conv={active} onBack={() => setActiveId(null)} />
+        ) : (
+          <InboxEmpty />
+        )}
       </div>
 
       {active && <UserInfoPanel conv={active} />}
@@ -240,7 +281,7 @@ function InboxEmpty() {
   );
 }
 
-function Conversation({ meId, conv }: { meId: string; conv: ConvRow }) {
+function Conversation({ meId, conv, onBack }: { meId: string; conv: ConvRow; onBack: () => void }) {
   const [messages, setMessages] = useState<Array<{ id: string; sender_id: string; content: string; created_at: string; seen: boolean; from_page: boolean }>>([]);
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -288,7 +329,13 @@ function Conversation({ meId, conv }: { meId: string; conv: ConvRow }) {
 
   return (
     <>
-      <div className="px-5 py-3 border-b border-border bg-card flex items-center gap-3">
+      <div className="px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="sm:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
         <Avatar name={conv.username} url={conv.avatar_url} size={36} />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm truncate">{conv.username}</p>
@@ -300,7 +347,7 @@ function Conversation({ meId, conv }: { meId: string; conv: ConvRow }) {
         {messages.length === 0 ? (
           <p className="text-center text-xs text-muted-foreground py-8">No messages yet.</p>
         ) : messages.map((m) => {
-          const mine = m.from_page; // page side = admin side
+          const mine = m.from_page;
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
@@ -366,7 +413,7 @@ type AdminRow = {
   avatar_url: string | null;
 };
 
-function AdminsView() {
+function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
   const [rows, setRows] = useState<AdminRow[]>([]);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
@@ -413,49 +460,57 @@ function AdminsView() {
   );
 
   return (
-    <div className="h-full overflow-y-auto p-6 lg:p-10">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Admin team</h1>
-            <p className="text-sm text-muted-foreground mt-1">Promote users to admin or super admin.</p>
-          </div>
-          <Button onClick={() => setAddOpen(true)} className="rounded-full gap-2">
-            <Plus className="h-4 w-4" /> Add admin
-          </Button>
-        </div>
-
-        <div className="relative mb-4">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search admins"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 rounded-full bg-secondary border-transparent max-w-sm"
-          />
-        </div>
-
-        <div className="bg-card rounded-2xl border border-border overflow-hidden">
-          {filtered.length === 0 ? (
-            <p className="p-8 text-center text-sm text-muted-foreground">No admins yet.</p>
-          ) : filtered.map((r) => (
-            <div key={`${r.user_id}-${r.role}`} className="flex items-center gap-4 px-4 py-3 border-b border-border last:border-0">
-              <Avatar name={r.username} url={r.avatar_url} size={40} />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm truncate">{r.username}</p>
-              </div>
-              <span className={`text-[11px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full ${r.role === "super_admin" ? "bg-primary/15 text-primary" : "bg-secondary text-foreground"}`}>
-                {r.role === "super_admin" ? "Super admin" : "Admin"}
-              </span>
-              <button
-                onClick={() => revoke(r)}
-                className="h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                title="Revoke role"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+    <div className="h-full overflow-y-auto">
+      <div className="md:hidden sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2">
+        <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary">
+          <Menu className="h-5 w-5" />
+        </button>
+        <h2 className="font-bold">Admin team</h2>
+      </div>
+      <div className="p-6 lg:p-10">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <div className="hidden md:block">
+              <h1 className="text-2xl font-bold">Admin team</h1>
+              <p className="text-sm text-muted-foreground mt-1">Promote users to admin or super admin.</p>
             </div>
-          ))}
+            <Button onClick={() => setAddOpen(true)} className="rounded-full gap-2 ml-auto">
+              <Plus className="h-4 w-4" /> Add admin
+            </Button>
+          </div>
+
+          <div className="relative mb-4">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search admins"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 rounded-full bg-secondary border-transparent max-w-sm"
+            />
+          </div>
+
+          <div className="bg-card rounded-2xl border border-border overflow-hidden">
+            {filtered.length === 0 ? (
+              <p className="p-8 text-center text-sm text-muted-foreground">No admins yet.</p>
+            ) : filtered.map((r) => (
+              <div key={`${r.user_id}-${r.role}`} className="flex items-center gap-4 px-4 py-3 border-b border-border last:border-0">
+                <Avatar name={r.username} url={r.avatar_url} size={40} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm truncate">{r.username}</p>
+                </div>
+                <span className={`text-[11px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full ${r.role === "super_admin" ? "bg-primary/15 text-primary" : "bg-secondary text-foreground"}`}>
+                  {r.role === "super_admin" ? "Super admin" : "Admin"}
+                </span>
+                <button
+                  onClick={() => revoke(r)}
+                  className="h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  title="Revoke role"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
