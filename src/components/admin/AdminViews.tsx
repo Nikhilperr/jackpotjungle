@@ -46,6 +46,7 @@ export function TagsView() {
   const [tags, setTags] = useState<any[]>([]);
   const [name, setName] = useState("");
   const [color, setColor] = useState("#6366f1");
+  const { ask, node: confirmNode } = useConfirm();
   async function load() {
     const { data } = await sb.from("tags").select("*").order("name");
     setTags(data ?? []);
@@ -56,13 +57,14 @@ export function TagsView() {
     const { error } = await sb.from("tags").insert({ name: name.trim(), color });
     if (error) toast.error(error.message); else { setName(""); load(); }
   }
-  async function del(id: string) {
-    if (!confirm("Delete tag?")) return;
+  async function del(id: string, label: string) {
+    if (!(await ask({ title: "Delete tag?", desc: `“${label}” will be removed from all users.`, confirmText: "Delete", destructive: true }))) return;
     await sb.from("tags").delete().eq("id", id);
     load();
   }
   return (
     <div className="p-6 max-w-2xl mx-auto">
+      {confirmNode}
       <h2 className="text-xl font-bold mb-1">User tags</h2>
       <p className="text-sm text-muted-foreground mb-4">Tags help group users for broadcasts & filtering.</p>
       <div className="flex gap-2 mb-4">
@@ -75,7 +77,7 @@ export function TagsView() {
           <div key={t.id} className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
             <span className="h-4 w-4 rounded-full" style={{ background: t.color }} />
             <span className="flex-1 font-medium text-sm">{t.name}</span>
-            <button onClick={() => del(t.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+            <button onClick={() => del(t.id, t.name)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
           </div>
         ))}
         {tags.length === 0 && <p className="text-sm text-center text-muted-foreground py-6">No tags yet.</p>}
