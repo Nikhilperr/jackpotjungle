@@ -800,7 +800,7 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
                   {r.role === "super_admin" ? "Super admin" : "Admin"}
                 </span>
                 <button
-                  onClick={() => revoke(r)}
+                  onClick={() => setRevokeTarget(r)}
                   className="h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                   title="Revoke role"
                 >
