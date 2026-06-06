@@ -1,0 +1,3 @@
+
+REVOKE EXECUTE ON FUNCTION public.adjust_credits(UUID, NUMERIC, TEXT, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.adjust_credits(UUID, NUMERIC, TEXT, TEXT) TO authenticated;
