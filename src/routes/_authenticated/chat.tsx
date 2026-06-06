@@ -1,9 +1,9 @@
-import { createFileRoute, Link, Outlet, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useParams, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
-import { Search, MessageCircle } from "lucide-react";
+import { Search, MessageCircle, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export const Route = createFileRoute("/_authenticated/chat")({
@@ -23,10 +23,14 @@ type Conversation = {
 
 function ChatLayout() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [pageUnread, setPageUnread] = useState(0);
+  const [pageLast, setPageLast] = useState<{ content: string | null; at: string | null }>({ content: null, at: null });
   const [search, setSearch] = useState("");
-  const [meId, setMeId] = useState<string | null>(null);
+  const [, setMeId] = useState<string | null>(null);
   const params = useParams({ strict: false }) as { friendId?: string };
+  const location = useLocation();
   const activeId = params.friendId;
+  const isPageActive = location.pathname.endsWith("/chat/page");
 
   useEffect(() => {
     let mounted = true;
@@ -35,10 +39,31 @@ function ChatLayout() {
       if (!u.user || !mounted) return;
       setMeId(u.user.id);
       await load(u.user.id);
+      await loadPage(u.user.id);
     })();
 
+    async function loadPage(myId: string) {
+      const { data: conv } = await supabase
+        .from("page_conversations")
+        .select("id")
+        .eq("user_id", myId)
+        .maybeSingle();
+      if (!conv) return;
+      const { data: last } = await supabase
+        .from("page_messages")
+        .select("content, created_at, from_page, seen")
+        .eq("conversation_id", conv.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      const arr = last ?? [];
+      const first = arr[0];
+      if (mounted) {
+        setPageLast({ content: first?.content ?? null, at: first?.created_at ?? null });
+        setPageUnread(arr.filter((m) => m.from_page && !m.seen).length);
+      }
+    }
+
     async function load(myId: string) {
-      // get friendships
       const { data: friends } = await supabase
         .from("friendships")
         .select("user_a, user_b");
@@ -49,7 +74,6 @@ function ChatLayout() {
         .from("profiles")
         .select("id, username, avatar_url, online")
         .in("id", friendIds);
-      // last messages
       const { data: msgs } = await supabase
         .from("messages")
         .select("sender_id, receiver_id, content, created_at, seen")
@@ -72,7 +96,6 @@ function ChatLayout() {
       }
     }
 
-    // realtime: any new message refreshes the list
     const channel = supabase
       .channel("conv-list")
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
@@ -80,6 +103,9 @@ function ChatLayout() {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => {
         supabase.auth.getUser().then(({ data }) => { if (data.user) load(data.user.id); });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, () => {
+        supabase.auth.getUser().then(({ data }) => { if (data.user) loadPage(data.user.id); });
       })
       .subscribe();
 
@@ -107,10 +133,35 @@ function ChatLayout() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
+            <Link
+              to="/chat/page"
+              className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors ${isPageActive ? "bg-secondary" : ""}`}
+            >
+              <div className="relative shrink-0">
+                <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
+                  <Sparkles className="h-6 w-6 text-primary-foreground" />
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className={`truncate ${pageUnread > 0 ? "font-bold" : "font-semibold"}`}>Jackpot Jungle</p>
+                  {pageLast.at && (
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {formatDistanceToNow(new Date(pageLast.at), { addSuffix: false })}
+                    </span>
+                  )}
+                </div>
+                <p className={`text-sm truncate ${pageUnread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                  {pageLast.content ?? "Official page · Tap to message us"}
+                </p>
+              </div>
+              {pageUnread > 0 && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{pageUnread}</span>}
+            </Link>
+
             {filtered.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
                 {conversations.length === 0
-                  ? "No conversations yet. Add a friend to start chatting."
+                  ? "Add a friend with their friend code to chat 1-on-1."
                   : "No matches."}
               </div>
             ) : (
@@ -145,7 +196,7 @@ function ChatLayout() {
           </div>
         </div>
         <div className="flex-1 min-w-0">
-          {activeId ? <Outlet /> : <EmptyState />}
+          {activeId || isPageActive ? <Outlet /> : <EmptyState />}
         </div>
       </div>
     </AppShell>

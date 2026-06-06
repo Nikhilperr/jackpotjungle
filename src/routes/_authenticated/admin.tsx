@@ -13,7 +13,6 @@ import {
   Shield,
   Inbox,
   Users as UsersIcon,
-  LogOut,
   ChevronLeft,
   Trash2,
   Plus,
@@ -30,16 +29,16 @@ export const Route = createFileRoute("/_authenticated/admin")({
 
 type Tab = "inbox" | "admins";
 
-type UserRow = {
-  id: string;
+type ConvRow = {
+  conversationId: string;
+  userId: string;
   username: string;
-  email?: string | null;
   avatar_url: string | null;
   online: boolean;
   last_seen: string;
-  lastMessage?: string | null;
-  lastAt?: string | null;
-  unread?: number;
+  lastMessage: string | null;
+  lastAt: string | null;
+  unread: number;
 };
 
 function AdminPage() {
@@ -75,7 +74,7 @@ function AdminPage() {
           </div>
         </div>
         <nav className="flex-1 px-2 py-3 space-y-1">
-          <SideBtn active={tab === "inbox"} onClick={() => setTab("inbox")} icon={Inbox} label="Inbox" />
+          <SideBtn active={tab === "inbox"} onClick={() => setTab("inbox")} icon={Inbox} label="Page Inbox" />
           {isSuperAdmin && (
             <SideBtn active={tab === "admins"} onClick={() => setTab("admins")} icon={UsersIcon} label="Admins" />
           )}
@@ -116,64 +115,75 @@ function SideBtn({
   );
 }
 
-/* ---------------- INBOX (Meta Business Suite style) ---------------- */
+/* ---------------- PAGE INBOX (all admins share) ---------------- */
 
 function InboxView({ meId }: { meId: string }) {
-  const [users, setUsers] = useState<UserRow[]>([]);
+  const [convs, setConvs] = useState<ConvRow[]>([]);
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
 
   async function load() {
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, username, avatar_url, online, last_seen")
-      .neq("id", meId)
-      .order("last_seen", { ascending: false });
-    if (!profiles) return;
-    const ids = profiles.map((p) => p.id);
-    const { data: msgs } = await supabase
-      .from("messages")
-      .select("sender_id, receiver_id, content, created_at, seen")
-      .or(`sender_id.eq.${meId},receiver_id.eq.${meId}`)
-      .order("created_at", { ascending: false })
-      .limit(500);
-    const map: Record<string, UserRow> = {};
-    profiles.forEach((p) => { map[p.id] = { ...p, lastMessage: null, lastAt: null, unread: 0 }; });
-    (msgs ?? []).forEach((m) => {
-      const other = m.sender_id === meId ? m.receiver_id : m.sender_id;
-      const row = map[other]; if (!row) return;
-      if (!row.lastAt) { row.lastMessage = m.content; row.lastAt = m.created_at; }
-      if (m.receiver_id === meId && !m.seen) row.unread = (row.unread ?? 0) + 1;
+    const { data: convList } = await supabase
+      .from("page_conversations")
+      .select("id, user_id, last_message_at")
+      .order("last_message_at", { ascending: false });
+    if (!convList) return;
+    const userIds = convList.map((c) => c.user_id);
+    const convIds = convList.map((c) => c.id);
+    if (userIds.length === 0) { setConvs([]); return; }
+
+    const [{ data: profiles }, { data: msgs }] = await Promise.all([
+      supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds),
+      supabase
+        .from("page_messages")
+        .select("conversation_id, content, created_at, seen, from_page")
+        .in("conversation_id", convIds)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const byUser = new Map((profiles ?? []).map((p) => [p.id, p]));
+    const rows: ConvRow[] = convList.map((c) => {
+      const p = byUser.get(c.user_id);
+      const convMsgs = (msgs ?? []).filter((m) => m.conversation_id === c.id);
+      const last = convMsgs[0];
+      const unread = convMsgs.filter((m) => !m.from_page && !m.seen).length;
+      return {
+        conversationId: c.id,
+        userId: c.user_id,
+        username: p?.username ?? "(unknown)",
+        avatar_url: p?.avatar_url ?? null,
+        online: p?.online ?? false,
+        last_seen: p?.last_seen ?? c.last_message_at,
+        lastMessage: last?.content ?? null,
+        lastAt: last?.created_at ?? null,
+        unread,
+      };
     });
-    const sorted = Object.values(map).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
-    setUsers(sorted);
-    void ids;
+    setConvs(rows);
   }
 
   useEffect(() => {
     load();
     const ch = supabase
-      .channel("admin-inbox")
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => load())
+      .channel("admin-page-inbox")
+      .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "page_conversations" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meId]);
 
-  const filtered = users.filter((u) =>
-    !search || u.username.toLowerCase().includes(search.toLowerCase()) ||
-    (u.email ?? "").toLowerCase().includes(search.toLowerCase())
+  const filtered = convs.filter((u) =>
+    !search || u.username.toLowerCase().includes(search.toLowerCase())
   );
-
-  const active = users.find((u) => u.id === activeId) ?? null;
+  const active = convs.find((u) => u.conversationId === activeId) ?? null;
 
   return (
     <div className="flex h-full">
-      {/* Left: user list */}
-      <div className="w-80 border-r border-border bg-card flex flex-col">
+      <div className="w-full sm:w-80 border-r border-border bg-card flex flex-col">
         <div className="p-4 border-b border-border">
-          <h2 className="text-lg font-bold mb-3">Inbox</h2>
+          <h2 className="text-lg font-bold mb-1">Jackpot Jungle</h2>
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-3">Page Inbox</p>
           <div className="relative">
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -186,12 +196,12 @@ function InboxView({ meId }: { meId: string }) {
         </div>
         <div className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">No users.</p>
+            <p className="p-6 text-center text-sm text-muted-foreground">No conversations yet.</p>
           ) : filtered.map((u) => (
             <button
-              key={u.id}
-              onClick={() => setActiveId(u.id)}
-              className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors ${activeId === u.id ? "bg-secondary" : ""}`}
+              key={u.conversationId}
+              onClick={() => setActiveId(u.conversationId)}
+              className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors ${activeId === u.conversationId ? "bg-secondary" : ""}`}
             >
               <div className="relative shrink-0">
                 <Avatar name={u.username} url={u.avatar_url} size={44} />
@@ -206,19 +216,17 @@ function InboxView({ meId }: { meId: string }) {
                   {u.lastMessage ?? "No messages yet"}
                 </p>
               </div>
-              {!!u.unread && <span className="h-2 w-2 rounded-full bg-primary shrink-0" />}
+              {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Center: conversation */}
       <div className="flex-1 min-w-0 flex flex-col bg-background">
-        {active ? <Conversation meId={meId} other={active} /> : <InboxEmpty />}
+        {active ? <Conversation meId={meId} conv={active} /> : <InboxEmpty />}
       </div>
 
-      {/* Right: user info */}
-      {active && <UserInfoPanel user={active} />}
+      {active && <UserInfoPanel conv={active} />}
     </div>
   );
 }
@@ -227,41 +235,40 @@ function InboxEmpty() {
   return (
     <div className="h-full flex flex-col items-center justify-center text-center px-6 text-muted-foreground">
       <Inbox className="h-12 w-12 mb-3 opacity-50" />
-      <p className="text-sm">Select a user from the left to start a conversation.</p>
+      <p className="text-sm">Select a conversation to reply as the page.</p>
     </div>
   );
 }
 
-function Conversation({ meId, other }: { meId: string; other: UserRow }) {
-  const [messages, setMessages] = useState<Array<{ id: string; sender_id: string; content: string; created_at: string; seen: boolean }>>([]);
+function Conversation({ meId, conv }: { meId: string; conv: ConvRow }) {
+  const [messages, setMessages] = useState<Array<{ id: string; sender_id: string; content: string; created_at: string; seen: boolean; from_page: boolean }>>([]);
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   async function load() {
     const { data } = await supabase
-      .from("messages")
-      .select("id, sender_id, content, created_at, seen")
-      .or(`and(sender_id.eq.${meId},receiver_id.eq.${other.id}),and(sender_id.eq.${other.id},receiver_id.eq.${meId})`)
+      .from("page_messages")
+      .select("id, sender_id, content, created_at, seen, from_page")
+      .eq("conversation_id", conv.conversationId)
       .order("created_at", { ascending: true });
     setMessages(data ?? []);
-    // mark seen
     await supabase
-      .from("messages")
+      .from("page_messages")
       .update({ seen: true })
-      .eq("sender_id", other.id)
-      .eq("receiver_id", meId)
+      .eq("conversation_id", conv.conversationId)
+      .eq("from_page", false)
       .eq("seen", false);
   }
 
   useEffect(() => {
     load();
     const ch = supabase
-      .channel(`admin-conv-${other.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => load())
+      .channel(`admin-page-conv-${conv.conversationId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "page_messages", filter: `conversation_id=eq.${conv.conversationId}` }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [other.id]);
+  }, [conv.conversationId]);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages]);
 
@@ -270,24 +277,30 @@ function Conversation({ meId, other }: { meId: string; other: UserRow }) {
     if (!text.trim()) return;
     const content = text.trim();
     setText("");
-    const { error } = await supabase.from("messages").insert({ sender_id: meId, receiver_id: other.id, content });
+    const { error } = await supabase.from("page_messages").insert({
+      conversation_id: conv.conversationId,
+      sender_id: meId,
+      from_page: true,
+      content,
+    });
     if (error) toast.error(error.message);
   }
 
   return (
     <>
       <div className="px-5 py-3 border-b border-border bg-card flex items-center gap-3">
-        <Avatar name={other.username} url={other.avatar_url} size={36} />
+        <Avatar name={conv.username} url={conv.avatar_url} size={36} />
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate">{other.username}</p>
-          <p className="text-xs text-muted-foreground">{other.online ? "Active now" : `Last seen ${formatDistanceToNow(new Date(other.last_seen), { addSuffix: true })}`}</p>
+          <p className="font-semibold text-sm truncate">{conv.username}</p>
+          <p className="text-xs text-muted-foreground">{conv.online ? "Active now" : `Last seen ${formatDistanceToNow(new Date(conv.last_seen), { addSuffix: true })}`}</p>
         </div>
+        <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
         {messages.length === 0 ? (
-          <p className="text-center text-xs text-muted-foreground py-8">No messages yet. Say hi.</p>
+          <p className="text-center text-xs text-muted-foreground py-8">No messages yet.</p>
         ) : messages.map((m) => {
-          const mine = m.sender_id === meId;
+          const mine = m.from_page; // page side = admin side
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
@@ -299,7 +312,7 @@ function Conversation({ meId, other }: { meId: string; other: UserRow }) {
       </div>
       <form onSubmit={send} className="p-3 border-t border-border bg-card flex items-center gap-2">
         <Input
-          placeholder="Reply to user…"
+          placeholder="Reply as Jackpot Jungle…"
           value={text}
           onChange={(e) => setText(e.target.value)}
           className="rounded-full bg-secondary border-transparent h-11"
@@ -312,21 +325,20 @@ function Conversation({ meId, other }: { meId: string; other: UserRow }) {
   );
 }
 
-function UserInfoPanel({ user }: { user: UserRow }) {
+function UserInfoPanel({ conv }: { conv: ConvRow }) {
   return (
     <aside className="w-72 border-l border-border bg-card hidden lg:flex flex-col">
       <div className="p-6 text-center border-b border-border">
         <div className="flex justify-center mb-3">
-          <Avatar name={user.username} url={user.avatar_url} size={80} />
+          <Avatar name={conv.username} url={conv.avatar_url} size={80} />
         </div>
-        <p className="font-bold text-lg">{user.username}</p>
-        <p className="text-xs text-muted-foreground">{user.email ?? "—"}</p>
-        <p className={`text-xs mt-2 ${user.online ? "text-green-500" : "text-muted-foreground"}`}>
-          {user.online ? "● Active now" : `Last seen ${formatDistanceToNow(new Date(user.last_seen), { addSuffix: true })}`}
+        <p className="font-bold text-lg">{conv.username}</p>
+        <p className={`text-xs mt-2 ${conv.online ? "text-green-500" : "text-muted-foreground"}`}>
+          {conv.online ? "● Active now" : `Last seen ${formatDistanceToNow(new Date(conv.last_seen), { addSuffix: true })}`}
         </p>
       </div>
       <div className="p-5 space-y-4 text-sm">
-        <InfoRow label="User ID" value={user.id.slice(0, 8) + "…"} />
+        <InfoRow label="User ID" value={conv.userId.slice(0, 8) + "…"} />
         <div className="pt-2 border-t border-border">
           <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Quick actions</p>
           <p className="text-xs text-muted-foreground italic">Notes, tags, credits & payments — coming next step.</p>
@@ -351,7 +363,6 @@ type AdminRow = {
   user_id: string;
   role: AppRole;
   username: string;
-  email: string | null;
   avatar_url: string | null;
 };
 
@@ -378,7 +389,6 @@ function AdminsView() {
       return {
         user_id: r.user_id, role: r.role as AppRole,
         username: p?.username ?? "(unknown)",
-        email: null,
         avatar_url: p?.avatar_url ?? null,
       };
     }).sort((a, b) => (a.role === "super_admin" ? -1 : 1)));
@@ -399,8 +409,7 @@ function AdminsView() {
   }
 
   const filtered = rows.filter((r) =>
-    !search || r.username.toLowerCase().includes(search.toLowerCase()) ||
-    (r.email ?? "").toLowerCase().includes(search.toLowerCase())
+    !search || r.username.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -434,7 +443,6 @@ function AdminsView() {
               <Avatar name={r.username} url={r.avatar_url} size={40} />
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm truncate">{r.username}</p>
-                <p className="text-xs text-muted-foreground truncate">{r.email ?? "—"}</p>
               </div>
               <span className={`text-[11px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full ${r.role === "super_admin" ? "bg-primary/15 text-primary" : "bg-secondary text-foreground"}`}>
                 {r.role === "super_admin" ? "Super admin" : "Admin"}

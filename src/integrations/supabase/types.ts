@@ -83,6 +83,65 @@ export type Database = {
         }
         Relationships: []
       }
+      page_conversations: {
+        Row: {
+          created_at: string
+          id: string
+          last_message_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      page_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          from_page: boolean
+          id: string
+          seen: boolean
+          sender_id: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          from_page?: boolean
+          id?: string
+          seen?: boolean
+          sender_id: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          from_page?: boolean
+          id?: string
+          seen?: boolean
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "page_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
