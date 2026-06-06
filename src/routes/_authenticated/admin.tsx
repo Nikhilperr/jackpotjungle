@@ -653,6 +653,9 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="md:hidden sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2">
+        <button onClick={() => navigate({ to: "/chat" })} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary" aria-label="Back">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
         <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary">
           <Menu className="h-5 w-5" />
         </button>
