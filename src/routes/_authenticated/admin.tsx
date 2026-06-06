@@ -473,7 +473,7 @@ function InboxEmpty() {
 
 type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean };
 
-function Conversation({ meId, conv, onBack }: { meId: string; conv: ConvRow; onBack: () => void }) {
+function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void }) {
   const [messages, setMessages] = useState<PageMsg[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
