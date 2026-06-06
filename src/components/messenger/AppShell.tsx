@@ -85,7 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
         <button
-          onClick={signOut}
+          onClick={() => setConfirmOut(true)}
           className="flex-1 h-11 rounded-lg flex items-center gap-3 px-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
         >
           <LogOut className="h-5 w-5 shrink-0" />
@@ -110,6 +110,21 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
 
         <main className="flex-1 min-w-0 min-h-0 flex flex-col">{children}</main>
+
+        <AlertDialog open={confirmOut} onOpenChange={setConfirmOut}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Sign out?</AlertDialogTitle>
+              <AlertDialogDescription>You really wanna sign out of Jackpot Jungle?</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={signOut} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Sign out
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </DrawerCtx.Provider>
   );
