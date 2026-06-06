@@ -51,12 +51,24 @@ function AdminPage() {
   const { user } = useAuth();
   const { isAdmin, isSuperAdmin, loading } = useRole();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("inbox");
   const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !isAdmin) navigate({ to: "/chat", replace: true });
   }, [loading, isAdmin, navigate]);
+
+  async function signOut() {
+    await supabase
+      .from("profiles")
+      .update({ online: false, last_seen: new Date().toISOString() })
+      .eq("id", (await supabase.auth.getUser()).data.user?.id ?? "");
+    await qc.cancelQueries();
+    qc.clear();
+    await supabase.auth.signOut();
+    navigate({ to: "/auth", replace: true });
+  }
 
   if (loading || !isAdmin || !user) {
     return (
