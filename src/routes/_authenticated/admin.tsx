@@ -219,6 +219,20 @@ function AdminPage() {
   );
 }
 
+function ScrollWrap({ onOpenNav, title, children }: { onOpenNav: () => void; title: string; children: React.ReactNode }) {
+  return (
+    <div className="h-full flex flex-col min-h-0">
+      <div className="md:hidden sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2 shrink-0">
+        <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary">
+          <Menu className="h-5 w-5" />
+        </button>
+        <h2 className="font-bold">{title}</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto">{children}</div>
+    </div>
+  );
+}
+
 function SideBtn({
   active, onClick, icon: Icon, label,
 }: { active: boolean; onClick: () => void; icon: typeof Inbox; label: string }) {
