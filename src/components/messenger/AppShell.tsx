@@ -1,5 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { MessageCircle, Users, User as UserIcon, LogOut } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -43,13 +44,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           );
         })}
-        <button
-          onClick={signOut}
-          className="mt-auto h-12 w-12 rounded-2xl flex items-center justify-center text-muted-foreground hover:bg-secondary hover:text-destructive"
-          title="Sign out"
-        >
-          <LogOut className="h-5 w-5" />
-        </button>
+        <div className="mt-auto flex flex-col items-center gap-2">
+          <ThemeToggle />
+          <button
+            onClick={signOut}
+            className="h-12 w-12 rounded-2xl flex items-center justify-center text-muted-foreground hover:bg-secondary hover:text-destructive"
+            title="Sign out"
+          >
+            <LogOut className="h-5 w-5" />
+          </button>
+        </div>
       </aside>
       <main className="flex-1 min-w-0">{children}</main>
     </div>
