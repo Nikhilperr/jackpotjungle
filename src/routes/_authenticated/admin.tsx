@@ -188,12 +188,17 @@ function AdminPage() {
         </div>
       )}
 
-      <main className="flex-1 min-w-0 flex flex-col">
-        {tab === "inbox" ? (
-          <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} />
-        ) : (
-          <AdminsView onOpenNav={() => setNavOpen(true)} />
-        )}
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        {tab === "inbox" && <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} />}
+        {tab === "quickreplies" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Quick Replies"><QuickRepliesView meId={user.id} /></ScrollWrap>}
+        {tab === "tags" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Tags"><TagsView /></ScrollWrap>}
+        {tab === "broadcasts" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Broadcasts"><BroadcastsView /></ScrollWrap>}
+        {tab === "followups" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Follow-ups"><FollowupsView meId={user.id} /></ScrollWrap>}
+        {tab === "autoresp" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Auto-response"><AutoResponsesView meId={user.id} /></ScrollWrap>}
+        {tab === "referrals" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Referrals"><ReferralsAdminView /></ScrollWrap>}
+        {tab === "logs" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Logs"><LogsView /></ScrollWrap>}
+        {tab === "admins" && <AdminsView onOpenNav={() => setNavOpen(true)} />}
+        {tab === "super" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Super admin"><SuperAdminView /></ScrollWrap>}
       </main>
 
       <AlertDialog open={confirmOut} onOpenChange={setConfirmOut}>
