@@ -20,7 +20,7 @@ import {
   ArrowLeft,
   Menu,
   X,
-  // (MessageCircle removed)
+  
   User as UserIcon,
   LogOut,
   Loader2,
