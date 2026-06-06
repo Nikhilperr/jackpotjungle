@@ -361,6 +361,7 @@ export function LogsView() {
 
 /* ============ USER DETAIL PANEL (notes/tags/credits/payments/referrer) ============ */
 export function UserDetailPanel({ userId, username, avatar, variant = "desktop" }: { userId: string; username: string; avatar: string | null; variant?: "desktop" | "embedded" }) {
+  const blockFn = useServerFn(setUserBlocked);
   const [tags, setTags] = useState<any[]>([]);
   const [allTags, setAllTags] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
@@ -371,15 +372,17 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop" 
   const [totals, setTotals] = useState({ loaded: 0, paid: 0 });
   const [referrer, setReferrer] = useState<{ id: string; username: string } | null>(null);
   const [pickRef, setPickRef] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
 
   async function loadAll() {
-    const [t, all, n, c, tx, ref] = await Promise.all([
+    const [t, all, n, c, tx, ref, prof] = await Promise.all([
       sb.from("user_tags").select("tag_id, tags(id,name,color)").eq("user_id", userId),
       sb.from("tags").select("*"),
       sb.from("user_notes").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
       sb.from("user_credits").select("balance").eq("user_id", userId).maybeSingle(),
       sb.from("credit_transactions").select("amount, type").eq("user_id", userId),
       sb.from("referrals").select("referrer_id").eq("referred_id", userId).maybeSingle(),
+      sb.from("profiles").select("is_blocked").eq("id", userId).maybeSingle(),
     ]);
     setTags((t.data ?? []).map((r: any) => r.tags));
     setAllTags(all.data ?? []);
@@ -388,12 +391,32 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop" 
     const loaded = (tx.data ?? []).filter((r: any) => Number(r.amount) > 0).reduce((s: number, r: any) => s + Number(r.amount), 0);
     const paidTx = (tx.data ?? []).filter((r: any) => r.type === "paid" || Number(r.amount) < 0).reduce((s: number, r: any) => s + Math.abs(Number(r.amount)), 0);
     setTotals({ loaded, paid: paidTx });
+    setIsBlocked(!!prof.data?.is_blocked);
     if (ref.data?.referrer_id) {
-      const { data: prof } = await sb.from("profiles").select("id, username").eq("id", ref.data.referrer_id).maybeSingle();
-      setReferrer(prof ?? null);
+      const { data: p2 } = await sb.from("profiles").select("id, username").eq("id", ref.data.referrer_id).maybeSingle();
+      setReferrer(p2 ?? null);
     } else setReferrer(null);
   }
-  useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => {
+    loadAll();
+    const ch = sb
+      .channel(`user-detail-${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_credits", filter: `user_id=eq.${userId}` }, () => loadAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "credit_transactions", filter: `user_id=eq.${userId}` }, () => loadAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` }, () => loadAll())
+      .subscribe();
+    return () => { sb.removeChannel(ch); };
+    /* eslint-disable-next-line */
+  }, [userId]);
+
+  async function toggleBlock() {
+    try {
+      await blockFn({ data: { userId, blocked: !isBlocked } });
+      toast.success(!isBlocked ? "User blocked" : "User unblocked");
+      setIsBlocked(!isBlocked);
+    } catch (e: any) { toast.error(e?.message ?? "Failed"); }
+  }
+
 
   async function toggleTag(tagId: string) {
     const exists = tags.some((t: any) => t.id === tagId);
