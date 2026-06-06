@@ -813,6 +813,21 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
       </div>
 
       {addOpen && <AddAdminDialog onClose={() => { setAddOpen(false); load(); }} />}
+
+      <AlertDialog open={!!revokeTarget} onOpenChange={(o) => { if (!o) setRevokeTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke {revokeTarget?.role.replace("_", " ")}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {revokeTarget?.username} will lose {revokeTarget?.role === "super_admin" ? "super admin" : "admin"} access immediately.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={doRevoke}>Revoke</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
