@@ -370,15 +370,15 @@ function AdminsView() {
     if (ids.length === 0) { setRows([]); return; }
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, username, avatar_url, email")
+      .select("id, username, avatar_url")
       .in("id", ids);
     const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
     setRows(roles.map((r) => {
-      const p = byId.get(r.user_id);
+      const p = byId.get(r.user_id) as { username?: string; avatar_url?: string | null } | undefined;
       return {
         user_id: r.user_id, role: r.role as AppRole,
         username: p?.username ?? "(unknown)",
-        email: p?.email ?? null,
+        email: null,
         avatar_url: p?.avatar_url ?? null,
       };
     }).sort((a, b) => (a.role === "super_admin" ? -1 : 1)));
@@ -458,7 +458,7 @@ function AdminsView() {
 
 function AddAdminDialog({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Array<{ id: string; username: string; email: string | null; avatar_url: string | null }>>([]);
+  const [results, setResults] = useState<Array<{ id: string; username: string; avatar_url: string | null }>>([]);
   const [role, setRole] = useState<"admin" | "super_admin">("admin");
   const [busy, setBusy] = useState(false);
 
@@ -467,8 +467,8 @@ function AddAdminDialog({ onClose }: { onClose: () => void }) {
       if (!query.trim()) { setResults([]); return; }
       const { data } = await supabase
         .from("profiles")
-        .select("id, username, email, avatar_url")
-        .or(`username.ilike.%${query}%,email.ilike.%${query}%,friend_code.ilike.%${query}%`)
+        .select("id, username, avatar_url")
+        .or(`username.ilike.%${query}%,friend_code.ilike.%${query}%`)
         .limit(8);
       setResults(data ?? []);
     }, 200);
@@ -504,7 +504,7 @@ function AddAdminDialog({ onClose }: { onClose: () => void }) {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Username, email, or friend code"
+              placeholder="Username or friend code"
               autoFocus
             />
           </div>
@@ -519,7 +519,7 @@ function AddAdminDialog({ onClose }: { onClose: () => void }) {
                 <Avatar name={r.username} url={r.avatar_url} size={36} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{r.username}</p>
-                  <p className="text-xs text-muted-foreground truncate">{r.email ?? "—"}</p>
+                  <p className="text-xs text-muted-foreground truncate">ID {r.id.slice(0, 8)}…</p>
                 </div>
                 <Plus className="h-4 w-4 text-primary" />
               </button>
