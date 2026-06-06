@@ -61,19 +61,15 @@ function SignInForm() {
     try {
       let email = id;
       if (!id.includes("@")) {
-        // Look up email by username
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("email")
-          .eq("username", id)
-          .maybeSingle();
-        if (error) throw error;
-        if (!data?.email) {
+        const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
+        const res = await lookupEmailByUsername({ data: { username: id } });
+        if (!res.email) {
           toast.error("No account found with that username.");
           return;
         }
-        email = data.email;
+        email = res.email;
       }
+
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       toast.success("Welcome back!");
