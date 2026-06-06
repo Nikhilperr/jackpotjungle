@@ -58,25 +58,34 @@ export type Database = {
       }
       messages: {
         Row: {
-          content: string
+          audio_url: string | null
+          content: string | null
           created_at: string
+          delivered: boolean
           id: string
+          image_url: string | null
           receiver_id: string
           seen: boolean
           sender_id: string
         }
         Insert: {
-          content: string
+          audio_url?: string | null
+          content?: string | null
           created_at?: string
+          delivered?: boolean
           id?: string
+          image_url?: string | null
           receiver_id: string
           seen?: boolean
           sender_id: string
         }
         Update: {
-          content?: string
+          audio_url?: string | null
+          content?: string | null
           created_at?: string
+          delivered?: boolean
           id?: string
+          image_url?: string | null
           receiver_id?: string
           seen?: boolean
           sender_id?: string
@@ -106,29 +115,35 @@ export type Database = {
       }
       page_messages: {
         Row: {
-          content: string
+          audio_url: string | null
+          content: string | null
           conversation_id: string
           created_at: string
           from_page: boolean
           id: string
+          image_url: string | null
           seen: boolean
           sender_id: string
         }
         Insert: {
-          content: string
+          audio_url?: string | null
+          content?: string | null
           conversation_id: string
           created_at?: string
           from_page?: boolean
           id?: string
+          image_url?: string | null
           seen?: boolean
           sender_id: string
         }
         Update: {
-          content?: string
+          audio_url?: string | null
+          content?: string | null
           conversation_id?: string
           created_at?: string
           from_page?: boolean
           id?: string
+          image_url?: string | null
           seen?: boolean
           sender_id?: string
         }
@@ -150,6 +165,7 @@ export type Database = {
           friend_code: string
           id: string
           last_seen: string
+          notif_enabled: boolean
           online: boolean
           referral_code: string
           username: string
@@ -161,6 +177,7 @@ export type Database = {
           friend_code: string
           id: string
           last_seen?: string
+          notif_enabled?: boolean
           online?: boolean
           referral_code: string
           username: string
@@ -172,6 +189,7 @@ export type Database = {
           friend_code?: string
           id?: string
           last_seen?: string
+          notif_enabled?: boolean
           online?: boolean
           referral_code?: string
           username?: string
