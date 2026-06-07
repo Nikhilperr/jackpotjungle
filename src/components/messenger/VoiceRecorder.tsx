@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, Loader2, X, Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   disabled?: boolean;
@@ -131,50 +132,24 @@ export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
     recRef.current = null;
   }
 
-  // Pointer handlers (press-and-hold)
-  function onPointerDown(e: React.PointerEvent) {
-    if (disabled || uploading) return;
-    e.preventDefault();
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    startYRef.current = e.clientY;
-    setDragY(0);
+  function handleMicClick() {
+    if (disabled || uploading || recordingRef.current) return;
     void start();
   }
-  function onPointerMove(e: React.PointerEvent) {
-    if (!recordingRef.current || startYRef.current == null) return;
-    const dy = e.clientY - startYRef.current;
-    setDragY(Math.min(0, dy));
-  }
-  function onPointerUp(e: React.PointerEvent) {
-    if (!recordingRef.current) {
-      startYRef.current = null;
-      return;
-    }
-    (e.target as Element).releasePointerCapture?.(e.pointerId);
-    const cancelled = startYRef.current != null && e.clientY - startYRef.current <= -CANCEL_THRESHOLD;
-    startYRef.current = null;
-    stop(cancelled);
-  }
-  function onPointerCancel() {
-    if (recordingRef.current) stop(true);
-    startYRef.current = null;
-  }
-
-  const willCancel = -dragY >= CANCEL_THRESHOLD;
 
   return (
     <>
       {recording && (
         <div className="absolute inset-0 z-20 flex items-center gap-2 px-3 bg-card animate-fade-in select-none">
-          {/* Cancel target */}
-          <div
-            className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center transition-all ${
-              willCancel ? "bg-destructive text-destructive-foreground scale-110" : "bg-destructive/10 text-destructive"
-            }`}
-            aria-label="Cancel"
+          {/* Cancel button */}
+          <button
+            type="button"
+            onClick={() => stop(true)}
+            className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center bg-destructive/10 text-destructive hover:bg-destructive/20 active:scale-95 transition"
+            aria-label="Cancel recording"
           >
             <X className="h-5 w-5" />
-          </div>
+          </button>
 
           {/* Waveform pill */}
           <div className="flex-1 min-w-0 h-10 px-3 rounded-full bg-secondary flex items-center gap-2">
@@ -193,34 +168,29 @@ export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
             </div>
           </div>
 
-          {/* Send hint (release to send) */}
-          <div
-            className={`shrink-0 flex flex-col items-center text-xs text-primary transition-opacity ${
-              willCancel ? "opacity-30" : "opacity-100"
-            }`}
-            style={{ transform: `translateY(${dragY / 4}px)` }}
+          {/* Send button (matches form submit styling) */}
+          <Button
+            type="button"
+            size="icon"
+            onClick={() => stop(false)}
+            className="rounded-full shrink-0"
+            aria-label="Send voice message"
           >
             <Send className="h-4 w-4" />
-            <span className="leading-none">send</span>
-          </div>
+          </Button>
         </div>
       )}
 
       <button
         type="button"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onContextMenu={(e) => e.preventDefault()}
+        onClick={handleMicClick}
         disabled={disabled || uploading}
-        className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 touch-none ${
-          recording ? "bg-destructive/15 text-destructive scale-110" : ""
-        } transition-transform`}
-        aria-label="Hold to record voice message"
+        className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50"
+        aria-label="Record voice message"
       >
         {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
       </button>
     </>
   );
 }
+
