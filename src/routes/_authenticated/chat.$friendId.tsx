@@ -3,13 +3,25 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
+import { CallMessage } from "@/components/messenger/CallMessage";
+import { useCalls } from "@/components/messenger/CallProvider";
 import { uploadAndSign } from "@/lib/chat-media";
 import { format, formatDistanceToNow } from "date-fns";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
+
+type CallRow = {
+  id: string;
+  caller_id: string;
+  callee_id: string;
+  call_type: "voice" | "video";
+  status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled";
+  duration_seconds: number;
+  created_at: string;
+};
 
 export const Route = createFileRoute("/_authenticated/chat/$friendId")({
   component: ChatView,
