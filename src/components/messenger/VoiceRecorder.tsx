@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Loader2, X, ChevronUp } from "lucide-react";
+import { Mic, Loader2, X, Send } from "lucide-react";
 
 type Props = {
   disabled?: boolean;
