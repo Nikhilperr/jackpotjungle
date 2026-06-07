@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Check, CheckCheck, Clock, AlertCircle } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -444,19 +444,24 @@ function ChatView() {
                   )}
                 </div>
                 {mine && (isLastMine || m.failed) && (
-                  <div className="flex items-center justify-end gap-1 pr-1 pt-0.5">
+                  <div className="flex items-center justify-end gap-1 pr-2 pt-0.5 min-h-[14px]">
                     {m.failed ? (
                       <span className="inline-flex items-center gap-1 text-[11px] text-destructive">
-                        <AlertCircle className="h-3 w-3" /> Not delivered
+                        <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />
+                        Not delivered
                       </span>
                     ) : m.id.startsWith("temp-") ? (
-                      <Clock className="h-3 w-3 text-muted-foreground" aria-label="Sending" />
+                      <span className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-pulse" aria-label="Sending" />
                     ) : m.seen ? (
-                      <CheckCheck className="h-3.5 w-3.5 text-primary" aria-label="Seen" />
+                      friend?.avatar_url ? (
+                        <img src={friend.avatar_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border" aria-label="Seen" />
+                      ) : (
+                        <span className="h-2.5 w-2.5 rounded-full bg-primary" aria-label="Seen" />
+                      )
                     ) : m.delivered ? (
-                      <CheckCheck className="h-3.5 w-3.5 text-muted-foreground" aria-label="Delivered" />
+                      <span className="h-2 w-2 rounded-full bg-muted-foreground" aria-label="Delivered" />
                     ) : (
-                      <Check className="h-3.5 w-3.5 text-muted-foreground" aria-label="Sent" />
+                      <span className="h-2 w-2 rounded-full bg-muted-foreground/40" aria-label="Sent" />
                     )}
                   </div>
                 )}
