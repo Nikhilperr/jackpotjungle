@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Avatar } from "@/components/messenger/Avatar";
+import { useCalls } from "@/components/messenger/CallProvider";
 import {
   Search,
   Send,
@@ -24,6 +25,10 @@ import {
   X,
   Ban,
   RotateCcw,
+  Phone,
+  Video,
+
+
 
   User as UserIcon,
   LogOut,
@@ -537,6 +542,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean };
 
 function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void; onToggleSpam: () => void }) {
+  const { startCall } = useCalls();
   const [messages, setMessages] = useState<PageMsg[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -760,6 +766,24 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
           </div>
         </button>
         <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>
+        <button
+          type="button"
+          onClick={() => startCall({ calleeId: conv.userId, kind: "voice", peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
+          aria-label="Voice call"
+          title="Voice call"
+        >
+          <Phone className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => startCall({ calleeId: conv.userId, kind: "video", peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
+          aria-label="Video call"
+          title="Video call"
+        >
+          <Video className="h-5 w-5" />
+        </button>
         <button
           type="button"
           onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
