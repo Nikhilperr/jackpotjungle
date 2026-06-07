@@ -395,7 +395,7 @@ function ChatView() {
         </div>
       )}
 
-      <form onSubmit={send} className="p-3 border-t border-border flex items-center gap-2 bg-card">
+      <form onSubmit={send} className="relative p-3 border-t border-border flex items-center gap-2 bg-card">
         <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
           className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
           {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}

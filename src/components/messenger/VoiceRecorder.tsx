@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Loader2, Trash2, Send } from "lucide-react";
+import { Mic, Loader2, X, ChevronUp } from "lucide-react";
 
 type Props = {
   disabled?: boolean;
@@ -20,10 +20,14 @@ function pickMime(): { mime: string; ext: string } {
   return candidates[0];
 }
 
+const BAR_COUNT = 28;
+const CANCEL_THRESHOLD = 80; // px upward swipe to cancel
+
 export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
-  const [levels, setLevels] = useState<number[]>(() => Array(24).fill(0.15));
+  const [levels, setLevels] = useState<number[]>(() => Array(BAR_COUNT).fill(0.12));
+  const [dragY, setDragY] = useState(0); // negative when swiping up
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -32,6 +36,8 @@ export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
+  const startYRef = useRef<number | null>(null);
+  const recordingRef = useRef(false);
 
   useEffect(() => () => stopStream(), []);
 
@@ -70,7 +76,7 @@ export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
           sum += v * v;
         }
         const rms = Math.sqrt(sum / data.length);
-        const lvl = Math.min(1, 0.15 + rms * 3);
+        const lvl = Math.min(1, 0.12 + rms * 3.2);
         setLevels((prev) => {
           const next = prev.slice(1);
           next.push(lvl);
@@ -85,7 +91,7 @@ export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
   }
 
   async function start() {
-    if (disabled || recording) return;
+    if (disabled || recordingRef.current) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -96,14 +102,18 @@ export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
       rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       rec.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: mime });
+        const wasCancelled = cancelRef.current;
         stopStream();
+        recordingRef.current = false;
         setRecording(false);
         setSeconds(0);
-        setLevels(Array(24).fill(0.15));
-        if (!cancelRef.current && blob.size > 0) await onRecorded(blob, mime, ext);
+        setDragY(0);
+        setLevels(Array(BAR_COUNT).fill(0.12));
+        if (!wasCancelled && blob.size > 0) await onRecorded(blob, mime, ext);
       };
       rec.start();
       recRef.current = rec;
+      recordingRef.current = true;
       setRecording(true);
       setSeconds(0);
       tickRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -115,61 +125,102 @@ export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
   }
 
   function stop(cancel = false) {
+    if (!recRef.current) return;
     cancelRef.current = cancel;
-    recRef.current?.stop();
+    try { recRef.current.stop(); } catch { /* noop */ }
     recRef.current = null;
   }
 
-  if (recording) {
-    return (
-      <div className="flex items-center gap-1.5 flex-1 min-w-0 h-10 px-2 rounded-full bg-destructive/10 animate-fade-in">
-        <button
-          type="button"
-          onClick={() => stop(true)}
-          className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-destructive hover:bg-destructive/15 active:scale-95 transition"
-          aria-label="Cancel recording"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-
-        <div className="flex items-center gap-1 min-w-0">
-          <span className="h-2 w-2 rounded-full bg-destructive animate-pulse shrink-0" />
-          <span className="text-xs font-mono tabular-nums text-destructive shrink-0">
-            {String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}
-          </span>
-        </div>
-
-        <div className="flex-1 min-w-0 h-6 flex items-center gap-[2px] overflow-hidden px-1">
-          {levels.map((v, i) => (
-            <span
-              key={i}
-              className="flex-1 rounded-full bg-destructive/70 transition-all duration-100"
-              style={{ height: `${Math.max(8, Math.round(v * 100))}%` }}
-            />
-          ))}
-        </div>
-
-        <button
-          type="button"
-          onClick={() => stop(false)}
-          className="h-8 w-8 shrink-0 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:opacity-90 active:scale-95 transition"
-          aria-label="Send voice message"
-        >
-          <Send className="h-4 w-4" />
-        </button>
-      </div>
-    );
+  // Pointer handlers (press-and-hold)
+  function onPointerDown(e: React.PointerEvent) {
+    if (disabled || uploading) return;
+    e.preventDefault();
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    startYRef.current = e.clientY;
+    setDragY(0);
+    void start();
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!recordingRef.current || startYRef.current == null) return;
+    const dy = e.clientY - startYRef.current;
+    setDragY(Math.min(0, dy));
+  }
+  function onPointerUp(e: React.PointerEvent) {
+    if (!recordingRef.current) {
+      startYRef.current = null;
+      return;
+    }
+    (e.target as Element).releasePointerCapture?.(e.pointerId);
+    const cancelled = startYRef.current != null && e.clientY - startYRef.current <= -CANCEL_THRESHOLD;
+    startYRef.current = null;
+    stop(cancelled);
+  }
+  function onPointerCancel() {
+    if (recordingRef.current) stop(true);
+    startYRef.current = null;
   }
 
+  const willCancel = -dragY >= CANCEL_THRESHOLD;
+
   return (
-    <button
-      type="button"
-      onClick={start}
-      disabled={disabled || uploading}
-      className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50"
-      aria-label="Record voice message"
-    >
-      {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
-    </button>
+    <>
+      {recording && (
+        <div className="absolute inset-0 z-20 flex items-center gap-2 px-3 bg-card animate-fade-in select-none">
+          {/* Cancel target */}
+          <div
+            className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center transition-all ${
+              willCancel ? "bg-destructive text-destructive-foreground scale-110" : "bg-destructive/10 text-destructive"
+            }`}
+            aria-label="Cancel"
+          >
+            <X className="h-5 w-5" />
+          </div>
+
+          {/* Waveform pill */}
+          <div className="flex-1 min-w-0 h-10 px-3 rounded-full bg-secondary flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-destructive animate-pulse shrink-0" />
+            <span className="text-xs font-mono tabular-nums text-foreground shrink-0 w-10">
+              {String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}
+            </span>
+            <div className="flex-1 min-w-0 h-6 flex items-center gap-[2px] overflow-hidden">
+              {levels.map((v, i) => (
+                <span
+                  key={i}
+                  className="flex-1 rounded-full bg-primary/70 transition-all duration-75"
+                  style={{ height: `${Math.max(8, Math.round(v * 100))}%` }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Slide-to-cancel hint, animates with drag */}
+          <div
+            className={`shrink-0 flex flex-col items-center text-xs text-muted-foreground transition-opacity ${
+              willCancel ? "opacity-0" : "opacity-100 animate-pulse"
+            }`}
+            style={{ transform: `translateY(${dragY / 4}px)` }}
+          >
+            <ChevronUp className="h-4 w-4" />
+            <span className="leading-none">cancel</span>
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        onContextMenu={(e) => e.preventDefault()}
+        disabled={disabled || uploading}
+        className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 touch-none ${
+          recording ? "bg-destructive/15 text-destructive scale-110" : ""
+        } transition-transform`}
+        aria-label="Hold to record voice message"
+      >
+        {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
+      </button>
+    </>
   );
 }
