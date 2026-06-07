@@ -214,8 +214,7 @@ function ChatView() {
       .select()
       .single();
     if (error) {
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      setDraft(content);
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       console.error(error);
       return;
     }
