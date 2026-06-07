@@ -490,7 +490,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       {/* Conversation pane — full screen on mobile when open */}
       <div className={`${active ? "flex" : "hidden sm:flex"} flex-1 min-w-0 flex-col bg-background min-h-0`}>
         {active ? (
-          <Conversation meId={meId} conv={active} onBack={() => setActiveId(null)} onOpenDetail={() => setDetailOpen(true)} />
+          <Conversation meId={meId} conv={active} onBack={() => setActiveId(null)} onOpenDetail={() => setDetailOpen(true)} onToggleSpam={() => setConvSpam(active, !active.isSpam)} />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center px-6 text-muted-foreground">
             <Inbox className="h-12 w-12 mb-3 opacity-50" />
@@ -507,13 +507,35 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           {active && <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" />}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!confirmSpam} onOpenChange={(o) => !o && setConfirmSpam(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmSpam?.isSpam ? "Remove from spam?" : "Move to spam?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmSpam?.isSpam
+                ? `${confirmSpam?.username} will return to the main inbox.`
+                : `${confirmSpam?.username} will be hidden in the Spam folder. You can restore them anytime.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={confirmSpam?.isSpam ? "" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}
+              onClick={() => { if (confirmSpam) setConvSpam(confirmSpam, !confirmSpam.isSpam); setConfirmSpam(null); }}
+            >
+              {confirmSpam?.isSpam ? "Remove from spam" : "Move to spam"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
 type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean };
 
-function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void }) {
+function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void; onToggleSpam: () => void }) {
   const [messages, setMessages] = useState<PageMsg[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
