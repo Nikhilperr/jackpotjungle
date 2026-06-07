@@ -323,6 +323,22 @@ function ChatView() {
         </div>
         <button
           type="button"
+          onClick={() => friend && startCall({ calleeId: friend.id, kind: "voice", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
+          aria-label="Voice call"
+        >
+          <Phone className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => friend && startCall({ calleeId: friend.id, kind: "video", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
+          aria-label="Video call"
+        >
+          <Video className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
           onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
           className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
           aria-label="Search in conversation"
