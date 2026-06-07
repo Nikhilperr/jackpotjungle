@@ -114,7 +114,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "calls", filter: `callee_id=eq.${meId}` }, (payload) => {
         const row = payload.new as CallRow;
         // If caller canceled before we accepted, dismiss the modal
-        if (incoming?.call.id === row.id && row.status !== "ringing" && row.status !== "active") {
+        if (missedTimersRef.current[row.id] && row.status !== "ringing") {
+          clearTimeout(missedTimersRef.current[row.id]);
+          delete missedTimersRef.current[row.id];
+        }
+        if (incomingRef.current?.call.id === row.id && row.status !== "ringing" && row.status !== "active") {
+          stopRingtone();
           setIncoming(null);
         }
       })
@@ -175,6 +180,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   async function acceptIncoming() {
     if (!incoming) return;
     stopRingtone();
+    if (missedTimersRef.current[incoming.call.id]) clearTimeout(missedTimersRef.current[incoming.call.id]);
     await supabase.from("calls").update({ status: "active", answered_at: new Date().toISOString() }).eq("id", incoming.call.id);
     setActive({
       callId: incoming.call.id,
@@ -189,6 +195,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   async function declineIncoming() {
     if (!incoming) return;
     stopRingtone();
+    if (missedTimersRef.current[incoming.call.id]) clearTimeout(missedTimersRef.current[incoming.call.id]);
     await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", incoming.call.id);
     setIncoming(null);
   }
