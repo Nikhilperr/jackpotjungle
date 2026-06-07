@@ -71,10 +71,18 @@ function PageChatView() {
         .eq("conversation_id", conv.id).order("created_at", { ascending: true });
       if (mounted) setMessages((msgs as Msg[]) ?? []);
 
-      // Find an admin to be the call counterpart
-      const { data: adminRow } = await supabase.from("user_roles")
-        .select("user_id").in("role", ["super_admin", "admin"]).limit(1).maybeSingle();
-      if (mounted && adminRow) setAdminId(adminRow.user_id);
+      // Ring the active page inbox first, instead of a random/offline admin.
+      const { data: adminRows } = await supabase.from("user_roles")
+        .select("user_id").in("role", ["super_admin", "admin"]);
+      const adminIds = [...new Set((adminRows ?? []).map((r) => r.user_id))];
+      if (adminIds.length > 0) {
+        const { data: admins } = await supabase.from("profiles")
+          .select("id, online, last_seen")
+          .in("id", adminIds)
+          .order("online", { ascending: false })
+          .order("last_seen", { ascending: false });
+        if (mounted && admins?.[0]) setAdminId(admins[0].id);
+      }
 
       // Load call history for this page conversation
       const { data: callRows } = await supabase.from("calls")
