@@ -15,6 +15,8 @@ import {
   Inbox,
   Users as UsersIcon,
   ChevronLeft,
+  ChevronUp,
+  ChevronDown,
   Trash2,
   Plus,
   ArrowLeft,
@@ -478,6 +480,42 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeMatch, setActiveMatch] = useState(0);
+
+  useEffect(() => { inputRef.current?.focus(); }, [conv.conversationId]);
+
+  const matchIds = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [] as string[];
+    return messages.filter((m) => m.content && m.content.toLowerCase().includes(q)).map((m) => m.id);
+  })();
+
+  useEffect(() => {
+    if (!searchOpen || matchIds.length === 0) return;
+    const idx = Math.min(activeMatch, matchIds.length - 1);
+    const el = msgRefs.current[matchIds[idx]];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeMatch, searchQuery, searchOpen, matchIds.length]);
+
+  function highlight(text: string, q: string) {
+    if (!q) return text;
+    const lower = text.toLowerCase();
+    const ql = q.toLowerCase();
+    const parts: React.ReactNode[] = [];
+    let i = 0;
+    while (i < text.length) {
+      const found = lower.indexOf(ql, i);
+      if (found === -1) { parts.push(text.slice(i)); break; }
+      if (found > i) parts.push(text.slice(i, found));
+      parts.push(<mark key={found} className="bg-yellow-300 text-black rounded px-0.5">{text.slice(found, found + q.length)}</mark>);
+      i = found + q.length;
+    }
+    return parts;
+  }
 
   useEffect(() => {
     supabase.from("quick_replies").select("id, title, content").then(({ data }) => setQuickReplies(data ?? []));
@@ -651,7 +689,44 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
           </div>
         </button>
         <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>
+        <button
+          type="button"
+          onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
+          aria-label="Search in conversation"
+        >
+          <Search className="h-5 w-5" />
+        </button>
       </div>
+      {searchOpen && (
+        <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2">
+          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+          <Input
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setActiveMatch(0); }}
+            placeholder="Search in conversation"
+            className="rounded-full bg-secondary border-transparent h-9"
+          />
+          <span className="text-xs text-muted-foreground shrink-0 tabular-nums min-w-[3.5rem] text-center">
+            {searchQuery.trim() ? `${matchIds.length === 0 ? 0 : activeMatch + 1}/${matchIds.length}` : "0/0"}
+          </span>
+          <button type="button" disabled={matchIds.length === 0}
+            onClick={() => setActiveMatch((i) => (i - 1 + matchIds.length) % matchIds.length)}
+            className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary disabled:opacity-40" aria-label="Previous match">
+            <ChevronUp className="h-4 w-4" />
+          </button>
+          <button type="button" disabled={matchIds.length === 0}
+            onClick={() => setActiveMatch((i) => (i + 1) % matchIds.length)}
+            className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary disabled:opacity-40" aria-label="Next match">
+            <ChevronDown className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
+            className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary" aria-label="Close search">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
         {messages.length === 0 ? (
           <p className="text-center text-xs text-muted-foreground py-8">No messages yet.</p>
@@ -668,8 +743,10 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
             onPointerLeave: cancelPress,
             onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setUnsendId(m.id); },
           };
+          const isMatch = matchIds.includes(m.id);
+          const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
           return (
-            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} animate-fade-in`}>
+            <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className={`flex ${mine ? "justify-end" : "justify-start"} animate-fade-in`}>
               {m.image_url ? (
                 <button {...handlers} onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary select-none">
                   <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
@@ -679,8 +756,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
                   <audio controls src={m.audio_url} className="h-10 max-w-[260px]" />
                 </div>
               ) : (
-                <div {...handlers} className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                  {m.content}
+                <div {...handlers} className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
+                  {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
                 </div>
               )}
             </div>
@@ -735,6 +812,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
         <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
         <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
         <Input
+          ref={inputRef}
+          autoFocus
           placeholder="Reply as Jackpot Jungle…"
           value={text}
           onChange={(e) => { setText(e.target.value); setSuggestIdx(0); }}
