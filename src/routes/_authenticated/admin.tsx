@@ -860,9 +860,26 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
         </div>
       )}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-        {messages.length === 0 ? (
+        {messages.length === 0 && calls.length === 0 ? (
           <p className="text-center text-xs text-muted-foreground py-8">No messages yet.</p>
-        ) : messages.map((m) => {
+        ) : (() => {
+          type TimelineItem = { kind: "msg"; at: string; msg: PageMsg } | { kind: "call"; at: string; call: CallRow };
+          const items: TimelineItem[] = [
+            ...messages.map((m) => ({ kind: "msg" as const, at: m.created_at, msg: m })),
+            ...calls.map((c) => ({ kind: "call" as const, at: c.created_at, call: c })),
+          ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+          return items.map((it) => {
+          if (it.kind === "call") {
+            const c = it.call;
+            const mine = c.caller_id === meId;
+            return (
+              <div key={`call-${c.id}`} className={`flex ${mine ? "justify-end" : "justify-start"} animate-fade-in`}>
+                <CallMessage mine={mine} kind={c.call_type} status={c.status} durationSeconds={c.duration_seconds} />
+              </div>
+            );
+          }
+          const m = it.msg;
           const mine = m.from_page;
           const startPress = () => {
             if (pressTimer.current) clearTimeout(pressTimer.current);
@@ -892,7 +909,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
               )}
             </div>
           );
-        })}
+          });
+        })()}
       </div>
       <AlertDialog open={!!unsendId} onOpenChange={(o) => !o && setUnsendId(null)}>
         <AlertDialogContent>
