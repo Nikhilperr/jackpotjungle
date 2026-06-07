@@ -8,7 +8,7 @@ import { stopRingtone } from "./ringtone";
 type CallRow = {
   id: string;
   caller_id: string;
-  callee_id: string;
+  callee_id: string | null;
   call_type: CallKind;
   status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled";
   context: string;
@@ -32,10 +32,10 @@ type Incoming = {
 
 type Ctx = {
   startCall: (args: {
-    calleeId: string;
+    calleeId: string | null;
     kind: CallKind;
     peer: PeerInfo;
-    context?: "friend" | "page";
+    context?: "friend" | "page" | "page_broadcast";
     pageConversationId?: string | null;
   }) => Promise<void>;
 };
