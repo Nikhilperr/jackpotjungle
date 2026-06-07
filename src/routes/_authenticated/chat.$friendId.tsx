@@ -398,7 +398,7 @@ function ChatView() {
           className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary ${showEmoji ? "text-primary" : "text-muted-foreground"}`} aria-label="Emoji">
           <Smile className="h-5 w-5" />
         </button>
-        <Input value={draft} onChange={(e) => onDraftChange(e.target.value)} placeholder="Aa"
+        <Input autoFocus value={draft} onChange={(e) => onDraftChange(e.target.value)} placeholder="Aa"
           className="rounded-full bg-secondary border-transparent" />
         <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0">
           <Send className="h-4 w-4" />
