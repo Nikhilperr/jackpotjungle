@@ -170,9 +170,23 @@ function ChatLayout() {
                 className="pl-9 rounded-full bg-secondary border-transparent"
               />
             </div>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setTab("all")}
+                className={`flex-1 text-sm font-semibold py-1.5 rounded-full transition-colors ${tab === "all" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setTab("spam")}
+                className={`flex-1 text-sm font-semibold py-1.5 rounded-full transition-colors flex items-center justify-center gap-1.5 ${tab === "spam" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
+              >
+                <Ban className="h-3.5 w-3.5" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
+              </button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {!isAdmin && (
+            {!isAdmin && tab === "all" && (
               <Link
                 to="/chat/page"
                 className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors ${isPageActive ? "bg-secondary" : ""}`}
