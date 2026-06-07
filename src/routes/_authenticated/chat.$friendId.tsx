@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { uploadAndSign } from "@/lib/chat-media";
@@ -39,8 +39,12 @@ function ChatView() {
   const [showEmoji, setShowEmoji] = useState(false);
   const [friendTyping, setFriendTyping] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeMatch, setActiveMatch] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastTypingSentRef = useRef(0);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -228,6 +232,36 @@ function ChatView() {
     setRecUploading(false);
   }
 
+  const matchIds = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [] as string[];
+    return messages.filter((m) => m.content && m.content.toLowerCase().includes(q)).map((m) => m.id);
+  })();
+
+  useEffect(() => {
+    if (!searchOpen || matchIds.length === 0) return;
+    const idx = Math.min(activeMatch, matchIds.length - 1);
+    const id = matchIds[idx];
+    const el = msgRefs.current[id];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeMatch, searchQuery, searchOpen, matchIds.length]);
+
+  function highlight(text: string, q: string) {
+    if (!q) return text;
+    const lower = text.toLowerCase();
+    const ql = q.toLowerCase();
+    const parts: React.ReactNode[] = [];
+    let i = 0;
+    while (i < text.length) {
+      const found = lower.indexOf(ql, i);
+      if (found === -1) { parts.push(text.slice(i)); break; }
+      if (found > i) parts.push(text.slice(i, found));
+      parts.push(<mark key={found} className="bg-yellow-300 text-black rounded px-0.5">{text.slice(found, found + q.length)}</mark>);
+      i = found + q.length;
+    }
+    return parts;
+  }
+
   if (!friend) return <div className="h-full flex items-center justify-center text-muted-foreground">Loading…</div>;
 
   return (
@@ -240,14 +274,52 @@ function ChatView() {
           <Avatar name={friend.username} url={friend.avatar_url} size={40} />
           {friend.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-semibold truncate">{friend.username}</p>
           <p className="text-xs text-muted-foreground truncate">
             {friendTyping ? "Typing…" : friend.online ? "Active now" :
               friend.last_seen ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}` : "Offline"}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
+          aria-label="Search in conversation"
+        >
+          <Search className="h-5 w-5" />
+        </button>
       </header>
+
+      {searchOpen && (
+        <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2">
+          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+          <Input
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setActiveMatch(0); }}
+            placeholder="Search in conversation"
+            className="rounded-full bg-secondary border-transparent h-9"
+          />
+          <span className="text-xs text-muted-foreground shrink-0 tabular-nums min-w-[3.5rem] text-center">
+            {searchQuery.trim() ? `${matchIds.length === 0 ? 0 : activeMatch + 1}/${matchIds.length}` : "0/0"}
+          </span>
+          <button type="button" disabled={matchIds.length === 0}
+            onClick={() => setActiveMatch((i) => (i - 1 + matchIds.length) % matchIds.length)}
+            className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary disabled:opacity-40" aria-label="Previous match">
+            <ChevronUp className="h-4 w-4" />
+          </button>
+          <button type="button" disabled={matchIds.length === 0}
+            onClick={() => setActiveMatch((i) => (i + 1) % matchIds.length)}
+            className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary disabled:opacity-40" aria-label="Next match">
+            <ChevronDown className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
+            className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary" aria-label="Close search">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
         {messages.length === 0 && (
@@ -259,8 +331,10 @@ function ChatView() {
           const showTime = !prev || new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() > 5 * 60 * 1000;
           const next = messages[i + 1];
           const isLastMine = mine && (!next || next.sender_id !== meId);
+          const isMatch = matchIds.includes(m.id);
+          const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
           return (
-            <div key={m.id}>
+            <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }}>
               {showTime && (
                 <div className="text-center text-xs text-muted-foreground py-2">
                   {format(new Date(m.created_at), "MMM d, h:mm a")}
@@ -276,8 +350,10 @@ function ChatView() {
                     <audio controls src={m.audio_url} className="h-10 max-w-[260px]" />
                   </div>
                 ) : (
-                  <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                    <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
+                  <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
+                    <p className="text-[15px] whitespace-pre-wrap break-words">
+                      {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                    </p>
                   </div>
                 )}
               </div>
