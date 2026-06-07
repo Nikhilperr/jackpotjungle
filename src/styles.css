@@ -34,6 +34,7 @@
   --color-bubble-me-foreground: var(--bubble-me-foreground);
   --color-bubble-them: var(--bubble-them);
   --color-bubble-them-foreground: var(--bubble-them-foreground);
+  --color-message-status: var(--message-status);
 }
 
 :root {
@@ -64,6 +65,7 @@
   --bubble-me-foreground: oklch(1 0 0);
   --bubble-them: oklch(0.94 0.005 250);
   --bubble-them-foreground: oklch(0.15 0.02 260);
+  --message-status: oklch(0.34 0.035 65);
 }
 
 .dark {
@@ -91,6 +93,7 @@
   --bubble-me-foreground: oklch(1 0 0);
   --bubble-them: oklch(0.3 0.02 260);
   --bubble-them-foreground: oklch(0.97 0.005 250);
+  --message-status: oklch(0.9 0.006 250);
 }
 
 @layer base {

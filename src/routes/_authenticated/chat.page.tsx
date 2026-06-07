@@ -34,6 +34,7 @@ type Msg = {
   audio_url: string | null;
   seen: boolean;
   created_at: string;
+  failed?: boolean;
 };
 
 function PageChatView() {
@@ -116,6 +117,10 @@ function PageChatView() {
         });
         if (m.from_page) supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
       })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${convId}` }, (payload) => {
+        const m = payload.new as Msg;
+        setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
+      })
       .subscribe();
 
     const callsCh = supabase
@@ -167,8 +172,7 @@ function PageChatView() {
       .select()
       .single();
     if (error) {
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      setDraft(content);
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       console.error(error);
       return;
     }
@@ -196,8 +200,7 @@ function PageChatView() {
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, image_url: url } : x)));
     } catch (err) {
       console.error(err);
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      alert("Upload failed.");
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
     }
     setUploading(false);
   }
@@ -218,8 +221,7 @@ function PageChatView() {
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, audio_url: url } : x)));
     } catch (err) {
       console.error(err);
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      alert("Voice upload failed.");
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
     }
     setRecUploading(false);
   }
@@ -289,6 +291,8 @@ function PageChatView() {
             }
             const m = it.msg;
             const mine = !m.from_page;
+            const nextIt = items[i + 1];
+            const isLastMine = mine && (!nextIt || nextIt.kind !== "msg" || nextIt.msg.from_page);
             return (
               <div key={m.id}>
                 {showTime && (
@@ -309,6 +313,19 @@ function PageChatView() {
                     </div>
                   )}
                 </div>
+                {mine && (isLastMine || m.failed) && (
+                  <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
+                    {m.failed ? (
+                      <span className="inline-flex items-center gap-1 text-destructive"><span className="h-2 w-2 rounded-full bg-destructive shrink-0" />Not delivered</span>
+                    ) : m.id.startsWith("temp-") ? (
+                      <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
+                    ) : m.seen ? (
+                      <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />Seen</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Delivered</span>
+                    )}
+                  </div>
+                )}
               </div>
             );
           });

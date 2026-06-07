@@ -540,7 +540,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   );
 }
 
-type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean };
+type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean; failed?: boolean };
 type CallRow = { id: string; caller_id: string; callee_id: string; call_type: "voice" | "video"; status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled"; duration_seconds: number; created_at: string };
 
 function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void; onToggleSpam: () => void }) {
@@ -707,8 +707,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
       .select()
       .single();
     if (error) {
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      setText(content);
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       toast.error(error.message);
       return;
     }
@@ -736,7 +735,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
       if (error) throw error;
       if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as PageMsg) : x)));
     } catch (err: any) {
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       toast.error(err?.message ?? "Upload failed");
     }
     setUploading(false);
@@ -757,7 +756,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
       if (error) throw error;
       if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as PageMsg) : x)));
     } catch (err: any) {
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       toast.error(err?.message ?? "Voice upload failed");
     }
     setRecUploading(false);
@@ -869,7 +868,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
             ...calls.map((c) => ({ kind: "call" as const, at: c.created_at, call: c })),
           ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
-          return items.map((it) => {
+          return items.map((it, i) => {
           if (it.kind === "call") {
             const c = it.call;
             const mine = c.caller_id === meId;
@@ -881,6 +880,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
           }
           const m = it.msg;
           const mine = m.from_page;
+          const nextIt = items[i + 1];
+          const isLastMine = mine && (!nextIt || nextIt.kind !== "msg" || !nextIt.msg.from_page);
           const startPress = () => {
             if (pressTimer.current) clearTimeout(pressTimer.current);
             pressTimer.current = setTimeout(() => setUnsendId(m.id), 550);
@@ -895,16 +896,34 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
           const isMatch = matchIds.includes(m.id);
           const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
           return (
-            <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className={`flex ${mine ? "justify-end" : "justify-start"} animate-fade-in`}>
-              {m.image_url ? (
-                <button {...handlers} onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary select-none">
-                  <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
-                </button>
-              ) : m.audio_url ? (
-                <div {...handlers}><VoiceMessage src={m.audio_url} mine={mine} /></div>
-              ) : (
-                <div {...handlers} className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
-                  {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+            <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className="animate-fade-in">
+              <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                {m.image_url ? (
+                  <button {...handlers} onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary select-none">
+                    <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
+                  </button>
+                ) : m.audio_url ? (
+                  <div {...handlers}><VoiceMessage src={m.audio_url} mine={mine} /></div>
+                ) : (
+                  <div {...handlers} className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
+                    {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                  </div>
+                )}
+              </div>
+              {mine && (isLastMine || m.failed) && (
+                <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
+                  {m.failed ? (
+                    <span className="inline-flex items-center gap-1 text-destructive"><span className="h-2 w-2 rounded-full bg-destructive shrink-0" />Not delivered</span>
+                  ) : m.id.startsWith("temp-") ? (
+                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
+                  ) : m.seen ? (
+                    <span className="inline-flex items-center gap-1">
+                      {conv.avatar_url ? <img src={conv.avatar_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border" /> : <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />}
+                      Seen
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Delivered</span>
+                  )}
                 </div>
               )}
             </div>
