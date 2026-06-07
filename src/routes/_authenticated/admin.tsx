@@ -22,7 +22,9 @@ import {
   ArrowLeft,
   Menu,
   X,
-  
+  Ban,
+  RotateCcw,
+
   User as UserIcon,
   LogOut,
   Loader2,
@@ -93,6 +95,7 @@ type ConvRow = {
   lastAt: string | null;
   unread: number;
   credit: number;
+  isSpam: boolean;
 };
 
 function AdminPage() {
@@ -277,12 +280,15 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [allTags, setAllTags] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [userTagMap, setUserTagMap] = useState<Record<string, string[]>>({});
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [viewSpam, setViewSpam] = useState(false);
+  const [confirmSpam, setConfirmSpam] = useState<ConvRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function load() {
     const { data: convList } = await supabase
       .from("page_conversations")
-      .select("id, user_id, last_message_at")
+      .select("id, user_id, last_message_at, is_spam")
       .order("last_message_at", { ascending: false });
     if (!convList) return;
     const userIds = convList.map((c) => c.user_id);
@@ -326,6 +332,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         lastAt: last?.created_at ?? null,
         unread,
         credit: creditMap.get(c.user_id) ?? 0,
+        isSpam: (c as any).is_spam ?? false,
       };
     });
     setConvs(rows);
@@ -346,11 +353,24 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   }, [meId]);
 
   const filtered = convs.filter((u) => {
+    if (viewSpam ? !u.isSpam : u.isSpam) return false;
     if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
     if (tagFilter && !(userTagMap[u.userId] ?? []).includes(tagFilter)) return false;
     return true;
   });
+  const spamCount = convs.filter((u) => u.isSpam).length;
   const active = convs.find((u) => u.conversationId === activeId) ?? null;
+
+  async function setConvSpam(conv: ConvRow, next: boolean) {
+    const { error } = await supabase
+      .from("page_conversations")
+      .update({ is_spam: next } as any)
+      .eq("id", conv.conversationId);
+    if (error) { toast.error(error.message); return; }
+    toast.success(next ? "Moved to spam" : "Removed from spam");
+    setConvs((prev) => prev.map((c) => c.conversationId === conv.conversationId ? { ...c, isSpam: next } : c));
+    if (next && active?.conversationId === conv.conversationId) setActiveId(null);
+  }
 
   return (
     <div className="flex h-full min-h-0">
@@ -378,44 +398,58 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               className="pl-9 rounded-full bg-secondary border-transparent"
             />
           </div>
-          {allTags.length > 0 && (
-            <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
-              <button
-                onClick={() => setTagFilter(null)}
-                className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${tagFilter === null ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
-              >
-                All
-              </button>
-              {allTags.map((t) => {
-                const on = tagFilter === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setTagFilter(on ? null : t.id)}
-                    className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${on ? "border-transparent text-white" : "border-border text-muted-foreground"}`}
-                    style={on ? { background: t.color } : {}}
-                  >
-                    {t.name}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
+            <button
+              onClick={() => { setViewSpam(false); setTagFilter(null); }}
+              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${!viewSpam && tagFilter === null ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
+            >
+              All
+            </button>
+            {allTags.map((t) => {
+              const on = !viewSpam && tagFilter === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => { setViewSpam(false); setTagFilter(on ? null : t.id); }}
+                  className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${on ? "border-transparent text-white" : "border-border text-muted-foreground"}`}
+                  style={on ? { background: t.color } : {}}
+                >
+                  {t.name}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => { setViewSpam(true); setTagFilter(null); }}
+              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border inline-flex items-center gap-1 ${viewSpam ? "bg-destructive text-destructive-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
+            >
+              <Ban className="h-3 w-3" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">No conversations.</p>
-          ) : filtered.map((u) => (
+            <p className="p-6 text-center text-sm text-muted-foreground">{viewSpam ? "No spam conversations." : "No conversations."}</p>
+          ) : filtered.map((u) => {
+            const startPress = () => {
+              if (pressTimer.current) clearTimeout(pressTimer.current);
+              pressTimer.current = setTimeout(() => setConfirmSpam(u), 550);
+            };
+            const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
+            return (
+            <div key={u.conversationId} className="group relative">
             <button
-              key={u.conversationId}
               onClick={() => setActiveId(u.conversationId)}
-              className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors ${activeId === u.conversationId ? "bg-secondary" : ""}`}
+              onPointerDown={startPress}
+              onPointerUp={cancelPress}
+              onPointerLeave={cancelPress}
+              onContextMenu={(e) => { e.preventDefault(); setConfirmSpam(u); }}
+              className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${activeId === u.conversationId ? "bg-secondary" : ""}`}
             >
               <div className="relative shrink-0">
                 <Avatar name={u.username} url={u.avatar_url} size={44} />
-                {u.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+                {u.online && !u.isSpam && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 pr-9">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className={`truncate text-sm ${u.unread ? "font-bold" : "font-semibold"}`}>{u.username}</p>
                   {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
@@ -438,14 +472,25 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               </div>
               {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvSpam(u, !u.isSpam); }}
+              title={u.isSpam ? "Remove from spam" : "Move to spam"}
+              aria-label={u.isSpam ? "Remove from spam" : "Move to spam"}
+              className={`absolute right-4 top-3 h-7 w-7 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-opacity flex ${u.isSpam ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
+            >
+              {u.isSpam ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+            </button>
+            </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Conversation pane — full screen on mobile when open */}
       <div className={`${active ? "flex" : "hidden sm:flex"} flex-1 min-w-0 flex-col bg-background min-h-0`}>
         {active ? (
-          <Conversation meId={meId} conv={active} onBack={() => setActiveId(null)} onOpenDetail={() => setDetailOpen(true)} />
+          <Conversation meId={meId} conv={active} onBack={() => setActiveId(null)} onOpenDetail={() => setDetailOpen(true)} onToggleSpam={() => setConvSpam(active, !active.isSpam)} />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center px-6 text-muted-foreground">
             <Inbox className="h-12 w-12 mb-3 opacity-50" />
@@ -462,13 +507,35 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           {active && <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" />}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!confirmSpam} onOpenChange={(o) => !o && setConfirmSpam(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmSpam?.isSpam ? "Remove from spam?" : "Move to spam?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmSpam?.isSpam
+                ? `${confirmSpam?.username} will return to the main inbox.`
+                : `${confirmSpam?.username} will be hidden in the Spam folder. You can restore them anytime.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={confirmSpam?.isSpam ? "" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}
+              onClick={() => { if (confirmSpam) setConvSpam(confirmSpam, !confirmSpam.isSpam); setConfirmSpam(null); }}
+            >
+              {confirmSpam?.isSpam ? "Remove from spam" : "Move to spam"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
 type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean };
 
-function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void }) {
+function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void; onToggleSpam: () => void }) {
   const [messages, setMessages] = useState<PageMsg[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -699,6 +766,15 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
           aria-label="Search in conversation"
         >
           <Search className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleSpam}
+          className={`h-9 px-3 shrink-0 rounded-full flex items-center gap-1.5 text-xs font-semibold ${conv.isSpam ? "bg-destructive text-destructive-foreground hover:opacity-90" : "text-muted-foreground hover:bg-secondary border border-border"}`}
+          aria-label={conv.isSpam ? "Remove from spam" : "Mark conversation as spam"}
+          title={conv.isSpam ? "Remove from spam" : "Mark as spam"}
+        >
+          {conv.isSpam ? <><RotateCcw className="h-4 w-4" /> Unspam</> : <><Ban className="h-4 w-4" /> Spam</>}
         </button>
       </div>
       {searchOpen && (
