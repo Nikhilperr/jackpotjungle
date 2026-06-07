@@ -443,11 +443,21 @@ function ChatView() {
                     </div>
                   )}
                 </div>
-                {isLastMine && (
-                  <div className="flex justify-end pr-1 pt-0.5">
-                    <span className="text-[11px] text-muted-foreground">
-                      {m.seen ? "Seen" : m.delivered ? "Delivered" : "Sent"}
-                    </span>
+                {mine && (isLastMine || m.failed) && (
+                  <div className="flex items-center justify-end gap-1 pr-1 pt-0.5">
+                    {m.failed ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-destructive">
+                        <AlertCircle className="h-3 w-3" /> Not delivered
+                      </span>
+                    ) : m.id.startsWith("temp-") ? (
+                      <Clock className="h-3 w-3 text-muted-foreground" aria-label="Sending" />
+                    ) : m.seen ? (
+                      <CheckCheck className="h-3.5 w-3.5 text-primary" aria-label="Seen" />
+                    ) : m.delivered ? (
+                      <CheckCheck className="h-3.5 w-3.5 text-muted-foreground" aria-label="Delivered" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5 text-muted-foreground" aria-label="Sent" />
+                    )}
                   </div>
                 )}
               </div>
