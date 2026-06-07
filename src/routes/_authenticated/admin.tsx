@@ -825,7 +825,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
           autoFocus
           placeholder="Reply as Jackpot Jungle…"
           value={text}
-          onChange={(e) => { setText(e.target.value); setSuggestIdx(0); }}
+          onChange={(e) => { setText(e.target.value); setSuggestIdx(0); setDismissedFor(null); }}
           onKeyDown={(e) => {
             if (suggestions.length === 0) return;
             if (e.key === "Tab" || (e.key === "Enter" && suggestions.length > 0 && text.length < suggestions[suggestIdx].content.length)) {
