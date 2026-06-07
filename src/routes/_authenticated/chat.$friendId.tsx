@@ -45,6 +45,8 @@ function ChatView() {
   const [meId, setMeId] = useState<string | null>(null);
   const [friend, setFriend] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [calls, setCalls] = useState<CallRow[]>([]);
+  const { startCall } = useCalls();
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
