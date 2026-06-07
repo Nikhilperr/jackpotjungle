@@ -15,6 +15,8 @@ import {
   Inbox,
   Users as UsersIcon,
   ChevronLeft,
+  ChevronUp,
+  ChevronDown,
   Trash2,
   Plus,
   ArrowLeft,
