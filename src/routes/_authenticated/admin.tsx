@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Avatar } from "@/components/messenger/Avatar";
 import { useCalls } from "@/components/messenger/CallProvider";
+import { CallMessage } from "@/components/messenger/CallMessage";
 import {
   Search,
   Send,
@@ -540,10 +541,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 }
 
 type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean };
+type CallRow = { id: string; caller_id: string; callee_id: string; call_type: "voice" | "video"; status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled"; duration_seconds: number; created_at: string };
 
 function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void; onToggleSpam: () => void }) {
   const { startCall } = useCalls();
   const [messages, setMessages] = useState<PageMsg[]>([]);
+  const [calls, setCalls] = useState<CallRow[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [recUploading, setRecUploading] = useState(false);
@@ -609,12 +612,22 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
   }
 
   async function load() {
-    const { data } = await supabase
-      .from("page_messages")
-      .select("id, sender_id, content, image_url, audio_url, created_at, seen, from_page")
-      .eq("conversation_id", conv.conversationId)
-      .order("created_at", { ascending: true });
+    const [{ data }, { data: callRows }] = await Promise.all([
+      supabase
+        .from("page_messages")
+        .select("id, sender_id, content, image_url, audio_url, created_at, seen, from_page")
+        .eq("conversation_id", conv.conversationId)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("calls")
+        .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+        .eq("context", "page")
+        .eq("page_conversation_id", conv.conversationId)
+        .order("created_at", { ascending: true })
+        .limit(200),
+    ]);
     setMessages((data as PageMsg[]) ?? []);
+    setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
     await supabase.from("page_messages").update({ seen: true })
       .eq("conversation_id", conv.conversationId).eq("from_page", false).eq("seen", false);
   }
@@ -649,12 +662,21 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
         const m = payload.old as PageMsg;
         setMessages((prev) => prev.filter((x) => x.id !== m.id));
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `page_conversation_id=eq.${conv.conversationId}` }, (payload) => {
+        const row = (payload.new ?? payload.old) as CallRow;
+        if (!row || row.status === "ringing" || row.status === "active") return;
+        setCalls((prev) => {
+          const exists = prev.some((c) => c.id === row.id);
+          if (exists) return prev.map((c) => (c.id === row.id ? row : c));
+          return [...prev, row];
+        });
+      })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conv.conversationId]);
 
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages]);
+  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages, calls]);
 
   function addOptimistic(partial: Partial<PageMsg>): string {
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -838,9 +860,26 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
         </div>
       )}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-        {messages.length === 0 ? (
+        {messages.length === 0 && calls.length === 0 ? (
           <p className="text-center text-xs text-muted-foreground py-8">No messages yet.</p>
-        ) : messages.map((m) => {
+        ) : (() => {
+          type TimelineItem = { kind: "msg"; at: string; msg: PageMsg } | { kind: "call"; at: string; call: CallRow };
+          const items: TimelineItem[] = [
+            ...messages.map((m) => ({ kind: "msg" as const, at: m.created_at, msg: m })),
+            ...calls.map((c) => ({ kind: "call" as const, at: c.created_at, call: c })),
+          ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+          return items.map((it) => {
+          if (it.kind === "call") {
+            const c = it.call;
+            const mine = c.caller_id === meId;
+            return (
+              <div key={`call-${c.id}`} className={`flex ${mine ? "justify-end" : "justify-start"} animate-fade-in`}>
+                <CallMessage mine={mine} kind={c.call_type} status={c.status} durationSeconds={c.duration_seconds} />
+              </div>
+            );
+          }
+          const m = it.msg;
           const mine = m.from_page;
           const startPress = () => {
             if (pressTimer.current) clearTimeout(pressTimer.current);
@@ -870,7 +909,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
               )}
             </div>
           );
-        })}
+          });
+        })()}
       </div>
       <AlertDialog open={!!unsendId} onOpenChange={(o) => !o && setUnsendId(null)}>
         <AlertDialogContent>

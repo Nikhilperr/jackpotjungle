@@ -34,10 +34,15 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
-  const { localStream, remoteStream, connected, sendHangup, toggleAudio, toggleVideo, switchCamera } = useWebRTC({
+  const activeRef = useRef(initialActive);
+  const closedRef = useRef(false);
+
+  const { localStream, remoteStream, connected, remoteMuted, sendHangup, toggleAudio, toggleVideo, switchCamera, sendMediaState } = useWebRTC({
     callId, role, kind, meId,
     onRemoteHangup: () => endCall("remote"),
   });
+
+  useEffect(() => { activeRef.current = active; }, [active]);
 
   // Subscribe to status changes (for caller: when callee answers -> status=active)
   useEffect(() => {
@@ -50,8 +55,9 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
           startRef.current = Date.now();
           stopRingtone();
         }
-        if (row.status === "ended" || row.status === "declined" || row.status === "canceled") {
-          endCall("remote");
+        if (row.status === "ended" || row.status === "declined" || row.status === "canceled" || row.status === "missed") {
+          stopRingtone();
+          onClose();
         }
       })
       .subscribe();
@@ -84,16 +90,19 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   }, [remoteStream]);
 
   async function endCall(reason: "local" | "remote") {
+    if (closedRef.current) return;
+    closedRef.current = true;
     stopRingtone();
     if (reason === "local") sendHangup();
     const duration = startRef.current ? Math.floor((Date.now() - startRef.current) / 1000) : 0;
     try {
-      // Only update if we initiated end, or to be safe always set ended_at
-      await supabase.from("calls").update({
-        status: active ? "ended" : (role === "caller" ? "canceled" : "declined"),
-        ended_at: new Date().toISOString(),
-        duration_seconds: duration,
-      }).eq("id", callId);
+      if (reason === "local") {
+        await supabase.from("calls").update({
+          status: activeRef.current ? "ended" : (role === "caller" ? "canceled" : "declined"),
+          ended_at: new Date().toISOString(),
+          duration_seconds: duration,
+        }).eq("id", callId);
+      }
     } catch (e) { console.warn(e); }
     onClose();
   }
@@ -102,6 +111,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
     const next = !muted;
     setMuted(next);
     toggleAudio(!next);
+    sendMediaState({ muted: next });
   }
   function onToggleVideo() {
     const next = !cameraOff;
@@ -134,9 +144,14 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
             <div className="text-center">
               <p className="text-2xl font-semibold">{peerName}</p>
               <p className="text-sm text-white/70 mt-1">
-                {active ? fmt(seconds) : role === "caller" ? "Calling…" : "Incoming call"}
+                {active ? "Connected" : role === "caller" ? "Calling…" : "Incoming call"}
                 {!active && connected ? " · connecting" : ""}
               </p>
+              {remoteMuted && active && (
+                <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/12 px-3 py-1 text-xs font-medium text-white/85">
+                  <MicOff className="h-3.5 w-3.5" /> {peerName} is muted
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -159,7 +174,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
       {/* Top bar */}
       <div className="relative z-10 p-4 flex items-center justify-between">
         <div className="text-sm text-white/80 bg-black/30 backdrop-blur px-3 py-1.5 rounded-full">
-          {active ? fmt(seconds) : role === "caller" ? "Ringing…" : "Connecting…"}
+          {active ? "Connected" : role === "caller" ? "Ringing…" : "Connecting…"}
         </div>
       </div>
 

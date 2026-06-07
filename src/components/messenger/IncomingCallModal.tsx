@@ -51,13 +51,13 @@ export function IncomingCallModal({ peerName, peerAvatar, kind, onAccept, onDecl
         </button>
         <button
           onClick={onAccept}
-          aria-label="Accept"
+          aria-label="Approve"
           className="flex flex-col items-center gap-2 group"
         >
-          <span className="h-16 w-16 rounded-full bg-green-600 hover:bg-green-500 active:scale-95 transition flex items-center justify-center shadow-2xl shadow-green-900/50">
+          <span className="h-16 w-16 rounded-full bg-primary hover:opacity-90 active:scale-95 transition flex items-center justify-center shadow-2xl shadow-primary/30">
             {kind === "video" ? <Video className="h-7 w-7 text-white" /> : <Phone className="h-7 w-7 text-white" />}
           </span>
-          <span className="text-xs text-white/80">Accept</span>
+          <span className="text-xs text-white/80">Approve</span>
         </button>
       </div>
     </div>
