@@ -331,8 +331,10 @@ function ChatView() {
           const showTime = !prev || new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() > 5 * 60 * 1000;
           const next = messages[i + 1];
           const isLastMine = mine && (!next || next.sender_id !== meId);
+          const isMatch = matchIds.includes(m.id);
+          const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
           return (
-            <div key={m.id}>
+            <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }}>
               {showTime && (
                 <div className="text-center text-xs text-muted-foreground py-2">
                   {format(new Date(m.created_at), "MMM d, h:mm a")}
@@ -348,8 +350,10 @@ function ChatView() {
                     <audio controls src={m.audio_url} className="h-10 max-w-[260px]" />
                   </div>
                 ) : (
-                  <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                    <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
+                  <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
+                    <p className="text-[15px] whitespace-pre-wrap break-words">
+                      {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                    </p>
                   </div>
                 )}
               </div>
