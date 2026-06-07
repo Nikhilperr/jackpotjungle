@@ -159,8 +159,18 @@ export function useWebRTC({ callId, role, kind, meId, onRemoteHangup }: Args) {
         if (cancelled) return;
 
         if (role === "callee") {
-          // tell caller we're ready
-          channel.send({ type: "broadcast", event: "ready", payload: { from: meId } });
+          // tell caller we're ready (repeat a few times in case caller wasn't subscribed yet)
+          for (let i = 0; i < 4; i++) {
+            channel.send({ type: "broadcast", event: "ready", payload: { from: meId } });
+            await new Promise((r) => setTimeout(r, 600));
+          }
+        } else {
+          // caller announces presence so callee re-emits ready; also retry until offer is sent
+          for (let i = 0; i < 6; i++) {
+            if (calleeReadyRef.current) break;
+            channel.send({ type: "broadcast", event: "hello", payload: { from: meId } });
+            await new Promise((r) => setTimeout(r, 700));
+          }
         }
       } catch (e: any) {
         setError(e.message ?? "Could not access camera/mic");
