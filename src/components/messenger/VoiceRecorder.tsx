@@ -193,15 +193,15 @@ export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
             </div>
           </div>
 
-          {/* Slide-to-cancel hint, animates with drag */}
+          {/* Send hint (release to send) */}
           <div
-            className={`shrink-0 flex flex-col items-center text-xs text-muted-foreground transition-opacity ${
-              willCancel ? "opacity-0" : "opacity-100 animate-pulse"
+            className={`shrink-0 flex flex-col items-center text-xs text-primary transition-opacity ${
+              willCancel ? "opacity-30" : "opacity-100"
             }`}
             style={{ transform: `translateY(${dragY / 4}px)` }}
           >
-            <ChevronUp className="h-4 w-4" />
-            <span className="leading-none">cancel</span>
+            <Send className="h-4 w-4" />
+            <span className="leading-none">send</span>
           </div>
         </div>
       )}
