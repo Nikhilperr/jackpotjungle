@@ -285,7 +285,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   async function load() {
     const { data: convList } = await supabase
       .from("page_conversations")
-      .select("id, user_id, last_message_at")
+      .select("id, user_id, last_message_at, is_spam")
       .order("last_message_at", { ascending: false });
     if (!convList) return;
     const userIds = convList.map((c) => c.user_id);
@@ -329,6 +329,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         lastAt: last?.created_at ?? null,
         unread,
         credit: creditMap.get(c.user_id) ?? 0,
+        isSpam: (c as any).is_spam ?? false,
       };
     });
     setConvs(rows);
