@@ -106,6 +106,62 @@ export type Database = {
           },
         ]
       }
+      calls: {
+        Row: {
+          answered_at: string | null
+          call_type: Database["public"]["Enums"]["call_type"]
+          callee_id: string
+          caller_id: string
+          context: string
+          created_at: string
+          duration_seconds: number
+          ended_at: string | null
+          id: string
+          page_conversation_id: string | null
+          started_at: string
+          status: Database["public"]["Enums"]["call_status"]
+          updated_at: string
+        }
+        Insert: {
+          answered_at?: string | null
+          call_type?: Database["public"]["Enums"]["call_type"]
+          callee_id: string
+          caller_id: string
+          context?: string
+          created_at?: string
+          duration_seconds?: number
+          ended_at?: string | null
+          id?: string
+          page_conversation_id?: string | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["call_status"]
+          updated_at?: string
+        }
+        Update: {
+          answered_at?: string | null
+          call_type?: Database["public"]["Enums"]["call_type"]
+          callee_id?: string
+          caller_id?: string
+          context?: string
+          created_at?: string
+          duration_seconds?: number
+          ended_at?: string | null
+          id?: string
+          page_conversation_id?: string | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["call_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calls_page_conversation_id_fkey"
+            columns: ["page_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "page_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_transactions: {
         Row: {
           admin_id: string | null
@@ -654,6 +710,14 @@ export type Database = {
     }
     Enums: {
       app_role: "user" | "admin" | "super_admin"
+      call_status:
+        | "ringing"
+        | "active"
+        | "ended"
+        | "missed"
+        | "declined"
+        | "canceled"
+      call_type: "voice" | "video"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -782,6 +846,15 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["user", "admin", "super_admin"],
+      call_status: [
+        "ringing",
+        "active",
+        "ended",
+        "missed",
+        "declined",
+        "canceled",
+      ],
+      call_type: ["voice", "video"],
     },
   },
 } as const
