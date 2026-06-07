@@ -109,12 +109,26 @@ function PageChatView() {
         if (m.from_page) supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
       })
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+
+    const callsCh = supabase
+      .channel(`user-page-calls-${convId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `page_conversation_id=eq.${convId}` }, (payload) => {
+        const row = (payload.new ?? payload.old) as CallRow;
+        if (!row || row.status === "ringing" || row.status === "active") return;
+        setCalls((prev) => {
+          const exists = prev.some((c) => c.id === row.id);
+          if (exists) return prev.map((c) => (c.id === row.id ? row : c));
+          return [...prev, row];
+        });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(ch); supabase.removeChannel(callsCh); };
   }, [convId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, calls]);
 
   function addOptimistic(partial: Partial<Msg>): string {
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
