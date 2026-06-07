@@ -215,6 +215,9 @@ function FriendsPage() {
                       <p className="font-semibold">{r.profile?.username}</p>
                       <p className="text-xs text-muted-foreground">Pending</p>
                     </div>
+                    <Button size="sm" variant="ghost" onClick={() => unsendRequest(r.id)} className="rounded-full">
+                      <X className="h-4 w-4 mr-1" /> Unsend
+                    </Button>
                   </div>
                 ))}
               </div>
