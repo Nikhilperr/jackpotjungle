@@ -612,12 +612,22 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
   }
 
   async function load() {
-    const { data } = await supabase
-      .from("page_messages")
-      .select("id, sender_id, content, image_url, audio_url, created_at, seen, from_page")
-      .eq("conversation_id", conv.conversationId)
-      .order("created_at", { ascending: true });
+    const [{ data }, { data: callRows }] = await Promise.all([
+      supabase
+        .from("page_messages")
+        .select("id, sender_id, content, image_url, audio_url, created_at, seen, from_page")
+        .eq("conversation_id", conv.conversationId)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("calls")
+        .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+        .eq("context", "page")
+        .eq("page_conversation_id", conv.conversationId)
+        .order("created_at", { ascending: true })
+        .limit(200),
+    ]);
     setMessages((data as PageMsg[]) ?? []);
+    setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
     await supabase.from("page_messages").update({ seen: true })
       .eq("conversation_id", conv.conversationId).eq("from_page", false).eq("seen", false);
   }
