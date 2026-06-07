@@ -117,6 +117,10 @@ function PageChatView() {
         });
         if (m.from_page) supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
       })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${convId}` }, (payload) => {
+        const m = payload.new as Msg;
+        setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
+      })
       .subscribe();
 
     const callsCh = supabase
