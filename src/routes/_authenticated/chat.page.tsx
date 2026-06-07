@@ -40,6 +40,8 @@ function PageChatView() {
   const [meId, setMeId] = useState<string | null>(null);
   const [convId, setConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [calls, setCalls] = useState<CallRow[]>([]);
+  const [adminId, setAdminId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -47,6 +49,7 @@ function PageChatView() {
   const [preview, setPreview] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { startCall } = useCalls();
 
   useEffect(() => {
     let mounted = true;
