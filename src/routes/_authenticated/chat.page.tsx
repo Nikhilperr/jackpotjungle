@@ -239,8 +239,7 @@ function PageChatView() {
         </div>
         <button
           type="button"
-          disabled={!adminId}
-          onClick={() => adminId && startCall({ calleeId: adminId, kind: "voice", peer: { name: "Jackpot Jungle", avatar: null }, context: "page", pageConversationId: convId })}
+          onClick={() => startCall({ calleeId: null, kind: "voice", peer: { name: "Jackpot Jungle", avatar: null }, context: "page_broadcast", pageConversationId: convId })}
           className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
           aria-label="Voice call"
         >
@@ -248,8 +247,7 @@ function PageChatView() {
         </button>
         <button
           type="button"
-          disabled={!adminId}
-          onClick={() => adminId && startCall({ calleeId: adminId, kind: "video", peer: { name: "Jackpot Jungle", avatar: null }, context: "page", pageConversationId: convId })}
+          onClick={() => startCall({ calleeId: null, kind: "video", peer: { name: "Jackpot Jungle", avatar: null }, context: "page_broadcast", pageConversationId: convId })}
           className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
           aria-label="Video call"
         >
