@@ -97,10 +97,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setIsAdmin(false);
       }
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
       const uid = s?.user?.id ?? null;
       setMeId(uid);
       meIdRef.current = uid;
+      if (uid) {
+        const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", uid);
+        setIsAdmin(!!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin"));
+      } else {
+        setIsAdmin(false);
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
