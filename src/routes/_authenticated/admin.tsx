@@ -662,6 +662,15 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
         const m = payload.old as PageMsg;
         setMessages((prev) => prev.filter((x) => x.id !== m.id));
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `page_conversation_id=eq.${conv.conversationId}` }, (payload) => {
+        const row = (payload.new ?? payload.old) as CallRow;
+        if (!row || row.status === "ringing" || row.status === "active") return;
+        setCalls((prev) => {
+          const exists = prev.some((c) => c.id === row.id);
+          if (exists) return prev.map((c) => (c.id === row.id ? row : c));
+          return [...prev, row];
+        });
+      })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
