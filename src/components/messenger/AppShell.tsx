@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRole } from "@/hooks/useRole";
 import { usePresence } from "@/hooks/usePresence";
 import { useChatNotifications } from "@/hooks/useChatNotifications";
+import { useNativePush } from "@/hooks/useNativePush";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import {
   AlertDialog,
@@ -30,6 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [confirmOut, setConfirmOut] = useState(false);
   usePresence();
   useChatNotifications();
+  useNativePush();
 
   async function signOut() {
     await supabase
