@@ -22,7 +22,9 @@ import {
   ArrowLeft,
   Menu,
   X,
-  
+  Ban,
+  RotateCcw,
+
   User as UserIcon,
   LogOut,
   Loader2,
@@ -93,6 +95,7 @@ type ConvRow = {
   lastAt: string | null;
   unread: number;
   credit: number;
+  isSpam: boolean;
 };
 
 function AdminPage() {
