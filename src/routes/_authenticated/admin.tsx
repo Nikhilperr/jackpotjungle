@@ -837,9 +837,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
                   <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
                 </button>
               ) : m.audio_url ? (
-                <div {...handlers} className={`max-w-[80%] px-3 py-2 rounded-2xl select-none ${mine ? "bg-bubble-me" : "bg-bubble-them"}`}>
-                  <audio controls src={m.audio_url} className="h-10 max-w-[260px]" />
-                </div>
+                <div {...handlers}><VoiceMessage src={m.audio_url} mine={mine} /></div>
               ) : (
                 <div {...handlers} className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
                   {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
