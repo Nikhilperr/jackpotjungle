@@ -28,6 +28,7 @@ type Conversation = {
 function ChatLayout() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [spamIds, setSpamIds] = useState<Set<string>>(new Set());
+  const [spammedByIds, setSpammedByIds] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<"all" | "spam">("all");
   const [pageUnread, setPageUnread] = useState(0);
   const [pageLast, setPageLast] = useState<{ content: string | null; at: string | null }>({ content: null, at: null });
