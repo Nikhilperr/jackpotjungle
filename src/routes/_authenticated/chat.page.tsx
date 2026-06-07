@@ -3,11 +3,23 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X } from "lucide-react";
+import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X, Phone, Video } from "lucide-react";
 import { format } from "date-fns";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
+import { CallMessage } from "@/components/messenger/CallMessage";
+import { useCalls } from "@/components/messenger/CallProvider";
 import { uploadAndSign } from "@/lib/chat-media";
+
+type CallRow = {
+  id: string;
+  caller_id: string;
+  callee_id: string;
+  call_type: "voice" | "video";
+  status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled";
+  duration_seconds: number;
+  created_at: string;
+};
 
 export const Route = createFileRoute("/_authenticated/chat/page")({
   component: PageChatView,
@@ -28,6 +40,8 @@ function PageChatView() {
   const [meId, setMeId] = useState<string | null>(null);
   const [convId, setConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [calls, setCalls] = useState<CallRow[]>([]);
+  const [adminId, setAdminId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -35,6 +49,7 @@ function PageChatView() {
   const [preview, setPreview] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { startCall } = useCalls();
 
   useEffect(() => {
     let mounted = true;
@@ -55,6 +70,18 @@ function PageChatView() {
         .select("id, sender_id, from_page, content, image_url, audio_url, seen, created_at")
         .eq("conversation_id", conv.id).order("created_at", { ascending: true });
       if (mounted) setMessages((msgs as Msg[]) ?? []);
+
+      // Find an admin to be the call counterpart
+      const { data: adminRow } = await supabase.from("user_roles")
+        .select("user_id").in("role", ["super_admin", "admin"]).limit(1).maybeSingle();
+      if (mounted && adminRow) setAdminId(adminRow.user_id);
+
+      // Load call history for this page conversation
+      const { data: callRows } = await supabase.from("calls")
+        .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+        .eq("context", "page").eq("page_conversation_id", conv.id)
+        .order("created_at", { ascending: true }).limit(200);
+      if (mounted) setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
 
       await supabase.from("page_messages").update({ seen: true }).eq("conversation_id", conv.id).eq("from_page", true).eq("seen", false);
     })();
@@ -82,12 +109,26 @@ function PageChatView() {
         if (m.from_page) supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
       })
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+
+    const callsCh = supabase
+      .channel(`user-page-calls-${convId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `page_conversation_id=eq.${convId}` }, (payload) => {
+        const row = (payload.new ?? payload.old) as CallRow;
+        if (!row || row.status === "ringing" || row.status === "active") return;
+        setCalls((prev) => {
+          const exists = prev.some((c) => c.id === row.id);
+          if (exists) return prev.map((c) => (c.id === row.id ? row : c));
+          return [...prev, row];
+        });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(ch); supabase.removeChannel(callsCh); };
   }, [convId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, calls]);
 
   function addOptimistic(partial: Partial<Msg>): string {
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -184,45 +225,88 @@ function PageChatView() {
         <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center shrink-0">
           <Sparkles className="h-5 w-5 text-primary-foreground" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-semibold truncate">Jackpot Jungle</p>
           <p className="text-xs text-muted-foreground truncate">Official page · We usually reply within a few hours</p>
         </div>
+        <button
+          type="button"
+          disabled={!adminId}
+          onClick={() => adminId && startCall({ calleeId: adminId, kind: "voice", peer: { name: "Jackpot Jungle", avatar: null }, context: "page", pageConversationId: convId })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
+          aria-label="Voice call"
+        >
+          <Phone className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          disabled={!adminId}
+          onClick={() => adminId && startCall({ calleeId: adminId, kind: "video", peer: { name: "Jackpot Jungle", avatar: null }, context: "page", pageConversationId: convId })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
+          aria-label="Video call"
+        >
+          <Video className="h-5 w-5" />
+        </button>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
-        {messages.length === 0 && (
+        {messages.length === 0 && calls.length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-12">
             Welcome to Jackpot Jungle 👋 Send us a message — an admin will reply soon.
           </div>
         )}
-        {messages.map((m, i) => {
-          const mine = !m.from_page;
-          const prev = messages[i - 1];
-          const showTime = !prev || new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() > 5 * 60 * 1000;
-          return (
-            <div key={m.id}>
-              {showTime && (
-                <div className="text-center text-xs text-muted-foreground py-2">
-                  {format(new Date(m.created_at), "MMM d, h:mm a")}
+        {(() => {
+          type T = { kind: "msg"; at: string; msg: Msg } | { kind: "call"; at: string; call: CallRow };
+          const items: T[] = [
+            ...messages.map((m) => ({ kind: "msg" as const, at: m.created_at, msg: m })),
+            ...calls.map((c) => ({ kind: "call" as const, at: c.created_at, call: c })),
+          ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+          return items.map((it, i) => {
+            const prev = items[i - 1];
+            const showTime = !prev || new Date(it.at).getTime() - new Date(prev.at).getTime() > 5 * 60 * 1000;
+            if (it.kind === "call") {
+              const c = it.call;
+              const mine = c.caller_id === meId;
+              return (
+                <div key={`call-${c.id}`}>
+                  {showTime && (
+                    <div className="text-center text-xs text-muted-foreground py-2">
+                      {format(new Date(c.created_at), "MMM d, h:mm a")}
+                    </div>
+                  )}
+                  <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                    <CallMessage mine={mine} kind={c.call_type} status={c.status as any} durationSeconds={c.duration_seconds} />
+                  </div>
                 </div>
-              )}
-              <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                {m.image_url ? (
-                  <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-3xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
-                    <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
-                  </button>
-                ) : m.audio_url ? (
-                  <VoiceMessage src={m.audio_url} mine={mine} />
-                ) : (
-                  <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                    <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
+              );
+            }
+            const m = it.msg;
+            const mine = !m.from_page;
+            return (
+              <div key={m.id}>
+                {showTime && (
+                  <div className="text-center text-xs text-muted-foreground py-2">
+                    {format(new Date(m.created_at), "MMM d, h:mm a")}
                   </div>
                 )}
+                <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                  {m.image_url ? (
+                    <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-3xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
+                      <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
+                    </button>
+                  ) : m.audio_url ? (
+                    <VoiceMessage src={m.audio_url} mine={mine} />
+                  ) : (
+                    <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
+                      <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
       </div>
 
       <form onSubmit={send} className="relative p-3 border-t border-border flex items-center gap-2 bg-card">

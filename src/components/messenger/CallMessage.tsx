@@ -1,0 +1,42 @@
+import { Phone, PhoneMissed, Video, PhoneOff } from "lucide-react";
+
+type Props = {
+  mine: boolean;
+  kind: "voice" | "video";
+  status: "ended" | "missed" | "declined" | "canceled" | "active" | "ringing";
+  durationSeconds: number;
+};
+
+function fmt(s: number) {
+  if (!s) return "";
+  const m = Math.floor(s / 60);
+  const ss = (s % 60).toString().padStart(2, "0");
+  return `${m}:${ss}`;
+}
+
+export function CallMessage({ mine, kind, status, durationSeconds }: Props) {
+  const missed = status === "missed" || status === "declined" || status === "canceled";
+  const Icon = missed ? PhoneMissed : kind === "video" ? Video : Phone;
+  const label =
+    status === "missed" ? "Missed call"
+    : status === "declined" ? "Declined"
+    : status === "canceled" ? (mine ? "Canceled" : "Missed call")
+    : kind === "video" ? "Video call" : "Voice call";
+  const meta = durationSeconds > 0 ? ` · ${fmt(durationSeconds)}` : "";
+
+  return (
+    <div className={`max-w-[70%] px-4 py-2.5 rounded-3xl flex items-center gap-2.5 ${
+      mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"
+    }`}>
+      <span className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
+        missed ? "bg-red-500/20 text-red-500" : mine ? "bg-white/15" : "bg-primary/15 text-primary"
+      }`}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[14px] font-medium leading-tight">{label}</p>
+        <p className="text-[11px] opacity-70">{meta || (status === "ended" ? "Ended" : "")}</p>
+      </div>
+    </div>
+  );
+}

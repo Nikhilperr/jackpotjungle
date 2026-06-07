@@ -3,13 +3,25 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
+import { CallMessage } from "@/components/messenger/CallMessage";
+import { useCalls } from "@/components/messenger/CallProvider";
 import { uploadAndSign } from "@/lib/chat-media";
 import { format, formatDistanceToNow } from "date-fns";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
+
+type CallRow = {
+  id: string;
+  caller_id: string;
+  callee_id: string;
+  call_type: "voice" | "video";
+  status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled";
+  duration_seconds: number;
+  created_at: string;
+};
 
 export const Route = createFileRoute("/_authenticated/chat/$friendId")({
   component: ChatView,
@@ -33,6 +45,8 @@ function ChatView() {
   const [meId, setMeId] = useState<string | null>(null);
   const [friend, setFriend] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [calls, setCalls] = useState<CallRow[]>([]);
+  const { startCall } = useCalls();
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -57,18 +71,23 @@ function ChatView() {
       if (!u.user || !mounted) return;
       setMeId(u.user.id);
 
-      const [{ data: prof }, { data: msgs }, { data: spamRow }] = await Promise.all([
+      const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
         supabase.from("profiles").select("id, username, avatar_url, online, last_seen").eq("id", friendId).maybeSingle(),
         supabase.from("messages").select("*")
           .or(`and(sender_id.eq.${u.user.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${u.user.id})`)
           .order("created_at", { ascending: true }).limit(500),
         supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", u.user.id).maybeSingle(),
+        supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+          .or(`and(caller_id.eq.${u.user.id},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${u.user.id})`)
+          .eq("context", "friend")
+          .order("created_at", { ascending: true }).limit(200),
       ]);
       if (!mounted) return;
       const profile = prof as Profile | null;
       if (profile && spamRow) profile.online = false;
       setFriend(profile);
       setMessages((msgs as Message[]) ?? []);
+      setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
 
       await supabase.from("messages").update({ seen: true, delivered: true } as any)
         .eq("sender_id", friendId).eq("receiver_id", u.user.id).eq("seen", false);
@@ -126,16 +145,33 @@ function ChatView() {
       .subscribe();
     typingChannelRef.current = typingChannel;
 
+    const callsChannel = supabase
+      .channel(`calls-${pairKey}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, (payload) => {
+        const row = (payload.new ?? payload.old) as CallRow & { context?: string };
+        if (!row) return;
+        const involves = (row.caller_id === meId && row.callee_id === friendId) || (row.caller_id === friendId && row.callee_id === meId);
+        if (!involves || (row as any).context !== "friend") return;
+        if (row.status === "ringing" || row.status === "active") return;
+        setCalls((prev) => {
+          const exists = prev.some((c) => c.id === row.id);
+          if (exists) return prev.map((c) => (c.id === row.id ? (row as CallRow) : c));
+          return [...prev, row as CallRow];
+        });
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(typingChannel);
+      supabase.removeChannel(callsChannel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [meId, friendId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, friendTyping]);
+  }, [messages, calls, friendTyping]);
 
   function onDraftChange(v: string) {
     setDraft(v);
@@ -287,6 +323,22 @@ function ChatView() {
         </div>
         <button
           type="button"
+          onClick={() => friend && startCall({ calleeId: friend.id, kind: "voice", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
+          aria-label="Voice call"
+        >
+          <Phone className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => friend && startCall({ calleeId: friend.id, kind: "video", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
+          aria-label="Video call"
+        >
+          <Video className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
           onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
           className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
           aria-label="Search in conversation"
@@ -332,49 +384,78 @@ function ChatView() {
       )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
-        {messages.length === 0 && (
+        {messages.length === 0 && calls.length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-12">No messages yet. Say hi 👋</div>
         )}
-        {messages.map((m, i) => {
-          const mine = m.sender_id === meId;
-          const prev = messages[i - 1];
-          const showTime = !prev || new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() > 5 * 60 * 1000;
-          const next = messages[i + 1];
-          const isLastMine = mine && (!next || next.sender_id !== meId);
-          const isMatch = matchIds.includes(m.id);
-          const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
-          return (
-            <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }}>
-              {showTime && (
-                <div className="text-center text-xs text-muted-foreground py-2">
-                  {format(new Date(m.created_at), "MMM d, h:mm a")}
+        {(() => {
+          type TimelineItem =
+            | { kind: "msg"; at: string; msg: Message }
+            | { kind: "call"; at: string; call: CallRow };
+          const items: TimelineItem[] = [
+            ...messages.map((m) => ({ kind: "msg" as const, at: m.created_at, msg: m })),
+            ...calls.map((c) => ({ kind: "call" as const, at: c.created_at, call: c })),
+          ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+          return items.map((it, i) => {
+            const prev = items[i - 1];
+            const showTime = !prev || new Date(it.at).getTime() - new Date(prev.at).getTime() > 5 * 60 * 1000;
+
+            if (it.kind === "call") {
+              const c = it.call;
+              const mine = c.caller_id === meId;
+              return (
+                <div key={`call-${c.id}`}>
+                  {showTime && (
+                    <div className="text-center text-xs text-muted-foreground py-2">
+                      {format(new Date(c.created_at), "MMM d, h:mm a")}
+                    </div>
+                  )}
+                  <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                    <CallMessage mine={mine} kind={c.call_type} status={c.status as any} durationSeconds={c.duration_seconds} />
+                  </div>
                 </div>
-              )}
-              <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                {m.image_url ? (
-                  <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-3xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
-                    <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
-                  </button>
-                ) : m.audio_url ? (
-                  <VoiceMessage src={m.audio_url} mine={mine} />
-                ) : (
-                  <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
-                    <p className="text-[15px] whitespace-pre-wrap break-words">
-                      {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
-                    </p>
+              );
+            }
+
+            const m = it.msg;
+            const mine = m.sender_id === meId;
+            const nextIt = items[i + 1];
+            const isLastMine = mine && (!nextIt || nextIt.kind !== "msg" || nextIt.msg.sender_id !== meId);
+            const isMatch = matchIds.includes(m.id);
+            const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
+            return (
+              <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }}>
+                {showTime && (
+                  <div className="text-center text-xs text-muted-foreground py-2">
+                    {format(new Date(m.created_at), "MMM d, h:mm a")}
+                  </div>
+                )}
+                <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                  {m.image_url ? (
+                    <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-3xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
+                      <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
+                    </button>
+                  ) : m.audio_url ? (
+                    <VoiceMessage src={m.audio_url} mine={mine} />
+                  ) : (
+                    <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
+                      <p className="text-[15px] whitespace-pre-wrap break-words">
+                        {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                {isLastMine && (
+                  <div className="flex justify-end pr-1 pt-0.5">
+                    <span className="text-[11px] text-muted-foreground">
+                      {m.seen ? "Seen" : m.delivered ? "Delivered" : "Sent"}
+                    </span>
                   </div>
                 )}
               </div>
-              {isLastMine && (
-                <div className="flex justify-end pr-1 pt-0.5">
-                  <span className="text-[11px] text-muted-foreground">
-                    {m.seen ? "Seen" : m.delivered ? "Delivered" : "Sent"}
-                  </span>
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
         {friendTyping && (
           <div className="flex justify-start pt-1">
             <div className="bg-bubble-them text-bubble-them-foreground px-4 py-2 rounded-3xl">
