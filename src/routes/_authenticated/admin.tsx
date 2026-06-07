@@ -768,6 +768,24 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
         <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>
         <button
           type="button"
+          onClick={() => startCall({ calleeId: conv.userId, kind: "voice", peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
+          aria-label="Voice call"
+          title="Voice call"
+        >
+          <Phone className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => startCall({ calleeId: conv.userId, kind: "video", peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
+          aria-label="Video call"
+          title="Video call"
+        >
+          <Video className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
           onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
           className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
           aria-label="Search in conversation"
