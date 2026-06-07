@@ -145,16 +145,33 @@ function ChatView() {
       .subscribe();
     typingChannelRef.current = typingChannel;
 
+    const callsChannel = supabase
+      .channel(`calls-${pairKey}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, (payload) => {
+        const row = (payload.new ?? payload.old) as CallRow & { context?: string };
+        if (!row) return;
+        const involves = (row.caller_id === meId && row.callee_id === friendId) || (row.caller_id === friendId && row.callee_id === meId);
+        if (!involves || (row as any).context !== "friend") return;
+        if (row.status === "ringing" || row.status === "active") return;
+        setCalls((prev) => {
+          const exists = prev.some((c) => c.id === row.id);
+          if (exists) return prev.map((c) => (c.id === row.id ? (row as CallRow) : c));
+          return [...prev, row as CallRow];
+        });
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(typingChannel);
+      supabase.removeChannel(callsChannel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [meId, friendId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, friendTyping]);
+  }, [messages, calls, friendTyping]);
 
   function onDraftChange(v: string) {
     setDraft(v);
