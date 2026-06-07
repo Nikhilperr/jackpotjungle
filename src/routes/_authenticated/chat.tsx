@@ -27,10 +27,12 @@ type Conversation = {
 
 function ChatLayout() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [spamIds, setSpamIds] = useState<Set<string>>(new Set());
+  const [tab, setTab] = useState<"all" | "spam">("all");
   const [pageUnread, setPageUnread] = useState(0);
   const [pageLast, setPageLast] = useState<{ content: string | null; at: string | null }>({ content: null, at: null });
   const [search, setSearch] = useState("");
-  const [, setMeId] = useState<string | null>(null);
+  const [meId, setMeId] = useState<string | null>(null);
   const params = useParams({ strict: false }) as { friendId?: string };
   const location = useLocation();
   const activeId = params.friendId;
