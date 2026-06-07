@@ -541,10 +541,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 }
 
 type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean };
+type CallRow = { id: string; caller_id: string; callee_id: string; call_type: "voice" | "video"; status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled"; duration_seconds: number; created_at: string };
 
 function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void; onToggleSpam: () => void }) {
   const { startCall } = useCalls();
   const [messages, setMessages] = useState<PageMsg[]>([]);
+  const [calls, setCalls] = useState<CallRow[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [recUploading, setRecUploading] = useState(false);
