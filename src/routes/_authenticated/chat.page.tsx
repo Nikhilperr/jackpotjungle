@@ -34,6 +34,7 @@ type Msg = {
   audio_url: string | null;
   seen: boolean;
   created_at: string;
+  failed?: boolean;
 };
 
 function PageChatView() {
@@ -167,8 +168,7 @@ function PageChatView() {
       .select()
       .single();
     if (error) {
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      setDraft(content);
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       console.error(error);
       return;
     }
@@ -196,8 +196,7 @@ function PageChatView() {
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, image_url: url } : x)));
     } catch (err) {
       console.error(err);
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      alert("Upload failed.");
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
     }
     setUploading(false);
   }
@@ -218,8 +217,7 @@ function PageChatView() {
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, audio_url: url } : x)));
     } catch (err) {
       console.error(err);
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      alert("Voice upload failed.");
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
     }
     setRecUploading(false);
   }

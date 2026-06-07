@@ -540,7 +540,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   );
 }
 
-type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean };
+type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean; failed?: boolean };
 type CallRow = { id: string; caller_id: string; callee_id: string; call_type: "voice" | "video"; status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled"; duration_seconds: number; created_at: string };
 
 function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void; onToggleSpam: () => void }) {
@@ -707,8 +707,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
       .select()
       .single();
     if (error) {
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      setText(content);
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       toast.error(error.message);
       return;
     }
@@ -736,7 +735,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
       if (error) throw error;
       if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as PageMsg) : x)));
     } catch (err: any) {
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       toast.error(err?.message ?? "Upload failed");
     }
     setUploading(false);
@@ -757,7 +756,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
       if (error) throw error;
       if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as PageMsg) : x)));
     } catch (err: any) {
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       toast.error(err?.message ?? "Voice upload failed");
     }
     setRecUploading(false);
