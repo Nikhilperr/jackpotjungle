@@ -398,44 +398,58 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               className="pl-9 rounded-full bg-secondary border-transparent"
             />
           </div>
-          {allTags.length > 0 && (
-            <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
-              <button
-                onClick={() => setTagFilter(null)}
-                className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${tagFilter === null ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
-              >
-                All
-              </button>
-              {allTags.map((t) => {
-                const on = tagFilter === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setTagFilter(on ? null : t.id)}
-                    className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${on ? "border-transparent text-white" : "border-border text-muted-foreground"}`}
-                    style={on ? { background: t.color } : {}}
-                  >
-                    {t.name}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
+            <button
+              onClick={() => { setViewSpam(false); setTagFilter(null); }}
+              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${!viewSpam && tagFilter === null ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
+            >
+              All
+            </button>
+            {allTags.map((t) => {
+              const on = !viewSpam && tagFilter === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => { setViewSpam(false); setTagFilter(on ? null : t.id); }}
+                  className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${on ? "border-transparent text-white" : "border-border text-muted-foreground"}`}
+                  style={on ? { background: t.color } : {}}
+                >
+                  {t.name}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => { setViewSpam(true); setTagFilter(null); }}
+              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border inline-flex items-center gap-1 ${viewSpam ? "bg-destructive text-destructive-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
+            >
+              <Ban className="h-3 w-3" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">No conversations.</p>
-          ) : filtered.map((u) => (
+            <p className="p-6 text-center text-sm text-muted-foreground">{viewSpam ? "No spam conversations." : "No conversations."}</p>
+          ) : filtered.map((u) => {
+            const startPress = () => {
+              if (pressTimer.current) clearTimeout(pressTimer.current);
+              pressTimer.current = setTimeout(() => setConfirmSpam(u), 550);
+            };
+            const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
+            return (
+            <div key={u.conversationId} className="group relative">
             <button
-              key={u.conversationId}
               onClick={() => setActiveId(u.conversationId)}
-              className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors ${activeId === u.conversationId ? "bg-secondary" : ""}`}
+              onPointerDown={startPress}
+              onPointerUp={cancelPress}
+              onPointerLeave={cancelPress}
+              onContextMenu={(e) => { e.preventDefault(); setConfirmSpam(u); }}
+              className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${activeId === u.conversationId ? "bg-secondary" : ""}`}
             >
               <div className="relative shrink-0">
                 <Avatar name={u.username} url={u.avatar_url} size={44} />
-                {u.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+                {u.online && !u.isSpam && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 pr-9">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className={`truncate text-sm ${u.unread ? "font-bold" : "font-semibold"}`}>{u.username}</p>
                   {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
@@ -458,7 +472,18 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               </div>
               {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvSpam(u, !u.isSpam); }}
+              title={u.isSpam ? "Remove from spam" : "Move to spam"}
+              aria-label={u.isSpam ? "Remove from spam" : "Move to spam"}
+              className={`absolute right-4 top-3 h-7 w-7 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-opacity flex ${u.isSpam ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
+            >
+              {u.isSpam ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+            </button>
+            </div>
+            );
+          })}
         </div>
       </div>
 
