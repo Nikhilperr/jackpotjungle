@@ -3,11 +3,23 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X } from "lucide-react";
+import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X, Phone, Video } from "lucide-react";
 import { format } from "date-fns";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
+import { CallMessage } from "@/components/messenger/CallMessage";
+import { useCalls } from "@/components/messenger/CallProvider";
 import { uploadAndSign } from "@/lib/chat-media";
+
+type CallRow = {
+  id: string;
+  caller_id: string;
+  callee_id: string;
+  call_type: "voice" | "video";
+  status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled";
+  duration_seconds: number;
+  created_at: string;
+};
 
 export const Route = createFileRoute("/_authenticated/chat/page")({
   component: PageChatView,
