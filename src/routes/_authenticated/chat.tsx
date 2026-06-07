@@ -124,15 +124,33 @@ function ChatLayout() {
       .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, () => {
         supabase.auth.getUser().then(({ data }) => { if (data.user) loadPage(data.user.id); });
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "spam_list" }, () => {
+        supabase.auth.getUser().then(({ data }) => { if (data.user) loadSpam(data.user.id); });
+      })
       .subscribe();
 
     return () => { mounted = false; supabase.removeChannel(channel); };
   }, []);
 
+  async function toggleSpam(e: React.MouseEvent, friendId: string, isSpam: boolean) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!meId) return;
+    if (isSpam) {
+      const { error } = await supabase.from("spam_list").delete().eq("user_id", meId).eq("spammed_user_id", friendId);
+      if (error) toast.error("Could not unspam"); else { toast.success("Removed from spam"); setSpamIds((s) => { const n = new Set(s); n.delete(friendId); return n; }); }
+    } else {
+      const { error } = await supabase.from("spam_list").insert({ user_id: meId, spammed_user_id: friendId });
+      if (error) toast.error("Could not mark as spam"); else { toast.success("Moved to spam"); setSpamIds((s) => new Set(s).add(friendId)); }
+    }
+  }
+
   const q = search.trim().toLowerCase();
-  const filtered = conversations.filter((c) =>
+  const visible = conversations.filter((c) => (tab === "spam" ? spamIds.has(c.friendId) : !spamIds.has(c.friendId)));
+  const filtered = visible.filter((c) =>
     !q || c.username.toLowerCase().includes(q) || c.allText.includes(q)
   );
+  const spamCount = conversations.filter((c) => spamIds.has(c.friendId)).length;
 
   return (
     <AppShell>
