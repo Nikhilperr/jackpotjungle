@@ -37,6 +37,7 @@ type Message = {
   seen: boolean;
   delivered: boolean;
   created_at: string;
+  failed?: boolean;
 };
 type Profile = { id: string; username: string; avatar_url: string | null; online: boolean; last_seen: string };
 
