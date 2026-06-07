@@ -1,4 +1,4 @@
-import { Phone, PhoneMissed, Video, PhoneOff } from "lucide-react";
+import { Phone, PhoneMissed, Video } from "lucide-react";
 
 type Props = {
   mine: boolean;
