@@ -521,14 +521,17 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
     supabase.from("quick_replies").select("id, title, content").then(({ data }) => setQuickReplies(data ?? []));
   }, []);
 
+  const [dismissedFor, setDismissedFor] = useState<string | null>(null);
   const trimmed = text.trim().toLowerCase();
-  const suggestions = trimmed && !text.includes("\n")
+  const suggestions = trimmed && !text.includes("\n") && text !== dismissedFor
     ? quickReplies.filter((q) => q.title.toLowerCase().includes(trimmed)).slice(0, 5)
     : [];
 
   function applyReply(q: { content: string }) {
     setText(q.content);
     setSuggestIdx(0);
+    setDismissedFor(q.content);
+    setTimeout(() => inputRef.current?.focus(), 0);
   }
 
   async function load() {
