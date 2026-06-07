@@ -71,18 +71,23 @@ function ChatView() {
       if (!u.user || !mounted) return;
       setMeId(u.user.id);
 
-      const [{ data: prof }, { data: msgs }, { data: spamRow }] = await Promise.all([
+      const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
         supabase.from("profiles").select("id, username, avatar_url, online, last_seen").eq("id", friendId).maybeSingle(),
         supabase.from("messages").select("*")
           .or(`and(sender_id.eq.${u.user.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${u.user.id})`)
           .order("created_at", { ascending: true }).limit(500),
         supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", u.user.id).maybeSingle(),
+        supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+          .or(`and(caller_id.eq.${u.user.id},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${u.user.id})`)
+          .eq("context", "friend")
+          .order("created_at", { ascending: true }).limit(200),
       ]);
       if (!mounted) return;
       const profile = prof as Profile | null;
       if (profile && spamRow) profile.online = false;
       setFriend(profile);
       setMessages((msgs as Message[]) ?? []);
+      setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
 
       await supabase.from("messages").update({ seen: true, delivered: true } as any)
         .eq("sender_id", friendId).eq("receiver_id", u.user.id).eq("seen", false);
