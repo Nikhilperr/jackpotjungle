@@ -444,24 +444,36 @@ function ChatView() {
                   )}
                 </div>
                 {mine && (isLastMine || m.failed) && (
-                  <div className="flex items-center justify-end gap-1 pr-2 pt-0.5 min-h-[14px]">
+                  <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] leading-none text-muted-foreground">
                     {m.failed ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-destructive">
+                      <span className="inline-flex items-center gap-1 text-destructive">
                         <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />
                         Not delivered
                       </span>
                     ) : m.id.startsWith("temp-") ? (
-                      <span className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-pulse" aria-label="Sending" />
+                      <span className="inline-flex items-center gap-1">
+                        <span className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-pulse shrink-0" />
+                        Sending…
+                      </span>
                     ) : m.seen ? (
-                      friend?.avatar_url ? (
-                        <img src={friend.avatar_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border" aria-label="Seen" />
-                      ) : (
-                        <span className="h-2.5 w-2.5 rounded-full bg-primary" aria-label="Seen" />
-                      )
+                      <span className="inline-flex items-center gap-1">
+                        {friend?.avatar_url ? (
+                          <img src={friend.avatar_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border" />
+                        ) : (
+                          <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />
+                        )}
+                        Seen
+                      </span>
                     ) : m.delivered ? (
-                      <span className="h-2 w-2 rounded-full bg-muted-foreground" aria-label="Delivered" />
+                      <span className="inline-flex items-center gap-1">
+                        <span className="h-2 w-2 rounded-full bg-muted-foreground shrink-0" />
+                        Delivered
+                      </span>
                     ) : (
-                      <span className="h-2 w-2 rounded-full bg-muted-foreground/40" aria-label="Sent" />
+                      <span className="inline-flex items-center gap-1">
+                        <span className="h-2 w-2 rounded-full bg-muted-foreground/40 shrink-0" />
+                        Sent
+                      </span>
                     )}
                   </div>
                 )}
