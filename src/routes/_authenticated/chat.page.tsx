@@ -233,7 +233,7 @@ function PageChatView() {
         </button>
         <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
         <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
-        <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Jackpot Jungle"
+        <Input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Jackpot Jungle"
           className="rounded-full bg-secondary border-transparent" />
         <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0">
           <Send className="h-4 w-4" />
