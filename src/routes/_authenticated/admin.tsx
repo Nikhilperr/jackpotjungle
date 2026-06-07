@@ -24,6 +24,10 @@ import {
   X,
   Ban,
   RotateCcw,
+  Phone,
+  Video,
+
+
 
   User as UserIcon,
   LogOut,
