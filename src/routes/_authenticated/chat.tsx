@@ -215,38 +215,53 @@ function ChatLayout() {
 
             {filtered.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
-                {conversations.length === 0
+                {tab === "spam"
+                  ? "No spam conversations."
+                  : conversations.length === 0
                   ? "Add a friend with their friend code to chat 1-on-1."
                   : "No matches."}
               </div>
             ) : (
-              filtered.map((c) => (
-                <Link
-                  key={c.friendId}
-                  to="/chat/$friendId"
-                  params={{ friendId: c.friendId }}
-                  className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors ${activeId === c.friendId ? "bg-secondary" : ""}`}
-                >
-                  <div className="relative shrink-0">
-                    <Avatar name={c.username} url={c.avatar_url} />
-                    {c.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+              filtered.map((c) => {
+                const isSpam = spamIds.has(c.friendId);
+                return (
+                  <div key={c.friendId} className="group relative">
+                    <Link
+                      to="/chat/$friendId"
+                      params={{ friendId: c.friendId }}
+                      className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors ${activeId === c.friendId ? "bg-secondary" : ""}`}
+                    >
+                      <div className="relative shrink-0">
+                        <Avatar name={c.username} url={c.avatar_url} />
+                        {c.online && !isSpam && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+                      </div>
+                      <div className="flex-1 min-w-0 pr-10">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className={`truncate ${c.unread > 0 ? "font-bold" : "font-semibold"}`}>{c.username}</p>
+                          {c.lastAt && (
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {formatDistanceToNow(new Date(c.lastAt), { addSuffix: false })}
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-sm truncate ${c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                          {c.lastMessage ?? "Say hi 👋"}
+                        </p>
+                      </div>
+                      {c.unread > 0 && <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />}
+                    </Link>
+                    <button
+                      onClick={(e) => toggleSpam(e, c.friendId, isSpam)}
+                      title={isSpam ? "Remove from spam" : "Move to spam"}
+                      aria-label={isSpam ? "Remove from spam" : "Move to spam"}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex md:opacity-0 md:group-hover:opacity-100"
+                      style={isSpam ? { opacity: 1 } : undefined}
+                    >
+                      {isSpam ? <RotateCcw className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+                    </button>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p className={`truncate ${c.unread > 0 ? "font-bold" : "font-semibold"}`}>{c.username}</p>
-                      {c.lastAt && (
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {formatDistanceToNow(new Date(c.lastAt), { addSuffix: false })}
-                        </span>
-                      )}
-                    </div>
-                    <p className={`text-sm truncate ${c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                      {c.lastMessage ?? "Say hi 👋"}
-                    </p>
-                  </div>
-                  {c.unread > 0 && <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />}
-                </Link>
-              ))
+                );
+              })
             )}
           </div>
         </div>
