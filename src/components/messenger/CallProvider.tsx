@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { CallScreen } from "./CallScreen";
 import { IncomingCallModal } from "./IncomingCallModal";
 import type { CallKind } from "./useWebRTC";
+import { stopRingtone } from "./ringtone";
 
 type CallRow = {
   id: string;
