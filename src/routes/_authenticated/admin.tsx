@@ -676,7 +676,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conv.conversationId]);
 
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages]);
+  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages, calls]);
 
   function addOptimistic(partial: Partial<PageMsg>): string {
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
