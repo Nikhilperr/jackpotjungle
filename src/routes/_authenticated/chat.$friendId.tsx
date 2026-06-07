@@ -265,8 +265,7 @@ function ChatView() {
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, audio_url: url } : x)));
     } catch (err) {
       console.error(err);
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      alert("Voice upload failed.");
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
     }
     setRecUploading(false);
   }
