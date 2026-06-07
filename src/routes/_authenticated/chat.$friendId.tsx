@@ -298,7 +298,13 @@ function ChatView() {
             autoFocus
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setActiveMatch(0); }}
-            placeholder="Search in conversation"
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || matchIds.length === 0) return;
+              e.preventDefault();
+              if (e.shiftKey) setActiveMatch((i) => (i - 1 + matchIds.length) % matchIds.length);
+              else setActiveMatch((i) => (i + 1) % matchIds.length);
+            }}
+            placeholder="Search in conversation (Enter = next)"
             className="rounded-full bg-secondary border-transparent h-9"
           />
           <span className="text-xs text-muted-foreground shrink-0 tabular-nums min-w-[3.5rem] text-center">
