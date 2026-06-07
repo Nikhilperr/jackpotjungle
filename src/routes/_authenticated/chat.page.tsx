@@ -225,10 +225,28 @@ function PageChatView() {
         <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center shrink-0">
           <Sparkles className="h-5 w-5 text-primary-foreground" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-semibold truncate">Jackpot Jungle</p>
           <p className="text-xs text-muted-foreground truncate">Official page · We usually reply within a few hours</p>
         </div>
+        <button
+          type="button"
+          disabled={!adminId}
+          onClick={() => adminId && startCall({ calleeId: adminId, kind: "voice", peer: { name: "Jackpot Jungle", avatar: null }, context: "page", pageConversationId: convId })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
+          aria-label="Voice call"
+        >
+          <Phone className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          disabled={!adminId}
+          onClick={() => adminId && startCall({ calleeId: adminId, kind: "video", peer: { name: "Jackpot Jungle", avatar: null }, context: "page", pageConversationId: convId })}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
+          aria-label="Video call"
+        >
+          <Video className="h-5 w-5" />
+        </button>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
