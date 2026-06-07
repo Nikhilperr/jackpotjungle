@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Check, CheckCheck, Clock, AlertCircle } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -37,6 +37,7 @@ type Message = {
   seen: boolean;
   delivered: boolean;
   created_at: string;
+  failed?: boolean;
 };
 type Profile = { id: string; username: string; avatar_url: string | null; online: boolean; last_seen: string };
 
@@ -213,8 +214,7 @@ function ChatView() {
       .select()
       .single();
     if (error) {
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      setDraft(content);
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       console.error(error);
       return;
     }
@@ -244,8 +244,7 @@ function ChatView() {
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, image_url: url } : x)));
     } catch (err) {
       console.error(err);
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      alert("Upload failed.");
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
     }
     setUploading(false);
   }
@@ -266,8 +265,7 @@ function ChatView() {
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, audio_url: url } : x)));
     } catch (err) {
       console.error(err);
-      setMessages((prev) => prev.filter((x) => x.id !== tempId));
-      alert("Voice upload failed.");
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
     }
     setRecUploading(false);
   }
@@ -445,11 +443,21 @@ function ChatView() {
                     </div>
                   )}
                 </div>
-                {isLastMine && (
-                  <div className="flex justify-end pr-1 pt-0.5">
-                    <span className="text-[11px] text-muted-foreground">
-                      {m.seen ? "Seen" : m.delivered ? "Delivered" : "Sent"}
-                    </span>
+                {mine && (isLastMine || m.failed) && (
+                  <div className="flex items-center justify-end gap-1 pr-1 pt-0.5">
+                    {m.failed ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-destructive">
+                        <AlertCircle className="h-3 w-3" /> Not delivered
+                      </span>
+                    ) : m.id.startsWith("temp-") ? (
+                      <Clock className="h-3 w-3 text-muted-foreground" aria-label="Sending" />
+                    ) : m.seen ? (
+                      <CheckCheck className="h-3.5 w-3.5 text-primary" aria-label="Seen" />
+                    ) : m.delivered ? (
+                      <CheckCheck className="h-3.5 w-3.5 text-muted-foreground" aria-label="Delivered" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5 text-muted-foreground" aria-label="Sent" />
+                    )}
                   </div>
                 )}
               </div>
