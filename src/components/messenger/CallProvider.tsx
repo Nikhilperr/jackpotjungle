@@ -49,6 +49,7 @@ export const useCalls = () => {
 
 export function CallProvider({ children }: { children: ReactNode }) {
   const [meId, setMeId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [active, setActive] = useState<ActiveCall | null>(null);
   const [incoming, setIncoming] = useState<Incoming | null>(null);
   const meIdRef = useRef<string | null>(null);
