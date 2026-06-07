@@ -71,6 +71,18 @@ function PageChatView() {
         .eq("conversation_id", conv.id).order("created_at", { ascending: true });
       if (mounted) setMessages((msgs as Msg[]) ?? []);
 
+      // Find an admin to be the call counterpart
+      const { data: adminRow } = await supabase.from("user_roles")
+        .select("user_id").in("role", ["super_admin", "admin"]).limit(1).maybeSingle();
+      if (mounted && adminRow) setAdminId(adminRow.user_id);
+
+      // Load call history for this page conversation
+      const { data: callRows } = await supabase.from("calls")
+        .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+        .eq("context", "page").eq("page_conversation_id", conv.id)
+        .order("created_at", { ascending: true }).limit(200);
+      if (mounted) setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
+
       await supabase.from("page_messages").update({ seen: true }).eq("conversation_id", conv.id).eq("from_page", true).eq("seen", false);
     })();
     return () => { mounted = false; };
