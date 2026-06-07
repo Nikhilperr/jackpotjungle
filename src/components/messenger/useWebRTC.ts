@@ -79,15 +79,24 @@ export function useWebRTC({ callId, role, kind, meId, onRemoteHangup }: Args) {
       }
     }
 
+    let offerSent = false;
     async function makeOffer() {
+      if (offerSent) return;
+      offerSent = true;
       try {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         channel.send({ type: "broadcast", event: "offer", payload: { from: meId, sdp: offer } });
-      } catch (e: any) { setError(e.message ?? "Offer failed"); }
+      } catch (e: any) { offerSent = false; setError(e.message ?? "Offer failed"); }
     }
 
     channel
+      .on("broadcast", { event: "hello" }, (msg) => {
+        // caller announces presence -> callee replies with ready
+        if (role !== "callee") return;
+        if ((msg.payload as any)?.from === meId) return;
+        channel.send({ type: "broadcast", event: "ready", payload: { from: meId } });
+      })
       .on("broadcast", { event: "ready" }, async (msg) => {
         // callee announces ready -> caller sends offer
         if (role !== "caller") return;
