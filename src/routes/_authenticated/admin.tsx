@@ -39,6 +39,7 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
+import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";

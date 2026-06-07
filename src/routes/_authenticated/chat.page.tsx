@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X } from "lucide-react";
 import { format } from "date-fns";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
+import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { uploadAndSign } from "@/lib/chat-media";
 
 export const Route = createFileRoute("/_authenticated/chat/page")({

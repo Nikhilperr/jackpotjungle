@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
+import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { uploadAndSign } from "@/lib/chat-media";
 import { format, formatDistanceToNow } from "date-fns";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
