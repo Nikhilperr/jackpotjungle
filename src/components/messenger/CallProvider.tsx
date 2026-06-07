@@ -54,9 +54,35 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const meIdRef = useRef<string | null>(null);
   const activeRef = useRef<ActiveCall | null>(null);
   const incomingRef = useRef<Incoming | null>(null);
+  const missedTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { incomingRef.current = incoming; }, [incoming]);
+
+  const showIncomingCall = useCallback(async (row: CallRow) => {
+    if (row.status !== "ringing") return;
+    if (activeRef.current || incomingRef.current) {
+      await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", row.id);
+      return;
+    }
+    const { data: prof } = await supabase
+      .from("profiles").select("username, avatar_url").eq("id", row.caller_id).maybeSingle();
+    if (activeRef.current || incomingRef.current) return;
+    setIncoming({
+      call: row,
+      peer: { name: prof?.username ?? "Caller", avatar: prof?.avatar_url ?? null },
+    });
+    if (!missedTimersRef.current[row.id]) {
+      missedTimersRef.current[row.id] = setTimeout(async () => {
+        const { data: latest } = await supabase.from("calls").select("status").eq("id", row.id).maybeSingle();
+        if (latest?.status === "ringing") {
+          await supabase.from("calls").update({ status: "missed", ended_at: new Date().toISOString() }).eq("id", row.id);
+          setIncoming((cur) => (cur?.call.id === row.id ? null : cur));
+        }
+        delete missedTimersRef.current[row.id];
+      }, 35000);
+    }
+  }, []);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -83,21 +109,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", row.id);
           return;
         }
-        // Look up caller profile
-        const { data: prof } = await supabase
-          .from("profiles").select("username, avatar_url").eq("id", row.caller_id).maybeSingle();
-        setIncoming({
-          call: row,
-          peer: { name: prof?.username ?? "Caller", avatar: prof?.avatar_url ?? null },
-        });
-        // Auto-miss after 35s if not answered
-        setTimeout(async () => {
-          const { data: latest } = await supabase.from("calls").select("status").eq("id", row.id).maybeSingle();
-          if (latest?.status === "ringing") {
-            await supabase.from("calls").update({ status: "missed", ended_at: new Date().toISOString() }).eq("id", row.id);
-            setIncoming((cur) => (cur?.call.id === row.id ? null : cur));
-          }
-        }, 35000);
+        showIncomingCall(row);
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "calls", filter: `callee_id=eq.${meId}` }, (payload) => {
         const row = payload.new as CallRow;
@@ -109,7 +121,27 @@ export function CallProvider({ children }: { children: ReactNode }) {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [meId]);
+    }, [meId, showIncomingCall]);
+
+  useEffect(() => {
+    if (!meId) return;
+    let alive = true;
+    const poll = async () => {
+      if (!alive || activeRef.current || incomingRef.current) return;
+      const { data } = await supabase
+        .from("calls")
+        .select("id, caller_id, callee_id, call_type, status, context, page_conversation_id")
+        .eq("callee_id", meId)
+        .eq("status", "ringing")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (alive && data) showIncomingCall(data as CallRow);
+    };
+    poll();
+    const id = setInterval(poll, 2500);
+    return () => { alive = false; clearInterval(id); };
+  }, [meId, showIncomingCall]);
 
   const startCall = useCallback<Ctx["startCall"]>(async ({ calleeId, kind, peer, context = "friend", pageConversationId = null }) => {
     if (!meIdRef.current) return;
