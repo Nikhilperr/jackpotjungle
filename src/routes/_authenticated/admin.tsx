@@ -280,7 +280,10 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [allTags, setAllTags] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [userTagMap, setUserTagMap] = useState<Record<string, string[]>>({});
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [viewSpam, setViewSpam] = useState(false);
+  const [confirmSpam, setConfirmSpam] = useState<ConvRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function load() {
     const { data: convList } = await supabase
@@ -350,11 +353,24 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   }, [meId]);
 
   const filtered = convs.filter((u) => {
+    if (viewSpam ? !u.isSpam : u.isSpam) return false;
     if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
     if (tagFilter && !(userTagMap[u.userId] ?? []).includes(tagFilter)) return false;
     return true;
   });
+  const spamCount = convs.filter((u) => u.isSpam).length;
   const active = convs.find((u) => u.conversationId === activeId) ?? null;
+
+  async function setConvSpam(conv: ConvRow, next: boolean) {
+    const { error } = await supabase
+      .from("page_conversations")
+      .update({ is_spam: next } as any)
+      .eq("id", conv.conversationId);
+    if (error) { toast.error(error.message); return; }
+    toast.success(next ? "Moved to spam" : "Removed from spam");
+    setConvs((prev) => prev.map((c) => c.conversationId === conv.conversationId ? { ...c, isSpam: next } : c));
+    if (next && active?.conversationId === conv.conversationId) setActiveId(null);
+  }
 
   return (
     <div className="flex h-full min-h-0">
