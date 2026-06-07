@@ -812,6 +812,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
         <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
         <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
         <Input
+          ref={inputRef}
+          autoFocus
           placeholder="Reply as Jackpot Jungle…"
           value={text}
           onChange={(e) => { setText(e.target.value); setSuggestIdx(0); }}
