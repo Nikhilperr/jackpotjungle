@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, Loader2, X, Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   disabled?: boolean;
