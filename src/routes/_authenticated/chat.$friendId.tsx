@@ -56,14 +56,17 @@ function ChatView() {
       if (!u.user || !mounted) return;
       setMeId(u.user.id);
 
-      const [{ data: prof }, { data: msgs }] = await Promise.all([
+      const [{ data: prof }, { data: msgs }, { data: spamRow }] = await Promise.all([
         supabase.from("profiles").select("id, username, avatar_url, online, last_seen").eq("id", friendId).maybeSingle(),
         supabase.from("messages").select("*")
           .or(`and(sender_id.eq.${u.user.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${u.user.id})`)
           .order("created_at", { ascending: true }).limit(500),
+        supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", u.user.id).maybeSingle(),
       ]);
       if (!mounted) return;
-      setFriend(prof as Profile | null);
+      const profile = prof as Profile | null;
+      if (profile && spamRow) profile.online = false;
+      setFriend(profile);
       setMessages((msgs as Message[]) ?? []);
 
       await supabase.from("messages").update({ seen: true, delivered: true } as any)
