@@ -46,9 +46,16 @@ function ChatLayout() {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user || !mounted) return;
       setMeId(u.user.id);
-      await load(u.user.id);
-      await loadPage(u.user.id);
+      await Promise.all([load(u.user.id), loadPage(u.user.id), loadSpam(u.user.id)]);
     })();
+
+    async function loadSpam(myId: string) {
+      const { data } = await supabase
+        .from("spam_list")
+        .select("spammed_user_id")
+        .eq("user_id", myId);
+      if (mounted) setSpamIds(new Set((data ?? []).map((r: any) => r.spammed_user_id)));
+    }
 
     async function loadPage(myId: string) {
       const { data: conv } = await supabase
