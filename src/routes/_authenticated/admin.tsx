@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Avatar } from "@/components/messenger/Avatar";
 import { useCalls } from "@/components/messenger/CallProvider";
+import { CallMessage } from "@/components/messenger/CallMessage";
 import {
   Search,
   Send,
