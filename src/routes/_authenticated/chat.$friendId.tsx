@@ -78,7 +78,23 @@ function ChatView() {
         const m = payload.new as Message;
         if ((m.sender_id === meId && m.receiver_id === friendId) ||
             (m.sender_id === friendId && m.receiver_id === meId)) {
-          setMessages((prev) => prev.some((x) => x.id === m.id) ? prev : [...prev, m]);
+          setMessages((prev) => {
+            if (prev.some((x) => x.id === m.id)) return prev;
+            // Reconcile optimistic temp message (same sender, same content/url, temp id)
+            const idx = prev.findIndex((x) =>
+              x.id.startsWith("temp-") &&
+              x.sender_id === m.sender_id &&
+              (x.content ?? null) === (m.content ?? null) &&
+              (x.image_url ?? null) === (m.image_url ?? null) &&
+              (x.audio_url ?? null) === (m.audio_url ?? null)
+            );
+            if (idx >= 0) {
+              const copy = prev.slice();
+              copy[idx] = m;
+              return copy;
+            }
+            return [...prev, m];
+          });
           if (m.receiver_id === meId) {
             supabase.from("messages").update({ seen: true, delivered: true } as any).eq("id", m.id).then();
           }
@@ -122,16 +138,45 @@ function ChatView() {
     }
   }
 
+  function addOptimistic(partial: Partial<Message>): string {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimistic: Message = {
+      id: tempId,
+      sender_id: meId!,
+      receiver_id: friendId,
+      content: null,
+      image_url: null,
+      audio_url: null,
+      seen: false,
+      delivered: false,
+      created_at: new Date().toISOString(),
+      ...partial,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    return tempId;
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
-    if (!draft.trim() || !meId || sending) return;
-    setSending(true);
+    if (!draft.trim() || !meId) return;
     const content = draft.trim();
     setDraft("");
     setShowEmoji(false);
-    const { error } = await supabase.from("messages").insert({ sender_id: meId, receiver_id: friendId, content });
-    if (error) { setDraft(content); console.error(error); }
-    setSending(false);
+    const tempId = addOptimistic({ content });
+    const { data, error } = await supabase
+      .from("messages")
+      .insert({ sender_id: meId, receiver_id: friendId, content })
+      .select()
+      .single();
+    if (error) {
+      setMessages((prev) => prev.filter((x) => x.id !== tempId));
+      setDraft(content);
+      console.error(error);
+      return;
+    }
+    if (data) {
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as Message) : x)));
+    }
   }
 
   async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -141,21 +186,45 @@ function ChatView() {
     if (!file.type.startsWith("image/")) return;
     if (file.size > 8 * 1024 * 1024) { alert("Max 8 MB"); return; }
     setUploading(true);
+    const localPreview = URL.createObjectURL(file);
+    const tempId = addOptimistic({ image_url: localPreview });
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() || "png";
       const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
-      await supabase.from("messages").insert({ sender_id: meId, receiver_id: friendId, content: null, image_url: url } as any);
-    } catch (err) { console.error(err); alert("Upload failed."); }
+      const { data } = await supabase
+        .from("messages")
+        .insert({ sender_id: meId, receiver_id: friendId, content: null, image_url: url } as any)
+        .select()
+        .single();
+      if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as Message) : x)));
+      else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, image_url: url } : x)));
+    } catch (err) {
+      console.error(err);
+      setMessages((prev) => prev.filter((x) => x.id !== tempId));
+      alert("Upload failed.");
+    }
     setUploading(false);
   }
 
   async function onVoice(blob: Blob, mime: string, ext: string) {
     if (!meId) return;
     setRecUploading(true);
+    const localPreview = URL.createObjectURL(blob);
+    const tempId = addOptimistic({ audio_url: localPreview });
     try {
       const url = await uploadAndSign("chat-audio", meId, blob, ext, mime);
-      await supabase.from("messages").insert({ sender_id: meId, receiver_id: friendId, content: null, audio_url: url } as any);
-    } catch (err) { console.error(err); alert("Voice upload failed."); }
+      const { data } = await supabase
+        .from("messages")
+        .insert({ sender_id: meId, receiver_id: friendId, content: null, audio_url: url } as any)
+        .select()
+        .single();
+      if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as Message) : x)));
+      else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, audio_url: url } : x)));
+    } catch (err) {
+      console.error(err);
+      setMessages((prev) => prev.filter((x) => x.id !== tempId));
+      alert("Voice upload failed.");
+    }
     setRecUploading(false);
   }
 

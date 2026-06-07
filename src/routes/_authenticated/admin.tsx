@@ -508,7 +508,32 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
     load();
     const ch = supabase
       .channel(`admin-page-conv-${conv.conversationId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "page_messages", filter: `conversation_id=eq.${conv.conversationId}` }, () => load())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "page_messages", filter: `conversation_id=eq.${conv.conversationId}` }, (payload) => {
+        const m = payload.new as PageMsg;
+        setMessages((prev) => {
+          if (prev.some((x) => x.id === m.id)) return prev;
+          const idx = prev.findIndex((x) =>
+            typeof x.id === "string" && x.id.startsWith("temp-") &&
+            x.from_page === m.from_page &&
+            (x.content ?? null) === (m.content ?? null) &&
+            (x.image_url ?? null) === (m.image_url ?? null) &&
+            (x.audio_url ?? null) === (m.audio_url ?? null)
+          );
+          if (idx >= 0) { const copy = prev.slice(); copy[idx] = m; return copy; }
+          return [...prev, m];
+        });
+        if (!m.from_page) {
+          supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
+        }
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${conv.conversationId}` }, (payload) => {
+        const m = payload.new as PageMsg;
+        setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${conv.conversationId}` }, (payload) => {
+        const m = payload.old as PageMsg;
+        setMessages((prev) => prev.filter((x) => x.id !== m.id));
+      })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -516,15 +541,41 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages]);
 
+  function addOptimistic(partial: Partial<PageMsg>): string {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimistic: PageMsg = {
+      id: tempId,
+      sender_id: meId,
+      from_page: true,
+      content: null,
+      image_url: null,
+      audio_url: null,
+      seen: false,
+      created_at: new Date().toISOString(),
+      ...partial,
+    } as PageMsg;
+    setMessages((prev) => [...prev, optimistic]);
+    return tempId;
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     if (!text.trim()) return;
     const content = text.trim();
     setText("");
-    const { error } = await supabase.from("page_messages").insert({
-      conversation_id: conv.conversationId, sender_id: meId, from_page: true, content,
-    });
-    if (error) toast.error(error.message);
+    const tempId = addOptimistic({ content });
+    const { data, error } = await supabase
+      .from("page_messages")
+      .insert({ conversation_id: conv.conversationId, sender_id: meId, from_page: true, content })
+      .select()
+      .single();
+    if (error) {
+      setMessages((prev) => prev.filter((x) => x.id !== tempId));
+      setText(content);
+      toast.error(error.message);
+      return;
+    }
+    if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as PageMsg) : x)));
   }
 
   async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -534,28 +585,44 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
     if (!file.type.startsWith("image/")) return;
     if (file.size > 8 * 1024 * 1024) { toast.error("Max 8 MB"); return; }
     setUploading(true);
+    const localPreview = URL.createObjectURL(file);
+    const tempId = addOptimistic({ image_url: localPreview });
     try {
       const { uploadAndSign } = await import("@/lib/chat-media");
       const ext = file.name.split(".").pop()?.toLowerCase() || "png";
       const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
-      const { error } = await supabase.from("page_messages").insert({
-        conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: null, image_url: url,
-      } as any);
-      if (error) toast.error(error.message);
-    } catch (err: any) { toast.error(err?.message ?? "Upload failed"); }
+      const { data, error } = await supabase
+        .from("page_messages")
+        .insert({ conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: null, image_url: url } as any)
+        .select()
+        .single();
+      if (error) throw error;
+      if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as PageMsg) : x)));
+    } catch (err: any) {
+      setMessages((prev) => prev.filter((x) => x.id !== tempId));
+      toast.error(err?.message ?? "Upload failed");
+    }
     setUploading(false);
   }
 
   async function onVoice(blob: Blob, mime: string, ext: string) {
     setRecUploading(true);
+    const localPreview = URL.createObjectURL(blob);
+    const tempId = addOptimistic({ audio_url: localPreview });
     try {
       const { uploadAndSign } = await import("@/lib/chat-media");
       const url = await uploadAndSign("chat-audio", meId, blob, ext, mime);
-      const { error } = await supabase.from("page_messages").insert({
-        conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: null, audio_url: url,
-      } as any);
-      if (error) toast.error(error.message);
-    } catch (err: any) { toast.error(err?.message ?? "Voice upload failed"); }
+      const { data, error } = await supabase
+        .from("page_messages")
+        .insert({ conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: null, audio_url: url } as any)
+        .select()
+        .single();
+      if (error) throw error;
+      if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as PageMsg) : x)));
+    } catch (err: any) {
+      setMessages((prev) => prev.filter((x) => x.id !== tempId));
+      toast.error(err?.message ?? "Voice upload failed");
+    }
     setRecUploading(false);
   }
 
