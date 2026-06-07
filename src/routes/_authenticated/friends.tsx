@@ -99,18 +99,45 @@ function FriendsPage() {
 
   async function sendRequest(receiverId: string) {
     if (!meId) return;
+    // Check for existing friendship
+    const [a, b] = meId < receiverId ? [meId, receiverId] : [receiverId, meId];
+    const { data: existingFriend } = await supabase
+      .from("friendships")
+      .select("user_a")
+      .eq("user_a", a).eq("user_b", b).maybeSingle();
+    if (existingFriend) { toast.info("You're already friends with this user."); return; }
+    // Check existing pending request either direction
+    const { data: existingReq } = await supabase
+      .from("friend_requests")
+      .select("id, sender_id, status")
+      .eq("status", "pending")
+      .or(`and(sender_id.eq.${meId},receiver_id.eq.${receiverId}),and(sender_id.eq.${receiverId},receiver_id.eq.${meId})`)
+      .maybeSingle();
+    if (existingReq) {
+      if (existingReq.sender_id === meId) toast.info("You've already sent a friend request to this user.");
+      else toast.info("This user has already sent you a friend request — check below to accept.");
+      return;
+    }
     const { error } = await supabase.from("friend_requests").insert({
       sender_id: meId,
       receiver_id: receiverId,
     });
+    if (error) {
+      if (error.code === "23505") toast.info("A friend request already exists between you two.");
+      else toast.error(error.message);
+    } else { toast.success("Friend request sent!"); setSearchResult(null); setCode(""); }
+  }
+
+  async function unsendRequest(id: string) {
+    const { error } = await supabase.from("friend_requests").delete().eq("id", id);
     if (error) toast.error(error.message);
-    else { toast.success("Friend request sent!"); setSearchResult(null); setCode(""); }
+    else toast.success("Friend request unsent.");
   }
 
   async function respond(id: string, status: "accepted" | "rejected") {
     const { error } = await supabase.from("friend_requests").update({ status }).eq("id", id);
     if (error) toast.error(error.message);
-    else toast.success(status === "accepted" ? "You're now friends!" : "Request declined.");
+    else toast.success(status === "accepted" ? "You're now friends! Say hi 👋" : "Request declined.");
   }
 
   const incoming = requests.filter((r) => r.direction === "in");
@@ -188,6 +215,9 @@ function FriendsPage() {
                       <p className="font-semibold">{r.profile?.username}</p>
                       <p className="text-xs text-muted-foreground">Pending</p>
                     </div>
+                    <Button size="sm" variant="ghost" onClick={() => unsendRequest(r.id)} className="rounded-full">
+                      <X className="h-4 w-4 mr-1" /> Unsend
+                    </Button>
                   </div>
                 ))}
               </div>
