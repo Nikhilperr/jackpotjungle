@@ -232,6 +232,36 @@ function ChatView() {
     setRecUploading(false);
   }
 
+  const matchIds = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [] as string[];
+    return messages.filter((m) => m.content && m.content.toLowerCase().includes(q)).map((m) => m.id);
+  })();
+
+  useEffect(() => {
+    if (!searchOpen || matchIds.length === 0) return;
+    const idx = Math.min(activeMatch, matchIds.length - 1);
+    const id = matchIds[idx];
+    const el = msgRefs.current[id];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeMatch, searchQuery, searchOpen, matchIds.length]);
+
+  function highlight(text: string, q: string) {
+    if (!q) return text;
+    const lower = text.toLowerCase();
+    const ql = q.toLowerCase();
+    const parts: React.ReactNode[] = [];
+    let i = 0;
+    while (i < text.length) {
+      const found = lower.indexOf(ql, i);
+      if (found === -1) { parts.push(text.slice(i)); break; }
+      if (found > i) parts.push(text.slice(i, found));
+      parts.push(<mark key={found} className="bg-yellow-300 text-black rounded px-0.5">{text.slice(found, found + q.length)}</mark>);
+      i = found + q.length;
+    }
+    return parts;
+  }
+
   if (!friend) return <div className="h-full flex items-center justify-center text-muted-foreground">Loading…</div>;
 
   return (
