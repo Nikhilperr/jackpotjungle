@@ -23,6 +23,7 @@ export function useWebRTC({ callId, role, kind, meId, onRemoteHangup }: Args) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connected, setConnected] = useState(false);
+  const [remoteMuted, setRemoteMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -123,6 +124,11 @@ export function useWebRTC({ callId, role, kind, meId, onRemoteHangup }: Args) {
         if (!haveRemoteDescRef.current) { pendingIceRef.current.push(p.candidate); return; }
         try { await pc.addIceCandidate(p.candidate); } catch (e) { console.warn("ICE add failed", e); }
       })
+      .on("broadcast", { event: "media-state" }, (msg) => {
+        const p = msg.payload as { from: string; muted?: boolean };
+        if (p.from === meId) return;
+        if (typeof p.muted === "boolean") setRemoteMuted(p.muted);
+      })
       .on("broadcast", { event: "hangup" }, (msg) => {
         if ((msg.payload as any)?.from === meId) return;
         onRemoteHangup?.();
@@ -167,6 +173,10 @@ export function useWebRTC({ callId, role, kind, meId, onRemoteHangup }: Args) {
     localStream?.getAudioTracks().forEach((t) => (t.enabled = on));
   }, [localStream]);
 
+  const sendMediaState = useCallback((state: { muted?: boolean }) => {
+    channelRef.current?.send({ type: "broadcast", event: "media-state", payload: { from: meId, ...state } });
+  }, [meId]);
+
   const toggleVideo = useCallback((on: boolean) => {
     localStream?.getVideoTracks().forEach((t) => (t.enabled = on));
   }, [localStream]);
@@ -193,5 +203,5 @@ export function useWebRTC({ callId, role, kind, meId, onRemoteHangup }: Args) {
     }
   }, [localStream]);
 
-  return { localStream, remoteStream, connected, error, sendHangup, toggleAudio, toggleVideo, switchCamera, stopAll };
+  return { localStream, remoteStream, connected, remoteMuted, error, sendHangup, toggleAudio, toggleVideo, switchCamera, sendMediaState, stopAll };
 }
