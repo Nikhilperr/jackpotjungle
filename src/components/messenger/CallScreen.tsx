@@ -1,0 +1,214 @@
+import { useEffect, useRef, useState } from "react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Volume2, VolumeX, SwitchCamera } from "lucide-react";
+import { useWebRTC, type CallKind, type CallRole } from "./useWebRTC";
+import { supabase } from "@/integrations/supabase/client";
+import { Avatar } from "./Avatar";
+import { playRingtone, stopRingtone } from "./ringtone";
+
+type Props = {
+  callId: string;
+  role: CallRole;
+  kind: CallKind;
+  meId: string;
+  peerName: string;
+  peerAvatar: string | null;
+  /** True when call is already accepted on both sides (active). For caller this becomes true on first answer received. */
+  initialActive: boolean;
+  onClose: () => void;
+};
+
+function fmt(s: number) {
+  const m = Math.floor(s / 60).toString().padStart(2, "0");
+  const ss = (s % 60).toString().padStart(2, "0");
+  return `${m}:${ss}`;
+}
+
+export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, initialActive, onClose }: Props) {
+  const [muted, setMuted] = useState(false);
+  const [cameraOff, setCameraOff] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(true);
+  const [seconds, setSeconds] = useState(0);
+  const [active, setActive] = useState(initialActive);
+  const startRef = useRef<number | null>(initialActive ? Date.now() : null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+
+  const { localStream, remoteStream, connected, sendHangup, toggleAudio, toggleVideo, switchCamera } = useWebRTC({
+    callId, role, kind, meId,
+    onRemoteHangup: () => endCall("remote"),
+  });
+
+  // Subscribe to status changes (for caller: when callee answers -> status=active)
+  useEffect(() => {
+    const ch = supabase
+      .channel(`call-status:${callId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "calls", filter: `id=eq.${callId}` }, (payload) => {
+        const row = payload.new as { status: string };
+        if (row.status === "active" && !active) {
+          setActive(true);
+          startRef.current = Date.now();
+          stopRingtone();
+        }
+        if (row.status === "ended" || row.status === "declined" || row.status === "canceled") {
+          endCall("remote");
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callId]);
+
+  // Outgoing dial tone while ringing (caller only)
+  useEffect(() => {
+    if (role === "caller" && !active) playRingtone("outgoing");
+    else stopRingtone();
+    return () => stopRingtone();
+  }, [role, active]);
+
+  // Duration timer
+  useEffect(() => {
+    if (!active) return;
+    if (!startRef.current) startRef.current = Date.now();
+    const id = setInterval(() => setSeconds(Math.floor((Date.now() - (startRef.current ?? Date.now())) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+
+  // Attach streams
+  useEffect(() => {
+    if (localVideoRef.current && localStream) localVideoRef.current.srcObject = localStream;
+  }, [localStream]);
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) remoteVideoRef.current.srcObject = remoteStream;
+    if (remoteAudioRef.current && remoteStream) remoteAudioRef.current.srcObject = remoteStream;
+  }, [remoteStream]);
+
+  async function endCall(reason: "local" | "remote") {
+    stopRingtone();
+    if (reason === "local") sendHangup();
+    const duration = startRef.current ? Math.floor((Date.now() - startRef.current) / 1000) : 0;
+    try {
+      // Only update if we initiated end, or to be safe always set ended_at
+      await supabase.from("calls").update({
+        status: active ? "ended" : (role === "caller" ? "canceled" : "declined"),
+        ended_at: new Date().toISOString(),
+        duration_seconds: duration,
+      }).eq("id", callId);
+    } catch (e) { console.warn(e); }
+    onClose();
+  }
+
+  function onToggleMute() {
+    const next = !muted;
+    setMuted(next);
+    toggleAudio(!next);
+  }
+  function onToggleVideo() {
+    const next = !cameraOff;
+    setCameraOff(next);
+    toggleVideo(!next);
+  }
+  function onToggleSpeaker() {
+    const next = !speakerOn;
+    setSpeakerOn(next);
+    if (remoteAudioRef.current) remoteAudioRef.current.muted = !next;
+    if (remoteVideoRef.current) remoteVideoRef.current.muted = !next;
+  }
+
+  const isVideo = kind === "video";
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white flex flex-col animate-in fade-in duration-200">
+      {/* Remote video / avatar */}
+      <div className="absolute inset-0">
+        {isVideo && active ? (
+          <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-5">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-primary/30 animate-ping" style={{ animationDuration: "2s" }} />
+              <div className="relative">
+                <Avatar name={peerName} url={peerAvatar} size={140} />
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-semibold">{peerName}</p>
+              <p className="text-sm text-white/70 mt-1">
+                {active ? fmt(seconds) : role === "caller" ? "Calling…" : "Incoming call"}
+                {!active && connected ? " · connecting" : ""}
+              </p>
+            </div>
+          </div>
+        )}
+        {/* always play remote audio */}
+        <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+      </div>
+
+      {/* Local video PIP */}
+      {isVideo && (
+        <div className="absolute top-4 right-4 w-28 h-40 sm:w-36 sm:h-52 rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-black z-10">
+          <video ref={localVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${cameraOff ? "opacity-0" : ""}`} />
+          {cameraOff && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
+              <VideoOff className="h-6 w-6 text-white/70" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Top bar */}
+      <div className="relative z-10 p-4 flex items-center justify-between">
+        <div className="text-sm text-white/80 bg-black/30 backdrop-blur px-3 py-1.5 rounded-full">
+          {active ? fmt(seconds) : role === "caller" ? "Ringing…" : "Connecting…"}
+        </div>
+      </div>
+
+      {/* Bottom controls */}
+      <div className="relative z-10 mt-auto pb-10 px-6 flex items-center justify-center gap-4">
+        <ControlButton label={muted ? "Unmute" : "Mute"} onClick={onToggleMute} active={muted}>
+          {muted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+        </ControlButton>
+
+        {isVideo && (
+          <ControlButton label={cameraOff ? "Camera on" : "Camera off"} onClick={onToggleVideo} active={cameraOff}>
+            {cameraOff ? <VideoOff className="h-6 w-6" /> : <Video className="h-6 w-6" />}
+          </ControlButton>
+        )}
+
+        <ControlButton label={speakerOn ? "Speaker on" : "Speaker off"} onClick={onToggleSpeaker} active={!speakerOn}>
+          {speakerOn ? <Volume2 className="h-6 w-6" /> : <VolumeX className="h-6 w-6" />}
+        </ControlButton>
+
+        {isVideo && (
+          <ControlButton label="Flip camera" onClick={switchCamera}>
+            <SwitchCamera className="h-6 w-6" />
+          </ControlButton>
+        )}
+
+        <button
+          onClick={() => endCall("local")}
+          aria-label="End call"
+          className="h-16 w-16 rounded-full bg-red-600 hover:bg-red-500 active:scale-95 transition flex items-center justify-center shadow-2xl shadow-red-900/50"
+        >
+          <PhoneOff className="h-7 w-7 text-white" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ControlButton({
+  children, onClick, label, active,
+}: { children: React.ReactNode; onClick: () => void; label: string; active?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      className={`h-14 w-14 rounded-full flex items-center justify-center transition active:scale-95 backdrop-blur ${
+        active ? "bg-white text-slate-900" : "bg-white/15 hover:bg-white/25 text-white"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
