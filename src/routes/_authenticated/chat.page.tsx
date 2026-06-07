@@ -250,38 +250,63 @@ function PageChatView() {
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
-        {messages.length === 0 && (
+        {messages.length === 0 && calls.length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-12">
             Welcome to Jackpot Jungle 👋 Send us a message — an admin will reply soon.
           </div>
         )}
-        {messages.map((m, i) => {
-          const mine = !m.from_page;
-          const prev = messages[i - 1];
-          const showTime = !prev || new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() > 5 * 60 * 1000;
-          return (
-            <div key={m.id}>
-              {showTime && (
-                <div className="text-center text-xs text-muted-foreground py-2">
-                  {format(new Date(m.created_at), "MMM d, h:mm a")}
+        {(() => {
+          type T = { kind: "msg"; at: string; msg: Msg } | { kind: "call"; at: string; call: CallRow };
+          const items: T[] = [
+            ...messages.map((m) => ({ kind: "msg" as const, at: m.created_at, msg: m })),
+            ...calls.map((c) => ({ kind: "call" as const, at: c.created_at, call: c })),
+          ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+          return items.map((it, i) => {
+            const prev = items[i - 1];
+            const showTime = !prev || new Date(it.at).getTime() - new Date(prev.at).getTime() > 5 * 60 * 1000;
+            if (it.kind === "call") {
+              const c = it.call;
+              const mine = c.caller_id === meId;
+              return (
+                <div key={`call-${c.id}`}>
+                  {showTime && (
+                    <div className="text-center text-xs text-muted-foreground py-2">
+                      {format(new Date(c.created_at), "MMM d, h:mm a")}
+                    </div>
+                  )}
+                  <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                    <CallMessage mine={mine} kind={c.call_type} status={c.status as any} durationSeconds={c.duration_seconds} />
+                  </div>
                 </div>
-              )}
-              <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                {m.image_url ? (
-                  <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-3xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
-                    <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
-                  </button>
-                ) : m.audio_url ? (
-                  <VoiceMessage src={m.audio_url} mine={mine} />
-                ) : (
-                  <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                    <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
+              );
+            }
+            const m = it.msg;
+            const mine = !m.from_page;
+            return (
+              <div key={m.id}>
+                {showTime && (
+                  <div className="text-center text-xs text-muted-foreground py-2">
+                    {format(new Date(m.created_at), "MMM d, h:mm a")}
                   </div>
                 )}
+                <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                  {m.image_url ? (
+                    <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-3xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
+                      <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
+                    </button>
+                  ) : m.audio_url ? (
+                    <VoiceMessage src={m.audio_url} mine={mine} />
+                  ) : (
+                    <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
+                      <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
       </div>
 
       <form onSubmit={send} className="relative p-3 border-t border-border flex items-center gap-2 bg-card">
