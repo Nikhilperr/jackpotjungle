@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
+import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { uploadAndSign } from "@/lib/chat-media";
 import { format, formatDistanceToNow } from "date-fns";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
@@ -355,9 +356,7 @@ function ChatView() {
                     <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
                   </button>
                 ) : m.audio_url ? (
-                  <div className={`max-w-[80%] px-3 py-2 rounded-3xl ${mine ? "bg-bubble-me" : "bg-bubble-them"}`}>
-                    <audio controls src={m.audio_url} className="h-10 max-w-[260px]" />
-                  </div>
+                  <VoiceMessage src={m.audio_url} mine={mine} />
                 ) : (
                   <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
                     <p className="text-[15px] whitespace-pre-wrap break-words">

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X } from "lucide-react";
 import { format } from "date-fns";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
+import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { uploadAndSign } from "@/lib/chat-media";
 
 export const Route = createFileRoute("/_authenticated/chat/page")({
@@ -212,9 +213,7 @@ function PageChatView() {
                     <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
                   </button>
                 ) : m.audio_url ? (
-                  <div className={`max-w-[80%] px-3 py-2 rounded-3xl ${mine ? "bg-bubble-me" : "bg-bubble-them"}`}>
-                    <audio controls src={m.audio_url} className="h-10 max-w-[260px]" />
-                  </div>
+                  <VoiceMessage src={m.audio_url} mine={mine} />
                 ) : (
                   <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
                     <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
