@@ -322,7 +322,7 @@ function PageChatView() {
                     ) : m.seen ? (
                       <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />Seen</span>
                     ) : (
-                      <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Sent</span>
+                      <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Delivered</span>
                     )}
                   </div>
                 )}
