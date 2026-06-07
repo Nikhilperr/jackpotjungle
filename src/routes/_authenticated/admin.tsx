@@ -542,6 +542,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean };
 
 function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void; onToggleSpam: () => void }) {
+  const { startCall } = useCalls();
   const [messages, setMessages] = useState<PageMsg[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
