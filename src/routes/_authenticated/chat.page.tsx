@@ -291,6 +291,8 @@ function PageChatView() {
             }
             const m = it.msg;
             const mine = !m.from_page;
+            const nextIt = items[i + 1];
+            const isLastMine = mine && (!nextIt || nextIt.kind !== "msg" || nextIt.msg.from_page);
             return (
               <div key={m.id}>
                 {showTime && (
@@ -311,6 +313,19 @@ function PageChatView() {
                     </div>
                   )}
                 </div>
+                {mine && (isLastMine || m.failed) && (
+                  <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
+                    {m.failed ? (
+                      <span className="inline-flex items-center gap-1 text-destructive"><span className="h-2 w-2 rounded-full bg-destructive shrink-0" />Not delivered</span>
+                    ) : m.id.startsWith("temp-") ? (
+                      <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
+                    ) : m.seen ? (
+                      <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />Seen</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Sent</span>
+                    )}
+                  </div>
+                )}
               </div>
             );
           });
