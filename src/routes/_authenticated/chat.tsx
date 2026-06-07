@@ -51,11 +51,13 @@ function ChatLayout() {
     })();
 
     async function loadSpam(myId: string) {
-      const { data } = await supabase
-        .from("spam_list")
-        .select("spammed_user_id")
-        .eq("user_id", myId);
-      if (mounted) setSpamIds(new Set((data ?? []).map((r: any) => r.spammed_user_id)));
+      const [{ data: outgoing }, { data: incoming }] = await Promise.all([
+        supabase.from("spam_list").select("spammed_user_id").eq("user_id", myId),
+        supabase.from("spam_list").select("user_id").eq("spammed_user_id", myId),
+      ]);
+      if (!mounted) return;
+      setSpamIds(new Set((outgoing ?? []).map((r: any) => r.spammed_user_id)));
+      setSpammedByIds(new Set((incoming ?? []).map((r: any) => r.user_id)));
     }
 
     async function loadPage(myId: string) {
