@@ -444,7 +444,7 @@ function ChatView() {
                   )}
                 </div>
                 {mine && (isLastMine || m.failed) && (
-                  <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] leading-none text-muted-foreground">
+                  <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
                     {m.failed ? (
                       <span className="inline-flex items-center gap-1 text-destructive">
                         <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />
@@ -452,7 +452,7 @@ function ChatView() {
                       </span>
                     ) : m.id.startsWith("temp-") ? (
                       <span className="inline-flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-pulse shrink-0" />
+                        <span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />
                         Sending…
                       </span>
                     ) : m.seen ? (
@@ -466,12 +466,12 @@ function ChatView() {
                       </span>
                     ) : m.delivered ? (
                       <span className="inline-flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-muted-foreground shrink-0" />
+                        <span className="h-2 w-2 rounded-full bg-message-status shrink-0" />
                         Delivered
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-muted-foreground/40 shrink-0" />
+                        <span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />
                         Sent
                       </span>
                     )}
