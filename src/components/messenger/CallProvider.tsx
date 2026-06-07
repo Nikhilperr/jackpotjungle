@@ -8,7 +8,7 @@ import { stopRingtone } from "./ringtone";
 type CallRow = {
   id: string;
   caller_id: string;
-  callee_id: string;
+  callee_id: string | null;
   call_type: CallKind;
   status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled";
   context: string;
@@ -32,10 +32,10 @@ type Incoming = {
 
 type Ctx = {
   startCall: (args: {
-    calleeId: string;
+    calleeId: string | null;
     kind: CallKind;
     peer: PeerInfo;
-    context?: "friend" | "page";
+    context?: "friend" | "page" | "page_broadcast";
     pageConversationId?: string | null;
   }) => Promise<void>;
 };
@@ -49,6 +49,7 @@ export const useCalls = () => {
 
 export function CallProvider({ children }: { children: ReactNode }) {
   const [meId, setMeId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [active, setActive] = useState<ActiveCall | null>(null);
   const [incoming, setIncoming] = useState<Incoming | null>(null);
   const meIdRef = useRef<string | null>(null);
@@ -85,13 +86,27 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setMeId(data.user?.id ?? null);
-      meIdRef.current = data.user?.id ?? null;
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id ?? null;
+      setMeId(uid);
+      meIdRef.current = uid;
+      if (uid) {
+        const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", uid);
+        setIsAdmin(!!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin"));
+      } else {
+        setIsAdmin(false);
+      }
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-      setMeId(s?.user?.id ?? null);
-      meIdRef.current = s?.user?.id ?? null;
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
+      const uid = s?.user?.id ?? null;
+      setMeId(uid);
+      meIdRef.current = uid;
+      if (uid) {
+        const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", uid);
+        setIsAdmin(!!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin"));
+      } else {
+        setIsAdmin(false);
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -148,6 +163,59 @@ export function CallProvider({ children }: { children: ReactNode }) {
     return () => { alive = false; clearInterval(id); };
   }, [meId, showIncomingCall]);
 
+  // Admin-only: listen for page-broadcast calls (callee_id IS NULL until claimed)
+  useEffect(() => {
+    if (!meId || !isAdmin) return;
+    const ch = supabase
+      .channel(`page-broadcast-inbox-${meId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "calls", filter: `context=eq.page_broadcast` }, (payload) => {
+        const row = payload.new as CallRow;
+        if (row.status !== "ringing" || row.callee_id !== null) return;
+        if (row.caller_id === meIdRef.current) return;
+        if (activeRef.current || incomingRef.current) return;
+        showIncomingCall(row);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "calls", filter: `context=eq.page_broadcast` }, (payload) => {
+        const row = payload.new as CallRow;
+        // Another admin claimed it or caller canceled -> dismiss our modal
+        if (incomingRef.current?.call.id === row.id && (row.callee_id !== null || row.status !== "ringing")) {
+          if (row.callee_id !== meIdRef.current) {
+            stopRingtone();
+            if (missedTimersRef.current[row.id]) {
+              clearTimeout(missedTimersRef.current[row.id]);
+              delete missedTimersRef.current[row.id];
+            }
+            setIncoming(null);
+          }
+        }
+      })
+      .subscribe();
+    // Poll as fallback
+    let alive = true;
+    const poll = async () => {
+      if (!alive || activeRef.current || incomingRef.current) return;
+      const { data } = await supabase
+        .from("calls")
+        .select("id, caller_id, callee_id, call_type, status, context, page_conversation_id")
+        .eq("context", "page_broadcast")
+        .eq("status", "ringing")
+        .is("callee_id", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (alive && data && (data as any).caller_id !== meIdRef.current) {
+        showIncomingCall(data as CallRow);
+      }
+    };
+    poll();
+    const pid = setInterval(poll, 2500);
+    return () => {
+      alive = false;
+      clearInterval(pid);
+      supabase.removeChannel(ch);
+    };
+  }, [meId, isAdmin, showIncomingCall]);
+
   const startCall = useCallback<Ctx["startCall"]>(async ({ calleeId, kind, peer, context = "friend", pageConversationId = null }) => {
     if (!meIdRef.current) return;
     if (activeRef.current || incomingRef.current) return;
@@ -155,7 +223,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       .from("calls")
       .insert({
         caller_id: meIdRef.current,
-        callee_id: calleeId,
+        callee_id: context === "page_broadcast" ? null : calleeId,
         call_type: kind,
         status: "ringing",
         context,
@@ -181,7 +249,22 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!incoming) return;
     stopRingtone();
     if (missedTimersRef.current[incoming.call.id]) clearTimeout(missedTimersRef.current[incoming.call.id]);
-    await supabase.from("calls").update({ status: "active", answered_at: new Date().toISOString() }).eq("id", incoming.call.id);
+    // For page_broadcast: atomically claim by setting callee_id only if still null
+    if (incoming.call.context === "page_broadcast") {
+      const { data: claimed, error } = await supabase
+        .from("calls")
+        .update({ callee_id: meIdRef.current, status: "active", answered_at: new Date().toISOString() })
+        .eq("id", incoming.call.id)
+        .is("callee_id", null)
+        .select()
+        .maybeSingle();
+      if (error || !claimed) {
+        setIncoming(null);
+        return;
+      }
+    } else {
+      await supabase.from("calls").update({ status: "active", answered_at: new Date().toISOString() }).eq("id", incoming.call.id);
+    }
     setActive({
       callId: incoming.call.id,
       role: "callee",
@@ -196,6 +279,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!incoming) return;
     stopRingtone();
     if (missedTimersRef.current[incoming.call.id]) clearTimeout(missedTimersRef.current[incoming.call.id]);
+    // For page broadcast: just dismiss locally - don't actually decline so other admins can still pick up
+    if (incoming.call.context === "page_broadcast") {
+      setIncoming(null);
+      return;
+    }
     await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", incoming.call.id);
     setIncoming(null);
   }

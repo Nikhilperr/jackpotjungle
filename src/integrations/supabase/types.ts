@@ -110,7 +110,7 @@ export type Database = {
         Row: {
           answered_at: string | null
           call_type: Database["public"]["Enums"]["call_type"]
-          callee_id: string
+          callee_id: string | null
           caller_id: string
           context: string
           created_at: string
@@ -125,7 +125,7 @@ export type Database = {
         Insert: {
           answered_at?: string | null
           call_type?: Database["public"]["Enums"]["call_type"]
-          callee_id: string
+          callee_id?: string | null
           caller_id: string
           context?: string
           created_at?: string
@@ -140,7 +140,7 @@ export type Database = {
         Update: {
           answered_at?: string | null
           call_type?: Database["public"]["Enums"]["call_type"]
-          callee_id?: string
+          callee_id?: string | null
           caller_id?: string
           context?: string
           created_at?: string
