@@ -121,6 +121,11 @@ function PageChatView() {
         const m = payload.new as Msg;
         setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
       })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${convId}` }, (payload) => {
+        const oldId = (payload.old as { id?: string })?.id;
+        if (!oldId) return;
+        setMessages((prev) => prev.filter((x) => x.id !== oldId));
+      })
       .subscribe();
 
     const callsCh = supabase
