@@ -236,7 +236,7 @@ function ChatLayout() {
                     >
                       <div className="relative shrink-0">
                         <Avatar name={c.username} url={c.avatar_url} />
-                        {c.online && !isSpam && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+                        {c.online && !isSpam && !spammedByIds.has(c.friendId) && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
                       </div>
                       <div className="flex-1 min-w-0 pr-10">
                         <div className="flex items-baseline justify-between gap-2">
