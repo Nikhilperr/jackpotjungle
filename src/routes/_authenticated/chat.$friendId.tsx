@@ -78,7 +78,23 @@ function ChatView() {
         const m = payload.new as Message;
         if ((m.sender_id === meId && m.receiver_id === friendId) ||
             (m.sender_id === friendId && m.receiver_id === meId)) {
-          setMessages((prev) => prev.some((x) => x.id === m.id) ? prev : [...prev, m]);
+          setMessages((prev) => {
+            if (prev.some((x) => x.id === m.id)) return prev;
+            // Reconcile optimistic temp message (same sender, same content/url, temp id)
+            const idx = prev.findIndex((x) =>
+              x.id.startsWith("temp-") &&
+              x.sender_id === m.sender_id &&
+              (x.content ?? null) === (m.content ?? null) &&
+              (x.image_url ?? null) === (m.image_url ?? null) &&
+              (x.audio_url ?? null) === (m.audio_url ?? null)
+            );
+            if (idx >= 0) {
+              const copy = prev.slice();
+              copy[idx] = m;
+              return copy;
+            }
+            return [...prev, m];
+          });
           if (m.receiver_id === meId) {
             supabase.from("messages").update({ seen: true, delivered: true } as any).eq("id", m.id).then();
           }
