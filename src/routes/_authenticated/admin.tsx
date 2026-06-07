@@ -743,8 +743,10 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
             onPointerLeave: cancelPress,
             onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setUnsendId(m.id); },
           };
+          const isMatch = matchIds.includes(m.id);
+          const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
           return (
-            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} animate-fade-in`}>
+            <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className={`flex ${mine ? "justify-end" : "justify-start"} animate-fade-in`}>
               {m.image_url ? (
                 <button {...handlers} onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary select-none">
                   <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
@@ -754,8 +756,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
                   <audio controls src={m.audio_url} className="h-10 max-w-[260px]" />
                 </div>
               ) : (
-                <div {...handlers} className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                  {m.content}
+                <div {...handlers} className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
+                  {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
                 </div>
               )}
             </div>
