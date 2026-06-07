@@ -689,7 +689,44 @@ function Conversation({ meId, conv, onBack, onOpenDetail }: { meId: string; conv
           </div>
         </button>
         <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>
+        <button
+          type="button"
+          onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
+          aria-label="Search in conversation"
+        >
+          <Search className="h-5 w-5" />
+        </button>
       </div>
+      {searchOpen && (
+        <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2">
+          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+          <Input
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setActiveMatch(0); }}
+            placeholder="Search in conversation"
+            className="rounded-full bg-secondary border-transparent h-9"
+          />
+          <span className="text-xs text-muted-foreground shrink-0 tabular-nums min-w-[3.5rem] text-center">
+            {searchQuery.trim() ? `${matchIds.length === 0 ? 0 : activeMatch + 1}/${matchIds.length}` : "0/0"}
+          </span>
+          <button type="button" disabled={matchIds.length === 0}
+            onClick={() => setActiveMatch((i) => (i - 1 + matchIds.length) % matchIds.length)}
+            className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary disabled:opacity-40" aria-label="Previous match">
+            <ChevronUp className="h-4 w-4" />
+          </button>
+          <button type="button" disabled={matchIds.length === 0}
+            onClick={() => setActiveMatch((i) => (i + 1) % matchIds.length)}
+            className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary disabled:opacity-40" aria-label="Next match">
+            <ChevronDown className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
+            className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary" aria-label="Close search">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
         {messages.length === 0 ? (
           <p className="text-center text-xs text-muted-foreground py-8">No messages yet.</p>
