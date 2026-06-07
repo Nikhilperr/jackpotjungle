@@ -51,6 +51,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState<ActiveCall | null>(null);
   const [incoming, setIncoming] = useState<Incoming | null>(null);
   const meIdRef = useRef<string | null>(null);
+  const activeRef = useRef<ActiveCall | null>(null);
+  const incomingRef = useRef<Incoming | null>(null);
+
+  useEffect(() => { activeRef.current = active; }, [active]);
+  useEffect(() => { incomingRef.current = incoming; }, [incoming]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -72,7 +77,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "calls", filter: `callee_id=eq.${meId}` }, async (payload) => {
         const row = payload.new as CallRow;
         if (row.status !== "ringing") return;
-        if (active || incoming) {
+        if (activeRef.current || incomingRef.current) {
           // already on a call -> auto-decline busy
           await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", row.id);
           return;
@@ -103,11 +108,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meId, active?.callId, incoming?.call.id]);
+    }, [meId]);
 
   const startCall = useCallback<Ctx["startCall"]>(async ({ calleeId, kind, peer, context = "friend", pageConversationId = null }) => {
     if (!meIdRef.current) return;
-    if (active || incoming) return;
+    if (activeRef.current || incomingRef.current) return;
     const { data, error } = await supabase
       .from("calls")
       .insert({
@@ -132,10 +137,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
       peer,
       initialActive: false,
     });
-  }, [active, incoming]);
+  }, []);
 
   async function acceptIncoming() {
     if (!incoming) return;
+    stopRingtone();
     await supabase.from("calls").update({ status: "active", answered_at: new Date().toISOString() }).eq("id", incoming.call.id);
     setActive({
       callId: incoming.call.id,
@@ -149,6 +155,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   async function declineIncoming() {
     if (!incoming) return;
+    stopRingtone();
     await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", incoming.call.id);
     setIncoming(null);
   }
