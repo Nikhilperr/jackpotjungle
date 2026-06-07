@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Check, CheckCheck, Clock, AlertCircle } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
