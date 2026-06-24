@@ -41,8 +41,10 @@ function VerifyOtpPage() {
         toast.success("Code verified. Set a new password.");
         navigate({ to: "/reset-password" });
       } else {
-        toast.success("Email verified. Welcome!");
-        navigate({ to: "/chat" });
+        // Sign out so the user must explicitly log in with their credentials.
+        try { await supabase.auth.signOut(); } catch {}
+        toast.success("Account verified successfully");
+        navigate({ to: "/auth" });
       }
     } catch (err: any) {
       toast.error(err.message ?? "Invalid or expired code.");
