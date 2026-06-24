@@ -1,21 +1,13 @@
 -- ============================================================================
--- VPS CATCH-UP MIGRATION
--- Run on your self-hosted VPS Postgres AFTER all other migrations and AFTER
--- the supabase-auth + supabase-storage containers are up (so auth.users and
--- storage.buckets exist).
---
--- Fixes the 3 pieces missing from the per-feature migrations that break
--- messaging on a fresh install:
---   1. Storage buckets (avatars, chat-images, chat-audio) + policies
---   2. Auth trigger on auth.users -> handle_new_user()  (creates profile row;
---      without it RLS blocks every message insert)
---   3. Realtime publication + REPLICA IDENTITY FULL for live chat/calls
---
--- Run with:  psql "$DATABASE_URL" -f vps_catchup.sql
--- Idempotent: safe to re-run.
+-- 02_storage_auth_realtime.sql
+-- Run AFTER 01_public_schema.sql, AFTER supabase-auth and supabase-storage
+-- containers are up (so auth.users and storage.buckets exist).
+-- Idempotent — safe to re-run.
 -- ============================================================================
 
--- 1. STORAGE BUCKETS -----------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- 1. STORAGE BUCKETS (private — signed URLs only)
+-- ----------------------------------------------------------------------------
 INSERT INTO storage.buckets (id, name, public) VALUES
   ('avatars',     'avatars',     false),
   ('chat-images', 'chat-images', false),
@@ -55,13 +47,18 @@ USING (
   AND (auth.uid())::text = (storage.foldername(name))[1]
 );
 
--- 2. AUTH TRIGGER --------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- 2. AUTH TRIGGER — creates profile + role + page_conversation on signup.
+--    Without this, RLS blocks every message insert for new users.
+-- ----------------------------------------------------------------------------
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
 AFTER INSERT ON auth.users
 FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 3. REALTIME ------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- 3. REALTIME PUBLICATION
+-- ----------------------------------------------------------------------------
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
@@ -69,9 +66,13 @@ BEGIN
   END IF;
 END$$;
 
-ALTER TABLE public.messages        REPLICA IDENTITY FULL;
-ALTER TABLE public.friend_requests REPLICA IDENTITY FULL;
-ALTER TABLE public.calls           REPLICA IDENTITY FULL;
+ALTER TABLE public.messages           REPLICA IDENTITY FULL;
+ALTER TABLE public.page_messages      REPLICA IDENTITY FULL;
+ALTER TABLE public.page_conversations REPLICA IDENTITY FULL;
+ALTER TABLE public.friend_requests    REPLICA IDENTITY FULL;
+ALTER TABLE public.friendships        REPLICA IDENTITY FULL;
+ALTER TABLE public.calls              REPLICA IDENTITY FULL;
+ALTER TABLE public.spam_list          REPLICA IDENTITY FULL;
 
 DO $$
 DECLARE t text;
