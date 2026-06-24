@@ -146,7 +146,7 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
     if (username.length < 3) { toast.error("Username must be at least 3 characters."); return; }
     setBusy(true);
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -154,7 +154,11 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
         },
       });
       if (error) throw error;
-      toast.success("Code sent to your email.");
+      // If Supabase auto-created a session (e.g. auto-confirm enabled), sign out
+      // so the user must complete OTP verification before being treated as logged in.
+      if (data.session) {
+        try { await supabase.auth.signOut(); } catch {}
+      }
       navigate({ to: "/verify-otp", search: { email, mode: "signup" } });
     } catch (err: any) {
       toast.error(err.message ?? "Sign up failed.");
