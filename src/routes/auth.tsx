@@ -133,6 +133,7 @@ function LoginForm({ onSwitch }: { onSwitch: () => void }) {
 }
 
 function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -150,11 +151,11 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
         password,
         options: {
           data: { username },
-          emailRedirectTo: window.location.origin,
         },
       });
       if (error) throw error;
-      toast.success("Account created! Welcome.");
+      toast.success("Code sent to your email.");
+      navigate({ to: "/verify-otp", search: { email, mode: "signup" } });
     } catch (err: any) {
       toast.error(err.message ?? "Sign up failed.");
     } finally {
