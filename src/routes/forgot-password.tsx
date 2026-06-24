@@ -14,22 +14,20 @@ export const Route = createFileRoute("/forgot-password")({
 });
 
 function ForgotPage() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
       if (error) throw error;
-      setSent(true);
-      toast.success("Reset link sent. Check your email.");
+      toast.success("Code sent. Check your email.");
+      navigate({ to: "/verify-otp", search: { email, mode: "recovery" } });
     } catch (err: any) {
-      toast.error(err.message ?? "Could not send reset email.");
+      toast.error(err.message ?? "Could not send reset code.");
     } finally {
       setBusy(false);
     }
