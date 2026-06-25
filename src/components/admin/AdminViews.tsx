@@ -155,12 +155,22 @@ export function BroadcastsView() {
     if (!content.trim()) return;
     setBusy(true);
     try {
+      console.log("[BroadcastsView] submitting", { targetType, tagId, contentLen: content.trim().length });
       const r = await send({ data: { content: content.trim(), targetType, tagId: tagId || undefined } });
+      console.log("[BroadcastsView] result", r);
       toast.success(`Sent to ${r.sent} users`);
+      if (r.errors && r.errors.length) {
+        console.warn("[BroadcastsView] partial errors", r.errors);
+        toast.error(`Some failed: ${r.errors[0]}`);
+      }
       setContent("");
-      const { data } = await sb.from("broadcasts").select("*").order("created_at", { ascending: false }).limit(20);
+      const { data, error } = await sb.from("broadcasts").select("*").order("created_at", { ascending: false }).limit(20);
+      if (error) console.error("[BroadcastsView] history reload failed", error);
       setHistory(data ?? []);
-    } catch (e: any) { toast.error(e?.message ?? "Failed"); }
+    } catch (e: any) {
+      console.error("[BroadcastsView] send failed", e);
+      toast.error(e?.message ?? "Failed");
+    }
     setBusy(false);
   }
 
