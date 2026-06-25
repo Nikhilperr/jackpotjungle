@@ -159,10 +159,7 @@ export function BroadcastsView() {
       const r = await send({ data: { content: content.trim(), targetType, tagId: tagId || undefined } });
       console.log("[BroadcastsView] result", r);
       toast.success(`Sent to ${r.sent} users`);
-      if (r.errors && r.errors.length) {
-        console.warn("[BroadcastsView] partial errors", r.errors);
-        toast.error(`Some failed: ${r.errors[0]}`);
-      }
+
       setContent("");
       const { data, error } = await sb.from("broadcasts").select("*").order("created_at", { ascending: false }).limit(20);
       if (error) console.error("[BroadcastsView] history reload failed", error);

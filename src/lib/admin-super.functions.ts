@@ -64,67 +64,91 @@ export const sendBroadcast = createServerFn({ method: "POST" })
     return d;
   })
   .handler(async ({ data, context }) => {
-    console.log("[sendBroadcast] start", { userId: context.userId, targetType: data.targetType, tagId: data.tagId, contentLen: data.content?.length });
+    console.log("[sendBroadcast] === START ===");
+    console.log("[sendBroadcast] authenticated user id:", context.userId);
+    console.log("[sendBroadcast] input:", { targetType: data.targetType, tagId: data.tagId, contentLen: data.content?.length, userIdsCount: data.userIds?.length });
 
     // verify admin
+    console.log("[sendBroadcast] -> querying user_roles for caller");
     const { data: roleRows, error: rolesErr } = await context.supabase
       .from("user_roles").select("role").eq("user_id", context.userId);
-    if (rolesErr) { console.error("[sendBroadcast] role lookup failed", rolesErr); throw new Error("Role check failed: " + rolesErr.message); }
-    const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
-    if (!isAdmin) throw new Error("Admins only");
-
-    let supabaseAdmin: any;
-    try {
-      ({ supabaseAdmin } = await import("@/integrations/supabase/client.server"));
-    } catch (e: any) {
-      console.error("[sendBroadcast] admin client import failed", e);
-      throw new Error("Admin client unavailable: " + (e?.message ?? String(e)));
+    if (rolesErr) {
+      console.error("[sendBroadcast] user_roles select FAILED:", rolesErr);
+      throw new Error(rolesErr.message);
     }
+    console.log("[sendBroadcast] <- resolved roles:", roleRows);
+    const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
+    if (!isAdmin) {
+      console.error("[sendBroadcast] caller is not admin/super_admin");
+      throw new Error("Admins only");
+    }
+
+    console.log("[sendBroadcast] -> importing supabaseAdmin");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    console.log("[sendBroadcast] <- supabaseAdmin imported");
 
     let targetIds: string[] = [];
     if (data.targetType === "all") {
+      console.log("[sendBroadcast] -> selecting all profiles");
       const { data: profs, error } = await supabaseAdmin.from("profiles").select("id");
-      if (error) { console.error("[sendBroadcast] profiles select failed", error); throw new Error("profiles select: " + error.message); }
+      if (error) {
+        console.error("[sendBroadcast] profiles select FAILED:", error);
+        throw new Error(error.message);
+      }
       targetIds = (profs ?? []).map((p: any) => p.id);
+      console.log("[sendBroadcast] <- profiles fetched:", targetIds.length);
     } else if (data.targetType === "tag" && data.tagId) {
+      console.log("[sendBroadcast] -> selecting user_tags for tag", data.tagId);
       const { data: tagged, error } = await supabaseAdmin.from("user_tags").select("user_id").eq("tag_id", data.tagId);
-      if (error) { console.error("[sendBroadcast] user_tags select failed", error); throw new Error("user_tags select: " + error.message); }
+      if (error) {
+        console.error("[sendBroadcast] user_tags select FAILED:", error);
+        throw new Error(error.message);
+      }
       targetIds = (tagged ?? []).map((t: any) => t.user_id);
+      console.log("[sendBroadcast] <- user_tags fetched:", targetIds.length);
     } else if (data.targetType === "selected") {
       targetIds = data.userIds ?? [];
     }
     targetIds = targetIds.filter((id) => id !== context.userId);
-    console.log("[sendBroadcast] target count", targetIds.length);
+    console.log("[sendBroadcast] number of target users:", targetIds.length);
+    targetIds.forEach((id, i) => console.log(`[sendBroadcast]   target[${i}]:`, id));
 
-    // Ensure each user has a page_conversation and insert a from_page message
     let sent = 0;
-    const errors: string[] = [];
     for (const uid of targetIds) {
-      const { data: conv, error: convErr } = await supabaseAdmin
+      console.log(`[sendBroadcast] -> page_conversations upsert for user ${uid}`);
+      const upsertRes = await supabaseAdmin
         .from("page_conversations")
         .upsert({ user_id: uid }, { onConflict: "user_id" })
         .select("id")
         .single();
-      if (convErr || !conv) {
-        const msg = `conv upsert (${uid}): ${convErr?.message ?? "no row"}`;
-        console.error("[sendBroadcast]", msg);
-        errors.push(msg);
-        continue;
+      console.log(`[sendBroadcast] <- page_conversations upsert result for ${uid}:`, upsertRes);
+      if (upsertRes.error) {
+        console.error(`[sendBroadcast] page_conversations upsert FAILED for ${uid}:`, upsertRes.error);
+        throw new Error(upsertRes.error.message);
       }
-      const { error } = await supabaseAdmin.from("page_messages").insert({
+      const conv = upsertRes.data;
+      if (!conv) {
+        console.error(`[sendBroadcast] page_conversations upsert returned no row for ${uid}`);
+        throw new Error(`page_conversations upsert returned no row for ${uid}`);
+      }
+
+      console.log(`[sendBroadcast] -> page_messages insert for conversation ${conv.id}`);
+      const msgRes = await supabaseAdmin.from("page_messages").insert({
         conversation_id: conv.id,
         sender_id: context.userId,
         from_page: true,
         content: data.content,
       });
-      if (error) {
-        const msg = `page_messages insert (${uid}): ${error.message}`;
-        console.error("[sendBroadcast]", msg);
-        errors.push(msg);
-      } else sent++;
+      console.log(`[sendBroadcast] <- page_messages insert result for ${uid}:`, msgRes);
+      if (msgRes.error) {
+        console.error(`[sendBroadcast] page_messages insert FAILED for ${uid}:`, msgRes.error);
+        throw new Error(msgRes.error.message);
+      }
+      sent++;
     }
 
-    const { error: bErr } = await supabaseAdmin.from("broadcasts").insert({
+    console.log("[sendBroadcast] -> broadcasts insert");
+    const bRes = await supabaseAdmin.from("broadcasts").insert({
       admin_id: context.userId,
       content: data.content,
       target_type: data.targetType,
@@ -132,11 +156,12 @@ export const sendBroadcast = createServerFn({ method: "POST" })
       target_user_ids: data.targetType === "selected" ? targetIds : null,
       sent_count: sent,
     });
-    if (bErr) {
-      console.error("[sendBroadcast] broadcasts insert failed", bErr);
-      throw new Error("broadcasts insert: " + bErr.message);
+    console.log("[sendBroadcast] <- broadcasts insert result:", bRes);
+    if (bRes.error) {
+      console.error("[sendBroadcast] broadcasts insert FAILED:", bRes.error);
+      throw new Error(bRes.error.message);
     }
 
-    console.log("[sendBroadcast] done", { sent, errorCount: errors.length });
-    return { ok: true, sent, errors: errors.slice(0, 5) };
+    console.log("[sendBroadcast] === DONE ===", { sent });
+    return { ok: true, sent };
   });
