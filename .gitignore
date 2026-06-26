@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Firebase Private Keys
+firebase-service-account.json
+

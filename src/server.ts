@@ -3,6 +3,16 @@ import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
+import { initRealtimeListeners } from "./lib/realtime-listener.server";
+
+// Prevent duplicate realtime connections during hot-reloads in local dev mode.
+if (!(globalThis as any).__realtimeListenerInitialized) {
+  (globalThis as any).__realtimeListenerInitialized = true;
+  initRealtimeListeners().catch((err) => {
+    console.error("[Realtime Listener] Failed to initialize background listener:", err);
+  });
+}
+
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };

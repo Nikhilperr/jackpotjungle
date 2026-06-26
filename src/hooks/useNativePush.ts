@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "@tanstack/react-router";
 
 export function useNativePush() {
+  const navigate = useNavigate();
+
   useEffect(() => {
     console.log("[Push Debug] useNativePush mounted");
     let mounted = true;
@@ -84,6 +87,16 @@ export function useNativePush() {
             console.error("[Push Debug] Registration error:", error);
           });
 
+          // Register tapped action listener
+          await PushNotifications.addListener("pushNotificationActionPerformed", (action: any) => {
+            console.log("[Push Debug] Action performed:", action);
+            const url = action.notification?.data?.url;
+            if (url) {
+              console.log(`[Push Debug] Tapped notification. Redirecting to URL: ${url}`);
+              navigate({ to: url });
+            }
+          });
+
           await PushNotifications.register();
           console.log("[Push Debug] register() invoked");
         } else {
@@ -99,3 +112,4 @@ export function useNativePush() {
     };
   }, []);
 }
+
