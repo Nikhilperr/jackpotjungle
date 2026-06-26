@@ -23,6 +23,12 @@ export async function initRealtimeListeners() {
 
           if (!m.receiver_id || !m.sender_id) return;
 
+          // Prevent sending a notification to yourself
+          if (m.sender_id === m.receiver_id) {
+            console.log("[Realtime Listener] Sender and receiver are the same. Skipping notification.");
+            return;
+          }
+
           console.log(`[Realtime Listener] New message insert detected. ID: ${m.id}`);
 
           try {
@@ -109,6 +115,12 @@ export async function initRealtimeListeners() {
                 return;
               }
 
+              // Exclude sender (if the admin somehow is the conversation user)
+              if (userId === pm.sender_id) {
+                console.log("[Realtime Listener] Admin is conversation user. Skipping notification.");
+                return;
+              }
+
               // Check if user has notifications enabled
               const { data: receiverProfile } = await supabaseAdmin
                 .from("profiles")
@@ -140,15 +152,18 @@ export async function initRealtimeListeners() {
                 url: "/chat/page",
               });
             } else {
-              // User sending to Page -> Send to all Admins & Super Admins
+              // User sending to Page -> Send to all Admins & Super Admins (EXCLUDING the sender themselves)
               const { data: adminRows } = await supabaseAdmin
                 .from("user_roles" as any)
                 .select("user_id")
                 .in("role", ["admin", "super_admin"]);
 
-              const adminUserIds = (adminRows ?? []).map((r: any) => r.user_id);
+              const adminUserIds = (adminRows ?? [])
+                .map((r: any) => r.user_id)
+                .filter((id: string) => id !== pm.sender_id); // EXCLUDE SENDER
+
               if (adminUserIds.length === 0) {
-                console.log("[Realtime Listener] No admin users found. Skipping support message push.");
+                console.log("[Realtime Listener] No other admin users found. Skipping support message push.");
                 return;
               }
 
