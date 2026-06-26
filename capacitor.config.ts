@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: "dist",
   server: {
     // Points directly to the production VPS web server.
-    url: "https://chancerealm.casino?forceHideBadge=true",
+    url: "https://chancerealm.casino",
     cleartext: false,
   },
   android: {
