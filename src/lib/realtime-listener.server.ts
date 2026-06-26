@@ -199,6 +199,89 @@ export async function initRealtimeListeners() {
           }
         }
       )
+      // 3. Calls INSERT
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "calls" },
+        async (payload) => {
+          const c = payload.new as {
+            id: string;
+            caller_id: string;
+            callee_id: string | null;
+            call_type: "voice" | "video";
+            status: string;
+            context: string;
+          };
+
+          if (c.status !== "ringing") return;
+
+          console.log(`[Realtime Listener] New call insert detected. ID: ${c.id}, Type: ${c.call_type}`);
+
+          try {
+            // Fetch caller username
+            const { data: callerProfile } = await supabaseAdmin
+              .from("profiles")
+              .select("username")
+              .eq("id", c.caller_id)
+              .maybeSingle();
+
+            const callerName = callerProfile?.username || "Someone";
+            const callDesc = c.call_type === "video" ? "📹 incoming video call" : "📞 incoming voice call";
+
+            if (c.context === "page_broadcast" && !c.callee_id) {
+              // User calling support -> Notify all admins
+              const { data: adminRows } = await supabaseAdmin
+                .from("user_roles" as any)
+                .select("user_id")
+                .in("role", ["admin", "super_admin"]);
+
+              const adminUserIds = (adminRows ?? [])
+                .map((r: any) => r.user_id)
+                .filter((id: string) => id !== c.caller_id); // Exclude caller
+
+              if (adminUserIds.length === 0) return;
+
+              const { data: tokensRows } = await supabaseAdmin
+                .from("push_tokens" as any)
+                .select("token")
+                .in("user_id", adminUserIds);
+
+              const tokens = (tokensRows ?? []).map((r: any) => r.token);
+              if (tokens.length === 0) return;
+
+              await sendPushNotification(tokens, "Support Call Inquiry", `${callerName} is requesting a support call`, {
+                type: "call",
+                call_id: c.id,
+                url: "/admin",
+              });
+            } else if (c.callee_id) {
+              // Direct user-to-user or admin-to-user call -> Notify callee
+              if (c.callee_id === c.caller_id) return; // Prevent self-calling notification
+
+              const { data: tokensRows } = await supabaseAdmin
+                .from("push_tokens" as any)
+                .select("token")
+                .eq("user_id", c.callee_id);
+
+              const tokens = (tokensRows ?? []).map((r: any) => r.token);
+              if (tokens.length === 0) {
+                console.log(`[Realtime Listener] No push tokens found for callee ${c.callee_id}.`);
+                return;
+              }
+
+              const title = c.context === "page" ? "Jackpot Jungle Support" : callerName;
+
+              await sendPushNotification(tokens, title, callDesc, {
+                type: "call",
+                call_id: c.id,
+                url: c.context === "page" ? "/chat/page" : `/chat`,
+              });
+            }
+          } catch (err) {
+            console.error("[Realtime Listener] Error processing call push:", err);
+          }
+        }
+      )
       .subscribe((status) => {
         console.log(`[Realtime Listener] Subscription status: ${status}`);
         if (status === "SUBSCRIBED") {
