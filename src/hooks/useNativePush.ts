@@ -22,9 +22,15 @@ export function useNativePush() {
       const { PushNotifications } = await import("@capacitor/push-notifications");
 
       console.log("[Push Debug] Calling checkPermissions");
-      const perm = await PushNotifications.checkPermissions();
-      console.log("[Push Debug] Permission result =", perm);
-      let status = perm.receive;
+      let status;
+      try {
+        const perm = await PushNotifications.checkPermissions();
+        console.log("[Push Debug] Permission result =", perm);
+        status = perm.receive;
+      } catch (error) {
+        console.error("[Push Debug] checkPermissions error", error);
+        return;
+      }
       if (status === "prompt" || status === "prompt-with-rationale") {
         console.log("[Push Debug] Requesting permissions");
         status = (await PushNotifications.requestPermissions()).receive;
