@@ -1,4 +1,4 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState, useRouter } from "@tanstack/react-router";
 import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,7 +7,8 @@ import { useRole } from "@/hooks/useRole";
 import { usePresence } from "@/hooks/usePresence";
 import { useChatNotifications } from "@/hooks/useChatNotifications";
 import { useNativePush } from "@/hooks/useNativePush";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { initializeNativeBridge } from "@/lib/native";
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +25,7 @@ export const useAppDrawer = () => useContext(DrawerCtx);
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const qc = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { isAdmin } = useRole();
@@ -32,6 +34,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   usePresence();
   useChatNotifications();
   useNativePush();
+
+  useEffect(() => {
+    initializeNativeBridge(router);
+  }, [router]);
 
   async function signOut() {
     await supabase
@@ -113,7 +119,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        <main className="flex-1 min-w-0 min-h-0 flex flex-col">{children}</main>
+        <main className="flex-1 min-w-0 min-h-0 flex flex-col safe-pt safe-pb safe-pl safe-pr">{children}</main>
 
         <AlertDialog open={confirmOut} onOpenChange={setConfirmOut}>
           <AlertDialogContent>

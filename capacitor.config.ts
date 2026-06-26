@@ -5,17 +5,21 @@ const config: CapacitorConfig = {
   appName: "Jackpot Jungle",
   webDir: "dist",
   server: {
-    // Live-reload from the Lovable preview while developing on device.
-    // After exporting to your VPS, change this to your published URL or remove the `server` block.
-    url: "https://184112d1-7f2d-450d-a0f6-d432b45a9e94.lovableproject.com?forceHideBadge=true",
-    cleartext: true,
+    // Points directly to the production VPS web server.
+    url: "https://chancerealm.casino?forceHideBadge=true",
+    cleartext: false,
   },
   android: {
-    allowMixedContent: true,
+    allowMixedContent: false,
   },
   plugins: {
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"],
+    },
+    SplashScreen: {
+      launchShowDuration: 3000,
+      launchAutoHide: false,
+      backgroundColor: "#121212",
     },
   },
 };

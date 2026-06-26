@@ -28,6 +28,7 @@ export function useNativePush() {
       await PushNotifications.register();
 
       PushNotifications.addListener("registration", async (token) => {
+        console.log("[FCM Token] Generated:", token.value);
         const { data: u } = await supabase.auth.getUser();
         if (!u.user) return;
         await supabase
