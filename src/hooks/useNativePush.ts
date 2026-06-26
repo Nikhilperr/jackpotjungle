@@ -75,9 +75,11 @@ export function useNativePush() {
 
             try {
               const res = await registerPushTokenServer({
-                userId: u.user.id,
-                token: token.value,
-                platform: cap.getPlatform?.() ?? "android",
+                data: {
+                  userId: u.user.id,
+                  token: token.value,
+                  platform: cap.getPlatform?.() ?? "android",
+                }
               });
               console.log("[Push Debug] Server registration response:", res);
             } catch (err) {
