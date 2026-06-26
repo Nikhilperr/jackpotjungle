@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 export const registerPushTokenServer = createServerFn({ method: "POST" })
-  .validator((data: { userId: string; token: string; platform: string }) => data)
+  .inputValidator((data: { userId: string; token: string; platform: string }) => data)
   .handler(async ({ data }) => {
     try {
       console.log(`[FCM Register] Registering token for user ${data.userId}`);
