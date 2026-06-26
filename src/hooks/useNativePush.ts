@@ -21,24 +21,9 @@ export function useNativePush() {
 
       const { PushNotifications } = await import("@capacitor/push-notifications");
 
-      console.log("[Push Debug] Calling checkPermissions");
-      let status;
-      try {
-        const perm = await PushNotifications.checkPermissions();
-        console.log("[Push Debug] Permission result =", perm);
-        status = perm.receive;
-      } catch (error) {
-        console.error("[Push Debug] checkPermissions error", error);
-        return;
-      }
-      if (status === "prompt" || status === "prompt-with-rationale") {
-        console.log("[Push Debug] Requesting permissions");
-        status = (await PushNotifications.requestPermissions()).receive;
-      }
-      if (status !== "granted" || !mounted) return;
-
-      await PushNotifications.register();
-
+      // 1. Register all listeners first
+      console.log("[Push Debug] Registering listeners");
+      
       PushNotifications.addListener("registration", async (token) => {
         console.log("[FCM Token]", token.value);
         const { data: u } = await supabase.auth.getUser();
@@ -64,6 +49,26 @@ export function useNativePush() {
         const url = data?.url;
         if (url && typeof window !== "undefined") window.location.assign(url);
       });
+
+      // 2. Call requestPermissions() directly
+      console.log("[Push Debug] Calling requestPermissions directly");
+      let status;
+      try {
+        const perm = await PushNotifications.requestPermissions();
+        console.log("[Push Debug] requestPermissions result =", perm);
+        status = perm.receive;
+      } catch (error) {
+        console.error("[Push Debug] requestPermissions error", error);
+        return;
+      }
+
+      // 4. If permission is granted, call register()
+      if (status === "granted" && mounted) {
+        console.log("[Push Debug] Permission granted, calling register()");
+        await PushNotifications.register();
+      } else {
+        console.log("[Push Debug] Permission not granted or component unmounted. status =", status);
+      }
     })();
     return () => {
       mounted = false;
