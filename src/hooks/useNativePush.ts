@@ -10,17 +10,23 @@ import { supabase } from "@/integrations/supabase/client";
  */
 export function useNativePush() {
   useEffect(() => {
+    console.log("[Push Debug] useNativePush mounted");
     let mounted = true;
     (async () => {
+      console.log("[Push Debug] window.Capacitor =", (window as any).Capacitor);
       // Detect Capacitor native runtime without hard-failing on web.
       const cap = (globalThis as any).Capacitor;
+      console.log("[Push Debug] isNativePlatform =", cap?.isNativePlatform?.());
       if (!cap?.isNativePlatform?.()) return;
 
       const { PushNotifications } = await import("@capacitor/push-notifications");
 
+      console.log("[Push Debug] Calling checkPermissions");
       const perm = await PushNotifications.checkPermissions();
+      console.log("[Push Debug] Permission result =", perm);
       let status = perm.receive;
       if (status === "prompt" || status === "prompt-with-rationale") {
+        console.log("[Push Debug] Requesting permissions");
         status = (await PushNotifications.requestPermissions()).receive;
       }
       if (status !== "granted" || !mounted) return;
@@ -28,7 +34,7 @@ export function useNativePush() {
       await PushNotifications.register();
 
       PushNotifications.addListener("registration", async (token) => {
-        console.log("[FCM Token] Generated:", token.value);
+        console.log("[FCM Token]", token.value);
         const { data: u } = await supabase.auth.getUser();
         if (!u.user) return;
         await supabase
