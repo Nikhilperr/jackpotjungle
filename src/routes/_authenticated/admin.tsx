@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRole, type AppRole } from "@/hooks/useRole";
 import { useAuth } from "@/hooks/useAuth";
+import { useNativePush } from "@/hooks/useNativePush";
 import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -113,6 +114,8 @@ function AdminPage() {
   const [tab, setTab] = useState<Tab>("inbox");
   const [navOpen, setNavOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
+
+  useNativePush();
 
   useEffect(() => {
     if (!loading && !isAdmin) navigate({ to: "/chat", replace: true });
