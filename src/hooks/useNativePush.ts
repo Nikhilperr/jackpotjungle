@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "@tanstack/react-router";
+import { registerPushTokenServer } from "@/lib/push-register.functions";
 
 export function useNativePush() {
   const navigate = useNavigate();
@@ -72,20 +73,16 @@ export function useNativePush() {
             const { data: u } = await supabase.auth.getUser();
             if (!u.user) return;
 
-            // 1. Defensively delete any existing mapping for this token to prevent duplicates
-            await supabase
-              .from("push_tokens" as any)
-              .delete()
-              .eq("token", token.value);
-
-            // 2. Insert fresh mapping for the current active user
-            await supabase
-              .from("push_tokens" as any)
-              .insert({
-                user_id: u.user.id,
+            try {
+              const res = await registerPushTokenServer({
+                userId: u.user.id,
                 token: token.value,
                 platform: cap.getPlatform?.() ?? "android",
               });
+              console.log("[Push Debug] Server registration response:", res);
+            } catch (err) {
+              console.error("[Push Debug] Failed to register token via server:", err);
+            }
           });
 
           await PushNotifications.addListener("registrationError", (error: any) => {
