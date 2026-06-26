@@ -71,16 +71,21 @@ export function useNativePush() {
             console.log("[FCM Token]", token.value);
             const { data: u } = await supabase.auth.getUser();
             if (!u.user) return;
+
+            // 1. Defensively delete any existing mapping for this token to prevent duplicates
             await supabase
               .from("push_tokens" as any)
-              .upsert(
-                {
-                  user_id: u.user.id,
-                  token: token.value,
-                  platform: cap.getPlatform?.() ?? "android",
-                },
-                { onConflict: "token" }
-              );
+              .delete()
+              .eq("token", token.value);
+
+            // 2. Insert fresh mapping for the current active user
+            await supabase
+              .from("push_tokens" as any)
+              .insert({
+                user_id: u.user.id,
+                token: token.value,
+                platform: cap.getPlatform?.() ?? "android",
+              });
           });
 
           await PushNotifications.addListener("registrationError", (error: any) => {
