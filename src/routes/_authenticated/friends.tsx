@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, UserPlus, Check, X, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
+import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 
 export const Route = createFileRoute("/_authenticated/friends")({
   head: () => ({ meta: [{ title: "Friends — JJ Messenger" }] }),
@@ -146,7 +147,8 @@ function FriendsPage() {
   return (
     <AppShell>
       <div className="h-full overflow-y-auto">
-        <div className="max-w-2xl mx-auto p-6 space-y-8">
+        <PullToRefresh onRefresh={async () => { if (meId) { await load(meId); } }}>
+          <div className="max-w-2xl mx-auto p-6 space-y-8">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <HamburgerButton />
@@ -245,7 +247,8 @@ function FriendsPage() {
               </div>
             )}
           </section>
-        </div>
+          </div>
+        </PullToRefresh>
       </div>
     </AppShell>
   );

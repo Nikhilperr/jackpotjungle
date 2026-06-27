@@ -8,6 +8,7 @@ interface BackAction {
 
 const backActions: BackAction[] = [];
 let exitTimer: number | null = null;
+let lastBackTime = 0;
 
 // Stub implementation for App plugin
 const AppStub = {
@@ -45,6 +46,12 @@ export function initBackButtonHandler(router: any) {
   if (!isNative()) return;
 
   App.addListener("backButton", async () => {
+    const now = Date.now();
+    if (now - lastBackTime < 500) {
+      console.log("[BackButton] Debouncing rapid double-swipe back gesture.");
+      return;
+    }
+    lastBackTime = now;
     // 1. Run through registered back actions (dialogs, media viewers, overlay states, etc.)
     for (const action of backActions) {
       const consumed = await action.handler();
