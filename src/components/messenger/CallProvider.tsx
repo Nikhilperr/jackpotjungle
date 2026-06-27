@@ -122,16 +122,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!incoming) return;
     const callId = incoming.call.id;
     if (!missedTimersRef.current[callId]) {
-      console.log("[Call Debug] Starting 35-second missed call timer for:", callId);
+      console.log("[Call Debug] Starting 45-second missed call timer for:", callId);
       missedTimersRef.current[callId] = setTimeout(async () => {
         const { data: latest } = await supabase.from("calls").select("status").eq("id", callId).maybeSingle();
         if (latest?.status === "ringing") {
           console.log("[Call Debug] Call timed out (no answer), setting to missed:", callId);
           await supabase.from("calls").update({ status: "missed", ended_at: new Date().toISOString() }).eq("id", callId);
-          setIncoming((cur) => (cur?.call.id === callId ? null : cur));
         }
         delete missedTimersRef.current[callId];
-      }, 35000);
+      }, 45000);
     }
   }, [incoming]);
 
@@ -240,14 +239,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
           delete missedTimersRef.current[row.id];
         }
         if (incomingRef.current?.call.id === row.id && row.status !== "ringing") {
-          // If status changes to anything other than ringing (active, ended, declined, canceled, missed):
-          // stop ringtone, dismiss modal, and close app if on lockscreen
-          stopRingtone();
-          setIncoming(null);
-          clearCallUrlParams();
-          if (launchedForCallRef.current && (window as any).AndroidBridge?.closeApp) {
-            console.log("[Call Debug] Dismissing app from lockscreen; call is no longer ringing.");
-            (window as any).AndroidBridge.closeApp();
+          if (row.status === "missed") {
+            stopRingtone();
+            setIncoming({
+              call: row,
+              peer: incomingRef.current.peer
+            });
+          } else {
+            stopRingtone();
+            setIncoming(null);
+            clearCallUrlParams();
+            if (launchedForCallRef.current && (window as any).AndroidBridge?.closeApp) {
+              console.log("[Call Debug] Dismissing app from lockscreen; call is no longer ringing.");
+              (window as any).AndroidBridge.closeApp();
+            }
           }
         }
       })
@@ -474,6 +479,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           peerName={incoming.peer.name}
           peerAvatar={incoming.peer.avatar}
           kind={incoming.call.call_type}
+          status={incoming.call.status}
           onAccept={acceptIncoming}
           onDecline={declineIncoming}
         />

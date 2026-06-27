@@ -447,6 +447,15 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meId]);
 
+  // Optimistically clear unread badges for the active conversation
+  useEffect(() => {
+    if (activeId) {
+      setConvs((prev) =>
+        prev.map((c) => (c.conversationId === activeId ? { ...c, unread: 0 } : c))
+      );
+    }
+  }, [activeId]);
+
   const filtered = convs.filter((u) => {
     if (viewSpam ? !u.isSpam : u.isSpam) return false;
     if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;

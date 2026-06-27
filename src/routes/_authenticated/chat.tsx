@@ -197,6 +197,21 @@ function ChatLayout() {
     };
   }, [meId]);
 
+  // Optimistically clear unread badges for active chats
+  useEffect(() => {
+    if (activeId) {
+      setConversations((prev) =>
+        prev.map((c) => (c.friendId === activeId ? { ...c, unread: 0 } : c))
+      );
+    }
+  }, [activeId]);
+
+  useEffect(() => {
+    if (isPageActive) {
+      setPageUnread(0);
+    }
+  }, [isPageActive]);
+
   async function toggleSpam(e: React.MouseEvent, friendId: string, isSpam: boolean) {
     e.preventDefault();
     e.stopPropagation();

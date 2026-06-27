@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Volume2, VolumeX, SwitchCamera } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Volume2, VolumeX, SwitchCamera, X } from "lucide-react";
 import { useWebRTC, type CallKind, type CallRole } from "./useWebRTC";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar } from "./Avatar";
@@ -29,6 +29,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   const [cameraOff, setCameraOff] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(kind === "video");
   const [dbStatus, setDbStatus] = useState<string>("ringing");
+  const [noAnswer, setNoAnswer] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [active, setActive] = useState(initialActive);
   const startRef = useRef<number | null>(initialActive ? Date.now() : null);
@@ -65,9 +66,12 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
           startRef.current = Date.now();
           stopRingtone();
         }
-        if (row.status === "ended" || row.status === "declined" || row.status === "canceled" || row.status === "missed") {
+        if (row.status === "ended" || row.status === "declined" || row.status === "canceled") {
           stopRingtone();
           onClose();
+        } else if (row.status === "missed") {
+          stopRingtone();
+          setNoAnswer(true);
         }
       })
       .subscribe();
@@ -75,12 +79,25 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callId]);
 
+  // 45-second ringing timeout for caller
+  useEffect(() => {
+    if (role === "caller" && !active && !noAnswer) {
+      const t = setTimeout(async () => {
+        console.log("[Call Debug] Caller timed out waiting for answer. Setting status to missed.");
+        stopRingtone();
+        setNoAnswer(true);
+        await supabase.from("calls").update({ status: "missed", ended_at: new Date().toISOString() }).eq("id", callId);
+      }, 45000);
+      return () => clearTimeout(t);
+    }
+  }, [role, active, noAnswer, callId]);
+
   // Outgoing dial tone while ringing (caller only)
   useEffect(() => {
-    if (role === "caller" && !active) playRingtone("outgoing");
+    if (role === "caller" && !active && !noAnswer) playRingtone("outgoing");
     else stopRingtone();
     return () => stopRingtone();
-  }, [role, active]);
+  }, [role, active, noAnswer]);
 
   // Duration timer
   useEffect(() => {
@@ -145,12 +162,14 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
     <div className="fixed inset-0 z-[100] bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white flex flex-col animate-in fade-in duration-200">
       {/* Remote video / avatar */}
       <div className="absolute inset-0">
-        {hasRemoteVideo ? (
+        {hasRemoteVideo && !noAnswer ? (
           <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-5">
             <div className="relative">
-              <div className="absolute inset-0 rounded-full bg-primary/30 animate-ping" style={{ animationDuration: "2s" }} />
+              {!noAnswer && (
+                <div className="absolute inset-0 rounded-full bg-primary/30 animate-ping" style={{ animationDuration: "2s" }} />
+              )}
               <div className="relative">
                 <Avatar name={peerName} url={peerAvatar} size={140} />
               </div>
@@ -158,9 +177,17 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
             <div className="text-center">
               <p className="text-2xl font-semibold">{peerName}</p>
               <p className="text-sm text-white/70 mt-1">
-                {active ? (connected ? fmt(seconds) : "Connecting…") : role === "caller" ? (dbStatus === "ringing" ? "Ringing…" : "Calling…") : "Incoming call…"}
+                {noAnswer ? (
+                  <span className="text-red-500 font-bold text-lg animate-pulse">No Answer</span>
+                ) : active ? (
+                  connected ? fmt(seconds) : "Connecting…"
+                ) : role === "caller" ? (
+                  dbStatus === "ringing" ? "Ringing…" : "Calling…"
+                ) : (
+                  "Incoming call…"
+                )}
               </p>
-              {remoteMuted && active && (
+              {remoteMuted && active && !noAnswer && (
                 <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/12 px-3 py-1 text-xs font-medium text-white/85">
                   <MicOff className="h-3.5 w-3.5" /> {peerName} is muted
                 </p>
@@ -173,7 +200,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
       </div>
 
       {/* Local video PIP */}
-      {showLocalVideo && (
+      {showLocalVideo && !noAnswer && (
         <div className="absolute top-4 right-4 w-28 h-40 sm:w-36 sm:h-52 rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-black z-10">
           <video ref={localVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${cameraOff ? "opacity-0" : ""}`} />
           {cameraOff && (
@@ -187,39 +214,54 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
       {/* Top bar */}
       <div className="relative z-10 p-4 flex items-center justify-between">
         <div className="text-sm text-white/80 bg-black/30 backdrop-blur px-3 py-1.5 rounded-full">
-          {active ? (connected ? "Connected" : "Connecting…") : role === "caller" ? (dbStatus === "ringing" ? "Ringing…" : "Calling…") : "Connecting…"}
+          {noAnswer ? "Call ended" : active ? (connected ? "Connected" : "Connecting…") : role === "caller" ? (dbStatus === "ringing" ? "Ringing…" : "Calling…") : "Connecting…"}
         </div>
       </div>
 
       {/* Bottom controls */}
       <div className="relative z-10 mt-auto pb-10 px-6 flex items-center justify-center gap-4">
-        <ControlButton label={muted ? "Unmute" : "Mute"} onClick={onToggleMute} active={muted}>
-          {muted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
-        </ControlButton>
+        {noAnswer ? (
+          <button
+            onClick={() => endCall("local")}
+            aria-label="Dismiss"
+            className="flex flex-col items-center gap-2 group animate-in zoom-in duration-200"
+          >
+            <span className="h-16 w-16 rounded-full bg-slate-700 hover:bg-slate-600 active:scale-95 transition flex items-center justify-center shadow-2xl">
+              <X className="h-7 w-7 text-white" />
+            </span>
+            <span className="text-xs text-white/80">Dismiss</span>
+          </button>
+        ) : (
+          <>
+            <ControlButton label={muted ? "Unmute" : "Mute"} onClick={onToggleMute} active={muted}>
+              {muted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+            </ControlButton>
 
-        {isVideo && (
-          <ControlButton label={cameraOff ? "Camera on" : "Camera off"} onClick={onToggleVideo} active={cameraOff}>
-            {cameraOff ? <VideoOff className="h-6 w-6" /> : <Video className="h-6 w-6" />}
-          </ControlButton>
+            {isVideo && (
+              <ControlButton label={cameraOff ? "Camera on" : "Camera off"} onClick={onToggleVideo} active={cameraOff}>
+                {cameraOff ? <VideoOff className="h-6 w-6" /> : <Video className="h-6 w-6" />}
+              </ControlButton>
+            )}
+
+            <ControlButton label={speakerOn ? "Speaker on" : "Speaker off"} onClick={onToggleSpeaker} active={!speakerOn}>
+              {speakerOn ? <Volume2 className="h-6 w-6" /> : <VolumeX className="h-6 w-6" />}
+            </ControlButton>
+
+            {isVideo && (
+              <ControlButton label="Flip camera" onClick={switchCamera}>
+                <SwitchCamera className="h-6 w-6" />
+              </ControlButton>
+            )}
+
+            <button
+              onClick={() => endCall("local")}
+              aria-label="End call"
+              className="h-16 w-16 rounded-full bg-red-600 hover:bg-red-500 active:scale-95 transition flex items-center justify-center shadow-2xl shadow-red-900/50"
+            >
+              <PhoneOff className="h-7 w-7 text-white" />
+            </button>
+          </>
         )}
-
-        <ControlButton label={speakerOn ? "Speaker on" : "Speaker off"} onClick={onToggleSpeaker} active={!speakerOn}>
-          {speakerOn ? <Volume2 className="h-6 w-6" /> : <VolumeX className="h-6 w-6" />}
-        </ControlButton>
-
-        {isVideo && (
-          <ControlButton label="Flip camera" onClick={switchCamera}>
-            <SwitchCamera className="h-6 w-6" />
-          </ControlButton>
-        )}
-
-        <button
-          onClick={() => endCall("local")}
-          aria-label="End call"
-          className="h-16 w-16 rounded-full bg-red-600 hover:bg-red-500 active:scale-95 transition flex items-center justify-center shadow-2xl shadow-red-900/50"
-        >
-          <PhoneOff className="h-7 w-7 text-white" />
-        </button>
       </div>
     </div>
   );
