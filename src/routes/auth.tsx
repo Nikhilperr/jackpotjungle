@@ -24,7 +24,7 @@ function AuthPage() {
 
   useEffect(() => {
     if (loading || roleLoading) return;
-    if (user) navigate({ to: isAdmin ? "/admin" : "/chat" });
+    if (user) navigate({ to: isAdmin ? "/admin" : "/chat", replace: true });
   }, [user, loading, isAdmin, roleLoading, navigate]);
 
   if (loading || roleLoading) {
