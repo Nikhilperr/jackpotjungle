@@ -51,7 +51,35 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [meId, setMeId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [active, setActive] = useState<ActiveCall | null>(null);
-  const [incoming, setIncoming] = useState<Incoming | null>(null);
+  const [incoming, setIncoming] = useState<Incoming | null>(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const callId = params.get("call_id");
+    const callerName = params.get("caller_name");
+    const callerAvatar = params.get("caller_avatar");
+    const callType = params.get("call_type");
+
+    if (callId && callerName) {
+      console.log("[Call Debug] Initializing incoming call state synchronously on boot:", { callId, callerName });
+      const decodedAvatar = callerAvatar ? decodeURIComponent(callerAvatar) : null;
+      return {
+        call: {
+          id: callId,
+          caller_id: "",
+          callee_id: null,
+          call_type: (callType as CallKind) || "voice",
+          status: "ringing",
+          context: "friend",
+          page_conversation_id: null
+        },
+        peer: {
+          name: decodeURIComponent(callerName),
+          avatar: decodedAvatar === "null" || decodedAvatar === "undefined" ? null : decodedAvatar
+        }
+      };
+    }
+    return null;
+  });
   const meIdRef = useRef<string | null>(null);
   const activeRef = useRef<ActiveCall | null>(null);
   const incomingRef = useRef<Incoming | null>(null);
@@ -70,6 +98,24 @@ export function CallProvider({ children }: { children: ReactNode }) {
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { incomingRef.current = incoming; }, [incoming]);
 
+  // Centralized missed call timer coordinator
+  useEffect(() => {
+    if (!incoming) return;
+    const callId = incoming.call.id;
+    if (!missedTimersRef.current[callId]) {
+      console.log("[Call Debug] Starting 35-second missed call timer for:", callId);
+      missedTimersRef.current[callId] = setTimeout(async () => {
+        const { data: latest } = await supabase.from("calls").select("status").eq("id", callId).maybeSingle();
+        if (latest?.status === "ringing") {
+          console.log("[Call Debug] Call timed out (no answer), setting to missed:", callId);
+          await supabase.from("calls").update({ status: "missed", ended_at: new Date().toISOString() }).eq("id", callId);
+          setIncoming((cur) => (cur?.call.id === callId ? null : cur));
+        }
+        delete missedTimersRef.current[callId];
+      }, 35000);
+    }
+  }, [incoming]);
+
   const showIncomingCall = useCallback(async (row: CallRow) => {
     if (row.status !== "ringing") return;
     if (activeRef.current || incomingRef.current) {
@@ -83,16 +129,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
       call: row,
       peer: { name: prof?.username ?? "Caller", avatar: prof?.avatar_url ?? null },
     });
-    if (!missedTimersRef.current[row.id]) {
-      missedTimersRef.current[row.id] = setTimeout(async () => {
-        const { data: latest } = await supabase.from("calls").select("status").eq("id", row.id).maybeSingle();
-        if (latest?.status === "ringing") {
-          await supabase.from("calls").update({ status: "missed", ended_at: new Date().toISOString() }).eq("id", row.id);
-          setIncoming((cur) => (cur?.call.id === row.id ? null : cur));
-        }
-        delete missedTimersRef.current[row.id];
-      }, 35000);
-    }
   }, []);
 
   useEffect(() => {
@@ -121,36 +157,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Instant call UI initialization from URL params on cold start
-  useEffect(() => {
-    if (!meId) return;
-    const params = new URLSearchParams(window.location.search);
-    const callId = params.get("call_id");
-    const callerName = params.get("caller_name");
-    const callerAvatar = params.get("caller_avatar");
-    const callType = params.get("call_type");
-
-    if (callId && callerName && !incoming) {
-      console.log("[Call Debug] Initializing incoming call state instantly from URL parameters:", { callId, callerName });
-      const decodedAvatar = callerAvatar ? decodeURIComponent(callerAvatar) : null;
-      setIncoming({
-        call: {
-          id: callId,
-          caller_id: "",
-          callee_id: meId,
-          call_type: (callType as CallKind) || "voice",
-          status: "ringing",
-          context: "friend",
-          page_conversation_id: null
-        },
-        peer: {
-          name: decodeURIComponent(callerName),
-          avatar: decodedAvatar === "null" || decodedAvatar === "undefined" ? null : decodedAvatar
-        }
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meId]);
+  // Instant call URL parameters are parsed synchronously on state initialization
 
   // Listen for incoming calls (rows where callee_id = me, status = ringing)
   useEffect(() => {
@@ -160,9 +167,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "calls", filter: `callee_id=eq.${meId}` }, async (payload) => {
         const row = payload.new as CallRow;
         if (row.status !== "ringing") return;
-        if (activeRef.current || incomingRef.current) {
-          // already on a call -> auto-decline busy
+        if (activeRef.current || (incomingRef.current && incomingRef.current.call.id !== row.id)) {
+          // already on a DIFFERENT call -> auto-decline busy
           await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", row.id);
+          return;
+        }
+        if (incomingRef.current?.call.id === row.id) {
+          // Same call (already parsed on boot), ignore insert event
           return;
         }
         showIncomingCall(row);
@@ -213,7 +224,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
         const row = payload.new as CallRow;
         if (row.status !== "ringing" || row.callee_id !== null) return;
         if (row.caller_id === meIdRef.current) return;
-        if (activeRef.current || incomingRef.current) return;
+        if (activeRef.current || (incomingRef.current && incomingRef.current.call.id !== row.id)) return;
+        if (incomingRef.current?.call.id === row.id) return;
         showIncomingCall(row);
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "calls", filter: `context=eq.page_broadcast` }, (payload) => {
