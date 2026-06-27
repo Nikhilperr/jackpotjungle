@@ -48,7 +48,7 @@ import {
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { toast } from "sonner";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 import {
@@ -947,35 +947,50 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
           ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
           return items.map((it, i) => {
-          if (it.kind === "call") {
-            const c = it.call;
-            const mine = c.caller_id === meId;
+            const prev = items[i - 1];
+            const showTime = !prev || new Date(it.at).getTime() - new Date(prev.at).getTime() > 5 * 60 * 1000;
+
+            if (it.kind === "call") {
+              const c = it.call;
+              const mine = c.caller_id === meId;
+              return (
+                <div key={`call-${c.id}`}>
+                  {showTime && (
+                    <div className="text-center text-[11px] text-muted-foreground py-2 select-none">
+                      {format(new Date(c.created_at), "MMM d, h:mm a")}
+                    </div>
+                  )}
+                  <div className={`flex ${mine ? "justify-end" : "justify-start"} animate-fade-in`}>
+                    <CallMessage mine={mine} kind={c.call_type} status={c.status} durationSeconds={c.duration_seconds} />
+                  </div>
+                </div>
+              );
+            }
+            const m = it.msg;
+            const mine = m.from_page;
+            const nextIt = items[i + 1];
+            const isLastMine = mine && (!nextIt || nextIt.kind !== "msg" || !nextIt.msg.from_page);
+            const startPress = () => {
+              if (pressTimer.current) clearTimeout(pressTimer.current);
+              pressTimer.current = setTimeout(() => setUnsendId(m.id), 550);
+            };
+            const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
+            const handlers = {
+              onPointerDown: startPress,
+              onPointerUp: cancelPress,
+              onPointerLeave: cancelPress,
+              onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setUnsendId(m.id); },
+            };
+            const isMatch = matchIds.includes(m.id);
+            const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
             return (
-              <div key={`call-${c.id}`} className={`flex ${mine ? "justify-end" : "justify-start"} animate-fade-in`}>
-                <CallMessage mine={mine} kind={c.call_type} status={c.status} durationSeconds={c.duration_seconds} />
-              </div>
-            );
-          }
-          const m = it.msg;
-          const mine = m.from_page;
-          const nextIt = items[i + 1];
-          const isLastMine = mine && (!nextIt || nextIt.kind !== "msg" || !nextIt.msg.from_page);
-          const startPress = () => {
-            if (pressTimer.current) clearTimeout(pressTimer.current);
-            pressTimer.current = setTimeout(() => setUnsendId(m.id), 550);
-          };
-          const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
-          const handlers = {
-            onPointerDown: startPress,
-            onPointerUp: cancelPress,
-            onPointerLeave: cancelPress,
-            onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setUnsendId(m.id); },
-          };
-          const isMatch = matchIds.includes(m.id);
-          const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
-          return (
-            <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className="animate-fade-in">
-              <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className="animate-fade-in">
+                {showTime && (
+                  <div className="text-center text-[11px] text-muted-foreground py-2 select-none">
+                    {format(new Date(m.created_at), "MMM d, h:mm a")}
+                  </div>
+                )}
+                <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                 {m.image_url ? (
                   <button {...handlers} onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary select-none">
                     <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
