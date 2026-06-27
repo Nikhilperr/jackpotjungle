@@ -111,6 +111,37 @@ export function CallProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // Instant call UI initialization from URL params on cold start
+  useEffect(() => {
+    if (!meId) return;
+    const params = new URLSearchParams(window.location.search);
+    const callId = params.get("call_id");
+    const callerName = params.get("caller_name");
+    const callerAvatar = params.get("caller_avatar");
+    const callType = params.get("call_type");
+
+    if (callId && callerName && !incoming) {
+      console.log("[Call Debug] Initializing incoming call state instantly from URL parameters:", { callId, callerName });
+      const decodedAvatar = callerAvatar ? decodeURIComponent(callerAvatar) : null;
+      setIncoming({
+        call: {
+          id: callId,
+          caller_id: "",
+          callee_id: meId,
+          call_type: (callType as CallKind) || "voice",
+          status: "ringing",
+          context: "friend",
+          page_conversation_id: null
+        },
+        peer: {
+          name: decodeURIComponent(callerName),
+          avatar: decodedAvatar === "null" || decodedAvatar === "undefined" ? null : decodedAvatar
+        }
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meId]);
+
   // Listen for incoming calls (rows where callee_id = me, status = ringing)
   useEffect(() => {
     if (!meId) return;
@@ -249,30 +280,47 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!incoming) return;
     stopRingtone();
     if (missedTimersRef.current[incoming.call.id]) clearTimeout(missedTimersRef.current[incoming.call.id]);
-    // For page_broadcast: atomically claim by setting callee_id only if still null
-    if (incoming.call.context === "page_broadcast") {
-      const { data: claimed, error } = await supabase
-        .from("calls")
-        .update({ callee_id: meIdRef.current, status: "active", answered_at: new Date().toISOString() })
-        .eq("id", incoming.call.id)
-        .is("callee_id", null)
-        .select()
-        .maybeSingle();
-      if (error || !claimed) {
-        setIncoming(null);
-        return;
+
+    const completeAccept = async () => {
+      // For page_broadcast: atomically claim by setting callee_id only if still null
+      if (incoming.call.context === "page_broadcast") {
+        const { data: claimed, error } = await supabase
+          .from("calls")
+          .update({ callee_id: meIdRef.current, status: "active", answered_at: new Date().toISOString() })
+          .eq("id", incoming.call.id)
+          .is("callee_id", null)
+          .select()
+          .maybeSingle();
+        if (error || !claimed) {
+          console.error("Failed to claim broadcast call", error);
+          alert("This call has already been answered by another representative.");
+          setIncoming(null);
+          return;
+        }
+      } else {
+        await supabase.from("calls").update({ status: "active", answered_at: new Date().toISOString() }).eq("id", incoming.call.id);
       }
+      setActive({
+        callId: incoming.call.id,
+        role: "callee",
+        kind: incoming.call.call_type,
+        peer: incoming.peer,
+        initialActive: true,
+      });
+      setIncoming(null);
+    };
+
+    // Request keyguard unlock natively on accept if phone is locked
+    if ((window as any).AndroidBridge?.requestUnlock) {
+      (window as any).onUnlockSucceeded = () => {
+        console.log("[Call Debug] Unlock succeeded, completing accept.");
+        completeAccept();
+      };
+      (window as any).AndroidBridge.requestUnlock();
     } else {
-      await supabase.from("calls").update({ status: "active", answered_at: new Date().toISOString() }).eq("id", incoming.call.id);
+      console.log("[Call Debug] AndroidBridge not found, accepting immediately.");
+      await completeAccept();
     }
-    setActive({
-      callId: incoming.call.id,
-      role: "callee",
-      kind: incoming.call.call_type,
-      peer: incoming.peer,
-      initialActive: true,
-    });
-    setIncoming(null);
   }
 
   async function declineIncoming() {
@@ -303,12 +351,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const action = params.get("action");
     const callId = params.get("call_id");
     if (incoming.call.id === callId) {
-      // Clean up query parameters from the browser URL to prevent loops on refresh
-      const newSearch = window.location.search
-        .replace(new RegExp(`[?&]action=${action}`), "")
-        .replace(new RegExp(`[?&]call_id=${callId}`), "");
-      const cleanSearch = newSearch.startsWith("&") ? "?" + newSearch.substring(1) : newSearch;
-      const newUrl = window.location.pathname + (cleanSearch === "?" ? "" : cleanSearch);
+      // Clean up all query parameters from the browser URL to prevent loops on refresh
+      const cleanParams = new URLSearchParams(window.location.search);
+      cleanParams.delete("action");
+      cleanParams.delete("call_id");
+      cleanParams.delete("caller_name");
+      cleanParams.delete("caller_avatar");
+      cleanParams.delete("call_type");
+      const paramStr = cleanParams.toString();
+      const newUrl = window.location.pathname + (paramStr ? `?${paramStr}` : "");
       window.history.replaceState({}, "", newUrl);
 
       if (action === "accept") {

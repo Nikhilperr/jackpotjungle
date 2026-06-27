@@ -218,14 +218,15 @@ export async function initRealtimeListeners() {
           console.log(`[Realtime Listener] New call insert detected. ID: ${c.id}, Type: ${c.call_type}`);
 
           try {
-            // Fetch caller username
+            // Fetch caller username and avatar
             const { data: callerProfile } = await supabaseAdmin
               .from("profiles")
-              .select("username")
+              .select("username, avatar_url")
               .eq("id", c.caller_id)
               .maybeSingle();
 
             const callerName = callerProfile?.username || "Someone";
+            const callerAvatar = callerProfile?.avatar_url || "";
             const callDesc = c.call_type === "video" ? "📹 incoming video call" : "📞 incoming voice call";
 
             if (c.context === "page_broadcast" && !c.callee_id) {
@@ -249,10 +250,12 @@ export async function initRealtimeListeners() {
               const tokens = (tokensRows ?? []).map((r: any) => r.token);
               if (tokens.length === 0) return;
 
+              const avatarParam = callerAvatar ? encodeURIComponent(callerAvatar) : "";
+              const supportCallUrl = `/admin?call_id=${c.id}&caller_name=${encodeURIComponent(callerName)}&caller_avatar=${avatarParam}&call_type=${c.call_type}`;
               await sendPushNotification(tokens, "Support Call Inquiry", `${callerName} is requesting a support call`, {
                 type: "call",
                 call_id: c.id,
-                url: "/admin",
+                url: supportCallUrl,
               });
             } else if (c.callee_id) {
               // Direct user-to-user or admin-to-user call -> Notify callee
@@ -271,10 +274,13 @@ export async function initRealtimeListeners() {
 
               const title = c.context === "page" ? "Jackpot Jungle Support" : callerName;
 
+              const avatarParam = callerAvatar ? encodeURIComponent(callerAvatar) : "";
+              const callUrl = (c.context === "page" ? "/chat/page" : "/chat") + 
+                `?call_id=${c.id}&caller_name=${encodeURIComponent(title)}&caller_avatar=${avatarParam}&call_type=${c.call_type}`;
               await sendPushNotification(tokens, title, callDesc, {
                 type: "call",
                 call_id: c.id,
-                url: c.context === "page" ? "/chat/page" : `/chat`,
+                url: callUrl,
               });
             }
           } catch (err) {

@@ -73,6 +73,58 @@ public class MainActivity extends BridgeActivity {
             }
         }
 
+        // Add Javascript interface to allow webview to request keyguard unlock when call is approved
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            getBridge().getWebView().addJavascriptInterface(new Object() {
+                @android.webkit.JavascriptInterface
+                public void requestUnlock() {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                                KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+                                if (keyguardManager != null) {
+                                    keyguardManager.requestDismissKeyguard(MainActivity.this, new KeyguardManager.KeyguardDismissCallback() {
+                                        @Override
+                                        public void onDismissSucceeded() {
+                                            super.onDismissSucceeded();
+                                            Log.d("MainActivity", "Keyguard unlock succeeded.");
+                                            runOnUiThread(new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    if (getBridge() != null && getBridge().getWebView() != null) {
+                                                        getBridge().getWebView().evaluateJavascript("if (window.onUnlockSucceeded) { window.onUnlockSucceeded(); }", null);
+                                                    }
+                                                }
+                                            });
+                                        }
+
+                                        @Override
+                                        public void onDismissCancelled() {
+                                            super.onDismissCancelled();
+                                            Log.d("MainActivity", "Keyguard unlock cancelled.");
+                                        }
+
+                                        @Override
+                                        public void onDismissError() {
+                                            super.onDismissError();
+                                            Log.d("MainActivity", "Keyguard unlock error.");
+                                        }
+                                    });
+                                    Log.d("MainActivity", "Keyguard unlock requested from WebApp.");
+                                }
+                            } else {
+                                getWindow().addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD);
+                                if (getBridge() != null && getBridge().getWebView() != null) {
+                                    getBridge().getWebView().evaluateJavascript("if (window.onUnlockSucceeded) { window.onUnlockSucceeded(); }", null);
+                                }
+                            }
+                        }
+                    });
+                }
+            }, "AndroidBridge");
+        }
+
         // Stop the calling foreground service once the user opens the app (either answered/declined or launched)
         try {
             Intent serviceIntent = new Intent(this, CallForegroundService.class);

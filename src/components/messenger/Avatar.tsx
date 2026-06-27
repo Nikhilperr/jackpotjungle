@@ -1,6 +1,8 @@
 export function Avatar({ name, url, size = 48 }: { name: string; url?: string | null; size?: number }) {
   const initials = name.slice(0, 2).toUpperCase();
-  return url ? (
+  const hasValidUrl = url && url !== "null" && url !== "undefined" && url.trim() !== "";
+
+  return hasValidUrl ? (
     <img src={url} alt={name} className="rounded-full object-cover" style={{ width: size, height: size }} />
   ) : (
     <div
