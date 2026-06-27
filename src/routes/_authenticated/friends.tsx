@@ -5,7 +5,7 @@ import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Avatar } from "./chat";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, UserPlus, Check, X, MessageCircle } from "lucide-react";
+import { Search, UserPlus, Check, X, MessageCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 
@@ -169,6 +169,27 @@ function FriendsPage() {
                 {searching ? "Searching…" : "Find"}
               </Button>
             </form>
+            <div className="flex justify-end mt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  if (meId) {
+                    const promise = load(meId);
+                    toast.promise(promise, {
+                      loading: "Refreshing friends list...",
+                      success: "Friends list refreshed!",
+                      error: "Could not refresh friends.",
+                    });
+                    await promise;
+                  }
+                }}
+                className="h-8 rounded-full text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 px-3 bg-secondary/50 hover:bg-secondary transition-colors"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Refresh list
+              </Button>
+            </div>
             {searchResult && (
               <div className="mt-4 flex items-center gap-3 p-4 rounded-2xl bg-secondary">
                 <Avatar name={searchResult.username} url={searchResult.avatar_url} />
