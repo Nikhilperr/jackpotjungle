@@ -74,8 +74,19 @@ import {
   AdminProfileView,
 } from "@/components/admin/AdminViews";
 
+type AdminSearch = {
+  c?: string;
+  profile?: boolean;
+};
+
 export const Route = createFileRoute("/_authenticated/admin")({
   ssr: false,
+  validateSearch: (search: Record<string, unknown>): AdminSearch => {
+    return {
+      c: typeof search.c === "string" ? search.c : undefined,
+      profile: search.profile === true || search.profile === "true",
+    };
+  },
   head: () => ({ meta: [{ title: "Admin — Jackpot Jungle Messenger" }] }),
   component: AdminPage,
 });
@@ -287,30 +298,37 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const navigate = useNavigate();
   const [convs, setConvs] = useState<ConvRow[]>([]);
   const [search, setSearch] = useState("");
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const searchParams = Route.useSearch();
+  
+  const activeId = searchParams.c || null;
+  const setActiveId = (id: string | null) => {
+    navigate({
+      search: (old: any) => ({
+        ...old,
+        c: id || undefined,
+        profile: id ? old.profile : undefined,
+      }),
+      replace: false,
+    });
+  };
+
+  const detailOpen = !!searchParams.profile;
+  const setDetailOpen = (val: boolean) => {
+    navigate({
+      search: (old: any) => ({
+        ...old,
+        profile: val ? true : undefined,
+      }),
+      replace: false,
+    });
+  };
+
   const [allTags, setAllTags] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [userTagMap, setUserTagMap] = useState<Record<string, string[]>>({});
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [viewSpam, setViewSpam] = useState(false);
   const [confirmSpam, setConfirmSpam] = useState<ConvRow | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (detailOpen) {
-      window.history.pushState({ sheetOpen: true }, "");
-      const handlePopState = () => {
-        setDetailOpen(false);
-      };
-      window.addEventListener("popstate", handlePopState);
-      return () => {
-        window.removeEventListener("popstate", handlePopState);
-        if (window.history.state?.sheetOpen) {
-          window.history.back();
-        }
-      };
-    }
-  }, [detailOpen]);
 
   async function load() {
     const { data: convList } = await supabase
