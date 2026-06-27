@@ -99,6 +99,24 @@ export function CallProvider({ children }: { children: ReactNode }) {
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { incomingRef.current = incoming; }, [incoming]);
 
+  const clearCallUrlParams = useCallback(() => {
+    if (typeof window !== "undefined" && window.history?.replaceState) {
+      const url = new URL(window.location.href);
+      let changed = false;
+      const paramsToClear = ["call_id", "caller_name", "caller_avatar", "call_type", "action"];
+      paramsToClear.forEach((p) => {
+        if (url.searchParams.has(p)) {
+          url.searchParams.delete(p);
+          changed = true;
+        }
+      });
+      if (changed) {
+        window.history.replaceState({}, "", url.pathname + url.search);
+        console.log("[Call Debug] Cleared call query parameters from window location history.");
+      }
+    }
+  }, []);
+
   // Centralized missed call timer coordinator
   useEffect(() => {
     if (!incoming) return;
@@ -200,6 +218,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           // stop ringtone, dismiss modal, and close app if on lockscreen
           stopRingtone();
           setIncoming(null);
+          clearCallUrlParams();
           if (launchedForCallRef.current && (window as any).AndroidBridge?.closeApp) {
             console.log("[Call Debug] Dismissing app from lockscreen; call is no longer ringing.");
             (window as any).AndroidBridge.closeApp();
@@ -255,6 +274,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
               delete missedTimersRef.current[row.id];
             }
             setIncoming(null);
+            clearCallUrlParams();
+            if (launchedForCallRef.current && (window as any).AndroidBridge?.closeApp) {
+              console.log("[Call Debug] Dismissing broadcast call from lockscreen; call is no longer ringing.");
+              (window as any).AndroidBridge.closeApp();
+            }
           }
         }
       })
@@ -348,6 +372,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         context: incoming.call.context,
       });
       setIncoming(null);
+      clearCallUrlParams();
     };
 
     // Request keyguard unlock natively on accept if phone is locked
@@ -365,6 +390,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   async function declineIncoming() {
     if (!incoming) return;
+    clearCallUrlParams();
     stopRingtone();
     if (missedTimersRef.current[incoming.call.id]) clearTimeout(missedTimersRef.current[incoming.call.id]);
     // For page broadcast: just dismiss locally - don't actually decline so other admins can still pick up
@@ -438,6 +464,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           context={active.context}
           onClose={() => {
             setActive(null);
+            clearCallUrlParams();
             if (launchedForCallRef.current && (window as any).AndroidBridge?.closeApp) {
               console.log("[Call Debug] Closing app after active call ended.");
               (window as any).AndroidBridge.closeApp();

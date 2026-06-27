@@ -15,7 +15,6 @@ export async function uploadAndSign(
     .from(bucket)
     .upload(path, file, { contentType: contentType ?? (file as File).type ?? undefined, upsert: false });
   if (upErr) throw upErr;
-  const { data, error: sErr } = await supabase.storage.from(bucket).createSignedUrl(path, LONG_EXPIRY);
-  if (sErr || !data) throw sErr ?? new Error("Failed to sign URL");
-  return data.signedUrl;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data.publicUrl;
 }
