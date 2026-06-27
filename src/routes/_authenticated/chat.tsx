@@ -42,99 +42,107 @@ function ChatLayout() {
   const { isAdmin } = useRole();
   const hasActive = !!activeId || isPageActive;
 
+  async function loadSpam(myId: string) {
+    const [{ data: outgoing }, { data: incoming }] = await Promise.all([
+      supabase.from("spam_list").select("spammed_user_id").eq("user_id", myId),
+      supabase.from("spam_list").select("user_id").eq("spammed_user_id", myId),
+    ]);
+    setSpamIds(new Set((outgoing ?? []).map((r: any) => r.spammed_user_id)));
+    setSpammedByIds(new Set((incoming ?? []).map((r: any) => r.user_id)));
+  }
+
+  async function loadPage(myId: string) {
+    const { data: conv } = await supabase
+      .from("page_conversations")
+      .select("id")
+      .eq("user_id", myId)
+      .maybeSingle();
+    if (!conv) return;
+    const { data: last } = await supabase
+      .from("page_messages")
+      .select("content, created_at, from_page, seen")
+      .eq("conversation_id", conv.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    const arr = last ?? [];
+    const first = arr[0];
+    setPageLast({ content: first?.content ?? null, at: first?.created_at ?? null });
+    setPageUnread(arr.filter((m) => m.from_page && !m.seen).length);
+  }
+
+  async function load(myId: string) {
+    const { data: friends } = await supabase
+      .from("friendships")
+      .select("user_a, user_b");
+    if (!friends) return;
+    const friendIds = friends.map((f) => (f.user_a === myId ? f.user_b : f.user_a));
+    if (friendIds.length === 0) { setConversations([]); return; }
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, username, avatar_url, online")
+      .in("id", friendIds);
+    const { data: msgs } = await supabase
+      .from("messages")
+      .select("sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
+      .or(friendIds.map((id) => `and(sender_id.eq.${id},receiver_id.eq.${myId}),and(sender_id.eq.${myId},receiver_id.eq.${id})`).join(","))
+      .order("created_at", { ascending: false })
+      .limit(500);
+    const byFriend: Record<string, Conversation> = {};
+    (profiles ?? []).forEach((p) => {
+      byFriend[p.id] = { friendId: p.id, username: p.username, avatar_url: p.avatar_url, online: p.online, lastMessage: null, lastAt: null, unread: 0, allText: "" };
+    });
+    (msgs ?? []).forEach((m: any) => {
+      const fid = m.sender_id === myId ? m.receiver_id : m.sender_id;
+      const c = byFriend[fid];
+      if (!c) return;
+      const preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
+      if (!c.lastAt) { c.lastMessage = preview; c.lastAt = m.created_at; }
+      if (m.content) c.allText += " " + m.content.toLowerCase();
+      if (m.receiver_id === myId && !m.seen) c.unread++;
+    });
+    setConversations(Object.values(byFriend).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? "")));
+  }
+
   useEffect(() => {
     let mounted = true;
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u.user || !mounted) return;
-      setMeId(u.user.id);
-      await Promise.all([load(u.user.id), loadPage(u.user.id), loadSpam(u.user.id)]);
+      if (u.user && mounted) {
+        setMeId(u.user.id);
+      }
     })();
+    return () => { mounted = false; };
+  }, []);
 
-    async function loadSpam(myId: string) {
-      const [{ data: outgoing }, { data: incoming }] = await Promise.all([
-        supabase.from("spam_list").select("spammed_user_id").eq("user_id", myId),
-        supabase.from("spam_list").select("user_id").eq("spammed_user_id", myId),
-      ]);
-      if (!mounted) return;
-      setSpamIds(new Set((outgoing ?? []).map((r: any) => r.spammed_user_id)));
-      setSpammedByIds(new Set((incoming ?? []).map((r: any) => r.user_id)));
-    }
+  useEffect(() => {
+    if (!meId) return;
+    let mounted = true;
 
-    async function loadPage(myId: string) {
-      const { data: conv } = await supabase
-        .from("page_conversations")
-        .select("id")
-        .eq("user_id", myId)
-        .maybeSingle();
-      if (!conv) return;
-      const { data: last } = await supabase
-        .from("page_messages")
-        .select("content, created_at, from_page, seen")
-        .eq("conversation_id", conv.id)
-        .order("created_at", { ascending: false })
-        .limit(50);
-      const arr = last ?? [];
-      const first = arr[0];
-      if (mounted) {
-        setPageLast({ content: first?.content ?? null, at: first?.created_at ?? null });
-        setPageUnread(arr.filter((m) => m.from_page && !m.seen).length);
-      }
-    }
-
-    async function load(myId: string) {
-      const { data: friends } = await supabase
-        .from("friendships")
-        .select("user_a, user_b");
-      if (!friends || !mounted) return;
-      const friendIds = friends.map((f) => (f.user_a === myId ? f.user_b : f.user_a));
-      if (friendIds.length === 0) { setConversations([]); return; }
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, username, avatar_url, online")
-        .in("id", friendIds);
-      const { data: msgs } = await supabase
-        .from("messages")
-        .select("sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
-        .or(friendIds.map((id) => `and(sender_id.eq.${id},receiver_id.eq.${myId}),and(sender_id.eq.${myId},receiver_id.eq.${id})`).join(","))
-        .order("created_at", { ascending: false })
-        .limit(500);
-      const byFriend: Record<string, Conversation> = {};
-      (profiles ?? []).forEach((p) => {
-        byFriend[p.id] = { friendId: p.id, username: p.username, avatar_url: p.avatar_url, online: p.online, lastMessage: null, lastAt: null, unread: 0, allText: "" };
-      });
-      (msgs ?? []).forEach((m: any) => {
-        const fid = m.sender_id === myId ? m.receiver_id : m.sender_id;
-        const c = byFriend[fid];
-        if (!c) return;
-        const preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
-        if (!c.lastAt) { c.lastMessage = preview; c.lastAt = m.created_at; }
-        if (m.content) c.allText += " " + m.content.toLowerCase();
-        if (m.receiver_id === myId && !m.seen) c.unread++;
-      });
-      if (mounted) {
-        setConversations(Object.values(byFriend).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? "")));
-      }
-    }
+    load(meId);
+    loadPage(meId);
+    loadSpam(meId);
 
     const channel = supabase
       .channel("conv-list")
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
-        supabase.auth.getUser().then(({ data }) => { if (data.user) load(data.user.id); });
+        if (mounted) load(meId);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => {
-        supabase.auth.getUser().then(({ data }) => { if (data.user) load(data.user.id); });
+        if (mounted) load(meId);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, () => {
-        supabase.auth.getUser().then(({ data }) => { if (data.user) loadPage(data.user.id); });
+        if (mounted) loadPage(meId);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "spam_list" }, () => {
-        supabase.auth.getUser().then(({ data }) => { if (data.user) loadSpam(data.user.id); });
+        if (mounted) loadSpam(meId);
       })
       .subscribe();
 
-    return () => { mounted = false; supabase.removeChannel(channel); };
-  }, []);
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, [meId]);
 
   async function toggleSpam(e: React.MouseEvent, friendId: string, isSpam: boolean) {
     e.preventDefault();
@@ -189,7 +197,7 @@ function ChatLayout() {
               </button>
             </div>
           </div>
-          <PullToRefresh onRefresh={async () => { if (meIdRef.current) { await Promise.all([load(meIdRef.current), loadPage(meIdRef.current)]); } }}>
+          <PullToRefresh onRefresh={async () => { if (meId) { await Promise.all([load(meId), loadPage(meId), loadSpam(meId)]); } }}>
             {!isAdmin && tab === "all" && (
               <Link
                 to="/chat/page"

@@ -146,10 +146,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", row.id);
       return;
     }
-    const { data: prof } = await supabase
-      .from("profiles").select("username, avatar_url").eq("id", row.caller_id).maybeSingle();
+    const [{ data: prof }, { data: roles }] = await Promise.all([
+      supabase.from("profiles").select("username, avatar_url").eq("id", row.caller_id).maybeSingle(),
+      supabase.from("user_roles").select("role").eq("user_id", row.caller_id)
+    ]);
     if (activeRef.current || incomingRef.current) return;
-    const isSupport = row.context === "page"; // Only override when Admin calls User, not when User calls Admin
+    const callerIsAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+    const isSupport = row.context === "page" || callerIsAdmin;
     const displayName = isSupport ? "Jackpot Jungle Support" : (prof?.username ?? "Caller");
     const displayAvatar = isSupport ? "/icons/icon-256.webp" : (prof?.avatar_url ?? null);
 

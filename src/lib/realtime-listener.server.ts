@@ -272,11 +272,17 @@ export async function initRealtimeListeners() {
                 return;
               }
 
-              const title = c.context === "page" ? "Jackpot Jungle Support" : callerName;
-              const displayAvatar = c.context === "page" ? "/icons/icon-256.webp" : callerAvatar;
+              const { data: callerRoles } = await supabaseAdmin
+                .from("user_roles" as any)
+                .select("role")
+                .eq("user_id", c.caller_id);
+              const callerIsAdmin = !!(callerRoles as any)?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+
+              const title = (c.context === "page" || callerIsAdmin) ? "Jackpot Jungle Support" : callerName;
+              const displayAvatar = (c.context === "page" || callerIsAdmin) ? "/icons/icon-256.webp" : callerAvatar;
 
               const avatarParam = displayAvatar ? encodeURIComponent(displayAvatar) : "";
-              const callUrl = (c.context === "page" ? "/chat/page" : "/chat") + 
+              const callUrl = ((c.context === "page" || callerIsAdmin) ? "/chat/page" : "/chat") + 
                 `?call_id=${c.id}&caller_name=${encodeURIComponent(title)}&caller_avatar=${avatarParam}&call_type=${c.call_type}`;
               await sendPushNotification(tokens, title, callDesc, {
                 type: "call",
