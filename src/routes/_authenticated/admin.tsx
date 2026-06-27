@@ -144,14 +144,16 @@ function AdminPage() {
       }),
       replace: true,
     });
-    navigate({
-      search: (old: any) => ({
-        ...old,
-        tab: newTab === "inbox" ? undefined : newTab,
-        menu: undefined,
-      }),
-      replace: false,
-    });
+    setTimeout(() => {
+      navigate({
+        search: (old: any) => ({
+          ...old,
+          tab: newTab === "inbox" ? undefined : newTab,
+          menu: undefined,
+        }),
+        replace: false,
+      });
+    }, 50);
   };
   const navOpen = !!searchParams.menu;
   const setNavOpen = (val: boolean) => {
