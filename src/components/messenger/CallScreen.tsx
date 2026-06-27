@@ -243,8 +243,8 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
               </ControlButton>
             )}
 
-            <ControlButton label={speakerOn ? "Speaker on" : "Speaker off"} onClick={onToggleSpeaker} active={!speakerOn}>
-              {speakerOn ? <Volume2 className="h-6 w-6" /> : <VolumeX className="h-6 w-6" />}
+            <ControlButton label={speakerOn ? "Speaker on" : "Speaker off"} onClick={onToggleSpeaker} active={speakerOn}>
+              <Volume2 className="h-6 w-6" />
             </ControlButton>
 
             {isVideo && (
