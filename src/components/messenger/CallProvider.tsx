@@ -288,6 +288,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setIncoming(null);
   }
 
+  const [paramsCallId, setParamsCallId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setParamsCallId(params.get("call_id"));
+  }, [incoming]);
+
+  const isLoadingCall = !!paramsCallId && !incoming && !active;
+
   useEffect(() => {
     if (!incoming) return;
     const params = new URLSearchParams(window.location.search);
@@ -315,7 +324,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   return (
     <CallCtx.Provider value={{ startCall }}>
-      {children}
+      {isLoadingCall ? (
+        <div className="fixed inset-0 z-[100] bg-gradient-to-b from-slate-900 to-black text-white flex flex-col items-center justify-center p-8 animate-in fade-in duration-200">
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            <p className="text-xl font-semibold tracking-wide">Jackpot Jungle Call...</p>
+            <p className="text-white/60 text-sm">Connecting call session...</p>
+          </div>
+        </div>
+      ) : (
+        children
+      )}
       {incoming && !active && (
         <IncomingCallModal
           peerName={incoming.peer.name}

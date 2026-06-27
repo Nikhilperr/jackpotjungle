@@ -50,6 +50,7 @@ function PageChatView() {
   const [preview, setPreview] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isInitialLoadRef = useRef(true);
   const { startCall } = useCalls();
 
   useEffect(() => {
@@ -145,7 +146,12 @@ function PageChatView() {
   }, [convId]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    if (messages.length > 0 && isInitialLoadRef.current) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+      isInitialLoadRef.current = false;
+    } else {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
   }, [messages, calls]);
 
   function addOptimistic(partial: Partial<Msg>): string {

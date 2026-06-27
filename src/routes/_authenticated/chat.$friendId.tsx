@@ -60,6 +60,7 @@ function ChatView() {
   const [activeMatch, setActiveMatch] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isInitialLoadRef = useRef(true);
   const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastTypingSentRef = useRef(0);
@@ -171,7 +172,12 @@ function ChatView() {
   }, [meId, friendId]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    if (messages.length > 0 && isInitialLoadRef.current) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+      isInitialLoadRef.current = false;
+    } else {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
   }, [messages, calls, friendTyping]);
 
   function onDraftChange(v: string) {
