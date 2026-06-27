@@ -9,16 +9,7 @@ import { useChatNotifications } from "@/hooks/useChatNotifications";
 import { useNativePush } from "@/hooks/useNativePush";
 import { initializeNativeBridge } from "@/lib/native";
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 
 const DrawerCtx = createContext<{ open: () => void }>({ open: () => {} });
 export const useAppDrawer = () => useContext(DrawerCtx);
@@ -60,9 +51,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const Drawer = (
     <aside className="w-72 h-full bg-card border-r border-border flex flex-col">
       <div className="px-4 py-5 flex items-center gap-3 border-b border-border">
-        <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center">
-          <MessageCircle className="h-5 w-5 text-primary-foreground" />
-        </div>
+        <img src="/icons/icon-192.webp" alt="Logo" className="h-10 w-10 rounded-xl mb-0 shadow-sm object-cover" />
         <div className="flex-1">
           <p className="font-bold">Jackpot Jungle</p>
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Messenger</p>
@@ -121,20 +110,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <main className="flex-1 min-w-0 min-h-0 flex flex-col safe-pt safe-pb safe-pl safe-pr">{children}</main>
 
-        <AlertDialog open={confirmOut} onOpenChange={setConfirmOut}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Sign out?</AlertDialogTitle>
-              <AlertDialogDescription>You really wanna sign out of Jackpot Jungle?</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={signOut} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Sign out
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <SignOutDialog isOpen={confirmOut} onClose={() => setConfirmOut(false)} onConfirm={signOut} />
       </div>
     </DrawerCtx.Provider>
   );

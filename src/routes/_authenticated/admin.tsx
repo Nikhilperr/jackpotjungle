@@ -73,6 +73,7 @@ import {
   ReferralsAdminView,
   AdminProfileView,
 } from "@/components/admin/AdminViews";
+import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 
 type AdminSearch = {
   c?: string;
@@ -231,20 +232,7 @@ function AdminPage() {
         {tab === "profile" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={user.id} email={user.email ?? null} /></ScrollWrap>}
       </main>
 
-      <AlertDialog open={confirmOut} onOpenChange={setConfirmOut}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Sign out?</AlertDialogTitle>
-            <AlertDialogDescription>You really wanna sign out of Jackpot Jungle?</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={signOut} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Sign out
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <SignOutDialog isOpen={confirmOut} onClose={() => setConfirmOut(false)} onConfirm={signOut} />
     </div>
   );
 }

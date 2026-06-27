@@ -44,9 +44,7 @@ function AuthPage() {
 
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex h-20 w-20 rounded-full bg-primary items-center justify-center mb-4 shadow-lg">
-            <MessageCircle className="h-10 w-10 text-primary-foreground" />
-          </div>
+          <img src="/icons/icon-256.webp" alt="Logo" className="mx-auto h-20 w-20 rounded-2xl mb-4 shadow-lg object-cover animate-fade-in" />
           <h1 className="text-3xl font-bold text-foreground">Jackpot Jungle</h1>
           <p className="text-sm text-muted-foreground mt-1">Messenger</p>
         </div>
