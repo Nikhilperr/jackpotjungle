@@ -8,6 +8,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Avatar } from "@/components/messenger/Avatar";
 import { useRole } from "@/hooks/useRole";
 import { toast } from "sonner";
+import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 
 export const Route = createFileRoute("/_authenticated/chat")({
   head: () => ({ meta: [{ title: "Chats — JJ Messenger" }] }),
@@ -188,7 +189,7 @@ function ChatLayout() {
               </button>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <PullToRefresh onRefresh={async () => { if (meIdRef.current) { await Promise.all([load(meIdRef.current), loadPage(meIdRef.current)]); } }}>
             {!isAdmin && tab === "all" && (
               <Link
                 to="/chat/page"
@@ -266,7 +267,7 @@ function ChatLayout() {
                 );
               })
             )}
-          </div>
+          </PullToRefresh>
         </div>
         <div className={`${hasActive ? "flex" : "hidden md:flex"} flex-1 min-w-0 min-h-0 flex-col`}>
           {hasActive ? <Outlet /> : <EmptyState />}

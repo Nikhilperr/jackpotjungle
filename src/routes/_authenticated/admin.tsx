@@ -50,6 +50,7 @@ import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -436,7 +437,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <PullToRefresh onRefresh={load}>
           {filtered.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">{viewSpam ? "No spam conversations." : "No conversations."}</p>
           ) : filtered.map((u) => {
@@ -494,7 +495,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             </div>
             );
           })}
-        </div>
+        </PullToRefresh>
       </div>
 
       {/* Conversation pane — full screen on mobile when open */}
@@ -514,7 +515,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       {/* Mobile/tablet: detail sheet (panel is hidden lg:flex by default) */}
       <Sheet open={detailOpen && !!active} onOpenChange={setDetailOpen}>
         <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden">
-          {active && <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" />}
+          {active && <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" onClose={() => setDetailOpen(false)} />}
         </SheetContent>
       </Sheet>
 

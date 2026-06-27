@@ -400,7 +400,7 @@ export function LogsView() {
 }
 
 /* ============ USER DETAIL PANEL (notes/tags/credits/payments/referrer) ============ */
-export function UserDetailPanel({ userId, username, avatar, variant = "desktop" }: { userId: string; username: string; avatar: string | null; variant?: "desktop" | "embedded" }) {
+export function UserDetailPanel({ userId, username, avatar, variant = "desktop", onClose }: { userId: string; username: string; avatar: string | null; variant?: "desktop" | "embedded"; onClose?: () => void }) {
   const blockFn = useServerFn(setUserBlocked);
   const [tags, setTags] = useState<any[]>([]);
   const [allTags, setAllTags] = useState<any[]>([]);
@@ -581,7 +581,17 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop" 
   );
 
   if (variant === "embedded") {
-    return <div className="h-full overflow-y-auto bg-card">{Body}</div>;
+    return (
+      <div className="h-full flex flex-col bg-card">
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border shrink-0 bg-card">
+          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={onClose}>
+            <ArrowLeft className="h-5 w-5 text-muted-foreground" />
+          </Button>
+          <span className="font-bold text-sm">User Details</span>
+        </div>
+        <div className="flex-1 overflow-y-auto">{Body}</div>
+      </div>
+    );
   }
   return (
     <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto">
