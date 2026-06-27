@@ -119,6 +119,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const showIncomingCall = useCallback(async (row: CallRow) => {
     if (row.status !== "ringing") return;
+    // Exclude if we are the caller (prevents same-account outgoing call ringback loop)
+    if (row.caller_id === meIdRef.current) {
+      console.log("[Call Debug] Ignoring call insert because we are the caller.");
+      return;
+    }
     if (activeRef.current || incomingRef.current) {
       await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", row.id);
       return;
@@ -126,7 +131,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const { data: prof } = await supabase
       .from("profiles").select("username, avatar_url").eq("id", row.caller_id).maybeSingle();
     if (activeRef.current || incomingRef.current) return;
-    const isSupport = row.context === "page" || row.context === "page_broadcast";
+    const isSupport = row.context === "page"; // Only override when Admin calls User, not when User calls Admin
     const displayName = isSupport ? "Jackpot Jungle Support" : (prof?.username ?? "Caller");
     const displayAvatar = isSupport ? "/icons/icon-192x192.png" : (prof?.avatar_url ?? null);
 
@@ -190,9 +195,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
           clearTimeout(missedTimersRef.current[row.id]);
           delete missedTimersRef.current[row.id];
         }
-        if (incomingRef.current?.call.id === row.id && row.status !== "ringing" && row.status !== "active") {
+        if (incomingRef.current?.call.id === row.id && row.status !== "ringing") {
+          // If status changes to anything other than ringing (active, ended, declined, canceled, missed):
+          // stop ringtone, dismiss modal, and close app if on lockscreen
           stopRingtone();
           setIncoming(null);
+          if (launchedForCallRef.current && (window as any).AndroidBridge?.closeApp) {
+            console.log("[Call Debug] Dismissing app from lockscreen; call is no longer ringing.");
+            (window as any).AndroidBridge.closeApp();
+          }
         }
       })
       .subscribe();
