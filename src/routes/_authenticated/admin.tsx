@@ -296,6 +296,22 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [detailOpen, setDetailOpen] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    if (detailOpen) {
+      window.history.pushState({ sheetOpen: true }, "");
+      const handlePopState = () => {
+        setDetailOpen(false);
+      };
+      window.addEventListener("popstate", handlePopState);
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+        if (window.history.state?.sheetOpen) {
+          window.history.back();
+        }
+      };
+    }
+  }, [detailOpen]);
+
   async function load() {
     const { data: convList } = await supabase
       .from("page_conversations")
