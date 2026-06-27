@@ -58,15 +58,36 @@ function ChatLayout() {
       .eq("user_id", myId)
       .maybeSingle();
     if (!conv) return;
-    const { data: last } = await supabase
-      .from("page_messages")
-      .select("content, created_at, from_page, seen")
-      .eq("conversation_id", conv.id)
-      .order("created_at", { ascending: false })
-      .limit(50);
+
+    const [{ data: last }, { data: lastCalls }] = await Promise.all([
+      supabase
+        .from("page_messages")
+        .select("content, created_at, from_page, seen")
+        .eq("conversation_id", conv.id)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("calls")
+        .select("id, caller_id, callee_id, call_type, status, created_at")
+        .in("context", ["page", "page_broadcast"])
+        .or(`caller_id.eq.${myId},callee_id.eq.${myId}`)
+        .order("created_at", { ascending: false })
+        .limit(10)
+    ]);
+
     const arr = last ?? [];
-    const first = arr[0];
-    setPageLast({ content: first?.content ?? null, at: first?.created_at ?? null });
+    const firstMsg = arr[0];
+    const firstCall = lastCalls?.[0];
+
+    let content = firstMsg?.content ?? null;
+    let at = firstMsg?.created_at ?? null;
+
+    if (firstCall && (!at || new Date(firstCall.created_at) > new Date(at))) {
+      content = firstCall.call_type === "video" ? "📹 Video call" : "📞 Voice call";
+      at = firstCall.created_at;
+    }
+
+    setPageLast({ content, at });
     setPageUnread(arr.filter((m) => m.from_page && !m.seen).length);
   }
 
@@ -77,16 +98,27 @@ function ChatLayout() {
     if (!friends) return;
     const friendIds = friends.map((f) => (f.user_a === myId ? f.user_b : f.user_a));
     if (friendIds.length === 0) { setConversations([]); return; }
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, username, avatar_url, online")
-      .in("id", friendIds);
-    const { data: msgs } = await supabase
-      .from("messages")
-      .select("sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
-      .or(friendIds.map((id) => `and(sender_id.eq.${id},receiver_id.eq.${myId}),and(sender_id.eq.${myId},receiver_id.eq.${id})`).join(","))
-      .order("created_at", { ascending: false })
-      .limit(500);
+
+    const [{ data: profiles }, { data: msgs }, { data: friendCalls }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, username, avatar_url, online")
+        .in("id", friendIds),
+      supabase
+        .from("messages")
+        .select("sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
+        .or(friendIds.map((id) => `and(sender_id.eq.${id},receiver_id.eq.${myId}),and(sender_id.eq.${myId},receiver_id.eq.${id})`).join(","))
+        .order("created_at", { ascending: false })
+        .limit(500),
+      supabase
+        .from("calls")
+        .select("id, caller_id, callee_id, call_type, status, created_at")
+        .eq("context", "friend")
+        .or(`caller_id.eq.${myId},callee_id.eq.${myId}`)
+        .order("created_at", { ascending: false })
+        .limit(200)
+    ]);
+
     const byFriend: Record<string, Conversation> = {};
     (profiles ?? []).forEach((p) => {
       byFriend[p.id] = { friendId: p.id, username: p.username, avatar_url: p.avatar_url, online: p.online, lastMessage: null, lastAt: null, unread: 0, allText: "" };
@@ -100,6 +132,21 @@ function ChatLayout() {
       if (m.content) c.allText += " " + m.content.toLowerCase();
       if (m.receiver_id === myId && !m.seen) c.unread++;
     });
+
+    // Merge recent calls into friendship items
+    (friendCalls ?? []).forEach((call: any) => {
+      const fid = call.caller_id === myId ? call.callee_id : call.caller_id;
+      if (!fid) return;
+      const c = byFriend[fid];
+      if (!c) return;
+
+      const callPreview = call.call_type === "video" ? "📹 Video call" : "📞 Voice call";
+      if (!c.lastAt || new Date(call.created_at) > new Date(c.lastAt)) {
+        c.lastMessage = callPreview;
+        c.lastAt = call.created_at;
+      }
+    });
+
     setConversations(Object.values(byFriend).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? "")));
   }
 
@@ -135,6 +182,12 @@ function ChatLayout() {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "spam_list" }, () => {
         if (mounted) loadSpam(meId);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, () => {
+        if (mounted) {
+          load(meId);
+          loadPage(meId);
+        }
       })
       .subscribe();
 

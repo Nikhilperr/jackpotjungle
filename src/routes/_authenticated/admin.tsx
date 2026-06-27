@@ -360,14 +360,13 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   async function load() {
     const { data: convList } = await supabase
       .from("page_conversations")
-      .select("id, user_id, last_message_at, is_spam")
-      .order("last_message_at", { ascending: false });
+      .select("id, user_id, last_message_at, is_spam");
     if (!convList) return;
     const userIds = convList.map((c) => c.user_id);
     const convIds = convList.map((c) => c.id);
     if (userIds.length === 0) { setConvs([]); return; }
 
-    const [{ data: profiles }, { data: msgs }, { data: tagsData }, { data: utRows }, { data: credRows }] = await Promise.all([
+    const [{ data: profiles }, { data: msgs }, { data: tagsData }, { data: utRows }, { data: credRows }, { data: supportCalls }] = await Promise.all([
       supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds),
       supabase
         .from("page_messages")
@@ -377,6 +376,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       supabase.from("tags").select("id, name, color").order("name"),
       supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds),
       supabase.from("user_credits").select("user_id, balance").in("user_id", userIds),
+      supabase
+        .from("calls")
+        .select("id, caller_id, callee_id, call_type, status, created_at")
+        .in("context", ["page", "page_broadcast"])
+        .order("created_at", { ascending: false })
+        .limit(300)
     ]);
 
     setAllTags(tagsData ?? []);
@@ -391,8 +396,21 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     const rows: ConvRow[] = convList.map((c) => {
       const p = byUser.get(c.user_id);
       const convMsgs = (msgs ?? []).filter((m) => m.conversation_id === c.id);
-      const last = convMsgs[0];
+      const lastMsg = convMsgs[0];
       const unread = convMsgs.filter((m) => !m.from_page && !m.seen).length;
+
+      // Find most recent call associated with this user
+      const userCalls = (supportCalls ?? []).filter((call) => call.caller_id === c.user_id || call.callee_id === c.user_id);
+      const lastCall = userCalls[0];
+
+      let lastMessage = lastMsg?.content ?? null;
+      let lastAt = lastMsg?.created_at ?? null;
+
+      if (lastCall && (!lastAt || new Date(lastCall.created_at) > new Date(lastAt))) {
+        lastMessage = lastCall.call_type === "video" ? "📹 Video call" : "📞 Voice call";
+        lastAt = lastCall.created_at;
+      }
+
       return {
         conversationId: c.id,
         userId: c.user_id,
@@ -400,13 +418,17 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         avatar_url: p?.avatar_url ?? null,
         online: p?.online ?? false,
         last_seen: p?.last_seen ?? c.last_message_at,
-        lastMessage: last?.content ?? null,
-        lastAt: last?.created_at ?? null,
+        lastMessage,
+        lastAt,
         unread,
         credit: creditMap.get(c.user_id) ?? 0,
         isSpam: (c as any).is_spam ?? false,
       };
     });
+
+    // Sort conversations strictly by most recent activity
+    rows.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+
     setConvs(rows);
   }
 
@@ -419,6 +441,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       .on("postgres_changes", { event: "*", schema: "public", table: "user_tags" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "tags" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "user_credits" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
