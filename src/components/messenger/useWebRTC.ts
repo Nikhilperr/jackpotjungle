@@ -23,10 +23,11 @@ type Args = {
   role: CallRole;
   kind: CallKind;
   meId: string;
+  context: string;
   onRemoteHangup?: () => void;
 };
 
-export function useWebRTC({ callId, role, kind, meId, onRemoteHangup }: Args) {
+export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup }: Args) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connected, setConnected] = useState(false);
@@ -152,9 +153,12 @@ export function useWebRTC({ callId, role, kind, meId, onRemoteHangup }: Args) {
 
     (async () => {
       try {
+        const isCurrentParticipantAdmin = (context === "page" && role === "caller") || (context === "page_broadcast" && role === "callee");
+        const wantVideo = kind === "video" && !isCurrentParticipantAdmin;
+
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: kind === "video" ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+          video: wantVideo ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
         });
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         setLocalStream(stream);

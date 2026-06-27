@@ -84,34 +84,41 @@ public class MainActivity extends BridgeActivity {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                                 KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
                                 if (keyguardManager != null) {
-                                    keyguardManager.requestDismissKeyguard(MainActivity.this, new KeyguardManager.KeyguardDismissCallback() {
-                                        @Override
-                                        public void onDismissSucceeded() {
-                                            super.onDismissSucceeded();
-                                            Log.d("MainActivity", "Keyguard unlock succeeded.");
-                                            runOnUiThread(new Runnable() {
-                                                @Override
-                                                public void run() {
-                                                    if (getBridge() != null && getBridge().getWebView() != null) {
-                                                        getBridge().getWebView().evaluateJavascript("if (window.onUnlockSucceeded) { window.onUnlockSucceeded(); }", null);
+                                    if (keyguardManager.isKeyguardLocked()) {
+                                        keyguardManager.requestDismissKeyguard(MainActivity.this, new KeyguardManager.KeyguardDismissCallback() {
+                                            @Override
+                                            public void onDismissSucceeded() {
+                                                super.onDismissSucceeded();
+                                                Log.d("MainActivity", "Keyguard unlock succeeded.");
+                                                runOnUiThread(new Runnable() {
+                                                    @Override
+                                                    public void run() {
+                                                        if (getBridge() != null && getBridge().getWebView() != null) {
+                                                            getBridge().getWebView().evaluateJavascript("if (window.onUnlockSucceeded) { window.onUnlockSucceeded(); }", null);
+                                                        }
                                                     }
-                                                }
-                                            });
-                                        }
+                                                });
+                                            }
 
-                                        @Override
-                                        public void onDismissCancelled() {
-                                            super.onDismissCancelled();
-                                            Log.d("MainActivity", "Keyguard unlock cancelled.");
-                                        }
+                                            @Override
+                                            public void onDismissCancelled() {
+                                                super.onDismissCancelled();
+                                                Log.d("MainActivity", "Keyguard unlock cancelled.");
+                                            }
 
-                                        @Override
-                                        public void onDismissError() {
-                                            super.onDismissError();
-                                            Log.d("MainActivity", "Keyguard unlock error.");
+                                            @Override
+                                            public void onDismissError() {
+                                                super.onDismissError();
+                                                Log.d("MainActivity", "Keyguard unlock error.");
+                                            }
+                                        });
+                                        Log.d("MainActivity", "Keyguard unlock requested from WebApp.");
+                                    } else {
+                                        Log.d("MainActivity", "Keyguard is not locked. Triggering unlock callback directly.");
+                                        if (getBridge() != null && getBridge().getWebView() != null) {
+                                            getBridge().getWebView().evaluateJavascript("if (window.onUnlockSucceeded) { window.onUnlockSucceeded(); }", null);
                                         }
-                                    });
-                                    Log.d("MainActivity", "Keyguard unlock requested from WebApp.");
+                                    }
                                 }
                             } else {
                                 getWindow().addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD);

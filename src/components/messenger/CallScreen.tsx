@@ -14,6 +14,7 @@ type Props = {
   peerAvatar: string | null;
   /** True when call is already accepted on both sides (active). For caller this becomes true on first answer received. */
   initialActive: boolean;
+  context: string;
   onClose: () => void;
 };
 
@@ -23,7 +24,7 @@ function fmt(s: number) {
   return `${m}:${ss}`;
 }
 
-export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, initialActive, onClose }: Props) {
+export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, initialActive, context, onClose }: Props) {
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
@@ -38,7 +39,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   const closedRef = useRef(false);
 
   const { localStream, remoteStream, connected, remoteMuted, sendHangup, toggleAudio, toggleVideo, switchCamera, sendMediaState } = useWebRTC({
-    callId, role, kind, meId,
+    callId, role, kind, meId, context,
     onRemoteHangup: () => endCall("remote"),
   });
 
@@ -126,12 +127,15 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   }
 
   const isVideo = kind === "video";
+  const isCurrentParticipantAdmin = (context === "page" && role === "caller") || (context === "page_broadcast" && role === "callee");
+  const showLocalVideo = isVideo && !isCurrentParticipantAdmin;
+  const hasRemoteVideo = isVideo && active && remoteStream && remoteStream.getVideoTracks().length > 0;
 
   return (
     <div className="fixed inset-0 z-[100] bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white flex flex-col animate-in fade-in duration-200">
       {/* Remote video / avatar */}
       <div className="absolute inset-0">
-        {isVideo && active ? (
+        {hasRemoteVideo ? (
           <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-5">
@@ -160,7 +164,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
       </div>
 
       {/* Local video PIP */}
-      {isVideo && (
+      {showLocalVideo && (
         <div className="absolute top-4 right-4 w-28 h-40 sm:w-36 sm:h-52 rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-black z-10">
           <video ref={localVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${cameraOff ? "opacity-0" : ""}`} />
           {cameraOff && (

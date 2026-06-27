@@ -16,7 +16,17 @@ public class MyFirebaseMessagingService extends MessagingService {
         Log.d(TAG, "onMessageReceived triggered: " + (data != null ? data.toString() : "null"));
 
         if (data != null && "call".equals(data.get("type"))) {
-            Log.d(TAG, "Incoming call push detected. Starting foreground calling service...");
+            android.app.ActivityManager.RunningAppProcessInfo appProcessInfo = new android.app.ActivityManager.RunningAppProcessInfo();
+            android.app.ActivityManager.getMyMemoryState(appProcessInfo);
+            boolean isForeground = (appProcessInfo.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND);
+
+            if (isForeground) {
+                Log.d(TAG, "App is in foreground. Skipping call notification/foreground service, letting webview handle it.");
+                super.onMessageReceived(remoteMessage);
+                return;
+            }
+
+            Log.d(TAG, "Incoming call push detected and app is not in foreground. Starting foreground calling service...");
             
             Intent serviceIntent = new Intent(this, CallForegroundService.class);
             for (Map.Entry<String, String> entry : data.entrySet()) {

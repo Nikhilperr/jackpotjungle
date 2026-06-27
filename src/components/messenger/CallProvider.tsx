@@ -23,6 +23,7 @@ type ActiveCall = {
   kind: CallKind;
   peer: PeerInfo;
   initialActive: boolean;
+  context: string;
 };
 
 type Incoming = {
@@ -295,6 +296,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       kind,
       peer,
       initialActive: false,
+      context,
     });
   }, []);
 
@@ -328,6 +330,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         kind: incoming.call.call_type,
         peer: incoming.peer,
         initialActive: true,
+        context: incoming.call.context,
       });
       setIncoming(null);
     };
@@ -417,6 +420,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           peerName={active.peer.name}
           peerAvatar={active.peer.avatar}
           initialActive={active.initialActive}
+          context={active.context}
           onClose={() => {
             setActive(null);
             if (launchedForCallRef.current && (window as any).AndroidBridge?.closeApp) {
