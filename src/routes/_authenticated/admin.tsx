@@ -192,6 +192,11 @@ function AdminPage() {
     );
   }
 
+  function selectTab(t: string) {
+    setTab(t);
+    setNavOpen(false);
+  }
+
   const SideNav = (
     <aside className="w-60 md:w-56 h-full border-r border-border bg-card flex flex-col">
       <div className="px-4 py-5 flex items-center gap-2 border-b border-border">
@@ -206,30 +211,30 @@ function AdminPage() {
         </div>
         <button
           onClick={() => setNavOpen(false)}
-          className="md:hidden h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-secondary"
+          className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-secondary"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
       <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
         <p className="px-3 pt-1 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Business</p>
-        <SideBtn active={tab === "inbox"} onClick={() => setTab("inbox")} icon={Inbox} label="Page Inbox" />
-        <SideBtn active={tab === "quickreplies"} onClick={() => setTab("quickreplies")} icon={MessageSquareQuote} label="Quick Replies" />
-        <SideBtn active={tab === "tags"} onClick={() => setTab("tags")} icon={TagIcon} label="Tags" />
-        <SideBtn active={tab === "broadcasts"} onClick={() => setTab("broadcasts")} icon={Megaphone} label="Broadcasts" />
-        <SideBtn active={tab === "followups"} onClick={() => setTab("followups")} icon={Bell} label="Follow-ups" />
-        <SideBtn active={tab === "autoresp"} onClick={() => setTab("autoresp")} icon={Bot} label="Auto-response" />
-        <SideBtn active={tab === "referrals"} onClick={() => setTab("referrals")} icon={Gift} label="Referrals" />
-        <SideBtn active={tab === "logs"} onClick={() => setTab("logs")} icon={Activity} label="Logs" />
+        <SideBtn active={tab === "inbox"} onClick={() => selectTab("inbox")} icon={Inbox} label="Page Inbox" />
+        <SideBtn active={tab === "quickreplies"} onClick={() => selectTab("quickreplies")} icon={MessageSquareQuote} label="Quick Replies" />
+        <SideBtn active={tab === "tags"} onClick={() => selectTab("tags")} icon={TagIcon} label="Tags" />
+        <SideBtn active={tab === "broadcasts"} onClick={() => selectTab("broadcasts")} icon={Megaphone} label="Broadcasts" />
+        <SideBtn active={tab === "followups"} onClick={() => selectTab("followups")} icon={Bell} label="Follow-ups" />
+        <SideBtn active={tab === "autoresp"} onClick={() => selectTab("autoresp")} icon={Bot} label="Auto-response" />
+        <SideBtn active={tab === "referrals"} onClick={() => selectTab("referrals")} icon={Gift} label="Referrals" />
+        <SideBtn active={tab === "logs"} onClick={() => selectTab("logs")} icon={Activity} label="Logs" />
         {isSuperAdmin && (
           <>
             <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Super admin</p>
-            <SideBtn active={tab === "admins"} onClick={() => setTab("admins")} icon={UsersIcon} label="Admin team" />
-            <SideBtn active={tab === "super"} onClick={() => setTab("super")} icon={SettingsIcon} label="System settings" />
+            <SideBtn active={tab === "admins"} onClick={() => selectTab("admins")} icon={UsersIcon} label="Admin team" />
+            <SideBtn active={tab === "super"} onClick={() => selectTab("super")} icon={SettingsIcon} label="System settings" />
           </>
         )}
         <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
-        <SideBtn active={tab === "profile"} onClick={() => setTab("profile")} icon={UserIcon} label="My profile" />
+        <SideBtn active={tab === "profile"} onClick={() => selectTab("profile")} icon={UserIcon} label="My profile" />
       </nav>
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
@@ -246,14 +251,11 @@ function AdminPage() {
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
-      {/* Desktop side nav */}
-      <div className="hidden md:flex">{SideNav}</div>
-
-      {/* Mobile drawer */}
+      {/* Side nav drawer for both desktop and mobile */}
       {navOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setNavOpen(false)} />
-          <div className="relative z-10">{SideNav}</div>
+        <div className="fixed inset-0 z-50 flex animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setNavOpen(false)} />
+          <div className="relative z-10 animate-in slide-in-from-left duration-200">{SideNav}</div>
         </div>
       )}
 
@@ -279,7 +281,7 @@ function AdminPage() {
 function ScrollWrap({ onOpenNav, title, children }: { onOpenNav: () => void; title: string; children: React.ReactNode }) {
   return (
     <div className="h-full flex flex-col min-h-0">
-      <div className="md:hidden sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2 shrink-0">
+      <div className="sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2 shrink-0">
         <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary" aria-label="Menu">
           <Menu className="h-5 w-5" />
         </button>
@@ -476,33 +478,54 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     if (next && active?.conversationId === conv.conversationId) setActiveId(null);
   }
 
-  return (
-    <div className="flex h-full min-h-0">
-      {/* List — hidden on mobile when a conversation is open */}
-      <div className={`${active ? "hidden sm:flex" : "flex"} w-full sm:w-80 border-r border-border bg-card flex-col min-h-0`}>
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-2 mb-3 sm:mb-1">
-            <button
-              onClick={onOpenNav}
-              className="md:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="flex-1">
-              <h2 className="text-lg font-bold leading-tight">Jackpot Jungle</h2>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Page Inbox</p>
+    const onlineUsers = convs.filter((u) => u.online && !u.isSpam);
+
+    return (
+      <div className="flex h-full min-h-0">
+        {/* List — hidden on mobile when a conversation is open */}
+        <div className={`${active ? "hidden sm:flex" : "flex"} w-full sm:w-80 border-r border-border bg-card flex-col min-h-0`}>
+          <div className="p-4 border-b border-border">
+            <div className="flex items-center gap-2 mb-3 sm:mb-1">
+              <button
+                onClick={onOpenNav}
+                className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary shrink-0"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              <div className="flex-1">
+                <h2 className="text-lg font-bold leading-tight">Jackpot Jungle</h2>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Page Inbox</p>
+              </div>
             </div>
-          </div>
-          <div className="relative mt-3">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search users"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 rounded-full bg-secondary border-transparent"
-            />
-          </div>
-          <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
+            <div className="relative mt-3">
+              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search users"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 rounded-full bg-secondary border-transparent"
+              />
+            </div>
+            {onlineUsers.length > 0 && (
+              <div className="flex items-center gap-4 py-2 mt-3 overflow-x-auto no-scrollbar">
+                {onlineUsers.map((f) => (
+                  <button
+                    key={f.conversationId}
+                    onClick={() => setActiveId(f.conversationId)}
+                    className="flex flex-col items-center shrink-0 w-[56px] text-center group cursor-pointer"
+                  >
+                    <div className="relative">
+                      <Avatar name={f.username} url={f.avatar_url} size={40} />
+                      <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-background" />
+                    </div>
+                    <span className="text-[10px] font-medium text-foreground mt-1 truncate w-full group-hover:underline">
+                      {f.username.split(" ")[0]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
             <button
               onClick={() => { setViewSpam(false); setTagFilter(null); }}
               className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${!viewSpam && tagFilter === null ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
@@ -1197,7 +1220,7 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="md:hidden sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2">
+      <div className="sticky top-0 z-10 bg-card border-b border-border px-3 py-3 flex items-center gap-2">
         <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary">
           <Menu className="h-5 w-5" />
         </button>

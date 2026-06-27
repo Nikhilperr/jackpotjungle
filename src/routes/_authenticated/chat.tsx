@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
-import { Search, MessageCircle, Sparkles, Ban, RotateCcw } from "lucide-react";
+import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar } from "@/components/messenger/Avatar";
 import { useRole } from "@/hooks/useRole";
@@ -232,6 +232,8 @@ function ChatLayout() {
   );
   const spamCount = conversations.filter((c) => spamIds.has(c.friendId)).length;
 
+  const onlineFriends = conversations.filter((c) => c.online && !spamIds.has(c.friendId));
+
   return (
     <AppShell>
       <div className="flex h-full">
@@ -250,6 +252,36 @@ function ChatLayout() {
                 className="pl-9 rounded-full bg-secondary border-transparent"
               />
             </div>
+            {tab === "all" && (
+              <div className="flex items-center gap-4 py-2 mt-3 overflow-x-auto no-scrollbar">
+                {/* Create story / Self placeholder */}
+                <div className="flex flex-col items-center shrink-0 w-[60px] text-center">
+                  <div className="relative">
+                    <div className="h-12 w-12 rounded-full bg-secondary hover:bg-secondary/85 flex items-center justify-center border border-border cursor-pointer transition-colors">
+                      <Plus className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground mt-1 truncate w-full">Create story</span>
+                </div>
+                {/* Online friends */}
+                {onlineFriends.map((f) => (
+                  <Link
+                    key={f.friendId}
+                    to="/chat/$friendId"
+                    params={{ friendId: f.friendId }}
+                    className="flex flex-col items-center shrink-0 w-[60px] text-center group cursor-pointer"
+                  >
+                    <div className="relative">
+                      <Avatar name={f.username} url={f.avatar_url} size={48} />
+                      <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-green-500 ring-2 ring-background" />
+                    </div>
+                    <span className="text-[10px] font-medium text-foreground mt-1 truncate w-full group-hover:underline">
+                      {f.username.split(" ")[0]}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2 mt-3">
               <button
                 onClick={() => setTab("all")}
