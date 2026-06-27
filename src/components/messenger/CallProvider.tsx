@@ -126,9 +126,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const { data: prof } = await supabase
       .from("profiles").select("username, avatar_url").eq("id", row.caller_id).maybeSingle();
     if (activeRef.current || incomingRef.current) return;
+    const isSupport = row.context === "page" || row.context === "page_broadcast";
+    const displayName = isSupport ? "Jackpot Jungle Support" : (prof?.username ?? "Caller");
+    const displayAvatar = isSupport ? "/icons/icon-192x192.png" : (prof?.avatar_url ?? null);
+
     setIncoming({
       call: row,
-      peer: { name: prof?.username ?? "Caller", avatar: prof?.avatar_url ?? null },
+      peer: { name: displayName, avatar: displayAvatar },
     });
   }, []);
 
