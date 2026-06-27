@@ -140,6 +140,25 @@ public class MainActivity extends BridgeActivity {
                         }
                     });
                 }
+
+                @android.webkit.JavascriptInterface
+                public void setSpeakerphoneOn(boolean on) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                android.media.AudioManager audioManager = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                                if (audioManager != null) {
+                                    audioManager.setMode(android.media.AudioManager.MODE_IN_COMMUNICATION);
+                                    audioManager.setSpeakerphoneOn(on);
+                                    Log.d("MainActivity", "Speakerphone toggled natively to: " + on);
+                                }
+                            } catch (Exception e) {
+                                Log.e("MainActivity", "Failed to toggle speakerphone natively", e);
+                            }
+                        }
+                    });
+                }
             }, "AndroidBridge");
         }
 

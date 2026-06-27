@@ -62,7 +62,13 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup }:
     setRemoteStream(remote);
 
     pc.ontrack = (ev) => {
-      ev.streams[0]?.getTracks().forEach((t) => remote.addTrack(t));
+      console.log("[WebRTC] ontrack received remote media stream:", ev.streams[0]);
+      if (ev.streams && ev.streams[0]) {
+        setRemoteStream(ev.streams[0]);
+      } else {
+        ev.streams[0]?.getTracks().forEach((t) => remote.addTrack(t));
+        setRemoteStream(new MediaStream(remote.getTracks()));
+      }
     };
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState;

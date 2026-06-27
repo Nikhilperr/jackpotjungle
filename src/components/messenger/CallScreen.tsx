@@ -27,7 +27,8 @@ function fmt(s: number) {
 export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, initialActive, context, onClose }: Props) {
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
-  const [speakerOn, setSpeakerOn] = useState(true);
+  const [speakerOn, setSpeakerOn] = useState(kind === "video");
+  const [dbStatus, setDbStatus] = useState<string>("ringing");
   const [seconds, setSeconds] = useState(0);
   const [active, setActive] = useState(initialActive);
   const startRef = useRef<number | null>(initialActive ? Date.now() : null);
@@ -45,12 +46,20 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
 
   useEffect(() => { activeRef.current = active; }, [active]);
 
+  // Sync initial speakerphone state natively
+  useEffect(() => {
+    if ((window as any).AndroidBridge?.setSpeakerphoneOn) {
+      (window as any).AndroidBridge.setSpeakerphoneOn(kind === "video");
+    }
+  }, [kind]);
+
   // Subscribe to status changes (for caller: when callee answers -> status=active)
   useEffect(() => {
     const ch = supabase
       .channel(`call-status:${callId}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "calls", filter: `id=eq.${callId}` }, (payload) => {
         const row = payload.new as { status: string };
+        setDbStatus(row.status);
         if (row.status === "active" && !active) {
           setActive(true);
           startRef.current = Date.now();
@@ -122,8 +131,9 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   function onToggleSpeaker() {
     const next = !speakerOn;
     setSpeakerOn(next);
-    if (remoteAudioRef.current) remoteAudioRef.current.muted = !next;
-    if (remoteVideoRef.current) remoteVideoRef.current.muted = !next;
+    if ((window as any).AndroidBridge?.setSpeakerphoneOn) {
+      (window as any).AndroidBridge.setSpeakerphoneOn(next);
+    }
   }
 
   const isVideo = kind === "video";
@@ -148,8 +158,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
             <div className="text-center">
               <p className="text-2xl font-semibold">{peerName}</p>
               <p className="text-sm text-white/70 mt-1">
-                {active ? "Connected" : role === "caller" ? "Calling…" : "Incoming call"}
-                {!active && connected ? " · connecting" : ""}
+                {active ? (connected ? fmt(seconds) : "Connecting…") : role === "caller" ? (dbStatus === "ringing" ? "Ringing…" : "Calling…") : "Incoming call…"}
               </p>
               {remoteMuted && active && (
                 <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/12 px-3 py-1 text-xs font-medium text-white/85">
@@ -178,7 +187,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
       {/* Top bar */}
       <div className="relative z-10 p-4 flex items-center justify-between">
         <div className="text-sm text-white/80 bg-black/30 backdrop-blur px-3 py-1.5 rounded-full">
-          {active ? "Connected" : role === "caller" ? "Ringing…" : "Connecting…"}
+          {active ? (connected ? "Connected" : "Connecting…") : role === "caller" ? (dbStatus === "ringing" ? "Ringing…" : "Calling…") : "Connecting…"}
         </div>
       </div>
 

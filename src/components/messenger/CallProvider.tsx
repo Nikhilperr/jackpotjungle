@@ -188,7 +188,30 @@ export function CallProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Instant call URL parameters are parsed synchronously on state initialization
+  // Verify if the call parsed from URL params on boot is still ringing in the database.
+  // If it is already answered (active) or ended/missed, we clear it so other devices don't ring.
+  useEffect(() => {
+    if (incoming && incoming.call.caller_id === "") {
+      supabase
+        .from("calls")
+        .select("id, caller_id, callee_id, call_type, status, context, page_conversation_id")
+        .eq("id", incoming.call.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!data || data.status !== "ringing") {
+            console.log("[Call Debug] Call from URL parameters is no longer ringing. Status:", data?.status);
+            setIncoming(null);
+            clearCallUrlParams();
+          } else {
+            console.log("[Call Debug] Call from URL params is valid and ringing.");
+            setIncoming({
+              call: data as CallRow,
+              peer: incoming.peer,
+            });
+          }
+        });
+    }
+  }, [incoming, clearCallUrlParams]);
 
   // Listen for incoming calls (rows where callee_id = me, status = ringing)
   useEffect(() => {
