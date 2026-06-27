@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
-import { Moon, Sun, Sparkles } from "lucide-react";
+import { Moon, Sun, Sparkles, Zap } from "lucide-react";
 
-function getInitialTheme(): "dark" | "light" | "jackpot" {
+function getInitialTheme(): "dark" | "light" | "jackpot" | "amoled" {
   if (typeof window === "undefined") return "jackpot";
   const stored = localStorage.getItem("theme");
-  if (stored === "dark" || stored === "light" || stored === "jackpot") {
+  if (stored === "dark" || stored === "light" || stored === "jackpot" || stored === "amoled") {
     return stored;
   }
   return "jackpot";
 }
 
 export function ThemeToggle({ className = "" }: { className?: string }) {
-  const [theme, setTheme] = useState<"dark" | "light" | "jackpot">("jackpot");
+  const [theme, setTheme] = useState<"dark" | "light" | "jackpot" | "amoled">("jackpot");
 
   useEffect(() => {
     const t = getInitialTheme();
@@ -19,21 +19,24 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
     applyTheme(t);
   }, []);
 
-  function applyTheme(t: "dark" | "light" | "jackpot") {
+  function applyTheme(t: "dark" | "light" | "jackpot" | "amoled") {
     const root = document.documentElement;
     root.classList.toggle("dark", t === "dark");
     root.classList.toggle("light", t === "light");
     root.classList.toggle("jackpot", t === "jackpot");
+    root.classList.toggle("amoled", t === "amoled");
   }
 
   function toggle() {
-    let next: "dark" | "light" | "jackpot";
-    if (theme === "dark") {
+    let next: "dark" | "light" | "jackpot" | "amoled";
+    if (theme === "jackpot") {
+      next = "dark";
+    } else if (theme === "dark") {
       next = "light";
     } else if (theme === "light") {
-      next = "jackpot";
+      next = "amoled";
     } else {
-      next = "dark";
+      next = "jackpot";
     }
     setTheme(next);
     localStorage.setItem("theme", next);
@@ -47,12 +50,14 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       aria-label="Toggle theme mode"
       className={`inline-flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-foreground hover:bg-accent transition-colors ${className}`}
     >
-      {theme === "dark" ? (
+      {theme === "jackpot" ? (
+        <Sparkles className="h-4 w-4 text-orange-500" />
+      ) : theme === "dark" ? (
         <Moon className="h-4 w-4 text-blue-400" />
       ) : theme === "light" ? (
         <Sun className="h-4 w-4 text-yellow-500" />
       ) : (
-        <Sparkles className="h-4 w-4 text-orange-500" />
+        <Zap className="h-4 w-4 text-indigo-400 animate-pulse" />
       )}
     </button>
   );

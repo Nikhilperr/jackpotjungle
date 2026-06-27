@@ -124,6 +124,34 @@
   --message-status: oklch(0.9 0.006 250);
 }
 
+.amoled {
+  --background: oklch(0 0 0); /* Pure black */
+  --foreground: oklch(1 0 0); /* Pure white text */
+  --card: oklch(0 0 0);
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0.1 0.005 250);
+  --popover-foreground: oklch(1 0 0);
+  --primary: oklch(0.62 0.22 258); /* Messenger blue */
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.25 0.01 250); /* Dark gray searchbar/secondary buttons */
+  --secondary-foreground: oklch(0.9 0.005 250);
+  --muted: oklch(0.2 0.01 250);
+  --muted-foreground: oklch(0.65 0.01 250);
+  --accent: oklch(0.25 0.01 250);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.18 0.01 250); /* Dark borders */
+  --input: oklch(0.25 0.01 250);
+  --ring: oklch(0.62 0.22 258);
+
+  --bubble-me: oklch(0.62 0.22 258);
+  --bubble-me-foreground: oklch(1 0 0);
+  --bubble-them: oklch(0.25 0.01 250); /* Dark gray chat bubbles */
+  --bubble-them-foreground: oklch(1 0 0);
+  --message-status: oklch(0.65 0.01 250);
+}
+
 @layer base {
   * { border-color: var(--color-border); }
   body {
