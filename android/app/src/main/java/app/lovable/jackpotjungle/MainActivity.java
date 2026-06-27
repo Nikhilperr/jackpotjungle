@@ -150,8 +150,28 @@ public class MainActivity extends BridgeActivity {
                                 android.media.AudioManager audioManager = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
                                 if (audioManager != null) {
                                     audioManager.setMode(android.media.AudioManager.MODE_IN_COMMUNICATION);
-                                    audioManager.setSpeakerphoneOn(on);
-                                    Log.d("MainActivity", "Speakerphone toggled natively to: " + on);
+                                    if (on) {
+                                        if (audioManager.isBluetoothScoOn()) {
+                                            audioManager.stopBluetoothSco();
+                                            audioManager.setBluetoothScoOn(false);
+                                        }
+                                        audioManager.setSpeakerphoneOn(true);
+                                        Log.d("MainActivity", "Speakerphone turned ON");
+                                    } else {
+                                        if (audioManager.isBluetoothScoAvailableOffCall()) {
+                                            audioManager.startBluetoothSco();
+                                            audioManager.setBluetoothScoOn(true);
+                                            audioManager.setSpeakerphoneOn(false);
+                                            Log.d("MainActivity", "Bluetooth SCO turned ON, Speakerphone OFF");
+                                        } else {
+                                            if (audioManager.isBluetoothScoOn()) {
+                                                audioManager.stopBluetoothSco();
+                                                audioManager.setBluetoothScoOn(false);
+                                            }
+                                            audioManager.setSpeakerphoneOn(false);
+                                            Log.d("MainActivity", "Speakerphone turned OFF (Earpiece mode)");
+                                        }
+                                    }
                                 }
                             } catch (Exception e) {
                                 Log.e("MainActivity", "Failed to toggle speakerphone natively", e);

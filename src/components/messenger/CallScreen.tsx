@@ -47,12 +47,12 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
 
   useEffect(() => { activeRef.current = active; }, [active]);
 
-  // Sync initial speakerphone state natively
+  // Sync speakerphone state natively on mount, toggle, and once WebRTC connects
   useEffect(() => {
     if ((window as any).AndroidBridge?.setSpeakerphoneOn) {
-      (window as any).AndroidBridge.setSpeakerphoneOn(kind === "video");
+      (window as any).AndroidBridge.setSpeakerphoneOn(speakerOn);
     }
-  }, [kind]);
+  }, [speakerOn, connected]);
 
   // Subscribe to status changes (for caller: when callee answers -> status=active)
   useEffect(() => {
