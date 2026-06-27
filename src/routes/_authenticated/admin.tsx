@@ -75,23 +75,6 @@ import {
 } from "@/components/admin/AdminViews";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 
-type AdminSearch = {
-  c?: string;
-  profile?: boolean;
-};
-
-export const Route = createFileRoute("/_authenticated/admin")({
-  ssr: false,
-  validateSearch: (search: Record<string, unknown>): AdminSearch => {
-    return {
-      c: typeof search.c === "string" ? search.c : undefined,
-      profile: search.profile === true || search.profile === "true",
-    };
-  },
-  head: () => ({ meta: [{ title: "Admin — Jackpot Jungle Messenger" }] }),
-  component: AdminPage,
-});
-
 type Tab =
   | "inbox"
   | "quickreplies"
@@ -104,6 +87,30 @@ type Tab =
   | "admins"
   | "super"
   | "profile";
+
+type AdminSearch = {
+  c?: string;
+  profile?: boolean;
+  tab?: Tab;
+};
+
+export const Route = createFileRoute("/_authenticated/admin")({
+  ssr: false,
+  validateSearch: (search: Record<string, unknown>): AdminSearch => {
+    const validTabs: Tab[] = [
+      "inbox", "quickreplies", "tags", "broadcasts", "followups",
+      "autoresp", "referrals", "logs", "admins", "super", "profile"
+    ];
+    const incomingTab = search.tab as Tab;
+    return {
+      c: typeof search.c === "string" ? search.c : undefined,
+      profile: search.profile === true || search.profile === "true",
+      tab: validTabs.includes(incomingTab) ? incomingTab : undefined,
+    };
+  },
+  head: () => ({ meta: [{ title: "Admin — Jackpot Jungle Messenger" }] }),
+  component: AdminPage,
+});
 
 type ConvRow = {
   conversationId: string;
@@ -124,7 +131,17 @@ function AdminPage() {
   const { isAdmin, isSuperAdmin, loading } = useRole();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<Tab>("inbox");
+  const searchParams = Route.useSearch();
+  const tab = searchParams.tab || "inbox";
+  const setTab = (newTab: Tab) => {
+    navigate({
+      search: (old: any) => ({
+        ...old,
+        tab: newTab === "inbox" ? undefined : newTab,
+      }),
+      replace: false,
+    });
+  };
   const [navOpen, setNavOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
 
