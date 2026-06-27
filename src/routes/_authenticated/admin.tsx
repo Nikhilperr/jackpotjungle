@@ -92,6 +92,7 @@ type AdminSearch = {
   c?: string;
   profile?: boolean;
   tab?: Tab;
+  menu?: boolean;
 };
 
 export const Route = createFileRoute("/_authenticated/admin")({
@@ -106,6 +107,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
       c: typeof search.c === "string" ? search.c : undefined,
       profile: search.profile === true || search.profile === "true",
       tab: validTabs.includes(incomingTab) ? incomingTab : undefined,
+      menu: search.menu === true || search.menu === "true",
     };
   },
   head: () => ({ meta: [{ title: "Admin — Jackpot Jungle Messenger" }] }),
@@ -138,11 +140,21 @@ function AdminPage() {
       search: (old: any) => ({
         ...old,
         tab: newTab === "inbox" ? undefined : newTab,
+        menu: undefined,
       }),
       replace: false,
     });
   };
-  const [navOpen, setNavOpen] = useState(false);
+  const navOpen = !!searchParams.menu;
+  const setNavOpen = (val: boolean) => {
+    navigate({
+      search: (old: any) => ({
+        ...old,
+        menu: val ? true : undefined,
+      }),
+      replace: false,
+    });
+  };
   const [confirmOut, setConfirmOut] = useState(false);
 
   useNativePush();
