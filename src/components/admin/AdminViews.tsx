@@ -775,12 +775,23 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f || !profile) return;
-    if (!f.type.startsWith("image/")) return toast.error("Pick an image");
+
+    // Static image validation
+    const fileMime = f.type.toLowerCase();
+    const ext = f.name.split(".").pop()?.toLowerCase() || "";
+    if (fileMime === "image/gif" || ext === "gif") {
+      return toast.error("GIF files are not supported. Please choose a static image.");
+    }
+    const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
+    const allowedExts = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+    if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
+      return toast.error("Unsupported format. Please choose a JPEG, PNG, WEBP, or HEIC image.");
+    }
+
     if (f.size > 5 * 1024 * 1024) return toast.error("Max 5MB");
     setUploading(true);
     try {
       const { uploadAndSign } = await import("@/lib/chat-media");
-      const ext = f.name.split(".").pop()?.toLowerCase() || "png";
       const url = await uploadAndSign("avatars", profile.id, f, ext, f.type);
       await sb.from("profiles").update({ avatar_url: url }).eq("id", profile.id);
       setProfile({ ...profile, avatar_url: url });

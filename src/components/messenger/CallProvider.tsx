@@ -151,7 +151,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (activeRef.current || incomingRef.current) return;
     const isSupport = row.context === "page"; // Only override when Admin calls User, not when User calls Admin
     const displayName = isSupport ? "Jackpot Jungle Support" : (prof?.username ?? "Caller");
-    const displayAvatar = isSupport ? "/icons/icon-192x192.png" : (prof?.avatar_url ?? null);
+    const displayAvatar = isSupport ? "/icons/icon-256.webp" : (prof?.avatar_url ?? null);
 
     setIncoming({
       call: row,

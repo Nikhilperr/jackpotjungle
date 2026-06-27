@@ -85,12 +85,23 @@ function ProfilePage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !profile) return;
-    if (!file.type.startsWith("image/")) return toast.error("Please choose an image.");
+
+    // Static image validation
+    const fileMime = file.type.toLowerCase();
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    if (fileMime === "image/gif" || ext === "gif") {
+      return toast.error("GIF files are not supported. Please choose a static image.");
+    }
+    const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
+    const allowedExts = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+    if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
+      return toast.error("Unsupported format. Please choose a JPEG, PNG, WEBP, or HEIC image.");
+    }
+
     if (file.size > 5 * 1024 * 1024) return toast.error("Max 5MB.");
     setUploading(true);
     try {
       const { uploadAndSign } = await import("@/lib/chat-media");
-      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
       const url = await uploadAndSign("avatars", profile.id, file, ext, file.type);
       const { error: updErr } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", profile.id);
       if (updErr) throw updErr;

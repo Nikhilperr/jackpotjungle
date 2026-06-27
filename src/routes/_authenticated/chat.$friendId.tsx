@@ -233,13 +233,26 @@ function ChatView() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !meId) return;
-    if (!file.type.startsWith("image/")) return;
+
+    // Static image validation
+    const fileMime = file.type.toLowerCase();
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    if (fileMime === "image/gif" || ext === "gif") {
+      alert("GIF files are not supported. Please choose a static image.");
+      return;
+    }
+    const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
+    const allowedExts = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+    if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
+      alert("Unsupported format. Please choose a JPEG, PNG, WEBP, or HEIC image.");
+      return;
+    }
+
     if (file.size > 8 * 1024 * 1024) { alert("Max 8 MB"); return; }
     setUploading(true);
     const localPreview = URL.createObjectURL(file);
     const tempId = addOptimistic({ image_url: localPreview });
     try {
-      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
       const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
       const { data } = await supabase
         .from("messages")

@@ -273,7 +273,7 @@ export async function initRealtimeListeners() {
               }
 
               const title = c.context === "page" ? "Jackpot Jungle Support" : callerName;
-              const displayAvatar = c.context === "page" ? "/icons/icon-192x192.png" : callerAvatar;
+              const displayAvatar = c.context === "page" ? "/icons/icon-256.webp" : callerAvatar;
 
               const avatarParam = displayAvatar ? encodeURIComponent(displayAvatar) : "";
               const callUrl = (c.context === "page" ? "/chat/page" : "/chat") + 
