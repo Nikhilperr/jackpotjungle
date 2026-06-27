@@ -149,31 +149,56 @@ export async function sendPushNotification(
 
   const promises = tokens.map(async (token) => {
     try {
-      const payload = {
+      const isCall = data?.type === "call";
+      
+      const payload: any = {
         message: {
           token,
-          notification: {
-            title,
-            body,
-          },
-          data: data || {},
+          data: data ? { ...data } : {},
           android: {
             priority: "high",
-            notification: {
-              sound: "default",
-              click_action: "FCM_PLUGIN_ACTIVITY",
-            },
-          },
-          apns: {
-            payload: {
-              aps: {
-                sound: "default",
-                badge: 1,
-              },
-            },
           },
         },
       };
+
+      // Always populate title and body inside the data block for custom receiver access
+      payload.message.data.title = title;
+      payload.message.data.body = body;
+
+      if (!isCall) {
+        // Standard notification payload for chats, etc.
+        payload.message.notification = {
+          title,
+          body,
+        };
+        payload.message.android.notification = {
+          sound: "default",
+          click_action: "FCM_PLUGIN_ACTIVITY",
+        };
+        payload.message.apns = {
+          payload: {
+            aps: {
+              sound: "default",
+              badge: 1,
+            },
+          },
+        };
+      } else {
+        // Call payload: data-only for Android to wake up background service.
+        // For APNS, use content-available to trigger background processing.
+        payload.message.apns = {
+          headers: {
+            "apns-priority": "10",
+          },
+          payload: {
+            aps: {
+              sound: "default",
+              badge: 1,
+              "content-available": 1,
+            },
+          },
+        };
+      }
 
       const res = await fetch(url, {
         method: "POST",

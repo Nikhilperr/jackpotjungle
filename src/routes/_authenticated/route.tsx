@@ -1,13 +1,15 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
+import { waitInitialSession } from "@/lib/auth-wait";
 import { CallProvider } from "@/components/messenger/CallProvider";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
-    return { user: data.user };
+    const session = await waitInitialSession();
+    if (!session?.user) {
+      throw redirect({ to: "/auth" });
+    }
+    return { user: session.user };
   },
   component: () => (
     <CallProvider>

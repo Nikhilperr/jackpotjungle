@@ -40,6 +40,10 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+    
+    // Direct dependencies for custom incoming call background service handling
+    implementation project(':capacitor-push-notifications')
+    implementation "com.google.firebase:firebase-messaging:24.0.0"
 }
 
 apply from: 'capacitor.build.gradle'

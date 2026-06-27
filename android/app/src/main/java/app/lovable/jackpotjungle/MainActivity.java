@@ -1,5 +1,122 @@
 package app.lovable.jackpotjungle;
 
+import android.app.KeyguardManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Context;
+import android.content.Intent;
+import android.media.AudioAttributes;
+import android.media.RingtoneManager;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.util.Log;
+import android.view.WindowManager;
 import com.getcapacitor.BridgeActivity;
 
-public class MainActivity extends BridgeActivity {}
+public class MainActivity extends BridgeActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        
+        // Ensure the activity shows over the lockscreen and wakes up the screen
+        setupLockscreenFlags();
+
+        // Natively register the high-priority calls channel with system ringtone
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (notificationManager != null) {
+                NotificationChannel channel = notificationManager.getNotificationChannel("calls_ringtone");
+                if (channel == null) {
+                    channel = new NotificationChannel(
+                        "calls_ringtone",
+                        "Phone Calls (Ringtone)",
+                        NotificationManager.IMPORTANCE_HIGH
+                    );
+                    channel.setDescription("Alerts for incoming voice and video calls");
+                    channel.enableLights(true);
+                    channel.enableVibration(true);
+                    channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+                    
+                    Uri ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+                    AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                            .build();
+                    channel.setSound(ringtoneUri, audioAttributes);
+                    
+                    notificationManager.createNotificationChannel(channel);
+                    Log.d("MainActivity", "Natively created 'calls_ringtone' channel with system ringtone.");
+                }
+            }
+        }
+
+        // Request "Draw over other apps" (overlay) permission if not granted (needed to launch call overlay from background)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+            }
+        }
+
+        // On Android 14+ (API 34), verify and request Full Screen Intent capability
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (notificationManager != null && !notificationManager.canUseFullScreenIntent()) {
+                Intent fsiIntent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT);
+                fsiIntent.setData(Uri.fromParts("package", getPackageName(), null));
+                fsiIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(fsiIntent);
+            }
+        }
+
+        // Stop the calling foreground service once the user opens the app (either answered/declined or launched)
+        try {
+            Intent serviceIntent = new Intent(this, CallForegroundService.class);
+            stopService(serviceIntent);
+        } catch (Exception e) {
+            Log.e("MainActivity", "Failed to stop CallForegroundService", e);
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setupLockscreenFlags();
+        
+        // Stop the calling foreground service when activity is resumed via notification intent
+        try {
+            Intent serviceIntent = new Intent(this, CallForegroundService.class);
+            stopService(serviceIntent);
+        } catch (Exception e) {
+            Log.e("MainActivity", "Failed to stop CallForegroundService in onNewIntent", e);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        setupLockscreenFlags();
+    }
+
+    private void setupLockscreenFlags() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+            KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+            if (keyguardManager != null) {
+                keyguardManager.requestDismissKeyguard(this, null);
+            }
+        } else {
+            getWindow().addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+            );
+        }
+    }
+}

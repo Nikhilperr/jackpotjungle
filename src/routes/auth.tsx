@@ -27,6 +27,16 @@ function AuthPage() {
     if (user) navigate({ to: isAdmin ? "/admin" : "/chat" });
   }, [user, loading, isAdmin, roleLoading, navigate]);
 
+  if (loading || roleLoading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <p className="text-sm text-muted-foreground">Checking session...</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-8 relative">

@@ -67,6 +67,24 @@ export function useNativePush() {
         if (permStatus.receive === "granted" && mounted) {
           console.log("[Push Debug] Permission granted. Registering listeners and calling register()...");
 
+          // Create the high-priority calls channel for Android
+          if (cap.getPlatform?.() === "android") {
+            try {
+              await PushNotifications.createChannel({
+                id: "calls_v2",
+                name: "Phone Calls",
+                description: "Alerts for incoming voice and video calls",
+                importance: 5, // IMPORTANCE_HIGH (makes sound and shows as heads-up/banner)
+                visibility: 1, // VISIBILITY_PUBLIC (shows content on lockscreen)
+                sound: "default",
+                vibration: true,
+              });
+              console.log("[Push Debug] Created high-priority 'calls' channel");
+            } catch (channelErr) {
+              console.error("[Push Debug] Failed to create calls channel:", channelErr);
+            }
+          }
+
           // Register registration and error listeners
           await PushNotifications.addListener("registration", async (token: any) => {
             console.log("[FCM Token]", token.value);
@@ -94,8 +112,15 @@ export function useNativePush() {
           // Register tapped action listener
           await PushNotifications.addListener("pushNotificationActionPerformed", (action: any) => {
             console.log("[Push Debug] Action performed:", action);
-            const url = action.notification?.data?.url;
+            let url = action.notification?.data?.url;
             if (url) {
+              const callAction = action.notification?.data?.action;
+              const callId = action.notification?.data?.call_id;
+              if (callAction && callId) {
+                url = url.includes("?") 
+                  ? `${url}&action=${callAction}&call_id=${callId}` 
+                  : `${url}?action=${callAction}&call_id=${callId}`;
+              }
               console.log(`[Push Debug] Tapped notification. Redirecting to URL: ${url}`);
               navigate({ to: url });
             }

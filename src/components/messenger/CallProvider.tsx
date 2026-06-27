@@ -288,6 +288,31 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setIncoming(null);
   }
 
+  useEffect(() => {
+    if (!incoming) return;
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get("action");
+    const callId = params.get("call_id");
+    if (incoming.call.id === callId) {
+      // Clean up query parameters from the browser URL to prevent loops on refresh
+      const newSearch = window.location.search
+        .replace(new RegExp(`[?&]action=${action}`), "")
+        .replace(new RegExp(`[?&]call_id=${callId}`), "");
+      const cleanSearch = newSearch.startsWith("&") ? "?" + newSearch.substring(1) : newSearch;
+      const newUrl = window.location.pathname + (cleanSearch === "?" ? "" : cleanSearch);
+      window.history.replaceState({}, "", newUrl);
+
+      if (action === "accept") {
+        console.log("[Call Debug] Auto-accepting incoming call from URL action parameter");
+        acceptIncoming();
+      } else if (action === "decline") {
+        console.log("[Call Debug] Auto-declining incoming call from URL action parameter");
+        declineIncoming();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incoming]);
+
   return (
     <CallCtx.Provider value={{ startCall }}>
       {children}
