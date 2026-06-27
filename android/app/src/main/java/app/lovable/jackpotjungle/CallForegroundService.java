@@ -23,7 +23,7 @@ import java.util.Map;
 
 public class CallForegroundService extends Service {
     private static final String TAG = "CallForegroundService";
-    private static final String CHANNEL_ID = "calls_ringtone";
+    private static final String CHANNEL_ID = "calls_ringtone_v3";
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {

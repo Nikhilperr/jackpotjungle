@@ -17,6 +17,7 @@
             android:showWhenLocked="true"
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

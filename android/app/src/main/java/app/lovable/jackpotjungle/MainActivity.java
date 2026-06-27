@@ -27,10 +27,10 @@ public class MainActivity extends BridgeActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (notificationManager != null) {
-                NotificationChannel channel = notificationManager.getNotificationChannel("calls_ringtone");
+                NotificationChannel channel = notificationManager.getNotificationChannel("calls_ringtone_v3");
                 if (channel == null) {
                     channel = new NotificationChannel(
-                        "calls_ringtone",
+                        "calls_ringtone_v3",
                         "Phone Calls (Ringtone)",
                         NotificationManager.IMPORTANCE_HIGH
                     );
@@ -47,7 +47,7 @@ public class MainActivity extends BridgeActivity {
                     channel.setSound(ringtoneUri, audioAttributes);
                     
                     notificationManager.createNotificationChannel(channel);
-                    Log.d("MainActivity", "Natively created 'calls_ringtone' channel with system ringtone.");
+                    Log.d("MainActivity", "Natively created 'calls_ringtone_v3' channel with system ringtone.");
                 }
             }
         }
@@ -106,16 +106,11 @@ public class MainActivity extends BridgeActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
-            KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
-            if (keyguardManager != null) {
-                keyguardManager.requestDismissKeyguard(this, null);
-            }
         } else {
             getWindow().addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             );
         }
     }
