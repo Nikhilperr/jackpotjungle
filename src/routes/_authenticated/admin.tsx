@@ -140,6 +140,14 @@ function AdminPage() {
       search: (old: any) => ({
         ...old,
         tab: newTab === "inbox" ? undefined : newTab,
+        menu: true,
+      }),
+      replace: true,
+    });
+    navigate({
+      search: (old: any) => ({
+        ...old,
+        tab: newTab === "inbox" ? undefined : newTab,
         menu: undefined,
       }),
       replace: false,
