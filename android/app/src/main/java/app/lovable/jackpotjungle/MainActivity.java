@@ -132,12 +132,35 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception e) {
             Log.e("MainActivity", "Failed to stop CallForegroundService", e);
         }
+
+        handleIncomingIntent(getIntent());
+    }
+
+    private void handleIncomingIntent(Intent intent) {
+        if (intent != null && intent.hasExtra("url")) {
+            String url = intent.getStringExtra("url");
+            if (url != null && !url.isEmpty()) {
+                Log.d("MainActivity", "Found url extra in intent: " + url);
+                if (getBridge() != null && getBridge().getWebView() != null) {
+                    getBridge().getWebView().post(new Runnable() {
+                        @Override
+                        public void run() {
+                            String finalUrl = getBridge().getServerUrl() + url;
+                            Log.d("MainActivity", "Loading URL in webview: " + finalUrl);
+                            getBridge().getWebView().loadUrl(finalUrl);
+                        }
+                    });
+                }
+            }
+        }
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        setIntent(intent);
         setupLockscreenFlags();
+        handleIncomingIntent(intent);
         
         // Stop the calling foreground service when activity is resumed via notification intent
         try {
