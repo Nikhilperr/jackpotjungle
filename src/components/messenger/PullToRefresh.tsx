@@ -37,8 +37,8 @@ export function PullToRefresh({ onRefresh, children }: Props) {
     const currentY = e.touches[0].clientY;
     const diff = currentY - startY.current;
     if (diff > 0 && isAtTop.current) {
-      // Apply drag resistance
-      const distance = Math.min(diff * 0.4, 80);
+      // Apply light drag resistance
+      const distance = Math.min(diff * 0.8, 60);
       setPullDistance(distance);
       // Prevent browser default pull-to-refresh behavior
       if (e.cancelable) e.preventDefault();
@@ -48,9 +48,9 @@ export function PullToRefresh({ onRefresh, children }: Props) {
   const handleTouchEnd = async () => {
     if (refreshing) return;
     startY.current = 0;
-    if (pullDistance >= 50) {
+    if (pullDistance >= 35) {
       setRefreshing(true);
-      setPullDistance(50);
+      setPullDistance(35);
       try {
         await onRefresh();
       } catch (e) {
@@ -75,11 +75,11 @@ export function PullToRefresh({ onRefresh, children }: Props) {
       <div
         className="flex items-center justify-center overflow-hidden transition-all duration-150 ease-out bg-slate-950/10 shrink-0"
         style={{
-          height: refreshing ? 50 : pullDistance,
+          height: refreshing ? 35 : pullDistance,
           opacity: pullDistance > 0 || refreshing ? 1 : 0,
         }}
       >
-        <Loader2 className={`h-6 w-6 text-primary ${refreshing ? "animate-spin" : ""}`} style={{ transform: refreshing ? "none" : `rotate(${pullDistance * 5}deg)` }} />
+        <Loader2 className={`h-6 w-6 text-primary ${refreshing ? "animate-spin" : ""}`} style={{ transform: refreshing ? "none" : `rotate(${pullDistance * 8}deg)` }} />
       </div>
       <div className="flex-1 flex flex-col">
         {children}
