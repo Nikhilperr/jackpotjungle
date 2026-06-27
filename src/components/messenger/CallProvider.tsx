@@ -57,6 +57,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const incomingRef = useRef<Incoming | null>(null);
   const missedTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
+  const launchedForCallRef = useRef(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("call_id")) {
+      launchedForCallRef.current = true;
+      console.log("[Call Debug] App launched specifically to handle incoming call ID:", params.get("call_id"));
+    }
+  }, []);
+
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { incomingRef.current = incoming; }, [incoming]);
 
@@ -330,20 +340,21 @@ export function CallProvider({ children }: { children: ReactNode }) {
     // For page broadcast: just dismiss locally - don't actually decline so other admins can still pick up
     if (incoming.call.context === "page_broadcast") {
       setIncoming(null);
+      if (launchedForCallRef.current && (window as any).AndroidBridge?.closeApp) {
+        console.log("[Call Debug] Closing app after declining broadcast call.");
+        (window as any).AndroidBridge.closeApp();
+      }
       return;
     }
     await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", incoming.call.id);
     setIncoming(null);
+    if (launchedForCallRef.current && (window as any).AndroidBridge?.closeApp) {
+      console.log("[Call Debug] Closing app after declining incoming call.");
+      (window as any).AndroidBridge.closeApp();
+    }
   }
 
-  const [paramsCallId, setParamsCallId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setParamsCallId(params.get("call_id"));
-  }, [incoming]);
-
-  const isLoadingCall = !!paramsCallId && !incoming && !active;
+  // Removed paramsCallId and isLoadingCall dependencies to prevent black loading screen on cancellation
 
   useEffect(() => {
     if (!incoming) return;
@@ -375,17 +386,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   return (
     <CallCtx.Provider value={{ startCall }}>
-      {isLoadingCall ? (
-        <div className="fixed inset-0 z-[100] bg-gradient-to-b from-slate-900 to-black text-white flex flex-col items-center justify-center p-8 animate-in fade-in duration-200">
-          <div className="flex flex-col items-center gap-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            <p className="text-xl font-semibold tracking-wide">Jackpot Jungle Call...</p>
-            <p className="text-white/60 text-sm">Connecting call session...</p>
-          </div>
-        </div>
-      ) : (
-        children
-      )}
+      {children}
       {incoming && !active && (
         <IncomingCallModal
           peerName={incoming.peer.name}
@@ -404,7 +405,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
           peerName={active.peer.name}
           peerAvatar={active.peer.avatar}
           initialActive={active.initialActive}
-          onClose={() => setActive(null)}
+          onClose={() => {
+            setActive(null);
+            if (launchedForCallRef.current && (window as any).AndroidBridge?.closeApp) {
+              console.log("[Call Debug] Closing app after active call ended.");
+              (window as any).AndroidBridge.closeApp();
+            }
+          }}
         />
       )}
     </CallCtx.Provider>

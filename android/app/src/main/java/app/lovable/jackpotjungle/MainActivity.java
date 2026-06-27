@@ -122,6 +122,17 @@ public class MainActivity extends BridgeActivity {
                         }
                     });
                 }
+
+                @android.webkit.JavascriptInterface
+                public void closeApp() {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            finishAndRemoveTask();
+                            Log.d("MainActivity", "App closed via closeApp bridge call.");
+                        }
+                    });
+                }
             }, "AndroidBridge");
         }
 
