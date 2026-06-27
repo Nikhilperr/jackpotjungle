@@ -39,7 +39,36 @@
 
 :root {
   --radius: 1rem;
-  /* Messenger Classic */
+  /* Jackpot Jungle Theme (Default) - Warm Yellow/Orange Accents on White */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.12 0.015 45); /* Dark charcoal with a hint of warm orange/brown for excellent contrast */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.12 0.015 45);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.12 0.015 45);
+  --primary: oklch(0.62 0.22 45); /* Warm Orange brand color, high contrast */
+  --primary-foreground: oklch(1 0 0); /* Pure white text for high contrast */
+  --secondary: oklch(0.97 0.015 70); /* Warm light cream/amber tint */
+  --secondary-foreground: oklch(0.12 0.015 45);
+  --muted: oklch(0.97 0.015 70);
+  --muted-foreground: oklch(0.42 0.04 45); /* High contrast warm gray for secondary text */
+  --accent: oklch(0.95 0.035 60); /* Vibrant light amber accent */
+  --accent-foreground: oklch(0.12 0.015 45);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.88 0.02 70); /* Soft warm border lines */
+  --input: oklch(0.88 0.02 70);
+  --ring: oklch(0.62 0.22 45);
+
+  /* Chat bubbles */
+  --bubble-me: oklch(0.62 0.22 45);
+  --bubble-me-foreground: oklch(1 0 0);
+  --bubble-them: oklch(0.94 0.015 70);
+  --bubble-them-foreground: oklch(0.12 0.015 45);
+  --message-status: oklch(0.42 0.04 45);
+}
+
+.light {
   --background: oklch(1 0 0);
   --foreground: oklch(0.15 0.02 260);
   --card: oklch(1 0 0);
@@ -60,7 +89,6 @@
   --input: oklch(0.93 0.005 250);
   --ring: oklch(0.62 0.22 258);
 
-  /* Chat bubbles */
   --bubble-me: oklch(0.62 0.22 258);
   --bubble-me-foreground: oklch(1 0 0);
   --bubble-them: oklch(0.94 0.005 250);
