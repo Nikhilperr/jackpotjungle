@@ -203,23 +203,23 @@ function AdminPage() {
       </div>
       <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
         <p className="px-3 pt-1 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Business</p>
-        <SideBtn active={tab === "inbox"} onClick={() => { setTab("inbox"); setNavOpen(false); }} icon={Inbox} label="Page Inbox" />
-        <SideBtn active={tab === "quickreplies"} onClick={() => { setTab("quickreplies"); setNavOpen(false); }} icon={MessageSquareQuote} label="Quick Replies" />
-        <SideBtn active={tab === "tags"} onClick={() => { setTab("tags"); setNavOpen(false); }} icon={TagIcon} label="Tags" />
-        <SideBtn active={tab === "broadcasts"} onClick={() => { setTab("broadcasts"); setNavOpen(false); }} icon={Megaphone} label="Broadcasts" />
-        <SideBtn active={tab === "followups"} onClick={() => { setTab("followups"); setNavOpen(false); }} icon={Bell} label="Follow-ups" />
-        <SideBtn active={tab === "autoresp"} onClick={() => { setTab("autoresp"); setNavOpen(false); }} icon={Bot} label="Auto-response" />
-        <SideBtn active={tab === "referrals"} onClick={() => { setTab("referrals"); setNavOpen(false); }} icon={Gift} label="Referrals" />
-        <SideBtn active={tab === "logs"} onClick={() => { setTab("logs"); setNavOpen(false); }} icon={Activity} label="Logs" />
+        <SideBtn active={tab === "inbox"} onClick={() => setTab("inbox")} icon={Inbox} label="Page Inbox" />
+        <SideBtn active={tab === "quickreplies"} onClick={() => setTab("quickreplies")} icon={MessageSquareQuote} label="Quick Replies" />
+        <SideBtn active={tab === "tags"} onClick={() => setTab("tags")} icon={TagIcon} label="Tags" />
+        <SideBtn active={tab === "broadcasts"} onClick={() => setTab("broadcasts")} icon={Megaphone} label="Broadcasts" />
+        <SideBtn active={tab === "followups"} onClick={() => setTab("followups")} icon={Bell} label="Follow-ups" />
+        <SideBtn active={tab === "autoresp"} onClick={() => setTab("autoresp")} icon={Bot} label="Auto-response" />
+        <SideBtn active={tab === "referrals"} onClick={() => setTab("referrals")} icon={Gift} label="Referrals" />
+        <SideBtn active={tab === "logs"} onClick={() => setTab("logs")} icon={Activity} label="Logs" />
         {isSuperAdmin && (
           <>
             <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Super admin</p>
-            <SideBtn active={tab === "admins"} onClick={() => { setTab("admins"); setNavOpen(false); }} icon={UsersIcon} label="Admin team" />
-            <SideBtn active={tab === "super"} onClick={() => { setTab("super"); setNavOpen(false); }} icon={SettingsIcon} label="System settings" />
+            <SideBtn active={tab === "admins"} onClick={() => setTab("admins")} icon={UsersIcon} label="Admin team" />
+            <SideBtn active={tab === "super"} onClick={() => setTab("super")} icon={SettingsIcon} label="System settings" />
           </>
         )}
         <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
-        <SideBtn active={tab === "profile"} onClick={() => { setTab("profile"); setNavOpen(false); }} icon={UserIcon} label="My profile" />
+        <SideBtn active={tab === "profile"} onClick={() => setTab("profile")} icon={UserIcon} label="My profile" />
       </nav>
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
