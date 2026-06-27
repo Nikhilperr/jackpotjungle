@@ -39,7 +39,36 @@
 
 :root {
   --radius: 1rem;
-  /* Jackpot Jungle Theme (Default) - Warm Yellow/Orange Accents on White */
+  /* Messenger AMOLED Dark (Default) - Pure Black Background, Gray Controls, Blue Highlights */
+  --background: oklch(0 0 0); /* Pure black */
+  --foreground: oklch(1 0 0); /* Pure white text */
+  --card: oklch(0 0 0);
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0.1 0.005 250);
+  --popover-foreground: oklch(1 0 0);
+  --primary: oklch(0.62 0.22 258); /* Messenger blue */
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.25 0.01 250); /* Dark gray searchbar/secondary buttons */
+  --secondary-foreground: oklch(0.9 0.005 250);
+  --muted: oklch(0.2 0.01 250);
+  --muted-foreground: oklch(0.65 0.01 250);
+  --accent: oklch(0.25 0.01 250);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.18 0.01 250); /* Dark borders */
+  --input: oklch(0.25 0.01 250);
+  --ring: oklch(0.62 0.22 258);
+
+  /* Chat bubbles */
+  --bubble-me: oklch(0.62 0.22 258);
+  --bubble-me-foreground: oklch(1 0 0);
+  --bubble-them: oklch(0.25 0.01 250); /* Dark gray chat bubbles */
+  --bubble-them-foreground: oklch(1 0 0);
+  --message-status: oklch(0.65 0.01 250);
+}
+
+.jackpot {
   --background: oklch(1 0 0);
   --foreground: oklch(0.12 0.015 45); /* Dark charcoal with a hint of warm orange/brown for excellent contrast */
   --card: oklch(1 0 0);
@@ -60,7 +89,6 @@
   --input: oklch(0.88 0.02 70);
   --ring: oklch(0.62 0.22 45);
 
-  /* Chat bubbles */
   --bubble-me: oklch(0.62 0.22 45);
   --bubble-me-foreground: oklch(1 0 0);
   --bubble-them: oklch(0.94 0.015 70);
@@ -122,34 +150,6 @@
   --bubble-them: oklch(0.3 0.02 260);
   --bubble-them-foreground: oklch(0.97 0.005 250);
   --message-status: oklch(0.9 0.006 250);
-}
-
-.amoled {
-  --background: oklch(0 0 0); /* Pure black */
-  --foreground: oklch(1 0 0); /* Pure white text */
-  --card: oklch(0 0 0);
-  --card-foreground: oklch(1 0 0);
-  --popover: oklch(0.1 0.005 250);
-  --popover-foreground: oklch(1 0 0);
-  --primary: oklch(0.62 0.22 258); /* Messenger blue */
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.25 0.01 250); /* Dark gray searchbar/secondary buttons */
-  --secondary-foreground: oklch(0.9 0.005 250);
-  --muted: oklch(0.2 0.01 250);
-  --muted-foreground: oklch(0.65 0.01 250);
-  --accent: oklch(0.25 0.01 250);
-  --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.6 0.22 25);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.18 0.01 250); /* Dark borders */
-  --input: oklch(0.25 0.01 250);
-  --ring: oklch(0.62 0.22 258);
-
-  --bubble-me: oklch(0.62 0.22 258);
-  --bubble-me-foreground: oklch(1 0 0);
-  --bubble-them: oklch(0.25 0.01 250); /* Dark gray chat bubbles */
-  --bubble-them-foreground: oklch(1 0 0);
-  --message-status: oklch(0.65 0.01 250);
 }
 
 @layer base {

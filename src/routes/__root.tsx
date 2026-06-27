@@ -88,7 +88,7 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: `
           try {
-            const t = localStorage.getItem('theme') || 'jackpot';
+            const t = localStorage.getItem('theme') || 'amoled';
             document.documentElement.classList.add(t);
           } catch (e) {}
         ` }} />
