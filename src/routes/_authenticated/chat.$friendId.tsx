@@ -13,6 +13,7 @@ import { uploadAndSign } from "@/lib/chat-media";
 import { format, formatDistanceToNow } from "date-fns";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import { toast } from "sonner";
+import { unsendMessagesServer } from "@/lib/messages.functions";
 
 type CallRow = {
   id: string;
@@ -1152,13 +1153,7 @@ function ChatView() {
                   setSelectedMsgs(new Set());
                   
                   try {
-                    const promises = targetIds.map(id =>
-                      supabase.from("messages").update({ content: "[system:unsent]", image_url: null, audio_url: null } as any).eq("id", id)
-                    );
-                    const results = await Promise.all(promises);
-                    const err = results.find(r => r.error);
-                    if (err) throw err.error;
-                    
+                    await unsendMessagesServer({ ids: targetIds });
                     setMessages(prev => prev.map(m => targetIds.includes(m.id) ? { ...m, content: "[system:unsent]", image_url: null, audio_url: null } : m));
                     toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for everyone`);
                   } catch (e) {

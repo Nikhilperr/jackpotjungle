@@ -54,6 +54,7 @@ import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { formatDistanceToNow, format } from "date-fns";
 import { toast } from "sonner";
+import { unsendPageMessagesServer } from "@/lib/messages.functions";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 import {
   AlertDialog,
@@ -1806,13 +1807,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
                   setSelectedMsgs(new Set());
                   
                   try {
-                    const promises = targetIds.map(id =>
-                      supabase.from("page_messages").update({ content: "[system:unsent]", image_url: null, audio_url: null } as any).eq("id", id)
-                    );
-                    const results = await Promise.all(promises);
-                    const err = results.find(r => r.error);
-                    if (err) throw err.error;
-                    
+                    await unsendPageMessagesServer({ ids: targetIds });
                     setMessages(prev => prev.map(m => targetIds.includes(m.id) ? { ...m, content: "[system:unsent]", image_url: null, audio_url: null } : m));
                     toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for everyone`);
                   } catch (e) {
