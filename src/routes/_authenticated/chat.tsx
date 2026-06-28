@@ -499,9 +499,8 @@ function ChatLayout() {
                 className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors ${isPageActive ? "bg-secondary" : ""}`}
               >
                 <div className="relative shrink-0">
-                  <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
-                    <Sparkles className="h-6 w-6 text-primary-foreground" />
-                  </div>
+                  <img src="/icons/icon-256.webp" alt="Logo" className="h-12 w-12 rounded-full object-cover border border-border/20" />
+                  <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline justify-between gap-2">
@@ -513,7 +512,7 @@ function ChatLayout() {
                     )}
                   </div>
                   <p className={`text-sm truncate ${pageUnread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                    {pageLast.content ?? "Official page · Tap to message us"}
+                    {pageLast.content ?? "Official page · We reply within minutes"}
                   </p>
                 </div>
                 {pageUnread > 0 && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{pageUnread}</span>}

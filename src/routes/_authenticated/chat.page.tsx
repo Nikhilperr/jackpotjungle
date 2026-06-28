@@ -491,12 +491,13 @@ function PageChatView() {
               className="flex-1 min-w-0 flex items-center gap-3 -mx-1 px-1 py-1 rounded-lg hover:bg-secondary text-left"
               aria-label="Toggle details"
             >
-              <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center shrink-0">
-                <Sparkles className="h-5 w-5 text-primary-foreground" />
+              <div className="relative shrink-0">
+                <img src="/icons/icon-256.webp" alt="Logo" className="h-10 w-10 rounded-full object-cover border border-border/20" />
+                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-card" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold truncate">Jackpot Jungle</p>
-                <p className="text-xs text-muted-foreground truncate">Official page · We usually reply within a few hours</p>
+                <p className="text-xs text-muted-foreground truncate">Official page · We usually reply within minutes</p>
               </div>
             </button>
             <button
@@ -1068,9 +1069,8 @@ export function ConversationDetailPanel({ username, avatar, isPage = false, pinn
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         <div className="flex flex-col items-center text-center">
-          {isPage ? (
-            <div className="h-20 w-20 rounded-full bg-primary flex items-center justify-center shrink-0 mb-3 shadow-md">
-              <Sparkles className="h-10 w-10 text-primary-foreground" />
+            <div className="h-20 w-20 rounded-full flex items-center justify-center shrink-0 mb-3 shadow-md overflow-hidden border border-border/20">
+              <img src="/icons/icon-256.webp" alt="Logo" className="h-full w-full object-cover" />
             </div>
           ) : (
             <div className="mb-3">
