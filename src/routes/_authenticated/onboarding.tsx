@@ -198,19 +198,48 @@ function OnboardingPage() {
     try {
       const fullPhone = phoneNumber.trim() ? `${phoneDial} ${phoneNumber.trim()}` : null;
       
-      const { error: profileError } = await supabase
+      // Check if the user profile row already exists in the table
+      const { data: existing } = await supabase
         .from("profiles")
-        .upsert({
-          id: meId,
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          username: username.trim(),
-          phone: fullPhone,
-          address: address.trim() || null,
-          avatar_url: avatarUrl,
-        });
+        .select("id, friend_code, referral_code")
+        .eq("id", meId)
+        .maybeSingle();
 
-      if (profileError) throw profileError;
+      if (existing) {
+        // Update the existing profile
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            username: username.trim(),
+            phone: fullPhone,
+            address: address.trim() || null,
+            avatar_url: avatarUrl,
+          })
+          .eq("id", meId);
+
+        if (profileError) throw profileError;
+      } else {
+        // Insert a new profile and generate valid unique friend/referral codes to satisfy NOT NULL constraints
+        const randCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .insert({
+            id: meId,
+            username: username.trim(),
+            email: email,
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            phone: fullPhone,
+            address: address.trim() || null,
+            avatar_url: avatarUrl,
+            friend_code: `JJM-${randCode()}`,
+            referral_code: `JJREF-${randCode()}`,
+          });
+
+        if (profileError) throw profileError;
+      }
 
       // Update auth metadata to mark complete
       const { error: authError } = await supabase.auth.updateUser({
