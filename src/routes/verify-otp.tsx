@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,29 @@ function VerifyOtpPage() {
   const [busy, setBusy] = useState(false);
   const [resending, setResending] = useState(false);
 
+  const [expiryTime, setExpiryTime] = useState(300); // 5 minutes in seconds
+  const [resendCooldown, setResendCooldown] = useState(60); // 1 minute in seconds
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setExpiryTime((prev) => (prev > 0 ? prev - 1 : 0));
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, "0");
+    const s = (secs % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
   async function onVerify(e: React.FormEvent) {
     e.preventDefault();
+    if (expiryTime === 0) {
+      toast.error("This verification code has expired. Please request a new one.");
+      return;
+    }
     if (code.length !== 6) { toast.error("Enter the 6-digit code."); return; }
     setBusy(true);
     try {
@@ -41,7 +62,6 @@ function VerifyOtpPage() {
         toast.success("Code verified. Set a new password.");
         navigate({ to: "/reset-password" });
       } else {
-        // Sign out so the user must explicitly log in with their credentials.
         try { await supabase.auth.signOut(); } catch {}
         toast.success("Account verified successfully");
         navigate({ to: "/auth" });
@@ -64,6 +84,9 @@ function VerifyOtpPage() {
         if (error) throw error;
       }
       toast.success("New code sent.");
+      setCode(""); // Invalidate previous code input
+      setExpiryTime(300); // Reset 5-minute expiration timer
+      setResendCooldown(60); // Reset 1-minute resend cooldown
     } catch (err: any) {
       toast.error(err.message ?? "Could not resend code.");
     } finally {
@@ -87,8 +110,8 @@ function VerifyOtpPage() {
 
         <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
           <form onSubmit={onVerify} className="space-y-5">
-            <div className="flex justify-center">
-              <InputOTP maxLength={6} value={code} onChange={setCode}>
+            <div className="flex flex-col items-center gap-3">
+              <InputOTP maxLength={6} value={code} onChange={setCode} disabled={expiryTime === 0}>
                 <InputOTPGroup>
                   <InputOTPSlot index={0} className="h-12 w-12 text-lg" />
                   <InputOTPSlot index={1} className="h-12 w-12 text-lg" />
@@ -98,18 +121,29 @@ function VerifyOtpPage() {
                   <InputOTPSlot index={5} className="h-12 w-12 text-lg" />
                 </InputOTPGroup>
               </InputOTP>
+              
+              <div className="text-[12px] mt-1 text-center h-5">
+                {expiryTime > 0 ? (
+                  <span className="text-muted-foreground">Code expires in <span className="font-semibold text-foreground">{formatTime(expiryTime)}</span></span>
+                ) : (
+                  <span className="text-destructive font-semibold">OTP expired. Please request a new code.</span>
+                )}
+              </div>
             </div>
-            <Button type="submit" disabled={busy || code.length !== 6} className="w-full rounded-full h-12 text-base font-semibold">
+            
+            <Button type="submit" disabled={busy || code.length !== 6 || expiryTime === 0} className="w-full rounded-full h-12 text-base font-semibold">
               {busy ? "Verifying…" : "Verify"}
             </Button>
+            
             <button
               type="button"
               onClick={onResend}
-              disabled={resending}
-              className="block w-full text-center text-sm text-primary hover:underline disabled:opacity-50"
+              disabled={resending || resendCooldown > 0}
+              className="block w-full text-center text-sm text-primary hover:underline disabled:opacity-50 disabled:no-underline font-medium"
             >
-              {resending ? "Sending…" : "Resend code"}
+              {resending ? "Sending…" : resendCooldown > 0 ? `Resend OTP in ${formatTime(resendCooldown)}` : "Resend code"}
             </button>
+            
             <Link to="/auth" className="block text-center text-sm text-muted-foreground hover:text-foreground">
               Back to login
             </Link>

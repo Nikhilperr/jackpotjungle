@@ -1595,17 +1595,28 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
                 pinnedMessages.map(m => (
                   <div 
                     key={m.id} 
-                    onClick={() => {
-                      scrollToMessage(m.id);
-                      setShowAllPins(false);
-                    }}
-                    className="p-3 bg-secondary/30 hover:bg-secondary/60 border border-border rounded-xl cursor-pointer transition-colors flex flex-col gap-1.5"
+                    className="p-3 bg-secondary/30 hover:bg-secondary/60 border border-border rounded-xl transition-colors flex flex-col gap-1.5 relative group"
                   >
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                      <span className="font-bold text-primary">{m.from_page ? "You" : (conv?.username || "User")}</span>
-                      <span>{formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}</span>
+                      <span className="font-bold text-primary cursor-pointer" onClick={() => { scrollToMessage(m.id); setShowAllPins(false); }}>
+                        {m.from_page ? "You" : (conv?.username || "User")}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span>{formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            unpinMessage(m.id);
+                          }}
+                          className="text-destructive hover:underline font-semibold"
+                        >
+                          Unpin
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-xs text-foreground line-clamp-3 break-words">
+                    <p className="text-xs text-foreground line-clamp-3 break-words cursor-pointer" onClick={() => { scrollToMessage(m.id); setShowAllPins(false); }}>
                       {m.content || (m.image_url ? "Image 📷" : "Voice message 🎙️")}
                     </p>
                   </div>
