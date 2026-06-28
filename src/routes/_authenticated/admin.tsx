@@ -1356,6 +1356,16 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
             const reactionKeys = Object.keys(m.reactions).filter(k => m.reactions[k].length > 0);
             const isMatch = matchIds.includes(m.id);
             const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
+            const isSelected = selectedMsgs.has(m.id);
+            const toggleSelect = () => {
+              const next = new Set(selectedMsgs);
+              if (next.has(m.id)) {
+                next.delete(m.id);
+              } else {
+                next.add(m.id);
+              }
+              setSelectedMsgs(next);
+            };
 
             if (m.isSystemPin) {
               return (
