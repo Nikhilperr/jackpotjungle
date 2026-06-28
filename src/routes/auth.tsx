@@ -68,7 +68,7 @@ function AuthPage() {
   async function signInWithGoogle() {
     setGoogleBusy(true);
     try {
-      const nativeCheck = Capacitor.isNative;
+      const nativeCheck = Capacitor.isNativePlatform();
       const hasCapacitorWindow = typeof window !== "undefined" && !!(window as any).Capacitor;
       
       toast.info(`Auth Debug - Native: ${nativeCheck}, Bridge: ${hasCapacitorWindow}`);
