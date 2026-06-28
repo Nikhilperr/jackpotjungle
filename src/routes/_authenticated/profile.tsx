@@ -20,6 +20,8 @@ export const Route = createFileRoute("/_authenticated/profile")({
 type Profile = {
   id: string;
   username: string;
+  first_name?: string | null;
+  last_name?: string | null;
   friend_code: string;
   referral_code: string;
   avatar_url: string | null;
@@ -30,6 +32,8 @@ function ProfilePage() {
   const { user, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [username, setUsername] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(true);
@@ -42,12 +46,14 @@ function ProfilePage() {
     if (!user) return;
     let mounted = true;
     supabase.from("profiles")
-      .select("id, username, avatar_url, friend_code, referral_code, created_at, notif_enabled" as any)
+      .select("id, username, first_name, last_name, avatar_url, friend_code, referral_code, created_at, notif_enabled" as any)
       .eq("id", user.id).maybeSingle()
       .then(({ data }) => {
         if (!mounted || !data) return;
         setProfile(data as unknown as Profile);
         setUsername((data as any).username);
+        setFirstName((data as any).first_name ?? "");
+        setLastName((data as any).last_name ?? "");
         setNotifEnabled((data as any).notif_enabled ?? true);
       });
     if (typeof window !== "undefined" && "Notification" in window) setPermission(Notification.permission);
@@ -76,10 +82,22 @@ function ProfilePage() {
     e.preventDefault();
     if (!profile) return;
     setSaving(true);
-    const { error } = await supabase.from("profiles").update({ username }).eq("id", profile.id);
+    const { error } = await supabase.from("profiles").update({ 
+      username,
+      first_name: firstName.trim(),
+      last_name: lastName.trim()
+    }).eq("id", profile.id);
     setSaving(false);
     if (error) toast.error(error.message);
-    else { toast.success("Profile updated."); setProfile({ ...profile, username }); }
+    else { 
+      toast.success("Profile updated."); 
+      setProfile({ 
+        ...profile, 
+        username,
+        first_name: firstName.trim(),
+        last_name: lastName.trim()
+      }); 
+    }
   }
 
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -157,8 +175,11 @@ function ProfilePage() {
                 className="hidden"
               />
             </div>
-            <h1 className="mt-4 text-2xl font-bold">{profile.username}</h1>
-            <p className="text-sm text-muted-foreground">{email}</p>
+            <h1 className="mt-4 text-2xl font-bold">
+              {profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : profile.username}
+            </h1>
+            <p className="text-xs text-muted-foreground font-semibold">@{profile.username}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{email}</p>
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
@@ -176,11 +197,21 @@ function ProfilePage() {
 
           <form onSubmit={save} className="bg-secondary rounded-2xl p-5 space-y-4">
             <h2 className="font-semibold">Edit profile</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="fn">First Name</Label>
+                <Input id="fn" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="bg-card" />
+              </div>
+              <div>
+                <Label htmlFor="ln">Last Name</Label>
+                <Input id="ln" value={lastName} onChange={(e) => setLastName(e.target.value)} className="bg-card" />
+              </div>
+            </div>
             <div>
               <Label htmlFor="u">Username</Label>
               <Input id="u" value={username} onChange={(e) => setUsername(e.target.value)} className="bg-card" />
             </div>
-            <Button type="submit" disabled={saving || username === profile.username} className="rounded-full">
+            <Button type="submit" disabled={saving || (username === profile.username && firstName === (profile.first_name ?? "") && lastName === (profile.last_name ?? ""))} className="rounded-full">
               {saving ? "Saving…" : "Save changes"}
             </Button>
           </form>
