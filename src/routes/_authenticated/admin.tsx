@@ -1579,17 +1579,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
                 {mine ? (
                   <button
                     type="button"
-                    onClick={async () => {
-                      if (confirm("Unsend this message?")) {
-                        const { error } = await supabase.from("page_messages").update({ content: "[system:unsent]", image_url: null, audio_url: null } as any).eq("id", m.id);
-                        if (error) {
-                          await supabase.from("page_messages").delete().eq("id", m.id);
-                          setMessages(prev => prev.filter(x => x.id !== m.id));
-                        } else {
-                          setMessages(prev => prev.map(x => x.id === m.id ? { ...x, content: "[system:unsent]", image_url: null, audio_url: null } : x));
-                        }
-                        toast.success("Message unsent");
-                      }
+                    onClick={() => {
+                      setUnsendId(m.id);
                       setActiveMsgMenu(null);
                     }}
                     className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-destructive transition-colors"
@@ -1700,6 +1691,52 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Custom Unsend Message confirmation modal */}
+      {unsendId && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="absolute inset-0" onClick={() => setUnsendId(null)} />
+          <div className="relative bg-card border border-border w-full max-w-sm rounded-2xl shadow-2xl p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-200 z-10">
+            <h3 className="font-bold text-base text-foreground">Unsend message?</h3>
+            <p className="text-xs text-muted-foreground">
+              This will unsend the message for everyone in the chat. Active participants will see that you unsent a message.
+            </p>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setUnsendId(null)}
+                className="flex-1 py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const targetId = unsendId;
+                  setUnsendId(null);
+                  try {
+                    const { error } = await supabase
+                      .from("page_messages")
+                      .update({ content: "[system:unsent]", image_url: null, audio_url: null } as any)
+                      .eq("id", targetId);
+                    if (error) {
+                      await supabase.from("page_messages").delete().eq("id", targetId);
+                      setMessages(prev => prev.filter(x => x.id !== targetId));
+                    } else {
+                      setMessages(prev => prev.map(x => x.id === targetId ? { ...x, content: "[system:unsent]", image_url: null, audio_url: null } : x));
+                    }
+                    toast.success("Message unsent");
+                  } catch (err) {
+                    toast.error("Could not unsend message");
+                  }
+                }}
+                className="flex-1 py-2.5 bg-destructive hover:opacity-90 text-destructive-foreground font-semibold rounded-xl text-xs transition-colors"
+              >
+                Unsend
+              </button>
             </div>
           </div>
         </div>
