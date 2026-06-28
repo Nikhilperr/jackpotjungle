@@ -31,9 +31,13 @@ function ResetPage() {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
       
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+      
       setShowSuccess(true);
       setTimeout(() => {
-        navigate({ to: "/chat" });
+        navigate({ to: "/auth" });
       }, 2000);
     } catch (err: any) {
       toast.error(err.message ?? "Could not update password.");
@@ -111,7 +115,7 @@ function ResetPage() {
               <div className="space-y-1.5">
                 <h3 className="font-bold text-lg text-foreground">Password Reset Complete!</h3>
                 <p className="text-xs text-muted-foreground">
-                  Your password has been updated. Redirecting you to the chat...
+                  Your password has been updated. Redirecting you to the login page...
                 </p>
               </div>
             </motion.div>
