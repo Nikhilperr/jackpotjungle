@@ -1807,7 +1807,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
                   setSelectedMsgs(new Set());
                   
                   try {
-                    await unsendPageMessagesServer({ ids: targetIds });
+                    await unsendPageMessagesServer({ data: { ids: targetIds } });
                     setMessages(prev => prev.map(m => targetIds.includes(m.id) ? { ...m, content: "[system:unsent]", image_url: null, audio_url: null } : m));
                     toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for everyone`);
                   } catch (e: any) {
