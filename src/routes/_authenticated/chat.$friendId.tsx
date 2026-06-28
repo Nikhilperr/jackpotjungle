@@ -188,6 +188,32 @@ function ChatView() {
   const [showAllPins, setShowAllPins] = useState(false);
   const [unsendTarget, setUnsendTarget] = useState<string | null>(null);
 
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedMsgs, setSelectedMsgs] = useState<Set<string>>(new Set());
+  const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set());
+  const [showDeleteBottomSheet, setShowDeleteBottomSheet] = useState(false);
+
+  useEffect(() => {
+    const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+    setDeletedForMeIds(new Set(list));
+  }, []);
+
+  const deleteForMe = (ids: string[]) => {
+    const nextList = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+    const nextSet = new Set<string>([...nextList, ...ids]);
+    localStorage.setItem("jj_deleted_messages", JSON.stringify(Array.from(nextSet)));
+    setDeletedForMeIds(nextSet);
+  };
+
+  const allSelectedAreMine = useMemo(() => {
+    if (selectedMsgs.size === 0) return false;
+    for (const id of selectedMsgs) {
+      const msg = parsedMessages.find(x => x.id === id);
+      if (!msg || msg.sender_id !== meId) return false;
+    }
+    return true;
+  }, [selectedMsgs, parsedMessages, meId]);
+
   const parsedMessages = useMemo(() => {
     const visible: Array<Message & {
       reactions: Record<string, string[]>;
@@ -202,6 +228,7 @@ function ChatView() {
     const pinSet = new Set<string>();
 
     for (const m of messages) {
+      if (deletedForMeIds.has(m.id)) continue;
       if (m.content?.startsWith("[system:reaction:")) {
         const parts = m.content.split(":");
         const msgId = parts[2];
@@ -233,6 +260,7 @@ function ChatView() {
     }
 
     for (const m of messages) {
+      if (deletedForMeIds.has(m.id)) continue;
       if (m.content === "[system:unsent]") {
         visible.push({
           ...m,
@@ -507,46 +535,63 @@ function ChatView() {
 
   return (
     <div className="h-full flex flex-col">
-      <header className="px-3 md:px-5 py-3 border-b border-border flex items-center gap-3 bg-card">
-        <Link to="/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div className="relative">
-          <Avatar name={friend.username} url={friend.avatar_url} size={40} />
-          {friend.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold truncate">{friend.username}</p>
-          <p className="text-xs text-muted-foreground truncate">
-            {friendTyping ? "Typing…" : friend.online ? "Active now" :
-              friend.last_seen ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}` : "Offline"}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => friend && startCall({ calleeId: friend.id, kind: "voice", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
-          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
-          aria-label="Voice call"
-        >
-          <Phone className="h-5 w-5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => friend && startCall({ calleeId: friend.id, kind: "video", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
-          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
-          aria-label="Video call"
-        >
-          <Video className="h-5 w-5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
-          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
-          aria-label="Search in conversation"
-        >
+      {selectionMode ? (
+        <header className="px-3 md:px-5 py-3 border-b border-border flex items-center justify-between bg-card min-h-[65px]">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectionMode(false);
+              setSelectedMsgs(new Set());
+            }}
+            className="text-primary hover:opacity-80 font-semibold text-sm"
+          >
+            Cancel
+          </button>
+          <span className="font-semibold text-foreground text-sm">Delete messages</span>
+          <div className="w-12" /> {/* Spacer */}
+        </header>
+      ) : (
+        <header className="px-3 md:px-5 py-3 border-b border-border flex items-center gap-3 bg-card">
+          <Link to="/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <div className="relative">
+            <Avatar name={friend.username} url={friend.avatar_url} size={40} />
+            {friend.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold truncate">{friend.username}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {friendTyping ? "Typing…" : friend.online ? "Active now" :
+                friend.last_seen ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}` : "Offline"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => friend && startCall({ calleeId: friend.id, kind: "voice", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
+            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
+            aria-label="Voice call"
+          >
+            <Phone className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => friend && startCall({ calleeId: friend.id, kind: "video", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
+            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
+            aria-label="Video call"
+          >
+            <Video className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
+            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
+            aria-label="Search in conversation"
+          >
           <Search className="h-5 w-5" />
         </button>
       </header>
+      )}
 
       {searchOpen && (
         <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2">
@@ -687,118 +732,141 @@ function ChatView() {
               return (
                 <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} py-1`}>
                   <div className="max-w-[240px] px-4 py-2 rounded-2xl border border-border bg-secondary/10 text-muted-foreground/50 text-[13px] italic select-none">
-                    {mine ? "You unsent a message" : "Message unsent"}
+                    {mine ? "You unsent a message" : "This message was unsent"}
                   </div>
                 </div>
               );
             }
 
             return (
-              <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className="group/msg py-1">
-                {showTime && (
-                  <div className="text-center text-xs text-muted-foreground py-2">
-                    {format(new Date(m.created_at), "MMM d, h:mm a")}
-                  </div>
-                )}
-                
-                {/* Reply To Preview */}
-                {m.replyTo && (
-                  <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
-                    <div 
-                      onClick={() => m.replyTo && scrollToMessage(m.replyTo.id)}
-                      className="max-w-[60%] text-[10px] bg-secondary/80 hover:bg-secondary border border-border/60 rounded-2xl px-3 py-1 text-muted-foreground truncate cursor-pointer transition-colors"
-                    >
-                      <span className="font-bold text-primary block text-[8px] uppercase tracking-wider">Replying to {m.replyTo.senderName}</span>
-                      <span className="italic truncate block">{m.replyTo.text}</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                  <div 
-                    onPointerDown={startPress}
-                    onPointerUp={cancelPress}
-                    onPointerMove={cancelPress}
-                    onPointerLeave={cancelPress}
-                    onContextMenu={(e) => { e.preventDefault(); setActiveMsgMenu(m.id); }}
-                    className="relative cursor-pointer select-none"
-                  >
-                    {m.image_url ? (
-                      <button onClick={() => setPreview(m.image_url)} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block">
-                        <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
-                      </button>
-                    ) : m.audio_url ? (
-                      <div className="block">
-                        <VoiceMessage src={m.audio_url} mine={mine} />
-                      </div>
-                    ) : (
-                      <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
-                        <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
-                          {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Reactions Badge */}
-                {reactionKeys.length > 0 && (
-                  <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
-                    <div className="inline-flex items-center gap-1 bg-secondary border border-border/80 px-2 py-0.5 rounded-full shadow-sm text-xs leading-none">
-                      {reactionKeys.map(k => (
-                        <span key={k} title={m.reactions[k].join(", ")}>{k}</span>
-                      ))}
-                      {reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0) > 1 && (
-                        <span className="text-[9px] font-bold text-muted-foreground">{reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0)}</span>
+              <div 
+                key={m.id} 
+                ref={(el) => { msgRefs.current[m.id] = el; }} 
+                className={`group/msg py-1 flex items-center gap-3 transition-colors ${selectionMode ? "hover:bg-secondary/10 cursor-pointer" : ""}`}
+                onClick={() => {
+                  if (selectionMode) {
+                    toggleSelect();
+                  }
+                }}
+              >
+                {selectionMode && (
+                  <div className="pl-3 shrink-0 flex items-center justify-center">
+                    <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
+                      {isSelected && (
+                        <svg className="h-3 w-3 fill-current stroke-current" viewBox="0 0 24 24" strokeWidth="3">
+                          <polyline points="20 6 9 17 4 12" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
                       )}
                     </div>
                   </div>
                 )}
+                
+                <div className="flex-1 min-w-0">
+                  {showTime && (
+                    <div className="text-center text-xs text-muted-foreground py-2 select-none">
+                      {format(new Date(m.created_at), "MMM d, h:mm a")}
+                    </div>
+                  )}
+                  
+                  {/* Reply To Preview */}
+                  {m.replyTo && (
+                    <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
+                      <div 
+                        onClick={() => m.replyTo && scrollToMessage(m.replyTo.id)}
+                        className="max-w-[60%] text-[10px] bg-secondary/80 hover:bg-secondary border border-border/60 rounded-2xl px-3 py-1 text-muted-foreground truncate cursor-pointer transition-colors"
+                      >
+                        <span className="font-bold text-primary block text-[8px] uppercase tracking-wider">Replying to {m.replyTo.senderName}</span>
+                        <span className="italic truncate block">{m.replyTo.text}</span>
+                      </div>
+                    </div>
+                  )}
 
-                {/* Pin Badge */}
-                {m.isPinned && (
-                  <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
-                    <span className="text-[9px] text-muted-foreground flex items-center gap-1">
-                      <Pin className="h-3 w-3 rotate-45 text-primary fill-primary shrink-0" />
-                      Pinned
-                    </span>
+                  <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                    <div 
+                      onPointerDown={selectionMode ? undefined : startPress}
+                      onPointerUp={selectionMode ? undefined : cancelPress}
+                      onPointerMove={selectionMode ? undefined : cancelPress}
+                      onPointerLeave={selectionMode ? undefined : cancelPress}
+                      onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) setActiveMsgMenu(m.id); }}
+                      className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
+                    >
+                      {m.image_url ? (
+                        <button onClick={() => setPreview(m.image_url)} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block">
+                          <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
+                        </button>
+                      ) : m.audio_url ? (
+                        <div className="block">
+                          <VoiceMessage src={m.audio_url} mine={mine} />
+                        </div>
+                      ) : (
+                        <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
+                          <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
+                            {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
 
-                {mine && (isLastMine || m.failed) && (
-                  <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
-                    {m.failed ? (
-                      <span className="inline-flex items-center gap-1 text-destructive">
-                        <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />
-                        Not delivered
-                      </span>
-                    ) : m.id.startsWith("temp-") ? (
-                      <span className="inline-flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />
-                        Sending…
-                      </span>
-                    ) : m.seen ? (
-                      <span className="inline-flex items-center gap-1">
-                        {friend?.avatar_url ? (
-                          <img src={friend.avatar_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border" />
-                        ) : (
-                          <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />
+                  {/* Reactions Badge */}
+                  {reactionKeys.length > 0 && (
+                    <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
+                      <div className="inline-flex items-center gap-1 bg-secondary border border-border/80 px-2 py-0.5 rounded-full shadow-sm text-xs leading-none">
+                        {reactionKeys.map(k => (
+                          <span key={k} title={m.reactions[k].join(", ")}>{k}</span>
+                        ))}
+                        {reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0) > 1 && (
+                          <span className="text-[9px] font-bold text-muted-foreground">{reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0)}</span>
                         )}
-                        Seen
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pin Badge */}
+                  {m.isPinned && (
+                    <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
+                      <span className="text-[9px] text-muted-foreground flex items-center gap-1">
+                        <Pin className="h-3 w-3 rotate-45 text-primary fill-primary shrink-0" />
+                        Pinned
                       </span>
-                    ) : m.delivered ? (
-                      <span className="inline-flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-message-status shrink-0" />
-                        Delivered
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />
-                        Sent
-                      </span>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
+
+                  {mine && (isLastMine || m.failed) && (
+                    <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
+                      {m.failed ? (
+                        <span className="inline-flex items-center gap-1 text-destructive">
+                          <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />
+                          Not delivered
+                        </span>
+                      ) : m.id.startsWith("temp-") ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />
+                          Sending…
+                        </span>
+                      ) : m.seen ? (
+                        <span className="inline-flex items-center gap-1">
+                          {friend?.avatar_url ? (
+                            <img src={friend.avatar_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border" />
+                          ) : (
+                            <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />
+                          )}
+                          Seen
+                        </span>
+                      ) : m.delivered ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="h-2 w-2 rounded-full bg-message-status shrink-0" />
+                          Delivered
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />
+                          Sent
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           });
@@ -828,23 +896,36 @@ function ChatView() {
         </div>
       )}
 
-      <form onSubmit={send} className="relative p-3 border-t border-border flex items-center gap-2 bg-card">
-        <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-          className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
-          {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
-        </button>
-        <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
-        <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
-        <button type="button" onClick={() => setShowEmoji((v) => !v)}
-          className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary ${showEmoji ? "text-primary" : "text-muted-foreground"}`} aria-label="Emoji">
-          <Smile className="h-5 w-5" />
-        </button>
-        <Input autoFocus value={draft} onChange={(e) => onDraftChange(e.target.value)} placeholder="Aa"
-          className="rounded-full bg-secondary border-transparent" />
-        <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0">
-          <Send className="h-4 w-4" />
-        </Button>
-      </form>
+      {selectionMode ? (
+        <div className="p-3 border-t border-border flex items-center justify-center bg-card">
+          <button
+            type="button"
+            disabled={selectedMsgs.size === 0}
+            onClick={() => setShowDeleteBottomSheet(true)}
+            className="w-full max-w-md py-3 bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:hover:bg-red-600 text-white font-bold rounded-xl text-sm transition-colors text-center shadow-md"
+          >
+            Delete ({selectedMsgs.size})
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={send} className="relative p-3 border-t border-border flex items-center gap-2 bg-card">
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+            className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
+            {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+          <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
+          <button type="button" onClick={() => setShowEmoji((v) => !v)}
+            className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary ${showEmoji ? "text-primary" : "text-muted-foreground"}`} aria-label="Emoji">
+            <Smile className="h-5 w-5" />
+          </button>
+          <Input autoFocus value={draft} onChange={(e) => onDraftChange(e.target.value)} placeholder="Aa"
+            className="rounded-full bg-secondary border-transparent" />
+          <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0">
+            <Send className="h-4 w-4" />
+          </Button>
+        </form>
+      )}
 
       {preview && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
@@ -933,19 +1014,19 @@ function ChatView() {
                   <Pin className="h-4 w-4 text-primary rotate-45" />
                   <span>{m.isPinned ? "Unpin message" : "Pin message"}</span>
                 </button>
-                {mine ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUnsendTarget(m.id);
-                      setActiveMsgMenu(null);
-                    }}
-                    className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-destructive transition-colors"
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                    <span>Delete</span>
-                  </button>
-                ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectionMode(true);
+                    setSelectedMsgs(new Set([m.id]));
+                    setActiveMsgMenu(null);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-destructive transition-colors"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                  <span>Delete</span>
+                </button>
+                {!mine && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1052,49 +1133,66 @@ function ChatView() {
           </div>
         </div>
       )}
-      {/* Custom Unsend Message confirmation modal */}
-      {unsendTarget && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="absolute inset-0" onClick={() => setUnsendTarget(null)} />
-          <div className="relative bg-card border border-border w-full max-w-sm rounded-2xl shadow-2xl p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-200 z-10">
-            <h3 className="font-bold text-base text-foreground">Unsend message?</h3>
-            <p className="text-xs text-muted-foreground">
-              This will unsend the message for everyone in the chat. Active participants will see that you unsent a message.
-            </p>
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => setUnsendTarget(null)}
-                className="flex-1 py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
-              >
-                Cancel
-              </button>
+      {/* Delete Confirmation Bottom Sheet */}
+      {showDeleteBottomSheet && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end justify-center animate-in fade-in duration-200">
+          <div className="absolute inset-0" onClick={() => setShowDeleteBottomSheet(false)} />
+          <div className="relative bg-card border-t border-border w-full max-w-md rounded-t-2xl shadow-2xl p-4 flex flex-col gap-2.5 animate-in slide-in-from-bottom duration-300 z-10">
+            <div className="text-center text-xs text-muted-foreground font-medium py-1.5 border-b border-border/50">
+              Delete {selectedMsgs.size} message{selectedMsgs.size > 1 ? "s" : ""}?
+            </div>
+            
+            {allSelectedAreMine && (
               <button
                 type="button"
                 onClick={async () => {
-                  const targetId = unsendTarget;
-                  setUnsendTarget(null);
+                  setShowDeleteBottomSheet(false);
+                  const targetIds = Array.from(selectedMsgs);
+                  setSelectionMode(false);
+                  setSelectedMsgs(new Set());
+                  
                   try {
-                    const { error } = await supabase
-                      .from("messages")
-                      .update({ content: "[system:unsent]", image_url: null, audio_url: null } as any)
-                      .eq("id", targetId);
-                    if (error) {
-                      await supabase.from("messages").delete().eq("id", targetId);
-                      setMessages(prev => prev.filter(x => x.id !== targetId));
-                    } else {
-                      setMessages(prev => prev.map(x => x.id === targetId ? { ...x, content: "[system:unsent]", image_url: null, audio_url: null } : x));
-                    }
-                    toast.success("Message unsent");
-                  } catch (err) {
+                    const promises = targetIds.map(id =>
+                      supabase.from("messages").update({ content: "[system:unsent]", image_url: null, audio_url: null } as any).eq("id", id)
+                    );
+                    const results = await Promise.all(promises);
+                    const err = results.find(r => r.error);
+                    if (err) throw err.error;
+                    
+                    setMessages(prev => prev.map(m => targetIds.includes(m.id) ? { ...m, content: "[system:unsent]", image_url: null, audio_url: null } : m));
+                    toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for everyone`);
+                  } catch (e) {
                     toast.error("Could not unsend message");
                   }
                 }}
-                className="flex-1 py-2.5 bg-destructive hover:opacity-90 text-destructive-foreground font-semibold rounded-xl text-xs transition-colors"
+                className="w-full py-3 bg-red-600/10 hover:bg-red-600/20 text-red-500 font-bold rounded-xl text-sm transition-colors text-center"
               >
-                Unsend
+                Delete for everyone
               </button>
-            </div>
+            )}
+            
+            <button
+              type="button"
+              onClick={() => {
+                setShowDeleteBottomSheet(false);
+                const targetIds = Array.from(selectedMsgs);
+                setSelectionMode(false);
+                setSelectedMsgs(new Set());
+                deleteForMe(targetIds);
+                toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for you`);
+              }}
+              className="w-full py-3 bg-secondary hover:bg-secondary/80 text-foreground font-bold rounded-xl text-sm transition-colors text-center"
+            >
+              Delete for you
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => setShowDeleteBottomSheet(false)}
+              className="w-full py-3 bg-secondary hover:bg-secondary/80 text-muted-foreground font-semibold rounded-xl text-sm transition-colors text-center border border-border"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

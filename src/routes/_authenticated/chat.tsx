@@ -62,7 +62,7 @@ function ChatLayout() {
     const [{ data: last }, { data: lastCalls }] = await Promise.all([
       supabase
         .from("page_messages")
-        .select("content, created_at, from_page, seen")
+        .select("id, content, created_at, from_page, seen")
         .eq("conversation_id", conv.id)
         .order("created_at", { ascending: false })
         .limit(50),
@@ -75,7 +75,9 @@ function ChatLayout() {
         .limit(10)
     ]);
 
-    const arr = last ?? [];
+    const deletedIds = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+    const deletedSet = new Set<string>(deletedIds);
+    const arr = (last ?? []).filter((m) => !deletedSet.has(m.id));
     const firstMsg = arr[0];
     const firstCall = lastCalls?.[0];
 
@@ -119,7 +121,7 @@ function ChatLayout() {
         .in("id", friendIds),
       supabase
         .from("messages")
-        .select("sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
+        .select("id, sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
         .or(friendIds.map((id) => `and(sender_id.eq.${id},receiver_id.eq.${myId}),and(sender_id.eq.${myId},receiver_id.eq.${id})`).join(","))
         .order("created_at", { ascending: false })
         .limit(500),
@@ -132,11 +134,15 @@ function ChatLayout() {
         .limit(200)
     ]);
 
+    const deletedIds = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+    const deletedSet = new Set<string>(deletedIds);
+
     const byFriend: Record<string, Conversation> = {};
     (profiles ?? []).forEach((p) => {
       byFriend[p.id] = { friendId: p.id, username: p.username, avatar_url: p.avatar_url, online: p.online, lastMessage: null, lastAt: null, unread: 0, allText: "" };
     });
-    (msgs ?? []).forEach((m: any) => {
+    const filteredMsgs = (msgs ?? []).filter((m) => !deletedSet.has(m.id));
+    filteredMsgs.forEach((m: any) => {
       const fid = m.sender_id === myId ? m.receiver_id : m.sender_id;
       const c = byFriend[fid];
       if (!c) return;
