@@ -23,8 +23,7 @@ const config: CapacitorConfig = {
     },
     GoogleAuth: {
       scopes: ["profile", "email"],
-      // IMPORTANT: Replace this clientId with your Web Client ID from the Firebase Auth Console
-      clientId: "1083478957294-xxxxxxxxxxxxxxxx.apps.googleusercontent.com",
+      clientId: "877420815591-feisfm6hjc1n8omdhrbv9li9tdk1v63t.apps.googleusercontent.com",
       forceCodeForRefreshToken: true,
     },
   },

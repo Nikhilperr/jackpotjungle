@@ -50,8 +50,7 @@ const config: CapacitorConfig = {
     },
     GoogleAuth: {
       scopes: ["profile", "email"],
-      // Put the Web Client ID you copied from Firebase Authentication here
-      clientId: "YOUR_WEB_CLIENT_ID_FROM_FIREBASE.apps.googleusercontent.com",
+      clientId: "877420815591-feisfm6hjc1n8omdhrbv9li9tdk1v63t.apps.googleusercontent.com",
       forceCodeForRefreshToken: true,
     },
   },
