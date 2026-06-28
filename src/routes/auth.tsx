@@ -16,10 +16,14 @@ import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 
 import { z } from "zod";
 
-// Initialize Native Google Auth on mobile startup
-if (typeof window !== "undefined" && Capacitor.isNative) {
+// Initialize Native Google Auth on mobile startup with explicit configurations for remote server support
+if (typeof window !== "undefined" && Capacitor.isNativePlatform()) {
   try {
-    GoogleAuth.initialize();
+    GoogleAuth.initialize({
+      clientId: "877420815591-feisfm6hjc1n8omdhrbv9li9tdk1v63t.apps.googleusercontent.com",
+      scopes: ["profile", "email"],
+      grantOfflineAccess: true,
+    });
   } catch (e) {
     console.error("Failed to initialize GoogleAuth:", e);
   }
