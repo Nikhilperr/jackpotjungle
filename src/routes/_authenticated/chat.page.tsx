@@ -1069,6 +1069,7 @@ export function ConversationDetailPanel({ username, avatar, isPage = false, pinn
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         <div className="flex flex-col items-center text-center">
+          {isPage ? (
             <div className="h-20 w-20 rounded-full flex items-center justify-center shrink-0 mb-3 shadow-md overflow-hidden border border-border/20">
               <img src="/icons/icon-256.webp" alt="Logo" className="h-full w-full object-cover" />
             </div>
