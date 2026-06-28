@@ -1263,6 +1263,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
             const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
 
             const reactionKeys = Object.keys(m.reactions).filter(k => m.reactions[k].length > 0);
+            const isMatch = matchIds.includes(m.id);
+            const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
 
             return (
               <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className="group/msg py-1">
