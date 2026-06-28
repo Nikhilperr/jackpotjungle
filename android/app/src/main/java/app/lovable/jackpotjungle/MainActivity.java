@@ -14,11 +14,13 @@ import android.provider.Settings;
 import android.util.Log;
 import android.view.WindowManager;
 import com.getcapacitor.BridgeActivity;
+import com.codetrixstudio.capacitor.GoogleAuth.GoogleAuth;
 
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        registerPlugin(GoogleAuth.class);
         
         // Ensure the activity shows over the lockscreen and wakes up the screen
         setupLockscreenFlags();
