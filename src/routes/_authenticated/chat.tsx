@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
-import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus } from "lucide-react";
+import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus, Pin } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar } from "@/components/messenger/Avatar";
 import { useRole } from "@/hooks/useRole";
@@ -225,6 +225,45 @@ function ChatLayout() {
     }
   }
 
+  const [pinnedFriends, setPinnedFriends] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem("jj_pinned_friends");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [contextMenuTarget, setContextMenuTarget] = useState<string | null>(null);
+  const touchTimerRef = useRef<any>(null);
+
+  const startTouch = (friendId: string) => {
+    if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+    touchTimerRef.current = setTimeout(() => {
+      setContextMenuTarget(friendId);
+    }, 600);
+  };
+
+  const endTouch = () => {
+    if (touchTimerRef.current) {
+      clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
+  };
+
+  const togglePin = (friendId: string) => {
+    let next: string[];
+    if (pinnedFriends.includes(friendId)) {
+      next = pinnedFriends.filter(id => id !== friendId);
+      toast.success("Chat unpinned");
+    } else {
+      next = [...pinnedFriends, friendId];
+      toast.success("Chat pinned to top");
+    }
+    setPinnedFriends(next);
+    localStorage.setItem("jj_pinned_friends", JSON.stringify(next));
+  };
+
   const q = search.trim().toLowerCase();
   const visible = conversations.filter((c) => (tab === "spam" ? spamIds.has(c.friendId) : !spamIds.has(c.friendId)));
   const filtered = visible.filter((c) =>
@@ -233,6 +272,14 @@ function ChatLayout() {
   const spamCount = conversations.filter((c) => spamIds.has(c.friendId)).length;
 
   const onlineFriends = conversations.filter((c) => c.online && !spamIds.has(c.friendId));
+
+  const sorted = [...filtered].sort((a, b) => {
+    const aPinned = pinnedFriends.includes(a.friendId);
+    const bPinned = pinnedFriends.includes(b.friendId);
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+    return 0;
+  });
 
   return (
     <AppShell>
@@ -325,7 +372,7 @@ function ChatLayout() {
               </Link>
             )}
 
-            {filtered.length === 0 ? (
+            {sorted.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
                 {tab === "spam"
                   ? "No spam conversations."
@@ -334,14 +381,20 @@ function ChatLayout() {
                   : "No matches."}
               </div>
             ) : (
-              filtered.map((c) => {
+              sorted.map((c) => {
                 const isSpam = spamIds.has(c.friendId);
+                const isPinned = pinnedFriends.includes(c.friendId);
                 return (
                   <div key={c.friendId} className="group relative">
                     <Link
                       to="/chat/$friendId"
                       params={{ friendId: c.friendId }}
-                      className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors ${activeId === c.friendId ? "bg-secondary" : ""}`}
+                      onPointerDown={() => startTouch(c.friendId)}
+                      onPointerUp={endTouch}
+                      onPointerMove={endTouch}
+                      onPointerLeave={endTouch}
+                      onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(c.friendId); }}
+                      className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors select-none ${activeId === c.friendId ? "bg-secondary" : ""}`}
                     >
                       <div className="relative shrink-0">
                         <Avatar name={c.username} url={c.avatar_url} />
@@ -349,7 +402,10 @@ function ChatLayout() {
                       </div>
                       <div className="flex-1 min-w-0 pr-10">
                         <div className="flex items-baseline justify-between gap-2">
-                          <p className={`truncate ${c.unread > 0 ? "font-bold" : "font-semibold"}`}>{c.username}</p>
+                          <p className={`truncate flex items-center gap-1.5 ${c.unread > 0 ? "font-bold" : "font-semibold"}`}>
+                            {c.username}
+                            {isPinned && <Pin className="h-3 w-3 text-primary rotate-45 fill-primary shrink-0" />}
+                          </p>
                           {c.lastAt && (
                             <span className="text-xs text-muted-foreground shrink-0">
                               {formatDistanceToNow(new Date(c.lastAt), { addSuffix: false })}
@@ -381,6 +437,54 @@ function ChatLayout() {
           {hasActive ? <Outlet /> : <EmptyState />}
         </div>
       </div>
+
+      {contextMenuTarget && (() => {
+        const targetFriend = conversations.find(c => c.friendId === contextMenuTarget);
+        if (!targetFriend) return null;
+        const isPinned = pinnedFriends.includes(contextMenuTarget);
+        const isSpam = spamIds.has(contextMenuTarget);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setContextMenuTarget(null)} />
+            <div className="relative w-full max-w-[280px] bg-card border border-border rounded-2xl shadow-2xl p-4 overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="flex flex-col items-center text-center pb-3 border-b border-border">
+                <Avatar name={targetFriend.username} url={targetFriend.avatar_url} size={56} />
+                <h3 className="font-bold text-base mt-2 text-foreground truncate w-full">{targetFriend.username}</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Manage chat options</p>
+              </div>
+              <div className="py-2 space-y-1">
+                <button
+                  onClick={() => {
+                    togglePin(contextMenuTarget);
+                    setContextMenuTarget(null);
+                  }}
+                  className="w-full h-11 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Pin className="h-4 w-4 shrink-0 text-primary rotate-45 fill-primary" />
+                  <span>{isPinned ? "Unpin chat" : "Pin chat"}</span>
+                </button>
+                <button
+                  onClick={async (e) => {
+                    await toggleSpam(e, contextMenuTarget, isSpam);
+                    setContextMenuTarget(null);
+                  }}
+                  className="w-full h-11 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-destructive transition-colors"
+                >
+                  <Ban className="h-4 w-4 shrink-0 text-destructive" />
+                  <span>{isSpam ? "Remove from spam" : "Move to spam"}</span>
+                </button>
+                <button
+                  onClick={() => setContextMenuTarget(null)}
+                  className="w-full h-11 px-3 rounded-lg flex items-center justify-center text-sm font-semibold hover:bg-secondary text-muted-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </AppShell>
   );
 }

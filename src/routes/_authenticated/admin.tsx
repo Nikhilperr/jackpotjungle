@@ -44,6 +44,7 @@ import {
   Activity,
   Gift,
   Settings as SettingsIcon,
+  Pin,
 } from "lucide-react";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -356,8 +357,30 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [userTagMap, setUserTagMap] = useState<Record<string, string[]>>({});
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [viewSpam, setViewSpam] = useState(false);
-  const [confirmSpam, setConfirmSpam] = useState<ConvRow | null>(null);
+  const [pinnedConvs, setPinnedConvs] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem("jj_pinned_convs");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [contextMenuTarget, setContextMenuTarget] = useState<string | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const togglePin = (convId: string) => {
+    let next: string[];
+    if (pinnedConvs.includes(convId)) {
+      next = pinnedConvs.filter(id => id !== convId);
+      toast.success("Chat unpinned");
+    } else {
+      next = [...pinnedConvs, convId];
+      toast.success("Chat pinned to top");
+    }
+    setPinnedConvs(next);
+    localStorage.setItem("jj_pinned_convs", JSON.stringify(next));
+  };
 
   async function load() {
     const { data: convList } = await supabase
@@ -464,6 +487,13 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     if (tagFilter && !(userTagMap[u.userId] ?? []).includes(tagFilter)) return false;
     return true;
   });
+  const sorted = [...filtered].sort((a, b) => {
+    const aPinned = pinnedConvs.includes(a.conversationId);
+    const bPinned = pinnedConvs.includes(b.conversationId);
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+    return 0;
+  });
   const spamCount = convs.filter((u) => u.isSpam).length;
   const active = convs.find((u) => u.conversationId === activeId) ?? null;
 
@@ -554,22 +584,24 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           </div>
         </div>
         <PullToRefresh onRefresh={load}>
-          {filtered.length === 0 ? (
+          {sorted.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">{viewSpam ? "No spam conversations." : "No conversations."}</p>
-          ) : filtered.map((u) => {
+          ) : sorted.map((u) => {
             const startPress = () => {
               if (pressTimer.current) clearTimeout(pressTimer.current);
-              pressTimer.current = setTimeout(() => setConfirmSpam(u), 550);
+              pressTimer.current = setTimeout(() => setContextMenuTarget(u.conversationId), 600);
             };
             const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
+            const isPinned = pinnedConvs.includes(u.conversationId);
             return (
             <div key={u.conversationId} className="group relative">
             <button
               onClick={() => setActiveId(u.conversationId)}
               onPointerDown={startPress}
               onPointerUp={cancelPress}
+              onPointerMove={cancelPress}
               onPointerLeave={cancelPress}
-              onContextMenu={(e) => { e.preventDefault(); setConfirmSpam(u); }}
+              onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(u.conversationId); }}
               className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${activeId === u.conversationId ? "bg-secondary" : ""}`}
             >
               <div className="relative shrink-0">
@@ -578,7 +610,10 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               </div>
               <div className="flex-1 min-w-0 pr-9">
                 <div className="flex items-baseline justify-between gap-2">
-                  <p className={`truncate text-sm ${u.unread ? "font-bold" : "font-semibold"}`}>{u.username}</p>
+                  <p className={`truncate text-sm flex items-center gap-1.5 ${u.unread ? "font-bold" : "font-semibold"}`}>
+                    {u.username}
+                    {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
+                  </p>
                   {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
                 </div>
                 <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
@@ -635,27 +670,53 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={!!confirmSpam} onOpenChange={(o) => !o && setConfirmSpam(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirmSpam?.isSpam ? "Remove from spam?" : "Move to spam?"}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmSpam?.isSpam
-                ? `${confirmSpam?.username} will return to the main inbox.`
-                : `${confirmSpam?.username} will be hidden in the Spam folder. You can restore them anytime.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className={confirmSpam?.isSpam ? "" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}
-              onClick={() => { if (confirmSpam) setConvSpam(confirmSpam, !confirmSpam.isSpam); setConfirmSpam(null); }}
-            >
-              {confirmSpam?.isSpam ? "Remove from spam" : "Move to spam"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {contextMenuTarget && (() => {
+        const targetConv = convs.find(c => c.conversationId === contextMenuTarget);
+        if (!targetConv) return null;
+        const isPinned = pinnedConvs.includes(contextMenuTarget);
+        const isSpam = targetConv.isSpam;
+
+        return (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setContextMenuTarget(null)} />
+            <div className="relative w-full max-w-[280px] bg-card border border-border rounded-2xl shadow-2xl p-4 overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="flex flex-col items-center text-center pb-3 border-b border-border">
+                <Avatar name={targetConv.username} url={targetConv.avatar_url} size={56} />
+                <h3 className="font-bold text-base mt-2 text-foreground truncate w-full">{targetConv.username}</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Manage conversation options</p>
+              </div>
+              <div className="py-2 space-y-1">
+                <button
+                  onClick={() => {
+                    togglePin(contextMenuTarget);
+                    setContextMenuTarget(null);
+                  }}
+                  className="w-full h-11 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Pin className="h-4 w-4 shrink-0 text-primary rotate-45 fill-primary" />
+                  <span>{isPinned ? "Unpin conversation" : "Pin conversation"}</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    await setConvSpam(targetConv, !isSpam);
+                    setContextMenuTarget(null);
+                  }}
+                  className="w-full h-11 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-destructive transition-colors"
+                >
+                  <Ban className="h-4 w-4 shrink-0 text-destructive" />
+                  <span>{isSpam ? "Remove from spam" : "Move to spam"}</span>
+                </button>
+                <button
+                  onClick={() => setContextMenuTarget(null)}
+                  className="w-full h-11 px-3 rounded-lg flex items-center justify-center text-sm font-semibold hover:bg-secondary text-muted-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
