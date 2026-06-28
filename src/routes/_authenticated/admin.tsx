@@ -1810,8 +1810,8 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
                     await unsendPageMessagesServer({ ids: targetIds });
                     setMessages(prev => prev.map(m => targetIds.includes(m.id) ? { ...m, content: "[system:unsent]", image_url: null, audio_url: null } : m));
                     toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for everyone`);
-                  } catch (e) {
-                    toast.error("Could not unsend message");
+                  } catch (e: any) {
+                    toast.error(e?.message || "Could not unsend message");
                   }
                 }}
                 className="w-full py-3 bg-red-600/10 hover:bg-red-600/20 text-red-500 font-bold rounded-xl text-sm transition-colors text-center"
