@@ -208,15 +208,6 @@ function ChatView() {
     setDeletedForMeIds(nextSet);
   };
 
-  const allSelectedAreMine = useMemo(() => {
-    if (selectedMsgs.size === 0) return false;
-    for (const id of selectedMsgs) {
-      const msg = parsedMessages.find(x => x.id === id);
-      if (!msg || msg.sender_id !== meId) return false;
-    }
-    return true;
-  }, [selectedMsgs, parsedMessages, meId]);
-
   const parsedMessages = useMemo(() => {
     const visible: Array<Message & {
       reactions: Record<string, string[]>;
@@ -319,6 +310,15 @@ function ChatView() {
 
     return visible;
   }, [messages]);
+
+  const allSelectedAreMine = useMemo(() => {
+    if (selectedMsgs.size === 0) return false;
+    for (const id of selectedMsgs) {
+      const msg = parsedMessages.find(x => x.id === id);
+      if (!msg || msg.sender_id !== meId) return false;
+    }
+    return true;
+  }, [selectedMsgs, parsedMessages, meId]);
 
   const pinnedMessages = useMemo(() => {
     return parsedMessages.filter(m => m.isPinned);

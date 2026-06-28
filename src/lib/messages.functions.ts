@@ -42,23 +42,28 @@ export const unsendPageMessagesServer = createServerFn({ method: "POST" })
       .eq("user_id", context.userId);
       
     const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
-    if (!isAdmin) throw new Error("Admins only");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     
-    // Verify they are from the page
+    // Verify ownership or admin status
     const { data: msgs, error: fetchError } = await supabaseAdmin
       .from("page_messages")
-      .select("id, from_page")
+      .select("id, from_page, sender_id")
       .in("id", data.ids);
 
     if (fetchError) throw new Error(fetchError.message);
     if (!msgs || msgs.length === 0) throw new Error("No messages found");
 
     for (const m of msgs) {
-      if (!m.from_page) {
-        throw new Error("Can only unsend page messages");
+      if (m.sender_id === context.userId) {
+        // Message owner can delete
+        continue;
       }
+      if (m.from_page && isAdmin) {
+        // Admin can delete messages sent by page
+        continue;
+      }
+      throw new Error("You can only delete your own messages");
     }
 
     const { error: updateError } = await supabaseAdmin

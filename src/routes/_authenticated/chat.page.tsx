@@ -88,73 +88,6 @@ function PageChatView() {
     setDeletedForMeIds(nextSet);
   };
 
-  const allSelectedAreMine = useMemo(() => {
-    if (selectedMsgs.size === 0) return false;
-    for (const id of selectedMsgs) {
-      const msg = parsedMessages.find(x => x.id === id);
-      if (!msg || msg.from_page) return false;
-    }
-    return true;
-  }, [selectedMsgs, parsedMessages]);
-
-  async function reactToMessage(msgId: string, emoji: string) {
-    if (!meId || !convId) return;
-    const reactionContent = `[system:reaction:${msgId}:${emoji}:${meId}]`;
-    const { data, error } = await supabase.from("page_messages").insert({
-      conversation_id: convId,
-      sender_id: meId,
-      from_page: false,
-      content: reactionContent,
-      seen: true,
-    } as any).select().single();
-    if (error) {
-      toast.error("Failed to update reaction");
-    } else {
-      setMessages(prev => [...prev, data as Msg]);
-    }
-  }
-
-  async function pinMessage(msgId: string) {
-    if (!meId || !convId) return;
-    const pinContent = `[system:pin:${msgId}]`;
-    const { data, error } = await supabase.from("page_messages").insert({
-      conversation_id: convId,
-      sender_id: meId,
-      from_page: false,
-      content: pinContent,
-      seen: true,
-    } as any).select().single();
-    if (error) {
-      toast.error("Failed to pin message");
-    } else {
-      setMessages(prev => [...prev, data as Msg]);
-      toast.success("Message pinned");
-    }
-  }
-
-  async function unpinMessage(msgId: string) {
-    if (!meId || !convId) return;
-    const unpinContent = `[system:unpin:${msgId}]`;
-    const { data, error } = await supabase.from("page_messages").insert({
-      conversation_id: convId,
-      sender_id: meId,
-      from_page: false,
-      content: unpinContent,
-      seen: true,
-    } as any).select().single();
-    if (error) {
-      toast.error("Failed to unpin message");
-    } else {
-      setMessages(prev => [...prev, data as Msg]);
-      toast.success("Message unpinned");
-    }
-  }
-
-  useEffect(() => {
-    const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
-    setDeletedForMeIds(new Set(list));
-  }, []);
-
   const parsedMessages = useMemo(() => {
     const visible: Array<Msg & {
       reactions: Record<string, string[]>;
@@ -257,6 +190,73 @@ function PageChatView() {
 
     return visible;
   }, [messages, deletedForMeIds]);
+
+  const allSelectedAreMine = useMemo(() => {
+    if (selectedMsgs.size === 0) return false;
+    for (const id of selectedMsgs) {
+      const msg = parsedMessages.find(x => x.id === id);
+      if (!msg || msg.from_page) return false;
+    }
+    return true;
+  }, [selectedMsgs, parsedMessages]);
+
+  async function reactToMessage(msgId: string, emoji: string) {
+    if (!meId || !convId) return;
+    const reactionContent = `[system:reaction:${msgId}:${emoji}:${meId}]`;
+    const { data, error } = await supabase.from("page_messages").insert({
+      conversation_id: convId,
+      sender_id: meId,
+      from_page: false,
+      content: reactionContent,
+      seen: true,
+    } as any).select().single();
+    if (error) {
+      toast.error("Failed to update reaction");
+    } else {
+      setMessages(prev => [...prev, data as Msg]);
+    }
+  }
+
+  async function pinMessage(msgId: string) {
+    if (!meId || !convId) return;
+    const pinContent = `[system:pin:${msgId}]`;
+    const { data, error } = await supabase.from("page_messages").insert({
+      conversation_id: convId,
+      sender_id: meId,
+      from_page: false,
+      content: pinContent,
+      seen: true,
+    } as any).select().single();
+    if (error) {
+      toast.error("Failed to pin message");
+    } else {
+      setMessages(prev => [...prev, data as Msg]);
+      toast.success("Message pinned");
+    }
+  }
+
+  async function unpinMessage(msgId: string) {
+    if (!meId || !convId) return;
+    const unpinContent = `[system:unpin:${msgId}]`;
+    const { data, error } = await supabase.from("page_messages").insert({
+      conversation_id: convId,
+      sender_id: meId,
+      from_page: false,
+      content: unpinContent,
+      seen: true,
+    } as any).select().single();
+    if (error) {
+      toast.error("Failed to unpin message");
+    } else {
+      setMessages(prev => [...prev, data as Msg]);
+      toast.success("Message unpinned");
+    }
+  }
+
+  useEffect(() => {
+    const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+    setDeletedForMeIds(new Set(list));
+  }, []);
 
   const pinnedMessages = useMemo(() => {
     return parsedMessages.filter(m => m.isPinned);
