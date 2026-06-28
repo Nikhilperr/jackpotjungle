@@ -1,9 +1,9 @@
 import { createFileRoute, useParams, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -180,6 +180,147 @@ function ChatView() {
     }
   }, [messages, calls, friendTyping]);
 
+  const [replyingTo, setReplyingTo] = useState<any | null>(null);
+  const [confirmPinTarget, setConfirmPinTarget] = useState<string | null>(null);
+  const [activeMsgMenu, setActiveMsgMenu] = useState<string | null>(null);
+  const [showAllPins, setShowAllPins] = useState(false);
+
+  const parsedMessages = useMemo(() => {
+    const visible: Array<Message & {
+      reactions: Record<string, string[]>;
+      replyTo?: { id: string; senderName: string; text: string };
+      isPinned: boolean;
+    }> = [];
+
+    const reactionMap: Record<string, Record<string, string[]>> = {};
+    const pinSet = new Set<string>();
+
+    for (const m of messages) {
+      if (m.content?.startsWith("[system:reaction:")) {
+        const parts = m.content.split(":");
+        const msgId = parts[2];
+        const emoji = parts[3];
+        const senderId = parts[4]?.replace("]", "");
+        if (msgId && emoji && senderId) {
+          if (!reactionMap[msgId]) reactionMap[msgId] = {};
+          if (!reactionMap[msgId][emoji]) reactionMap[msgId][emoji] = [];
+          const idx = reactionMap[msgId][emoji].indexOf(senderId);
+          if (idx >= 0) {
+            reactionMap[msgId][emoji].splice(idx, 1);
+          } else {
+            for (const key of Object.keys(reactionMap[msgId])) {
+              reactionMap[msgId][key] = reactionMap[msgId][key].filter(uid => uid !== senderId);
+            }
+            if (!reactionMap[msgId][emoji]) reactionMap[msgId][emoji] = [];
+            reactionMap[msgId][emoji].push(senderId);
+          }
+        }
+      } else if (m.content?.startsWith("[system:pin:")) {
+        const parts = m.content.split(":");
+        const msgId = parts[2]?.replace("]", "");
+        if (msgId) pinSet.add(msgId);
+      } else if (m.content?.startsWith("[system:unpin:")) {
+        const parts = m.content.split(":");
+        const msgId = parts[2]?.replace("]", "");
+        if (msgId) pinSet.delete(msgId);
+      }
+    }
+
+    for (const m of messages) {
+      if (m.content?.startsWith("[system:")) continue;
+
+      let replyTo: any = undefined;
+      let cleanContent = m.content;
+
+      if (m.content?.startsWith("[reply:")) {
+        const match = m.content.match(/^\[reply:([^:]+):([^:]+):([^\]]*)\]\s*([\s\S]*)/);
+        if (match) {
+          const [_, targetId, senderName, text, actualText] = match;
+          replyTo = { id: targetId, senderName, text };
+          cleanContent = actualText;
+        }
+      }
+
+      visible.push({
+        ...m,
+        content: cleanContent,
+        reactions: reactionMap[m.id] || {},
+        replyTo,
+        isPinned: pinSet.has(m.id),
+      });
+    }
+
+    return visible;
+  }, [messages]);
+
+  const pinnedMessages = useMemo(() => {
+    return parsedMessages.filter(m => m.isPinned);
+  }, [parsedMessages]);
+
+  const scrollToMessage = (msgId: string) => {
+    const el = msgRefs.current[msgId];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("bg-primary/20", "transition-colors", "duration-500", "rounded-2xl");
+      setTimeout(() => {
+        el.classList.remove("bg-primary/20");
+      }, 2000);
+    }
+  };
+
+  async function reactToMessage(msgId: string, emoji: string) {
+    if (!meId) return;
+    const reactionContent = `[system:reaction:${msgId}:${emoji}:${meId}]`;
+    const { data, error } = await supabase.from("messages").insert({
+      sender_id: meId,
+      receiver_id: friendId,
+      content: reactionContent,
+      seen: true,
+      delivered: true,
+    } as any).select().single();
+    if (error) {
+      toast.error("Failed to update reaction");
+    } else {
+      setMessages(prev => [...prev, data as Message]);
+    }
+  }
+
+  async function pinMessage(msgId: string) {
+    if (!meId) return;
+    const pinContent = `[system:pin:${msgId}]`;
+    const { data, error } = await supabase.from("messages").insert({
+      sender_id: meId,
+      receiver_id: friendId,
+      content: pinContent,
+      seen: true,
+      delivered: true,
+    } as any).select().single();
+    if (error) {
+      toast.error("Failed to pin message");
+    } else {
+      setMessages(prev => [...prev, data as Message]);
+      toast.success("Message pinned");
+    }
+  }
+
+  async function unpinMessage(msgId: string) {
+    if (!meId) return;
+    const unpinContent = `[system:unpin:${msgId}]`;
+    const { data, error } = await supabase.from("messages").insert({
+      sender_id: meId,
+      receiver_id: friendId,
+      content: unpinContent,
+      seen: true,
+      delivered: true,
+    } as any).select().single();
+    if (error) {
+      toast.error("Failed to unpin message");
+    } else {
+      setMessages(prev => [...prev, data as Message]);
+      toast.success("Message unpinned");
+    }
+  }
+
   function onDraftChange(v: string) {
     setDraft(v);
     const now = Date.now();
@@ -213,10 +354,17 @@ function ChatView() {
     const content = draft.trim();
     setDraft("");
     setShowEmoji(false);
+    
+    const replyPrefix = replyingTo
+      ? `[reply:${replyingTo.id}:${replyingTo.sender_id === meId ? "You" : (friend?.username || "Friend")}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] `
+      : "";
+    const finalContent = replyPrefix + content;
+    setReplyingTo(null);
+
     const tempId = addOptimistic({ content });
     const { data, error } = await supabase
       .from("messages")
-      .insert({ sender_id: meId, receiver_id: friendId, content })
+      .insert({ sender_id: meId, receiver_id: friendId, content: finalContent })
       .select()
       .single();
     if (error) {
@@ -400,16 +548,35 @@ function ChatView() {
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
-        {messages.length === 0 && calls.length === 0 && (
+      {pinnedMessages.length > 0 && (
+        <div className="bg-secondary/60 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center justify-between text-xs text-foreground z-10 transition-all">
+          <div className="flex items-center gap-2 truncate flex-1 cursor-pointer" onClick={() => scrollToMessage(pinnedMessages[pinnedMessages.length - 1].id)}>
+            <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />
+            <span className="font-semibold text-muted-foreground shrink-0">Pinned:</span>
+            <span className="truncate italic">
+              {pinnedMessages[pinnedMessages.length - 1].content || (pinnedMessages[pinnedMessages.length - 1].image_url ? "Image 📷" : "Voice message 🎙️")}
+            </span>
+          </div>
+          <button 
+            type="button"
+            onClick={() => setShowAllPins(true)} 
+            className="text-[10px] uppercase tracking-wider font-bold text-primary hover:underline ml-3 shrink-0"
+          >
+            See All ({pinnedMessages.length})
+          </button>
+        </div>
+      )}
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-2">
+        {parsedMessages.length === 0 && calls.length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-12">No messages yet. Say hi 👋</div>
         )}
         {(() => {
           type TimelineItem =
-            | { kind: "msg"; at: string; msg: Message }
+            | { kind: "msg"; at: string; msg: typeof parsedMessages[0] }
             | { kind: "call"; at: string; call: CallRow };
           const items: TimelineItem[] = [
-            ...messages.map((m) => ({ kind: "msg" as const, at: m.created_at, msg: m })),
+            ...parsedMessages.map((m) => ({ kind: "msg" as const, at: m.created_at, msg: m })),
             ...calls.map((c) => ({ kind: "call" as const, at: c.created_at, call: c })),
           ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
@@ -427,8 +594,14 @@ function ChatView() {
                       {format(new Date(c.created_at), "MMM d, h:mm a")}
                     </div>
                   )}
-                  <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                    <CallMessage mine={mine} kind={c.call_type} status={c.status as any} durationSeconds={c.duration_seconds} />
+                  <div className={`flex ${mine ? "justify-end" : "justify-start"} p-1`}>
+                    <CallMessage 
+                      mine={mine} 
+                      kind={c.call_type} 
+                      status={c.status as any} 
+                      durationSeconds={c.duration_seconds} 
+                      onCallBack={() => friend && startCall({ calleeId: friend.id, kind: c.call_type, peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
+                    />
                   </div>
                 </div>
               );
@@ -440,28 +613,94 @@ function ChatView() {
             const isLastMine = mine && (!nextIt || nextIt.kind !== "msg" || nextIt.msg.sender_id !== meId);
             const isMatch = matchIds.includes(m.id);
             const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
+
+            const startPress = () => {
+              if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+              pressTimerRef.current = setTimeout(() => {
+                setActiveMsgMenu(m.id);
+              }, 600);
+            };
+            const cancelPress = () => {
+              if (pressTimerRef.current) {
+                clearTimeout(pressTimerRef.current);
+                pressTimerRef.current = null;
+              }
+            };
+
+            const reactionKeys = Object.keys(m.reactions).filter(k => m.reactions[k].length > 0);
+
             return (
-              <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }}>
+              <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className="group/msg py-1">
                 {showTime && (
                   <div className="text-center text-xs text-muted-foreground py-2">
                     {format(new Date(m.created_at), "MMM d, h:mm a")}
                   </div>
                 )}
-                <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                  {m.image_url ? (
-                    <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-3xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
-                      <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
-                    </button>
-                  ) : m.audio_url ? (
-                    <VoiceMessage src={m.audio_url} mine={mine} />
-                  ) : (
-                    <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
-                      <p className="text-[15px] whitespace-pre-wrap break-words">
-                        {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
-                      </p>
+                
+                {/* Reply To Preview */}
+                {m.replyTo && (
+                  <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
+                    <div 
+                      onClick={() => m.replyTo && scrollToMessage(m.replyTo.id)}
+                      className="max-w-[60%] text-[10px] bg-secondary/80 hover:bg-secondary border border-border/60 rounded-2xl px-3 py-1 text-muted-foreground truncate cursor-pointer transition-colors"
+                    >
+                      <span className="font-bold text-primary block text-[8px] uppercase tracking-wider">Replying to {m.replyTo.senderName}</span>
+                      <span className="italic truncate block">{m.replyTo.text}</span>
                     </div>
-                  )}
+                  </div>
+                )}
+
+                <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                  <div 
+                    onPointerDown={startPress}
+                    onPointerUp={cancelPress}
+                    onPointerMove={cancelPress}
+                    onPointerLeave={cancelPress}
+                    onContextMenu={(e) => { e.preventDefault(); setActiveMsgMenu(m.id); }}
+                    className="relative cursor-pointer select-none"
+                  >
+                    {m.image_url ? (
+                      <button onClick={() => setPreview(m.image_url)} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block">
+                        <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
+                      </button>
+                    ) : m.audio_url ? (
+                      <div className="block">
+                        <VoiceMessage src={m.audio_url} mine={mine} />
+                      </div>
+                    ) : (
+                      <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
+                        <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
+                          {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {/* Reactions Badge */}
+                {reactionKeys.length > 0 && (
+                  <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
+                    <div className="inline-flex items-center gap-1 bg-secondary border border-border/80 px-2 py-0.5 rounded-full shadow-sm text-xs leading-none">
+                      {reactionKeys.map(k => (
+                        <span key={k} title={m.reactions[k].join(", ")}>{k}</span>
+                      ))}
+                      {reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0) > 1 && (
+                        <span className="text-[9px] font-bold text-muted-foreground">{reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0)}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Pin Badge */}
+                {m.isPinned && (
+                  <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
+                    <span className="text-[9px] text-muted-foreground flex items-center gap-1">
+                      <Pin className="h-3 w-3 rotate-45 text-primary fill-primary shrink-0" />
+                      Pinned
+                    </span>
+                  </div>
+                )}
+
                 {mine && (isLastMine || m.failed) && (
                   <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
                     {m.failed ? (
@@ -513,10 +752,15 @@ function ChatView() {
         )}
       </div>
 
-      {showEmoji && (
-        <div className="border-t border-border bg-card">
-          <EmojiPicker onEmojiClick={(d) => onDraftChange(draft + d.emoji)} theme={Theme.AUTO} emojiStyle={EmojiStyle.NATIVE}
-            width="100%" height={320} previewConfig={{ showPreview: false }} skinTonesDisabled lazyLoadEmojis />
+      {replyingTo && (
+        <div className="px-4 py-2 border-t border-border bg-secondary/30 flex items-center justify-between text-xs text-muted-foreground animate-in slide-in-from-bottom-2 duration-200">
+          <div className="truncate flex-1">
+            <span className="font-bold text-primary block text-[10px] uppercase">Replying to {replyingTo.sender_id === meId ? "yourself" : (friend?.username || "Friend")}</span>
+            <span className="truncate block italic">{replyingTo.content || "Media / Attachment"}</span>
+          </div>
+          <button type="button" onClick={() => setReplyingTo(null)} className="h-6 w-6 rounded-full hover:bg-secondary flex items-center justify-center ml-2 shrink-0">
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
@@ -544,6 +788,197 @@ function ChatView() {
             <X className="h-5 w-5" />
           </button>
           <img src={preview} alt="" className="max-h-full max-w-full object-contain" />
+        </div>
+      )}
+
+      {/* Message Context Menu & Reactions */}
+      {activeMsgMenu && (() => {
+        const m = parsedMessages.find(x => x.id === activeMsgMenu);
+        if (!m) return null;
+        const mine = m.sender_id === meId;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setActiveMsgMenu(null)} />
+            <div className="relative w-full max-w-[280px] flex flex-col gap-3 animate-in zoom-in-95 duration-200 z-10">
+              {/* Reactions Bar */}
+              <div className="bg-card border border-border/80 rounded-full py-2 px-3 shadow-2xl flex items-center justify-between gap-1">
+                {["❤️", "😂", "😮", "😢", "😡", "👍"].map(emoji => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => {
+                      reactToMessage(m.id, emoji);
+                      setActiveMsgMenu(null);
+                    }}
+                    className="text-2xl hover:scale-125 active:scale-95 transition-transform duration-150"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const more = prompt("Type any emoji reaction:");
+                    if (more) reactToMessage(m.id, more.trim().slice(0, 5));
+                    setActiveMsgMenu(null);
+                  }}
+                  className="h-8 w-8 rounded-full bg-secondary hover:bg-secondary/80 text-muted-foreground flex items-center justify-center text-lg font-bold shrink-0 transition-colors"
+                >
+                  +
+                </button>
+              </div>
+
+              {/* Context Menu */}
+              <div className="bg-card border border-border rounded-2xl shadow-2xl p-2.5 overflow-hidden flex flex-col gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReplyingTo(m);
+                    setActiveMsgMenu(null);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Reply className="h-4 w-4 text-primary" />
+                  <span>Reply</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(m.content || "");
+                    toast.success("Copied to clipboard");
+                    setActiveMsgMenu(null);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Copy className="h-4 w-4 text-primary" />
+                  <span>Copy</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (m.isPinned) {
+                      unpinMessage(m.id);
+                    } else {
+                      setConfirmPinTarget(m.id);
+                    }
+                    setActiveMsgMenu(null);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Pin className="h-4 w-4 text-primary rotate-45" />
+                  <span>{m.isPinned ? "Unpin message" : "Pin message"}</span>
+                </button>
+                {mine ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (confirm("Delete this message?")) {
+                        await supabase.from("messages").delete().eq("id", m.id);
+                        setMessages(prev => prev.filter(x => x.id !== m.id));
+                        toast.success("Message deleted");
+                      }
+                      setActiveMsgMenu(null);
+                    }}
+                    className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-destructive transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                    <span>Delete</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const note = prompt("Forward this message to:");
+                      if (note) {
+                        toast.success("Forwarded message successfully");
+                      }
+                      setActiveMsgMenu(null);
+                    }}
+                    className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                  >
+                    <Forward className="h-4 w-4 text-primary" />
+                    <span>Forward</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Pin Confirmation dialog */}
+      {confirmPinTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-card border border-border w-full max-w-[280px] rounded-2xl p-5 shadow-2xl flex flex-col gap-4 text-center animate-in zoom-in-95 duration-200">
+            <div>
+              <h3 className="font-bold text-base text-foreground leading-snug">Pin this message?</h3>
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                Everyone in the chat can see pinned messages. You can see and manage pinned messages from the chat details.
+              </p>
+            </div>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setConfirmPinTarget(null)}
+                className="flex-1 py-2 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  pinMessage(confirmPinTarget);
+                  setConfirmPinTarget(null);
+                }}
+                className="flex-1 py-2 bg-primary hover:opacity-90 text-primary-foreground font-semibold rounded-xl text-xs transition-colors"
+              >
+                Pin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* See All Pinned messages modal */}
+      {showAllPins && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="absolute inset-0" onClick={() => setShowAllPins(false)} />
+          <div className="relative bg-card border border-border w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[70vh] overflow-hidden animate-in zoom-in-95 duration-200 z-10">
+            <div className="px-4 py-3.5 border-b border-border flex items-center justify-between">
+              <h3 className="font-bold text-base text-foreground flex items-center gap-1.5">
+                <Pin className="h-4 w-4 rotate-45 text-primary fill-primary" />
+                Pinned Messages ({pinnedMessages.length})
+              </h3>
+              <button type="button" onClick={() => setShowAllPins(false)} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {pinnedMessages.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground py-6">No pinned messages.</p>
+              ) : (
+                pinnedMessages.map(m => (
+                  <div 
+                    key={m.id} 
+                    onClick={() => {
+                      scrollToMessage(m.id);
+                      setShowAllPins(false);
+                    }}
+                    className="p-3 bg-secondary/30 hover:bg-secondary/60 border border-border rounded-xl cursor-pointer transition-colors flex flex-col gap-1.5"
+                  >
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                      <span className="font-bold text-primary">{m.sender_id === meId ? "You" : (friend?.username || "Friend")}</span>
+                      <span>{formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}</span>
+                    </div>
+                    <p className="text-xs text-foreground line-clamp-3 break-words">
+                      {m.content || (m.image_url ? "Image 📷" : "Voice message 🎙️")}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

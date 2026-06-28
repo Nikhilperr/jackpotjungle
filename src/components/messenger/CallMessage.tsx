@@ -1,10 +1,11 @@
-import { Phone, PhoneMissed, Video } from "lucide-react";
+import { Phone, PhoneMissed, Video, VideoOff } from "lucide-react";
 
 type Props = {
   mine: boolean;
   kind: "voice" | "video";
   status: "ended" | "missed" | "declined" | "canceled" | "active" | "ringing";
   durationSeconds: number;
+  onCallBack?: () => void;
 };
 
 function fmtDuration(seconds: number) {
@@ -21,42 +22,55 @@ function fmtDuration(seconds: number) {
   return parts.join(" ");
 }
 
-export function CallMessage({ mine, kind, status, durationSeconds }: Props) {
+export function CallMessage({ mine, kind, status, durationSeconds, onCallBack }: Props) {
   const missed = status === "missed" || status === "declined" || status === "canceled";
   const Icon = missed ? PhoneMissed : kind === "video" ? Video : Phone;
 
-  const direction = mine ? "Outgoing" : "Incoming";
-  const typeLabel = kind === "video" ? "Video Call" : "Voice Call";
-  const label = `${direction} ${typeLabel}`;
+  const typeLabel = kind === "video" ? "Video Call" : "Audio Call";
+  
+  let mainTitle = "";
+  if (status === "missed") {
+    mainTitle = `Missed ${typeLabel}`;
+  } else if (status === "declined") {
+    mainTitle = `Declined ${typeLabel}`;
+  } else if (status === "canceled") {
+    mainTitle = `Cancelled ${typeLabel}`;
+  } else {
+    mainTitle = mine ? `Outgoing ${typeLabel}` : `Incoming ${typeLabel}`;
+  }
 
   let subtitle = "";
-  if (status === "missed") {
-    subtitle = "Missed";
-  } else if (status === "declined") {
-    subtitle = "Declined";
-  } else if (status === "canceled") {
-    subtitle = "Cancelled";
-  } else if (status === "active" || status === "ringing") {
-    subtitle = status === "active" ? "Active" : "Ringing";
+  if (status === "active" || status === "ringing") {
+    subtitle = status === "active" ? "Active now" : "Ringing";
   } else if (durationSeconds > 0) {
-    subtitle = fmtDuration(durationSeconds);
+    subtitle = `Answered • ${fmtDuration(durationSeconds)}`;
   } else {
     subtitle = "Call ended";
   }
 
   return (
-    <div className={`max-w-[76%] px-4 py-2.5 rounded-3xl flex items-center gap-2.5 ${
-      missed ? "bg-destructive/10 text-destructive" : mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-primary/10 text-primary"
-    }`}>
-      <span className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
-        missed ? "bg-destructive/15" : mine ? "bg-white/15" : "bg-primary/15"
-      }`}>
-        <Icon className="h-4 w-4" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-[14px] font-medium leading-tight">{label}</p>
-        <p className="text-[11px] opacity-75">{subtitle}</p>
+    <div className="w-full max-w-[240px] bg-secondary/40 border border-border/80 rounded-2xl p-3 shadow-sm flex flex-col gap-2 transition-all hover:shadow-md">
+      <div className="flex items-center gap-3">
+        <span className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
+          missed ? "bg-red-500/10 text-red-500 dark:text-red-400" : "bg-primary/10 text-primary"
+        }`}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-bold leading-tight text-foreground truncate">{mainTitle}</p>
+          <p className="text-[11px] text-muted-foreground leading-normal mt-0.5">{subtitle}</p>
+        </div>
       </div>
+      {onCallBack && (
+        <button
+          type="button"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCallBack(); }}
+          className="w-full py-1.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-[11px] transition-colors flex items-center justify-center gap-1.5 border border-border"
+        >
+          {kind === "video" ? <Video className="h-3 w-3" /> : <Phone className="h-3 w-3" />}
+          Call back
+        </button>
+      )}
     </div>
   );
 }
