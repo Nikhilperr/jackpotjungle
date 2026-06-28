@@ -1007,15 +1007,6 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
         >
           <Search className="h-5 w-5" />
         </button>
-        <button
-          type="button"
-          onClick={onToggleSpam}
-          className={`h-9 px-3 shrink-0 rounded-full flex items-center gap-1.5 text-xs font-semibold ${conv.isSpam ? "bg-destructive text-destructive-foreground hover:opacity-90" : "text-muted-foreground hover:bg-secondary border border-border"}`}
-          aria-label={conv.isSpam ? "Remove from spam" : "Mark conversation as spam"}
-          title={conv.isSpam ? "Remove from spam" : "Mark as spam"}
-        >
-          {conv.isSpam ? <><RotateCcw className="h-4 w-4" /> Unspam</> : <><Ban className="h-4 w-4" /> Spam</>}
-        </button>
       </div>
       {searchOpen && (
         <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2">
