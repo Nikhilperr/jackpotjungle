@@ -68,7 +68,13 @@ function AuthPage() {
   async function signInWithGoogle() {
     setGoogleBusy(true);
     try {
-      if (Capacitor.isNative) {
+      const nativeCheck = Capacitor.isNative;
+      const hasCapacitorWindow = typeof window !== "undefined" && !!(window as any).Capacitor;
+      
+      toast.info(`Auth Debug - Native: ${nativeCheck}, Bridge: ${hasCapacitorWindow}`);
+
+      if (nativeCheck) {
+        toast.info("Triggering Native Google Sign-In...");
         // Use native Google Sign-In on mobile devices
         const userResult = await GoogleAuth.signIn();
         const idToken = userResult.authentication.idToken;
@@ -80,6 +86,7 @@ function AuthPage() {
         });
         if (error) throw error;
       } else {
+        toast.info("Falling back to Browser Redirect...");
         // Standard browser redirection on desktop
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
@@ -90,7 +97,8 @@ function AuthPage() {
         if (error) throw error;
       }
     } catch (err: any) {
-      toast.error(err.message ?? "Google authentication failed.");
+      console.error("Google Auth error details:", err);
+      toast.error(`Auth Error: ${err.message ?? JSON.stringify(err)}`);
       setGoogleBusy(false);
     }
   }
