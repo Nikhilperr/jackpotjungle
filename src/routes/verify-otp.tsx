@@ -41,6 +41,25 @@ function VerifyOtpPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // Check if profile was completed on another device
+  useEffect(() => {
+    if (!email) return;
+    const interval = setInterval(async () => {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("email", email)
+        .maybeSingle();
+
+      if (profile?.first_name?.trim() && profile?.last_name?.trim()) {
+        toast.success("Verification completed on another device! Redirecting to login...");
+        navigate({ to: "/auth", search: { mode: "login" } });
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [email, navigate]);
+
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60).toString().padStart(2, "0");
     const s = (secs % 60).toString().padStart(2, "0");
@@ -134,6 +153,14 @@ function VerifyOtpPage() {
                 <p className="text-xs text-muted-foreground max-w-[285px] leading-relaxed">
                   We have sent a 6-digit verification code to <span className="font-semibold text-foreground break-all">{email}</span>.
                 </p>
+              </div>
+
+              {/* Multi-device Info Helper Banner */}
+              <div className="p-3.5 rounded-2xl bg-primary/5 border border-primary/10 text-center text-[11px] text-muted-foreground leading-relaxed max-w-[285px] mx-auto select-none space-y-1">
+                <p className="font-bold text-foreground flex items-center justify-center gap-1">
+                  <span>📱</span> Continuing on another device?
+                </p>
+                <p>You can tap the link in the email on your mobile phone to complete this process directly on your phone.</p>
               </div>
 
               <div className="space-y-4">
