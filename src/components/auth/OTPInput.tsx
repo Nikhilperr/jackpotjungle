@@ -98,7 +98,7 @@ export function OTPInput({ value, onChange, disabled, hasError }: OTPInputProps)
           onKeyDown={(e) => handleKeyDown(idx, e)}
           onPaste={handlePaste}
           disabled={disabled}
-          className={`h-12 w-12 md:h-14 md:w-14 text-center text-xl font-bold bg-background/50 border rounded-2xl focus:outline-none focus:ring-2 transition-all select-all ${
+          className={`h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14 text-center text-xl font-bold bg-background/50 border rounded-2xl focus:outline-none focus:ring-2 transition-all select-all ${
             hasError
               ? "border-destructive focus:ring-destructive/30"
               : digit

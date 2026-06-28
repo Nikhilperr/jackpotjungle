@@ -37,7 +37,7 @@ export const AuthInput = React.forwardRef<HTMLInputElement, AuthInputProps>(
           <Input
             ref={ref}
             type={inputType}
-            className={`h-12 w-full pl-${icon ? "11" : "4"} pr-${isPassword ? "11" : "4"} rounded-2xl border border-border/80 bg-background/50 hover:bg-background/80 focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 text-sm placeholder:text-muted-foreground/50 ${className}`}
+            className={`h-12 w-full ${icon ? "pl-11" : "pl-4"} ${isPassword ? "pr-11" : "pr-4"} rounded-2xl border border-border/80 bg-background/50 hover:bg-background/80 focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 text-sm placeholder:text-muted-foreground/50 ${className}`}
             onKeyUp={handleKeyUp}
             onKeyDown={handleKeyUp}
             {...props}
