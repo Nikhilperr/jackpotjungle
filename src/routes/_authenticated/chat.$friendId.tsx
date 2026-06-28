@@ -12,6 +12,7 @@ import { useCalls } from "@/components/messenger/CallProvider";
 import { uploadAndSign } from "@/lib/chat-media";
 import { format, formatDistanceToNow } from "date-fns";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
+import { toast } from "sonner";
 
 type CallRow = {
   id: string;
@@ -65,6 +66,7 @@ function ChatView() {
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastTypingSentRef = useRef(0);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let mounted = true;
