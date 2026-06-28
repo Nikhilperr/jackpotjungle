@@ -471,6 +471,29 @@ export function CallProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incoming]);
 
+  useEffect(() => {
+    if (!incoming || !meId) return;
+    const callId = incoming.call.id;
+    const ch = supabase.channel(`call:${callId}`, { config: { broadcast: { self: false, ack: false } } });
+    
+    let intervalId: any = null;
+    ch.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        console.log("[Call Debug] Callee subscribed to call channel, broadcasting ringing status.");
+        const sendRinging = () => {
+          ch.send({ type: "broadcast", event: "ringing", payload: { from: meId } });
+        };
+        sendRinging();
+        intervalId = setInterval(sendRinging, 2000);
+      }
+    });
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      supabase.removeChannel(ch);
+    };
+  }, [incoming, meId]);
+
   return (
     <CallCtx.Provider value={{ startCall }}>
       {children}

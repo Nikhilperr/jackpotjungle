@@ -28,7 +28,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(kind === "video");
-  const [dbStatus, setDbStatus] = useState<string>("ringing");
+  const [dbStatus, setDbStatus] = useState<string>(role === "caller" ? "calling" : "ringing");
   const [noAnswer, setNoAnswer] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [active, setActive] = useState(initialActive);
@@ -43,6 +43,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   const { localStream, remoteStream, connected, remoteMuted, sendHangup, toggleAudio, toggleVideo, switchCamera, sendMediaState } = useWebRTC({
     callId, role, kind, meId, context,
     onRemoteHangup: () => endCall("remote"),
+    onRinging: () => setDbStatus("ringing"),
   });
 
   useEffect(() => { activeRef.current = active; }, [active]);
@@ -94,10 +95,13 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
 
   // Outgoing dial tone while ringing (caller only)
   useEffect(() => {
-    if (role === "caller" && !active && !noAnswer) playRingtone("outgoing");
-    else stopRingtone();
+    if (role === "caller" && !active && !noAnswer && dbStatus === "ringing") {
+      playRingtone("outgoing");
+    } else {
+      stopRingtone();
+    }
     return () => stopRingtone();
-  }, [role, active, noAnswer]);
+  }, [role, active, noAnswer, dbStatus]);
 
   // Duration timer
   useEffect(() => {

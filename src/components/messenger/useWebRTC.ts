@@ -25,9 +25,10 @@ type Args = {
   meId: string;
   context: string;
   onRemoteHangup?: () => void;
+  onRinging?: () => void;
 };
 
-export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup }: Args) {
+export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, onRinging }: Args) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connected, setConnected] = useState(false);
@@ -151,6 +152,11 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup }:
         const p = msg.payload as { from: string; muted?: boolean };
         if (p.from === meId) return;
         if (typeof p.muted === "boolean") setRemoteMuted(p.muted);
+      })
+      .on("broadcast", { event: "ringing" }, (msg) => {
+        if (role !== "caller") return;
+        if ((msg.payload as any)?.from === meId) return;
+        onRinging?.();
       })
       .on("broadcast", { event: "hangup" }, (msg) => {
         if ((msg.payload as any)?.from === meId) return;
