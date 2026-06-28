@@ -192,6 +192,9 @@ function ChatView() {
       reactions: Record<string, string[]>;
       replyTo?: { id: string; senderName: string; text: string };
       isPinned: boolean;
+      isSystemPin?: boolean;
+      isSystemUnpin?: boolean;
+      isUnsent?: boolean;
     }> = [];
 
     const reactionMap: Record<string, Record<string, string[]>> = {};
@@ -229,7 +232,37 @@ function ChatView() {
     }
 
     for (const m of messages) {
-      if (m.content?.startsWith("[system:")) continue;
+      if (m.content === "[system:unsent]") {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isUnsent: true,
+        });
+        continue;
+      }
+
+      if (m.content?.startsWith("[system:reaction:")) continue;
+
+      if (m.content?.startsWith("[system:pin:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemPin: true,
+        });
+        continue;
+      }
+
+      if (m.content?.startsWith("[system:unpin:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUnpin: true,
+        });
+        continue;
+      }
 
       let replyTo: any = undefined;
       let cleanContent = m.content;
@@ -631,6 +664,34 @@ function ChatView() {
 
             const reactionKeys = Object.keys(m.reactions).filter(k => m.reactions[k].length > 0);
 
+            if (m.isSystemPin) {
+              return (
+                <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
+                  <Pin className="h-3 w-3 rotate-45 text-muted-foreground/60 fill-muted-foreground/30" />
+                  {mine ? "You pinned a message" : `${friend?.username || "Friend"} pinned a message`}
+                </div>
+              );
+            }
+
+            if (m.isSystemUnpin) {
+              return (
+                <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
+                  <Pin className="h-3 w-3 rotate-45 text-muted-foreground/40" />
+                  {mine ? "You unpinned a message" : `${friend?.username || "Friend"} unpinned a message`}
+                </div>
+              );
+            }
+
+            if (m.isUnsent) {
+              return (
+                <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} py-1`}>
+                  <div className="max-w-[240px] px-4 py-2 rounded-2xl border border-border bg-secondary/10 text-muted-foreground/50 text-[13px] italic select-none">
+                    {mine ? "You unsent a message" : "Message unsent"}
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className="group/msg py-1">
                 {showTime && (
@@ -876,9 +937,14 @@ function ChatView() {
                     type="button"
                     onClick={async () => {
                       if (confirm("Delete this message?")) {
-                        await supabase.from("messages").delete().eq("id", m.id);
-                        setMessages(prev => prev.filter(x => x.id !== m.id));
-                        toast.success("Message deleted");
+                        const { error } = await supabase.from("messages").update({ content: "[system:unsent]", image_url: null, audio_url: null } as any).eq("id", m.id);
+                        if (error) {
+                          await supabase.from("messages").delete().eq("id", m.id);
+                          setMessages(prev => prev.filter(x => x.id !== m.id));
+                        } else {
+                          setMessages(prev => prev.map(x => x.id === m.id ? { ...x, content: "[system:unsent]", image_url: null, audio_url: null } : x));
+                        }
+                        toast.success("Message unsent");
                       }
                       setActiveMsgMenu(null);
                     }}

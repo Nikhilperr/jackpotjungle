@@ -82,6 +82,19 @@ function ChatLayout() {
     let content = firstMsg?.content ?? null;
     let at = firstMsg?.created_at ?? null;
 
+    if (content?.startsWith("[system:reaction:")) {
+      content = "Reacted to a message";
+    } else if (content?.startsWith("[system:pin:")) {
+      content = "Pinned a message";
+    } else if (content?.startsWith("[system:unpin:")) {
+      content = "Unpinned a message";
+    } else if (content?.startsWith("[system:unsent]")) {
+      content = "Unsent a message";
+    } else if (content?.startsWith("[reply:")) {
+      const match = content.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+      if (match) content = match[1];
+    }
+
     if (firstCall && (!at || new Date(firstCall.created_at) > new Date(at))) {
       content = firstCall.call_type === "video" ? "📹 Video call" : "📞 Voice call";
       at = firstCall.created_at;
@@ -127,7 +140,19 @@ function ChatLayout() {
       const fid = m.sender_id === myId ? m.receiver_id : m.sender_id;
       const c = byFriend[fid];
       if (!c) return;
-      const preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
+      let preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
+      if (preview?.startsWith("[system:reaction:")) {
+        preview = "Reacted to a message";
+      } else if (preview?.startsWith("[system:pin:")) {
+        preview = "Pinned a message";
+      } else if (preview?.startsWith("[system:unpin:")) {
+        preview = "Unpinned a message";
+      } else if (preview?.startsWith("[system:unsent]")) {
+        preview = "Unsent a message";
+      } else if (preview?.startsWith("[reply:")) {
+        const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+        if (match) preview = match[1];
+      }
       if (!c.lastAt) { c.lastMessage = preview; c.lastAt = m.created_at; }
       if (m.content) c.allText += " " + m.content.toLowerCase();
       if (m.receiver_id === myId && !m.seen) c.unread++;

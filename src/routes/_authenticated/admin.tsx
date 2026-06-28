@@ -432,6 +432,18 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       const lastCall = userCalls[0];
 
       let lastMessage = lastMsg?.content ?? null;
+      if (lastMessage?.startsWith("[system:reaction:")) {
+        lastMessage = "Reacted to a message";
+      } else if (lastMessage?.startsWith("[system:pin:")) {
+        lastMessage = "Pinned a message";
+      } else if (lastMessage?.startsWith("[system:unpin:")) {
+        lastMessage = "Unpinned a message";
+      } else if (lastMessage?.startsWith("[system:unsent]")) {
+        lastMessage = "Unsent a message";
+      } else if (lastMessage?.startsWith("[reply:")) {
+        const match = lastMessage.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+        if (match) lastMessage = match[1];
+      }
       let lastAt = lastMsg?.created_at ?? null;
 
       if (lastCall && (!lastAt || new Date(lastCall.created_at) > new Date(lastAt))) {
@@ -872,6 +884,9 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
       reactions: Record<string, string[]>;
       replyTo?: { id: string; senderName: string; text: string };
       isPinned: boolean;
+      isSystemPin?: boolean;
+      isSystemUnpin?: boolean;
+      isUnsent?: boolean;
     }> = [];
 
     const reactionMap: Record<string, Record<string, string[]>> = {};
@@ -909,7 +924,37 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
     }
 
     for (const m of messages) {
-      if (m.content?.startsWith("[system:")) continue;
+      if (m.content === "[system:unsent]") {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isUnsent: true,
+        });
+        continue;
+      }
+
+      if (m.content?.startsWith("[system:reaction:")) continue;
+
+      if (m.content?.startsWith("[system:pin:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemPin: true,
+        });
+        continue;
+      }
+
+      if (m.content?.startsWith("[system:unpin:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUnpin: true,
+        });
+        continue;
+      }
 
       let replyTo: any = undefined;
       let cleanContent = m.content;
@@ -1266,6 +1311,34 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
             const isMatch = matchIds.includes(m.id);
             const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
 
+            if (m.isSystemPin) {
+              return (
+                <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
+                  <Pin className="h-3 w-3 rotate-45 text-muted-foreground/60 fill-muted-foreground/30" />
+                  {mine ? "You pinned a message" : `${conv.username || "User"} pinned a message`}
+                </div>
+              );
+            }
+
+            if (m.isSystemUnpin) {
+              return (
+                <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
+                  <Pin className="h-3 w-3 rotate-45 text-muted-foreground/40" />
+                  {mine ? "You unpinned a message" : `${conv.username || "User"} unpinned a message`}
+                </div>
+              );
+            }
+
+            if (m.isUnsent) {
+              return (
+                <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} py-1`}>
+                  <div className="max-w-[240px] px-4 py-2 rounded-2xl border border-border bg-secondary/10 text-muted-foreground/50 text-[13px] italic select-none">
+                    {mine ? "You unsent a message" : "Message unsent"}
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div key={m.id} ref={(el) => { msgRefs.current[m.id] = el; }} className="group/msg py-1">
                 {showTime && (
@@ -1508,8 +1581,13 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
                     type="button"
                     onClick={async () => {
                       if (confirm("Unsend this message?")) {
-                        await supabase.from("page_messages").delete().eq("id", m.id);
-                        setMessages(prev => prev.filter(x => x.id !== m.id));
+                        const { error } = await supabase.from("page_messages").update({ content: "[system:unsent]", image_url: null, audio_url: null } as any).eq("id", m.id);
+                        if (error) {
+                          await supabase.from("page_messages").delete().eq("id", m.id);
+                          setMessages(prev => prev.filter(x => x.id !== m.id));
+                        } else {
+                          setMessages(prev => prev.map(x => x.id === m.id ? { ...x, content: "[system:unsent]", image_url: null, audio_url: null } : x));
+                        }
                         toast.success("Message unsent");
                       }
                       setActiveMsgMenu(null);
