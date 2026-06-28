@@ -7,9 +7,10 @@ interface AuthLayoutProps {
   children: ReactNode;
   title?: string;
   subtitle?: string;
+  hideHeader?: boolean;
 }
 
-export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
+export function AuthLayout({ children, title, subtitle, hideHeader = false }: AuthLayoutProps) {
   return (
     <div className="relative min-h-screen w-full flex flex-col items-center justify-center bg-background px-4 py-8 overflow-hidden transition-colors duration-500">
       {/* Background Animated Gradient Mesh/Circles */}
@@ -62,30 +63,32 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
       {/* Auth Content */}
       <div className="relative w-full max-w-md z-10 flex flex-col items-center">
         {/* Header App Brand */}
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="text-center mb-8 select-none"
-        >
-          <div className="relative inline-flex items-center justify-center mb-3">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-              className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-primary to-accent opacity-20 blur-md"
-            />
-            <img 
-              src="/icons/icon-256.webp" 
-              alt="Logo" 
-              className="relative h-20 w-20 rounded-2xl shadow-xl object-cover border border-border/20"
-            />
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center justify-center gap-1.5">
-            Jackpot Jungle
-            <Sparkles className="h-5 w-5 text-primary animate-pulse" />
-          </h1>
-          <p className="text-sm text-muted-foreground font-medium mt-1">Messenger</p>
-        </motion.div>
+        {!hideHeader && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className="text-center mb-8 select-none"
+          >
+            <div className="relative inline-flex items-center justify-center mb-3">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+                className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-primary to-accent opacity-20 blur-md"
+              />
+              <img 
+                src="/icons/icon-256.webp" 
+                alt="Logo" 
+                className="relative h-20 w-20 rounded-2xl shadow-xl object-cover border border-border/20"
+              />
+            </div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center justify-center gap-1.5">
+              Jackpot Jungle
+              <Sparkles className="h-5 w-5 text-primary animate-pulse" />
+            </h1>
+            <p className="text-sm text-muted-foreground font-medium mt-1">Messenger</p>
+          </motion.div>
+        )}
 
         {children}
       </div>

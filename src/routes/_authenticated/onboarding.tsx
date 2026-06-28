@@ -200,15 +200,15 @@ function OnboardingPage() {
       
       const { error: profileError } = await supabase
         .from("profiles")
-        .update({
+        .upsert({
+          id: meId,
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           username: username.trim(),
           phone: fullPhone,
           address: address.trim() || null,
           avatar_url: avatarUrl,
-        })
-        .eq("id", meId);
+        });
 
       if (profileError) throw profileError;
 
@@ -235,7 +235,7 @@ function OnboardingPage() {
   const selectedCountry = COUNTRIES.find((c) => c.code === phoneDial) || COUNTRIES[0];
 
   return (
-    <AuthLayout>
+    <AuthLayout hideHeader={true}>
       <AuthCard className="max-w-md w-full">
         {/* Warning Banner */}
         <div className="mb-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2.5 text-amber-500 text-xs leading-relaxed font-semibold">
@@ -244,13 +244,6 @@ function OnboardingPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="text-center space-y-1">
-            <h2 className="text-xl font-bold text-foreground">Complete Your Profile</h2>
-            <p className="text-xs text-muted-foreground">
-              Please fill in your details to finish setting up your account.
-            </p>
-          </div>
-
           {/* Profile Picture Upload */}
           <div className="flex flex-col items-center gap-2 py-1">
             <div 
