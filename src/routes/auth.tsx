@@ -11,8 +11,19 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { AuthInput } from "@/components/auth/AuthInput";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { PasswordStrength } from "@/components/auth/PasswordStrength";
+import { Capacitor } from "@capacitor/core";
+import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 
 import { z } from "zod";
+
+// Initialize Native Google Auth on mobile startup
+if (typeof window !== "undefined" && Capacitor.isNative) {
+  try {
+    GoogleAuth.initialize();
+  } catch (e) {
+    console.error("Failed to initialize GoogleAuth:", e);
+  }
+}
 
 const searchSchema = z.object({
   mode: z.enum(["welcome", "login", "signup"]).optional(),
@@ -57,13 +68,27 @@ function AuthPage() {
   async function signInWithGoogle() {
     setGoogleBusy(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: window.location.origin + "/auth",
-        },
-      });
-      if (error) throw error;
+      if (Capacitor.isNative) {
+        // Use native Google Sign-In on mobile devices
+        const userResult = await GoogleAuth.signIn();
+        const idToken = userResult.authentication.idToken;
+        if (!idToken) throw new Error("Google Sign-In did not return an ID token.");
+
+        const { error } = await supabase.auth.signInWithIdToken({
+          provider: "google",
+          token: idToken,
+        });
+        if (error) throw error;
+      } else {
+        // Standard browser redirection on desktop
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: window.location.origin + "/auth",
+          },
+        });
+        if (error) throw error;
+      }
     } catch (err: any) {
       toast.error(err.message ?? "Google authentication failed.");
       setGoogleBusy(false);
