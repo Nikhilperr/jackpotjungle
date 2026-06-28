@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -14,6 +14,7 @@ import { format, formatDistanceToNow } from "date-fns";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import { toast } from "sonner";
 import { unsendMessagesServer } from "@/lib/messages.functions";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 type CallRow = {
   id: string;
@@ -193,6 +194,7 @@ function ChatView() {
   const [selectedMsgs, setSelectedMsgs] = useState<Set<string>>(new Set());
   const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set());
   const [showDeleteBottomSheet, setShowDeleteBottomSheet] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
 
   useEffect(() => {
     const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
@@ -535,8 +537,9 @@ function ChatView() {
   if (!friend) return <div className="h-full flex items-center justify-center text-muted-foreground">Loading…</div>;
 
   return (
-    <div className="h-full flex flex-col">
-      {selectionMode ? (
+    <div className="h-full flex-1 flex min-h-0 relative">
+      <div className="flex-1 flex flex-col min-h-0 bg-background">
+        {selectionMode ? (
         <header className="px-3 md:px-5 py-3 border-b border-border flex items-center justify-between bg-card min-h-[65px]">
           <button
             type="button"
@@ -556,17 +559,24 @@ function ChatView() {
           <Link to="/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <div className="relative">
-            <Avatar name={friend.username} url={friend.avatar_url} size={40} />
-            {friend.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold truncate">{friend.username}</p>
-            <p className="text-xs text-muted-foreground truncate">
-              {friendTyping ? "Typing…" : friend.online ? "Active now" :
-                friend.last_seen ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}` : "Offline"}
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowDetail((v) => !v)}
+            className="flex-1 min-w-0 flex items-center gap-3 -mx-1 px-1 py-1 rounded-lg hover:bg-secondary text-left"
+            aria-label="Toggle details"
+          >
+            <div className="relative">
+              <Avatar name={friend.username} url={friend.avatar_url} size={40} />
+              {friend.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold truncate">{friend.username}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {friendTyping ? "Typing…" : friend.online ? "Active now" :
+                  friend.last_seen ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}` : "Offline"}
+              </p>
+            </div>
+          </button>
           <button
             type="button"
             onClick={() => friend && startCall({ calleeId: friend.id, kind: "voice", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
@@ -1191,6 +1201,91 @@ function ChatView() {
           </div>
         </div>
       )}
+      </div>
+
+      {/* Desktop Detail Sidebar */}
+      {showDetail && (
+        <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto animate-in slide-in-from-right duration-200 shrink-0">
+          <ConversationDetailPanel username={friend.username} avatar={friend.avatar_url} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
+        </aside>
+      )}
+
+      {/* Mobile/Tablet Detail Sheet */}
+      <Sheet open={showDetail} onOpenChange={setShowDetail}>
+        <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden bg-card border-l border-border text-foreground">
+          <ConversationDetailPanel username={friend.username} avatar={friend.avatar_url} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+export function ConversationDetailPanel({ username, avatar, isPage = false, pinnedMessages = [], onClose }: { username: string; avatar: string | null; isPage?: boolean; pinnedMessages?: any[]; onClose?: () => void }) {
+  const [notif, setNotif] = useState(true);
+  
+  return (
+    <div className="h-full flex flex-col bg-card select-none">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border shrink-0 bg-card">
+        {onClose && (
+          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={onClose}>
+            <ArrowLeft className="h-5 w-5 text-muted-foreground" />
+          </Button>
+        )}
+        <span className="font-bold text-sm">Details</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div className="flex flex-col items-center text-center">
+          {isPage ? (
+            <div className="h-20 w-20 rounded-full bg-primary flex items-center justify-center shrink-0 mb-3 shadow-md">
+              <Sparkles className="h-10 w-10 text-primary-foreground" />
+            </div>
+          ) : (
+            <div className="mb-3">
+              <Avatar name={username} url={avatar} size={80} />
+            </div>
+          )}
+          <p className="font-bold text-lg">{username}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{isPage ? "Official page" : "Active now"}</p>
+        </div>
+
+        {/* Options */}
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase text-muted-foreground font-semibold px-2 mb-2">Options</p>
+          <button
+            onClick={() => setNotif(v => !v)}
+            className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-secondary/60 transition-colors text-left"
+          >
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center">
+                <Bell className="h-4 w-4 text-foreground" />
+              </div>
+              <span className="text-sm font-medium">Mute Notifications</span>
+            </div>
+            <div className={`w-8 h-4 rounded-full transition-colors ${notif ? "bg-primary" : "bg-muted-foreground/30"} p-0.5 flex items-center ${notif ? "justify-end" : "justify-start"}`}>
+              <div className="w-3 h-3 rounded-full bg-white shadow-sm" />
+            </div>
+          </button>
+        </div>
+
+        {/* Pinned Messages */}
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase text-muted-foreground font-semibold px-2">Pinned Messages</p>
+          {pinnedMessages.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic px-2">No pinned messages in this chat.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-60 overflow-y-auto">
+              {pinnedMessages.map((m) => (
+                <div key={m.id} className="p-3 bg-secondary/30 border border-border/50 rounded-2xl text-xs space-y-1">
+                  <p className="font-semibold text-muted-foreground">
+                    {m.sender_id === m.receiver_id ? "System" : m.sender_id === m.receiver_id ? "Other" : "Message"}
+                  </p>
+                  <p className="truncate text-foreground">{m.content || "Image / media 📷"}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
