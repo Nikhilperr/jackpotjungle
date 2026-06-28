@@ -42,7 +42,15 @@ type Message = {
   created_at: string;
   failed?: boolean;
 };
-type Profile = { id: string; username: string; avatar_url: string | null; online: boolean; last_seen: string };
+type Profile = { 
+  id: string; 
+  username: string; 
+  first_name?: string | null; 
+  last_name?: string | null; 
+  avatar_url: string | null; 
+  online: boolean; 
+  last_seen: string 
+};
 
 function ChatView() {
   const { friendId } = useParams({ from: "/_authenticated/chat/$friendId" });
@@ -50,6 +58,10 @@ function ChatView() {
   const [friend, setFriend] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [calls, setCalls] = useState<CallRow[]>([]);
+  const friendDisplayName = friend
+    ? (friend.first_name && friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.username)
+    : "Friend";
+
   const { startCall } = useCalls();
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -78,7 +90,7 @@ function ChatView() {
       setMeId(u.user.id);
 
       const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
-        supabase.from("profiles").select("id, username, avatar_url, online, last_seen").eq("id", friendId).maybeSingle(),
+        supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen").eq("id", friendId).maybeSingle(),
         supabase.from("messages").select("*")
           .or(`and(sender_id.eq.${u.user.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${u.user.id})`)
           .order("created_at", { ascending: true }).limit(500),
@@ -423,7 +435,7 @@ function ChatView() {
     setShowEmoji(false);
     
     const replyPrefix = replyingTo
-      ? `[reply:${replyingTo.id}:${replyingTo.sender_id === meId ? "You" : (friend?.username || "Friend")}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] `
+      ? `[reply:${replyingTo.id}:${replyingTo.sender_id === meId ? "You" : friendDisplayName}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] `
       : "";
     const finalContent = replyPrefix + content;
     setReplyingTo(null);
@@ -566,11 +578,11 @@ function ChatView() {
             aria-label="Toggle details"
           >
             <div className="relative">
-              <Avatar name={friend.username} url={friend.avatar_url} size={40} />
+              <Avatar name={friendDisplayName} url={friend.avatar_url} size={40} />
               {friend.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold truncate">{friend.username}</p>
+              <p className="font-semibold truncate">{friendDisplayName}</p>
               <p className="text-xs text-muted-foreground truncate">
                 {friendTyping ? "Typing…" : friend.online ? "Active now" :
                   friend.last_seen ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}` : "Offline"}
@@ -579,7 +591,7 @@ function ChatView() {
           </button>
           <button
             type="button"
-            onClick={() => friend && startCall({ calleeId: friend.id, kind: "voice", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
+            onClick={() => friend && startCall({ calleeId: friend.id, kind: "voice", peer: { name: friendDisplayName, avatar: friend.avatar_url }, context: "friend" })}
             className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
             aria-label="Voice call"
           >
@@ -587,7 +599,7 @@ function ChatView() {
           </button>
           <button
             type="button"
-            onClick={() => friend && startCall({ calleeId: friend.id, kind: "video", peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
+            onClick={() => friend && startCall({ calleeId: friend.id, kind: "video", peer: { name: friendDisplayName, avatar: friend.avatar_url }, context: "friend" })}
             className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
             aria-label="Video call"
           >
@@ -692,7 +704,7 @@ function ChatView() {
                       kind={c.call_type} 
                       status={c.status as any} 
                       durationSeconds={c.duration_seconds} 
-                      onCallBack={() => friend && startCall({ calleeId: friend.id, kind: c.call_type, peer: { name: friend.username, avatar: friend.avatar_url }, context: "friend" })}
+                      onCallBack={() => friend && startCall({ calleeId: friend.id, kind: c.call_type, peer: { name: friendDisplayName, avatar: friend.avatar_url }, context: "friend" })}
                     />
                   </div>
                 </div>
@@ -725,7 +737,7 @@ function ChatView() {
               return (
                 <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
                   <Pin className="h-3 w-3 rotate-45 text-muted-foreground/60 fill-muted-foreground/30" />
-                  {mine ? "You pinned a message" : `${friend?.username || "Friend"} pinned a message`}
+                  {mine ? "You pinned a message" : `${friendDisplayName} pinned a message`}
                 </div>
               );
             }
@@ -734,7 +746,7 @@ function ChatView() {
               return (
                 <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
                   <Pin className="h-3 w-3 rotate-45 text-muted-foreground/40" />
-                  {mine ? "You unpinned a message" : `${friend?.username || "Friend"} unpinned a message`}
+                  {mine ? "You unpinned a message" : `${friendDisplayName} unpinned a message`}
                 </div>
               );
             }
@@ -898,7 +910,7 @@ function ChatView() {
       {replyingTo && (
         <div className="px-4 py-2 border-t border-border bg-secondary/30 flex items-center justify-between text-xs text-muted-foreground animate-in slide-in-from-bottom-2 duration-200">
           <div className="truncate flex-1">
-            <span className="font-bold text-primary block text-[10px] uppercase">Replying to {replyingTo.sender_id === meId ? "yourself" : (friend?.username || "Friend")}</span>
+            <span className="font-bold text-primary block text-[10px] uppercase">Replying to {replyingTo.sender_id === meId ? "yourself" : friendDisplayName}</span>
             <span className="truncate block italic">{replyingTo.content || "Media / Attachment"}</span>
           </div>
           <button type="button" onClick={() => setReplyingTo(null)} className="h-6 w-6 rounded-full hover:bg-secondary flex items-center justify-center ml-2 shrink-0">
@@ -1117,7 +1129,7 @@ function ChatView() {
                   >
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                       <span className="font-bold text-primary cursor-pointer" onClick={() => { scrollToMessage(m.id); setShowAllPins(false); }}>
-                        {m.sender_id === meId ? "You" : (friend?.username || "Friend")}
+                        {m.sender_id === meId ? "You" : friendDisplayName}
                       </span>
                       <div className="flex items-center gap-2">
                         <span>{formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}</span>
@@ -1206,7 +1218,7 @@ function ChatView() {
       {/* Desktop Detail Sidebar */}
       {showDetail && (
         <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto animate-in slide-in-from-right duration-200 shrink-0">
-          <ConversationDetailPanel username={friend.username} avatar={friend.avatar_url} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
+          <ConversationDetailPanel username={friendDisplayName} avatar={friend.avatar_url} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
         </aside>
       )}
 

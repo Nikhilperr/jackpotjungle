@@ -12,8 +12,15 @@ import { AuthInput } from "@/components/auth/AuthInput";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { PasswordStrength } from "@/components/auth/PasswordStrength";
 
+import { z } from "zod";
+
+const searchSchema = z.object({
+  mode: z.enum(["welcome", "login", "signup"]).optional(),
+});
+
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Log in — Jackpot Jungle Messenger" }] }),
+  validateSearch: (s) => searchSchema.parse(s),
   component: AuthPage,
 });
 
@@ -32,8 +39,15 @@ function AuthPage() {
   const { user, loading } = useAuth();
   const { isAdmin, loading: roleLoading } = useRole();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<Mode>("welcome");
+  const { mode: urlMode } = Route.useSearch();
+  const [mode, setMode] = useState<Mode>(urlMode || "welcome");
   const [googleBusy, setGoogleBusy] = useState(false);
+
+  useEffect(() => {
+    if (urlMode) {
+      setMode(urlMode);
+    }
+  }, [urlMode]);
 
   useEffect(() => {
     if (loading || roleLoading) return;

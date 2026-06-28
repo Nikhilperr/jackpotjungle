@@ -72,7 +72,7 @@ function VerifyOtpPage() {
         } else {
           try { await supabase.auth.signOut(); } catch {}
           toast.success("Account verified successfully");
-          navigate({ to: "/auth" });
+          navigate({ to: "/auth", search: { mode: "login" } });
         }
       }, 1500);
     } catch (err: any) {

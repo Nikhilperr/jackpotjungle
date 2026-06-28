@@ -37,7 +37,7 @@ function ResetPage() {
       
       setShowSuccess(true);
       setTimeout(() => {
-        navigate({ to: "/auth" });
+        navigate({ to: "/auth", search: { mode: "login" } });
       }, 2000);
     } catch (err: any) {
       toast.error(err.message ?? "Could not update password.");

@@ -19,6 +19,7 @@ export const Route = createFileRoute("/_authenticated/chat")({
 type Conversation = {
   friendId: string;
   username: string;
+  displayName: string;
   avatar_url: string | null;
   online: boolean;
   lastMessage: string | null;
@@ -124,7 +125,7 @@ function ChatLayout() {
     const [{ data: profiles }, { data: msgs }, { data: friendCalls }] = await Promise.all([
       supabase
         .from("profiles")
-        .select("id, username, avatar_url, online")
+        .select("id, username, first_name, last_name, avatar_url, online")
         .in("id", friendIds),
       supabase
         .from("messages")
@@ -146,7 +147,18 @@ function ChatLayout() {
 
     const byFriend: Record<string, Conversation> = {};
     (profiles ?? []).forEach((p) => {
-      byFriend[p.id] = { friendId: p.id, username: p.username, avatar_url: p.avatar_url, online: p.online, lastMessage: null, lastAt: null, unread: 0, allText: "" };
+      const displayName = p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username;
+      byFriend[p.id] = { 
+        friendId: p.id, 
+        username: p.username, 
+        displayName,
+        avatar_url: p.avatar_url, 
+        online: p.online, 
+        lastMessage: null, 
+        lastAt: null, 
+        unread: 0, 
+        allText: "" 
+      };
     });
     const filteredMsgs = (msgs ?? []).filter((m) => !deletedSet.has(m.id));
     filteredMsgs.forEach((m: any) => {
@@ -403,7 +415,7 @@ function ChatLayout() {
   const q = search.trim().toLowerCase();
   const visible = conversations.filter((c) => (tab === "spam" ? spamIds.has(c.friendId) : !spamIds.has(c.friendId)));
   const filtered = visible.filter((c) =>
-    !q || c.username.toLowerCase().includes(q) || c.allText.includes(q)
+    !q || c.displayName.toLowerCase().includes(q) || c.username.toLowerCase().includes(q) || c.allText.includes(q)
   );
   const spamCount = conversations.filter((c) => spamIds.has(c.friendId)).length;
 
@@ -455,11 +467,11 @@ function ChatLayout() {
                     className="flex flex-col items-center shrink-0 w-[60px] text-center group cursor-pointer"
                   >
                     <div className="relative">
-                      <Avatar name={f.username} url={f.avatar_url} size={48} />
+                      <Avatar name={f.displayName} url={f.avatar_url} size={48} />
                       <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-green-500 ring-2 ring-background" />
                     </div>
                     <span className="text-[10px] font-medium text-foreground mt-1 truncate w-full group-hover:underline">
-                      {f.username.split(" ")[0]}
+                      {f.displayName.split(" ")[0]}
                     </span>
                   </Link>
                 ))}
@@ -533,13 +545,13 @@ function ChatLayout() {
                       className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors select-none ${activeId === c.friendId ? "bg-secondary" : ""}`}
                     >
                       <div className="relative shrink-0">
-                        <Avatar name={c.username} url={c.avatar_url} />
+                        <Avatar name={c.displayName} url={c.avatar_url} />
                         {c.online && !isSpam && !spammedByIds.has(c.friendId) && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
                       </div>
                       <div className="flex-1 min-w-0 pr-10">
                         <div className="flex items-baseline justify-between gap-2">
                           <p className={`truncate flex items-center gap-1.5 ${c.unread > 0 ? "font-bold" : "font-semibold"}`}>
-                            {c.username}
+                            {c.displayName}
                             {isPinned && <Pin className="h-3 w-3 text-primary rotate-45 fill-primary shrink-0" />}
                           </p>
                           {c.lastAt && (
