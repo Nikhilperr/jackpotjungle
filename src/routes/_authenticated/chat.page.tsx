@@ -13,6 +13,7 @@ import { uploadAndSign } from "@/lib/chat-media";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { unsendPageMessagesServer } from "@/lib/messages.functions";
+import { Avatar } from "@/components/messenger/Avatar";
 
 type CallRow = {
   id: string;
