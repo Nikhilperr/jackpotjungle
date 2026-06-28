@@ -31,6 +31,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [router]);
 
   async function signOut() {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("profile_complete");
+    }
     await supabase
       .from("profiles")
       .update({ online: false, last_seen: new Date().toISOString() })

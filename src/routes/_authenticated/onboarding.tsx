@@ -127,6 +127,9 @@ function OnboardingPage() {
         .maybeSingle();
 
       if (profile?.first_name?.trim() && profile?.last_name?.trim()) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("profile_complete", "true");
+        }
         toast.success("Profile completed on another device! Redirecting...");
         navigate({ to: "/chat", replace: true });
       }
@@ -266,6 +269,9 @@ function OnboardingPage() {
       });
       if (authError) throw authError;
 
+      if (typeof window !== "undefined") {
+        localStorage.setItem("profile_complete", "true");
+      }
       toast.success("Profile completed! Welcome to Jackpot Jungle.");
       navigate({ to: "/chat", replace: true });
     } catch (err: any) {

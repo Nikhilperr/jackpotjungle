@@ -49,6 +49,16 @@ function ChatLayout() {
   const isPageActive = location.pathname.endsWith("/chat/page");
   const { isAdmin } = useRole();
   const hasActive = !!activeId || isPageActive;
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   async function loadSpam(myId: string) {
     const [{ data: outgoing }, { data: incoming }] = await Promise.all([
@@ -431,8 +441,14 @@ function ChatLayout() {
 
   return (
     <AppShell>
-      <div className="flex h-full">
-        <div className={`${hasActive ? "hidden md:flex" : "flex"} w-full md:max-w-sm md:border-r md:border-border flex-col min-h-0`}>
+      <div className="flex h-full w-full overflow-hidden bg-background">
+        <motion.div
+          animate={isMobile ? { x: hasActive ? "-100vw" : "0vw" } : { x: "0px" }}
+          transition={{ type: "spring", damping: 26, stiffness: 240 }}
+          className="flex h-full w-[200vw] md:w-full shrink-0 md:shrink"
+        >
+          {/* Sidebar Panel */}
+          <div className="w-[100vw] md:w-full md:max-w-sm md:border-r md:border-border flex flex-col min-h-0 shrink-0">
           <div className="p-4 border-b border-border">
             <div className="flex items-center gap-2 mb-3">
               <HamburgerButton />
@@ -579,10 +595,12 @@ function ChatLayout() {
               })
             )}
           </PullToRefresh>
-        </div>
-        <div className={`${hasActive ? "flex" : "hidden md:flex"} flex-1 min-w-0 min-h-0 flex-col`}>
-          {hasActive ? <Outlet /> : <EmptyState />}
-        </div>
+          </div>
+          {/* Active Chat Panel */}
+          <div className="w-[100vw] md:flex-1 flex flex-col min-h-0 shrink-0 md:shrink">
+            {hasActive ? <Outlet /> : <EmptyState />}
+          </div>
+        </motion.div>
       </div>
 
       {contextMenuTarget && (() => {

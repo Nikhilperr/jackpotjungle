@@ -11,14 +11,24 @@ export const Route = createFileRoute("/_authenticated")({
       throw redirect({ to: "/auth" });
     }
 
-    // Check if the user has completed their profile details
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("first_name, last_name")
-      .eq("id", session.user.id)
-      .maybeSingle();
+    // Check cached status to avoid blocking network queries on every transition
+    const isCachedComplete = typeof window !== "undefined" && localStorage.getItem("profile_complete") === "true";
+    let isProfileComplete = isCachedComplete;
+    let profile = null;
 
-    const isProfileComplete = !!(profile?.first_name?.trim() && profile?.last_name?.trim());
+    if (!isProfileComplete) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      profile = data;
+      isProfileComplete = !!(profile?.first_name?.trim() && profile?.last_name?.trim());
+      if (isProfileComplete && typeof window !== "undefined") {
+        localStorage.setItem("profile_complete", "true");
+      }
+    }
     const isOnOnboarding = location.pathname.endsWith("/onboarding");
 
     if (!isProfileComplete && !isOnOnboarding) {
