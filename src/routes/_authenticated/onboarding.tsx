@@ -321,7 +321,10 @@ function OnboardingPage() {
               </div>
             </div>
             {usernameError && (
-              <p className="text-[10px] text-destructive font-medium px-1.5">{usernameError}</p>
+              <p className="text-[11px] text-red-500 font-bold px-1.5 flex items-center gap-1.5 animate-pulse">
+                <X className="h-3.5 w-3.5 shrink-0" />
+                <span>{usernameError}</span>
+              </p>
             )}
           </div>
 
@@ -414,14 +417,31 @@ function OnboardingPage() {
             icon={<MapPin className="h-4 w-4" />}
           />
 
-          <AuthButton 
-            type="submit" 
-            busy={saving} 
-            disabled={saving || checkingUsername || !!usernameError || username.trim().length < 3 || !firstName.trim() || !lastName.trim()}
-            className="pt-2"
-          >
-            Create Account
-          </AuthButton>
+          <div className="space-y-3 pt-2">
+            <AuthButton 
+              type="submit" 
+              busy={saving} 
+              disabled={saving || checkingUsername || !!usernameError || username.trim().length < 3 || !firstName.trim() || !lastName.trim()}
+              className="w-full shadow-lg transition-all duration-200"
+            >
+              Finish Account Creation
+            </AuthButton>
+
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await supabase.auth.signOut();
+                  navigate({ to: "/auth", search: { mode: "login" } });
+                } catch (err: any) {
+                  toast.error(err.message || "Failed to sign out");
+                }
+              }}
+              className="block w-full text-center text-xs text-muted-foreground hover:text-foreground font-semibold py-1.5 transition-colors select-none"
+            >
+              Back to Login
+            </button>
+          </div>
         </form>
       </AuthCard>
     </AuthLayout>
