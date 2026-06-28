@@ -12,7 +12,12 @@
           "package_name": "app.lovable.jackpotjungle"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "877420815591-feisfm6hjc1n8omdhrbv9li9tdk1v63t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAYq3b3zCUyZjOCuat4qHs-iTdAElAWM6A"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "877420815591-feisfm6hjc1n8omdhrbv9li9tdk1v63t.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
