@@ -3,12 +3,13 @@ import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
-import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus, Pin } from "lucide-react";
+import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus, Pin, Loader2, Check, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar } from "@/components/messenger/Avatar";
 import { useRole } from "@/hooks/useRole";
 import { toast } from "sonner";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
+import { motion, AnimatePresence } from "framer-motion";
 
 export const Route = createFileRoute("/_authenticated/chat")({
   head: () => ({ meta: [{ title: "Chats — JJ Messenger" }] }),
@@ -35,6 +36,12 @@ function ChatLayout() {
   const [pageLast, setPageLast] = useState<{ content: string | null; at: string | null }>({ content: null, at: null });
   const [search, setSearch] = useState("");
   const [meId, setMeId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [chosenUsername, setChosenUsername] = useState("");
+  const [usernameError, setUsernameError] = useState("");
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [savingUsername, setSavingUsername] = useState(false);
   const params = useParams({ strict: false }) as { friendId?: string };
   const location = useLocation();
   const activeId = params.friendId;
@@ -187,10 +194,108 @@ function ChatLayout() {
       const { data: u } = await supabase.auth.getUser();
       if (u.user && mounted) {
         setMeId(u.user.id);
+        setCurrentUser(u.user);
       }
     })();
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const isGoogle = currentUser.app_metadata?.provider === "google" || currentUser.identities?.some((id: any) => id.provider === "google");
+    const onboarded = currentUser.user_metadata?.username_onboarded;
+    if (isGoogle && !onboarded) {
+      setShowOnboarding(true);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!showOnboarding) return;
+    const trimmed = chosenUsername.trim();
+    if (trimmed.length === 0) {
+      setUsernameError("");
+      return;
+    }
+    if (trimmed.length < 3) {
+      setUsernameError("Username must be at least 3 characters.");
+      return;
+    }
+    if (trimmed.length > 20) {
+      setUsernameError("Username must be under 20 characters.");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
+      setUsernameError("Letters, numbers, and underscores only.");
+      return;
+    }
+
+    setCheckingUsername(true);
+    const delay = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("username", trimmed)
+          .maybeSingle();
+        
+        if (error) throw error;
+        if (data && data.id !== meId) {
+          setUsernameError("Username is already taken.");
+        } else {
+          setUsernameError("");
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setCheckingUsername(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(delay);
+  }, [chosenUsername, showOnboarding, meId]);
+
+  async function handleSaveUsername() {
+    const trimmed = chosenUsername.trim();
+    if (usernameError || !trimmed || !meId) return;
+    setSavingUsername(true);
+    try {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ username: trimmed })
+        .eq("id", meId);
+      
+      if (profileError) throw profileError;
+
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { username_onboarded: true }
+      });
+      if (authError) throw authError;
+
+      toast.success("Username set successfully!");
+      setShowOnboarding(false);
+    } catch (err: any) {
+      toast.error(err.message ?? "Could not save username.");
+    } finally {
+      setSavingUsername(false);
+    }
+  }
+
+  async function handleSkipUsername() {
+    setSavingUsername(true);
+    try {
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { username_onboarded: true }
+      });
+      if (authError) throw authError;
+
+      toast.success("Skipped onboarding");
+      setShowOnboarding(false);
+    } catch (err: any) {
+      toast.error(err.message ?? "Could not skip onboarding.");
+    } finally {
+      setSavingUsername(false);
+    }
+  }
 
   useEffect(() => {
     if (!meId) return;
@@ -516,6 +621,80 @@ function ChatLayout() {
           </div>
         );
       })()}
+      {/* Google Username Onboarding Modal */}
+      <AnimatePresence>
+        {showOnboarding && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-none"
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              className="relative w-full max-w-sm bg-card border border-border rounded-3xl shadow-2xl p-6 flex flex-col gap-4 text-foreground z-10"
+            >
+              <div className="text-center space-y-1.5">
+                <h3 className="font-bold text-lg text-foreground flex items-center justify-center gap-1.5">
+                  Choose Your Username
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed px-1">
+                  Your Google account is connected successfully. Please choose a unique username.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="relative">
+                  <Input
+                    placeholder="Username"
+                    value={chosenUsername}
+                    onChange={(e) => setChosenUsername(e.target.value.toLowerCase().replace(/\s/g, ""))}
+                    disabled={savingUsername}
+                    className="h-11 rounded-xl bg-background/50 border-border/80 focus:ring-primary/20"
+                  />
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center justify-center">
+                    {checkingUsername && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    {!checkingUsername && chosenUsername.trim().length >= 3 && !usernameError && (
+                      <Check className="h-4 w-4 text-green-500" />
+                    )}
+                    {!checkingUsername && chosenUsername.trim().length >= 3 && usernameError && (
+                      <X className="h-4 w-4 text-destructive" />
+                    )}
+                  </div>
+                </div>
+
+                {usernameError && (
+                  <p className="text-[11px] text-destructive font-medium px-1.5">{usernameError}</p>
+                )}
+              </div>
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={handleSkipUsername}
+                  disabled={savingUsername}
+                  className="flex-1 h-11 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
+                >
+                  Skip
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveUsername}
+                  disabled={savingUsername || checkingUsername || !!usernameError || chosenUsername.trim().length < 3}
+                  className="flex-1 h-11 bg-primary hover:opacity-90 disabled:opacity-50 text-primary-foreground font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+                >
+                  {savingUsername && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>Save</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </AppShell>
   );
 }

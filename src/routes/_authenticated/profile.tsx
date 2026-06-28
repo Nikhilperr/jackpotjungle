@@ -36,6 +36,7 @@ function ProfilePage() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const fileRef = useRef<HTMLInputElement>(null);
   const email = user?.email ?? null;
+  const isGoogle = user?.app_metadata?.provider === "google" || user?.identities?.some((id: any) => id.provider === "google");
 
   useEffect(() => {
     if (!user) return;
@@ -183,6 +184,15 @@ function ProfilePage() {
               {saving ? "Saving…" : "Save changes"}
             </Button>
           </form>
+
+          {isGoogle && (
+            <div className="bg-secondary/40 border border-border/80 rounded-2xl p-5 space-y-2 text-xs text-muted-foreground select-none">
+              <p className="font-semibold text-foreground">Password Management</p>
+              <p className="leading-relaxed">
+                This account uses Google Sign-In. Password management is handled through your Google account.
+              </p>
+            </div>
+          )}
 
           <div className="bg-secondary rounded-2xl p-5 space-y-4">
             <h2 className="font-semibold flex items-center gap-2">
