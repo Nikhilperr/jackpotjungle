@@ -6,7 +6,7 @@ export async function initRealtimeListeners() {
 
   try {
     const channel = supabaseAdmin
-      .channel("server-push-notifications")
+      .channel("server-push-notifications", { config: { broadcast: { self: false } } })
       // 1. Direct Messages INSERT
       .on(
         "postgres_changes",
@@ -300,8 +300,24 @@ export async function initRealtimeListeners() {
         if (status === "SUBSCRIBED") {
           console.log("[Realtime Listener] Successfully connected and listening to public.messages and public.page_messages inserts!");
         }
+        if (status === "CHANNEL_ERROR" || status === "CLOSED" || status === "TIMED_OUT") {
+          console.warn(`[Realtime Listener] Connection lost (${status}). Reconnecting in 5 seconds...`);
+          // Remove the broken channel then re-initialize after a delay
+          supabaseAdmin.removeChannel(channel).catch(() => {});
+          setTimeout(() => {
+            initRealtimeListeners().catch((err) => {
+              console.error("[Realtime Listener] Failed to reconnect:", err);
+            });
+          }, 5000);
+        }
       });
   } catch (error) {
     console.error("[Realtime Listener] Fatal error initializing database channel subscription:", error);
+    // Retry after 10 seconds on fatal error
+    setTimeout(() => {
+      initRealtimeListeners().catch((err) => {
+        console.error("[Realtime Listener] Failed to retry after fatal error:", err);
+      });
+    }, 10000);
   }
 }
