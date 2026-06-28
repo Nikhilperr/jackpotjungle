@@ -3,14 +3,16 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X, Phone, Video, Pin, Reply, Info, Bell, Search, ChevronUp, ChevronDown } from "lucide-react";
-import { format } from "date-fns";
+import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X, Phone, Video, Pin, Reply, Info, Bell, Search, ChevronUp, ChevronDown, Trash2, Forward, Copy, MoreHorizontal } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { CallMessage } from "@/components/messenger/CallMessage";
 import { useCalls } from "@/components/messenger/CallProvider";
 import { uploadAndSign } from "@/lib/chat-media";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { toast } from "sonner";
+import { unsendPageMessagesServer } from "@/lib/messages.functions";
 
 type CallRow = {
   id: string;
@@ -55,6 +57,97 @@ function PageChatView() {
   const { startCall } = useCalls();
   const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set());
   const [showDetail, setShowDetail] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<any | null>(null);
+  const [confirmPinTarget, setConfirmPinTarget] = useState<string | null>(null);
+  const [activeMsgMenu, setActiveMsgMenu] = useState<string | null>(null);
+  const [showAllPins, setShowAllPins] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedMsgs, setSelectedMsgs] = useState<Set<string>>(new Set());
+  const [showDeleteBottomSheet, setShowDeleteBottomSheet] = useState(false);
+  const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const pressTimerRef = useRef<any>(null);
+
+  const jumpToMessage = (id: string) => {
+    const el = msgRefs.current[id];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("bg-primary/20");
+      setTimeout(() => {
+        el.classList.remove("bg-primary/20");
+      }, 2000);
+    } else {
+      toast.error("Message not found in history");
+    }
+  };
+
+  const deleteForMe = (ids: string[]) => {
+    const nextList = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+    const nextSet = new Set<string>([...nextList, ...ids]);
+    localStorage.setItem("jj_deleted_messages", JSON.stringify(Array.from(nextSet)));
+    setDeletedForMeIds(nextSet);
+  };
+
+  const allSelectedAreMine = useMemo(() => {
+    if (selectedMsgs.size === 0) return false;
+    for (const id of selectedMsgs) {
+      const msg = parsedMessages.find(x => x.id === id);
+      if (!msg || msg.from_page) return false;
+    }
+    return true;
+  }, [selectedMsgs, parsedMessages]);
+
+  async function reactToMessage(msgId: string, emoji: string) {
+    if (!meId || !convId) return;
+    const reactionContent = `[system:reaction:${msgId}:${emoji}:${meId}]`;
+    const { data, error } = await supabase.from("page_messages").insert({
+      conversation_id: convId,
+      sender_id: meId,
+      from_page: false,
+      content: reactionContent,
+      seen: true,
+    } as any).select().single();
+    if (error) {
+      toast.error("Failed to update reaction");
+    } else {
+      setMessages(prev => [...prev, data as Msg]);
+    }
+  }
+
+  async function pinMessage(msgId: string) {
+    if (!meId || !convId) return;
+    const pinContent = `[system:pin:${msgId}]`;
+    const { data, error } = await supabase.from("page_messages").insert({
+      conversation_id: convId,
+      sender_id: meId,
+      from_page: false,
+      content: pinContent,
+      seen: true,
+    } as any).select().single();
+    if (error) {
+      toast.error("Failed to pin message");
+    } else {
+      setMessages(prev => [...prev, data as Msg]);
+      toast.success("Message pinned");
+    }
+  }
+
+  async function unpinMessage(msgId: string) {
+    if (!meId || !convId) return;
+    const unpinContent = `[system:unpin:${msgId}]`;
+    const { data, error } = await supabase.from("page_messages").insert({
+      conversation_id: convId,
+      sender_id: meId,
+      from_page: false,
+      content: unpinContent,
+      seen: true,
+    } as any).select().single();
+    if (error) {
+      toast.error("Failed to unpin message");
+    } else {
+      setMessages(prev => [...prev, data as Msg]);
+      toast.success("Message unpinned");
+    }
+  }
 
   useEffect(() => {
     const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
@@ -289,8 +382,11 @@ function PageChatView() {
   async function send(e: React.FormEvent) {
     e.preventDefault();
     if (!draft.trim() || !meId || !convId) return;
-    const content = draft.trim();
+    const content = replyingTo
+      ? `[reply:${replyingTo.id}:${replyingTo.from_page ? "Jackpot Jungle" : "You"}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] ${draft.trim()}`
+      : draft.trim();
     setDraft("");
+    setReplyingTo(null);
     const tempId = addOptimistic({ content });
     const { data, error } = await supabase
       .from("page_messages")
@@ -368,41 +464,77 @@ function PageChatView() {
   return (
     <div className="h-full flex-1 flex min-h-0 relative">
       <div className="flex-1 flex flex-col min-h-0 bg-background">
-        <header className="px-3 md:px-5 py-3 border-b border-border flex items-center gap-3 bg-card">
-          <Link to="/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <button
-            type="button"
-            onClick={() => setShowDetail((v) => !v)}
-            className="flex-1 min-w-0 flex items-center gap-3 -mx-1 px-1 py-1 rounded-lg hover:bg-secondary text-left"
-            aria-label="Toggle details"
-          >
-            <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center shrink-0">
-              <Sparkles className="h-5 w-5 text-primary-foreground" />
+        {selectionMode ? (
+          <header className="px-3 md:px-5 py-3 border-b border-border flex items-center justify-between bg-card min-h-[65px]">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectionMode(false);
+                setSelectedMsgs(new Set());
+              }}
+              className="text-primary hover:opacity-80 font-semibold text-sm"
+            >
+              Cancel
+            </button>
+            <span className="font-semibold text-foreground text-sm">Delete messages</span>
+            <div className="w-12" /> {/* Spacer */}
+          </header>
+        ) : (
+          <header className="px-3 md:px-5 py-3 border-b border-border flex items-center gap-3 bg-card">
+            <Link to="/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => setShowDetail((v) => !v)}
+              className="flex-1 min-w-0 flex items-center gap-3 -mx-1 px-1 py-1 rounded-lg hover:bg-secondary text-left"
+              aria-label="Toggle details"
+            >
+              <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center shrink-0">
+                <Sparkles className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold truncate">Jackpot Jungle</p>
+                <p className="text-xs text-muted-foreground truncate">Official page · We usually reply within a few hours</p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => startCall({ calleeId: null, kind: "voice", peer: { name: "Jackpot Jungle", avatar: null }, context: "page_broadcast", pageConversationId: convId })}
+              className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
+              aria-label="Voice call"
+            >
+              <Phone className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => startCall({ calleeId: null, kind: "video", peer: { name: "Jackpot Jungle", avatar: null }, context: "page_broadcast", pageConversationId: convId })}
+              className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
+              aria-label="Video call"
+            >
+              <Video className="h-5 w-5" />
+            </button>
+          </header>
+        )}
+
+        {pinnedMessages.length > 0 && (
+          <div className="bg-secondary/60 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center justify-between text-xs text-foreground z-10 transition-all select-none">
+            <div className="flex items-center gap-2 truncate flex-1 cursor-pointer" onClick={() => jumpToMessage(pinnedMessages[pinnedMessages.length - 1].id)}>
+              <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />
+              <span className="font-semibold text-muted-foreground shrink-0">Pinned:</span>
+              <span className="truncate italic">
+                {pinnedMessages[pinnedMessages.length - 1].content || (pinnedMessages[pinnedMessages.length - 1].image_url ? "Image 📷" : "Voice message 🎙️")}
+              </span>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold truncate">Jackpot Jungle</p>
-              <p className="text-xs text-muted-foreground truncate">Official page · We usually reply within a few hours</p>
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={() => startCall({ calleeId: null, kind: "voice", peer: { name: "Jackpot Jungle", avatar: null }, context: "page_broadcast", pageConversationId: convId })}
-            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
-            aria-label="Voice call"
-          >
-            <Phone className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => startCall({ calleeId: null, kind: "video", peer: { name: "Jackpot Jungle", avatar: null }, context: "page_broadcast", pageConversationId: convId })}
-            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
-            aria-label="Video call"
-          >
-            <Video className="h-5 w-5" />
-          </button>
-        </header>
+            <button 
+              type="button"
+              onClick={() => setShowAllPins(true)} 
+              className="text-[10px] uppercase tracking-wider font-bold text-primary hover:underline ml-3 shrink-0"
+            >
+              See All ({pinnedMessages.length})
+            </button>
+          </div>
+        )}
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
           {messages.length === 0 && calls.length === 0 && (
@@ -442,6 +574,29 @@ function PageChatView() {
               const isLastMine = mine && (!nextIt || nextIt.kind !== "msg" || nextIt.msg.from_page);
               const reactionKeys = Object.keys(m.reactions || {}).filter(k => m.reactions[k].length > 0);
 
+              const isSelected = selectedMsgs.has(m.id);
+              const toggleSelect = () => {
+                setSelectedMsgs(prev => {
+                  const next = new Set(prev);
+                  if (next.has(m.id)) next.delete(m.id);
+                  else next.add(m.id);
+                  return next;
+                });
+              };
+
+              const startPress = () => {
+                if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+                pressTimerRef.current = setTimeout(() => {
+                  setActiveMsgMenu(m.id);
+                }, 600);
+              };
+              const cancelPress = () => {
+                if (pressTimerRef.current) {
+                  clearTimeout(pressTimerRef.current);
+                  pressTimerRef.current = null;
+                }
+              };
+
               if (m.isSystemPin) {
                 return (
                   <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
@@ -471,84 +626,147 @@ function PageChatView() {
               }
 
               return (
-                <div key={m.id}>
-                  {showTime && (
-                    <div className="text-center text-xs text-muted-foreground py-2">
-                      {format(new Date(m.created_at), "MMM d, h:mm a")}
-                    </div>
-                  )}
-                  
-                  {/* Reply To Preview */}
-                  {m.replyTo && (
-                    <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
-                      <div className="max-w-[70%] flex items-center gap-1.5 px-3 py-1 bg-secondary/40 border border-border/40 rounded-xl text-xs text-muted-foreground select-none">
-                        <Reply className="h-3 w-3 shrink-0" />
-                        <span className="font-semibold">{m.replyTo.senderName}</span>
-                        <span className="truncate max-w-[120px]">{m.replyTo.text}</span>
+                <div 
+                  key={m.id}
+                  ref={(el) => { msgRefs.current[m.id] = el; }}
+                  className={`group/msg py-1 flex items-center gap-3 transition-colors ${selectionMode ? "hover:bg-secondary/10 cursor-pointer" : ""}`}
+                  onClick={() => {
+                    if (selectionMode) {
+                      toggleSelect();
+                    }
+                  }}
+                >
+                  {selectionMode && (
+                    <div className="pl-3 shrink-0 flex items-center justify-center">
+                      <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
+                        {isSelected && (
+                          <svg className="h-3 w-3 fill-current stroke-current" viewBox="0 0 24 24" strokeWidth="3">
+                            <polyline points="20 6 9 17 4 12" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
                       </div>
                     </div>
                   )}
 
-                  <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-                    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                      {m.image_url ? (
-                        <button onClick={() => setPreview(m.image_url)} className="max-w-[70%] rounded-3xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary">
-                          <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
-                        </button>
-                      ) : m.audio_url ? (
-                        <VoiceMessage src={m.audio_url} mine={mine} />
-                      ) : (
-                        <div className={`max-w-[70%] px-4 py-2 rounded-3xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                          <p className="text-[15px] whitespace-pre-wrap break-words">{m.content}</p>
+                  <div className="flex-1 min-w-0">
+                    {showTime && (
+                      <div className="text-center text-xs text-muted-foreground py-2 select-none">
+                        {format(new Date(m.created_at), "MMM d, h:mm a")}
+                      </div>
+                    )}
+                    
+                    {/* Reply To Preview */}
+                    {m.replyTo && (
+                      <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
+                        <div 
+                          onClick={(e) => { e.stopPropagation(); jumpToMessage(m.replyTo!.id); }}
+                          className="max-w-[70%] flex items-center gap-1.5 px-3 py-1 bg-secondary/40 border border-border/40 rounded-xl text-xs text-muted-foreground select-none cursor-pointer hover:bg-secondary/80 transition-colors"
+                        >
+                          <Reply className="h-3 w-3 shrink-0" />
+                          <span className="font-semibold text-primary">{m.replyTo.senderName}</span>
+                          <span className="truncate max-w-[120px]">{m.replyTo.text}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+                      <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                        <div
+                          onPointerDown={selectionMode ? undefined : startPress}
+                          onPointerUp={selectionMode ? undefined : cancelPress}
+                          onPointerMove={selectionMode ? undefined : cancelPress}
+                          onPointerLeave={selectionMode ? undefined : cancelPress}
+                          onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) setActiveMsgMenu(m.id); }}
+                          className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
+                        >
+                          {m.image_url ? (
+                            <button onClick={() => setPreview(m.image_url)} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block">
+                              <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
+                            </button>
+                          ) : m.audio_url ? (
+                            <div className="block">
+                              <VoiceMessage src={m.audio_url} mine={mine} />
+                            </div>
+                          ) : (
+                            <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
+                              <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Reactions */}
+                      {reactionKeys.length > 0 && (
+                        <div className={`flex gap-1 mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
+                          {reactionKeys.map(emoji => (
+                            <div key={emoji} className="flex items-center gap-1 bg-secondary border border-border px-1.5 py-0.5 rounded-full text-xs shadow-sm select-none">
+                              <span>{emoji}</span>
+                              <span className="text-[10px] text-muted-foreground font-semibold">{m.reactions[emoji].length}</span>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
 
-                    {/* Reactions */}
-                    {reactionKeys.length > 0 && (
-                      <div className={`flex gap-1 mt-1 ${mine ? "justify-end" : "justify-start"}`}>
-                        {reactionKeys.map(emoji => (
-                          <div key={emoji} className="flex items-center gap-1 bg-secondary border border-border px-1.5 py-0.5 rounded-full text-xs shadow-sm">
-                            <span>{emoji}</span>
-                            <span className="text-[10px] text-muted-foreground font-semibold">{m.reactions[emoji].length}</span>
-                          </div>
-                        ))}
+                    {mine && (isLastMine || m.failed) && (
+                      <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
+                        {m.failed ? (
+                          <span className="inline-flex items-center gap-1 text-destructive"><span className="h-2 w-2 rounded-full bg-destructive shrink-0" />Not delivered</span>
+                        ) : m.id.startsWith("temp-") ? (
+                          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
+                        ) : m.seen ? (
+                          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />Seen</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Delivered</span>
+                        )}
                       </div>
                     )}
                   </div>
-
-                  {mine && (isLastMine || m.failed) && (
-                    <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
-                      {m.failed ? (
-                        <span className="inline-flex items-center gap-1 text-destructive"><span className="h-2 w-2 rounded-full bg-destructive shrink-0" />Not delivered</span>
-                      ) : m.id.startsWith("temp-") ? (
-                        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
-                      ) : m.seen ? (
-                        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />Seen</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Delivered</span>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             });
           })()}
         </div>
 
-        <form onSubmit={send} className="relative p-3 border-t border-border flex items-center gap-2 bg-card">
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
-            {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
-          <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
-          <Input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Jackpot Jungle"
-            className="rounded-full bg-secondary border-transparent" />
-          <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0">
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
+        {/* Replying banner */}
+        {replyingTo && (
+          <div className="px-4 py-2 bg-secondary/80 border-t border-border flex items-center justify-between text-xs z-10 animate-in slide-in-from-bottom-2 duration-150 select-none">
+            <div className="truncate flex-1">
+              <span className="font-bold text-primary block text-[10px] uppercase">Replying to {replyingTo.from_page ? "Jackpot Jungle" : "yourself"}</span>
+              <span className="truncate block italic">{replyingTo.content || "Media / Attachment"}</span>
+            </div>
+            <button type="button" onClick={() => setReplyingTo(null)} className="h-6 w-6 rounded-full hover:bg-secondary/80 flex items-center justify-center ml-2 shrink-0">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        {selectionMode ? (
+          <div className="p-3 border-t border-border flex items-center justify-center bg-card">
+            <button
+              type="button"
+              disabled={selectedMsgs.size === 0}
+              onClick={() => setShowDeleteBottomSheet(true)}
+              className="w-full max-w-md py-3 bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:hover:bg-red-600 text-white font-bold rounded-xl text-sm transition-colors text-center shadow-md animate-in slide-in-from-bottom duration-250"
+            >
+              Delete ({selectedMsgs.size})
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={send} className="relative p-3 border-t border-border flex items-center gap-2 bg-card">
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+              className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
+              {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+            <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
+            <Input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Jackpot Jungle"
+              className="rounded-full bg-secondary border-transparent" />
+            <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0">
+              <Send className="h-4 w-4" />
+            </Button>
+          </form>
+        )}
       </div>
 
       {/* Desktop Detail Sidebar */}
@@ -564,6 +782,263 @@ function PageChatView() {
           <ConversationDetailPanel username="Jackpot Jungle" avatar={null} isPage={true} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
         </SheetContent>
       </Sheet>
+
+      {/* Message Context Menu & Reactions */}
+      {activeMsgMenu && (() => {
+        const m = parsedMessages.find(x => x.id === activeMsgMenu);
+        if (!m) return null;
+        const mine = !m.from_page;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setActiveMsgMenu(null)} />
+            <div className="relative w-full max-w-[280px] flex flex-col gap-3 animate-in zoom-in-95 duration-200 z-10">
+              {/* Reactions Bar */}
+              <div className="bg-card border border-border/80 rounded-full py-2 px-3 shadow-2xl flex items-center justify-between gap-1">
+                {["❤️", "😂", "😮", "😢", "😡", "👍"].map(emoji => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => {
+                      reactToMessage(m.id, emoji);
+                      setActiveMsgMenu(null);
+                    }}
+                    className="text-2xl hover:scale-125 active:scale-95 transition-transform duration-150"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const more = prompt("Type any emoji reaction:");
+                    if (more) reactToMessage(m.id, more.trim().slice(0, 5));
+                    setActiveMsgMenu(null);
+                  }}
+                  className="h-8 w-8 rounded-full bg-secondary hover:bg-secondary/80 text-muted-foreground flex items-center justify-center text-lg font-bold shrink-0 transition-colors"
+                >
+                  +
+                </button>
+              </div>
+
+              {/* Context Menu */}
+              <div className="bg-card border border-border rounded-2xl shadow-2xl p-2.5 overflow-hidden flex flex-col gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReplyingTo(m);
+                    setActiveMsgMenu(null);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Reply className="h-4 w-4 text-primary" />
+                  <span>Reply</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(m.content || "");
+                    toast.success("Copied to clipboard");
+                    setActiveMsgMenu(null);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Copy className="h-4 w-4 text-primary" />
+                  <span>Copy</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (m.isPinned) {
+                      unpinMessage(m.id);
+                    } else {
+                      setConfirmPinTarget(m.id);
+                    }
+                    setActiveMsgMenu(null);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Pin className="h-4 w-4 text-primary rotate-45" />
+                  <span>{m.isPinned ? "Unpin message" : "Pin message"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectionMode(true);
+                    setSelectedMsgs(new Set([m.id]));
+                    setActiveMsgMenu(null);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-destructive transition-colors"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                  <span>Delete</span>
+                </button>
+                {!mine && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const note = prompt("Forward this message to:");
+                      if (note) {
+                        toast.success("Forwarded message successfully");
+                      }
+                      setActiveMsgMenu(null);
+                    }}
+                    className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                  >
+                    <Forward className="h-4 w-4 text-primary" />
+                    <span>Forward</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Pin Confirmation dialog */}
+      {confirmPinTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-card border border-border w-full max-w-[280px] rounded-2xl p-5 shadow-2xl flex flex-col gap-4 text-center animate-in zoom-in-95 duration-200">
+            <div>
+              <h3 className="font-bold text-base text-foreground leading-snug">Pin this message?</h3>
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                Everyone in the chat can see pinned messages. You can see and manage pinned messages from the chat details.
+              </p>
+            </div>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setConfirmPinTarget(null)}
+                className="flex-1 py-2 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  pinMessage(confirmPinTarget);
+                  setConfirmPinTarget(null);
+                }}
+                className="flex-1 py-2 bg-primary hover:opacity-90 text-primary-foreground font-semibold rounded-xl text-xs transition-colors"
+              >
+                Pin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* See All Pinned messages modal */}
+      {showAllPins && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="absolute inset-0" onClick={() => setShowAllPins(false)} />
+          <div className="relative bg-card border border-border w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[70vh] overflow-hidden animate-in zoom-in-95 duration-200 z-10">
+            <div className="px-4 py-3.5 border-b border-border flex items-center justify-between">
+              <h3 className="font-bold text-base text-foreground flex items-center gap-1.5">
+                <Pin className="h-4 w-4 rotate-45 text-primary fill-primary" />
+                Pinned Messages ({pinnedMessages.length})
+              </h3>
+              <button type="button" onClick={() => setShowAllPins(false)} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {pinnedMessages.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground py-6">No pinned messages.</p>
+              ) : (
+                pinnedMessages.map(m => (
+                  <div 
+                    key={m.id} 
+                    className="p-3 bg-secondary/30 hover:bg-secondary/60 border border-border rounded-xl transition-colors flex flex-col gap-1.5 relative group cursor-pointer"
+                    onClick={() => { jumpToMessage(m.id); setShowAllPins(false); }}
+                  >
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                      <span className="font-bold text-primary">
+                        {m.from_page ? "Jackpot Jungle" : "You"}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span>{formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            unpinMessage(m.id);
+                          }}
+                          className="text-destructive hover:underline font-semibold"
+                        >
+                          Unpin
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-foreground line-clamp-3 break-words">
+                      {m.content || (m.image_url ? "Image 📷" : "Voice message 🎙️")}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation sheet */}
+      {showDeleteBottomSheet && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDeleteBottomSheet(false)} />
+          <div className="relative w-full max-w-md bg-card border-t border-border rounded-t-3xl shadow-2xl p-4 flex flex-col gap-3 animate-in slide-in-from-bottom duration-250 z-10 text-foreground">
+            <div className="text-center text-xs text-muted-foreground font-medium py-1.5 border-b border-border/50">
+              Delete {selectedMsgs.size} message{selectedMsgs.size > 1 ? "s" : ""}?
+            </div>
+            
+            {allSelectedAreMine && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowDeleteBottomSheet(false);
+                  const targetIds = Array.from(selectedMsgs);
+                  setSelectionMode(false);
+                  setSelectedMsgs(new Set());
+                  
+                  try {
+                    await unsendPageMessagesServer({ data: { ids: targetIds } });
+                    setMessages(prev => prev.map(m => targetIds.includes(m.id) ? { ...m, content: "[system:unsent]", image_url: null, audio_url: null } : m));
+                    toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for everyone`);
+                  } catch (e: any) {
+                    toast.error(e?.message || "Could not unsend message");
+                  }
+                }}
+                className="w-full py-3 bg-red-600/10 hover:bg-red-600/20 text-red-500 font-bold rounded-xl text-sm transition-colors text-center"
+              >
+                Delete for everyone
+              </button>
+            )}
+            
+            <button
+              type="button"
+              onClick={() => {
+                setShowDeleteBottomSheet(false);
+                const targetIds = Array.from(selectedMsgs);
+                setSelectionMode(false);
+                setSelectedMsgs(new Set());
+                deleteForMe(targetIds);
+                toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for you`);
+              }}
+              className="w-full py-3 bg-secondary hover:bg-secondary/80 text-foreground font-bold rounded-xl text-sm transition-colors text-center"
+            >
+              Delete for you
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => setShowDeleteBottomSheet(false)}
+              className="w-full py-3 bg-secondary hover:bg-secondary/80 text-muted-foreground font-semibold rounded-xl text-sm transition-colors text-center border border-border"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {preview && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
