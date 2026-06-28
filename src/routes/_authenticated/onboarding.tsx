@@ -116,6 +116,25 @@ function OnboardingPage() {
     };
   }, []);
 
+  // Check if profile was completed on another device
+  useEffect(() => {
+    if (!meId) return;
+    const interval = setInterval(async () => {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("id", meId)
+        .maybeSingle();
+
+      if (profile?.first_name?.trim() && profile?.last_name?.trim()) {
+        toast.success("Profile completed on another device! Redirecting...");
+        navigate({ to: "/chat", replace: true });
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [meId, navigate]);
+
   // Username validation debouncer
   useEffect(() => {
     const trimmed = username.trim();
