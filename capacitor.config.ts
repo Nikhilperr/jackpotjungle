@@ -21,6 +21,12 @@ const config: CapacitorConfig = {
       launchAutoHide: false,
       backgroundColor: "#121212",
     },
+    GoogleAuth: {
+      scopes: ["profile", "email"],
+      // IMPORTANT: Replace this clientId with your Web Client ID from the Firebase Auth Console
+      clientId: "1083478957294-xxxxxxxxxxxxxxxx.apps.googleusercontent.com",
+      forceCodeForRefreshToken: true,
+    },
   },
 };
 
