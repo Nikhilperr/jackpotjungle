@@ -152,6 +152,34 @@
   --message-status: oklch(0.9 0.006 250);
 }
 
+.glass {
+  --background: oklch(0.97 0.005 250);
+  --foreground: oklch(0.2 0.02 250);
+  --card: rgba(255, 255, 255, 0.4);
+  --card-foreground: oklch(0.2 0.02 250);
+  --popover: rgba(255, 255, 255, 0.7);
+  --popover-foreground: oklch(0.2 0.02 250);
+  --primary: oklch(0.65 0.18 240);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: rgba(255, 255, 255, 0.35);
+  --secondary-foreground: oklch(0.2 0.02 250);
+  --muted: rgba(255, 255, 255, 0.25);
+  --muted-foreground: oklch(0.45 0.02 250);
+  --accent: oklch(0.7 0.18 200);
+  --accent-foreground: oklch(0.2 0.02 250);
+  --destructive: oklch(0.6 0.18 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: rgba(255, 255, 255, 0.3);
+  --input: rgba(255, 255, 255, 0.4);
+  --ring: oklch(0.65 0.18 240);
+
+  --bubble-me: oklch(0.68 0.16 230);
+  --bubble-me-foreground: oklch(0.2 0.02 250);
+  --bubble-them: rgba(255, 255, 255, 0.55);
+  --bubble-them-foreground: oklch(0.2 0.02 250);
+  --message-status: oklch(0.45 0.02 250);
+}
+
 @layer base {
   * { border-color: var(--color-border); }
   body {
@@ -204,4 +232,58 @@
 .no-scrollbar {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
+}
+
+/* Glassmorphism overrides when .glass is active */
+.glass {
+  background: radial-gradient(circle at top right, oklch(0.95 0.02 200) 0%, oklch(0.98 0.005 250) 100%) !important;
+}
+
+.glass .bg-card, 
+.glass .bg-background {
+  background: rgba(255, 255, 255, 0.4) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.04) !important;
+}
+
+.glass .bg-secondary,
+.glass .bg-slate-900,
+.glass .bg-neutral-900 {
+  background: rgba(255, 255, 255, 0.35) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+.glass input,
+.glass textarea {
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+}
+
+.glass button {
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+}
+
+.glass .border,
+.glass .border-border,
+.glass .border-r,
+.glass .border-b,
+.glass .border-t,
+.glass .border-l {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.glass .hover\:bg-secondary:hover {
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+
+.glass .bg-black\/60 {
+  background: rgba(255, 255, 255, 0.3) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
 }
