@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "877420815591-f66n179r5nhh8kj2kirjtnmgm2ufnask.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "app.lovable.jackpotjungle",
+            "certificate_hash": "0b999020fae6cf8b3a9e015d3909b37ded7fe9a4"
+          }
+        },
+        {
           "client_id": "877420815591-feisfm6hjc1n8omdhrbv9li9tdk1v63t.apps.googleusercontent.com",
           "client_type": 3
         }
