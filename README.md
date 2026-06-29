@@ -35,7 +35,7 @@ Before configuring the application, ensure you have:
    - Set the name (e.g. `Jackpot Jungle Messenger Web`).
    - Add **Authorized JavaScript origins**:
      - Local: `http://localhost:8080`
-     - Production: `https://chancerealm.casino`
+     - Production: `https://playjackpotjungle.com` (old: `https://chancerealm.casino` — 301 redirects here)
    - Add **Authorized Redirect URIs**:
      - Retrieve this from your Supabase Dashboard: **Authentication** > **Providers** > **Google** (e.g. `https://<project-id>.supabase.co/auth/v1/callback`).
      - Paste this callback URL into the Google Cloud authorized redirect field.

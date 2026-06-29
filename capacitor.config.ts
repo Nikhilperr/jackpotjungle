@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: "dist",
   server: {
     // Points directly to the production VPS web server.
-    url: "https://chancerealm.casino",
+    url: "https://playjackpotjungle.com",
     cleartext: false,
   },
   android: {
