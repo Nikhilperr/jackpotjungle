@@ -3,7 +3,17 @@ import { PublicLayout } from "@/components/landing/PublicLayout";
 import { ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/terms")({
-  head: () => ({ meta: [{ title: "Terms & Conditions — Jackpot Jungle" }] }),
+  head: () => ({
+    meta: [
+      { title: "Terms & Conditions — Jackpot Jungle Casino & Messenger" },
+      { name: "description", content: "Read the official Jackpot Jungle Terms of Service. Review user guidelines, account rules, sweeps promotions parameters, and fair play requirements." },
+      { property: "og:title", content: "Terms & Conditions — Jackpot Jungle Casino & Messenger" },
+      { property: "og:description", content: "Jackpot Jungle Terms of Service. Detailed rules on welcome bonuses, referral payouts, and account safety guidelines." },
+      { property: "og:url", content: "https://playjackpotjungle.com/terms" },
+      { name: "twitter:title", content: "Terms & Conditions — Jackpot Jungle Casino & Messenger" },
+      { name: "twitter:description", content: "Review user guidelines, credit transfer rules, and account registration requirements at Jackpot Jungle." },
+    ],
+  }),
   component: TermsPage,
 });
 

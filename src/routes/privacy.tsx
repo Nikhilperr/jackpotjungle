@@ -3,7 +3,17 @@ import { PublicLayout } from "@/components/landing/PublicLayout";
 import { ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/privacy")({
-  head: () => ({ meta: [{ title: "Privacy Policy — Jackpot Jungle" }] }),
+  head: () => ({
+    meta: [
+      { title: "Privacy Policy — Jackpot Jungle Casino & Messenger" },
+      { name: "description", content: "Read the official Jackpot Jungle Privacy Policy. Learn about our database security protocols, RLS rules, and personal data safety measures." },
+      { property: "og:title", content: "Privacy Policy — Jackpot Jungle Casino & Messenger" },
+      { property: "og:description", content: "Information on personal data usage, storage, and RLS policies at Jackpot Jungle." },
+      { property: "og:url", content: "https://playjackpotjungle.com/privacy" },
+      { name: "twitter:title", content: "Privacy Policy — Jackpot Jungle Casino & Messenger" },
+      { name: "twitter:description", content: "Our data privacy rules, encryption details, and player security assurances at Jackpot Jungle." },
+    ],
+  }),
   component: PrivacyPage,
 });
 
@@ -29,7 +39,7 @@ function PrivacyPage() {
           <section className="space-y-2">
             <h3 className="font-bold text-lg text-foreground">1. Introduction</h3>
             <p>
-              Jackpot Jungle ("we", "our", or "us") respects your privacy and is committed to protecting your personal data. This privacy policy informs you about how we handle your personal data when you visit our web platform or native application.
+              Jackpot Jungle (\"we\", \"our\", or \"us\") respects your privacy and is committed to protecting your personal data. This privacy policy informs you about how we handle your personal data when you visit our web platform or native application.
             </p>
           </section>
 

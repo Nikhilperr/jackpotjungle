@@ -31,11 +31,12 @@ export function PublicLayout({ children }: PublicLayoutProps) {
 
   const navLinks = [
     { name: "Home", path: "/" },
-    { name: "VIP Club", path: "/vip-club", icon: Crown },
+    { name: "Download", path: "/download", icon: Download },
+    { name: "VIP Club", path: "/vip", icon: Crown },
     { name: "Rewards", path: "/rewards", icon: Gift },
     { name: "Promotions", path: "/promotions", icon: Zap },
     { name: "Leaderboard", path: "/leaderboard", icon: Trophy },
-    { name: "Referral", path: "/referral", icon: Users },
+    { name: "Referrals", path: "/referrals", icon: Users },
   ];
 
   const secondaryLinks = [
@@ -234,7 +235,8 @@ export function PublicLayout({ children }: PublicLayoutProps) {
               <h4 className="text-sm font-bold text-foreground uppercase tracking-wider">Navigation</h4>
               <ul className="space-y-2 text-sm">
                 <li><Link to="/" className="hover:text-primary transition-colors">Home</Link></li>
-                <li><Link to="/vip-club" className="hover:text-primary transition-colors">VIP Club</Link></li>
+                <li><Link to="/download" className="hover:text-primary transition-colors">Download App</Link></li>
+                <li><Link to="/vip" className="hover:text-primary transition-colors">VIP Club</Link></li>
                 <li><Link to="/rewards" className="hover:text-primary transition-colors">Rewards Program</Link></li>
                 <li><Link to="/promotions" className="hover:text-primary transition-colors">Promotions</Link></li>
                 <li><Link to="/leaderboard" className="hover:text-primary transition-colors">Leaderboard</Link></li>
@@ -245,7 +247,7 @@ export function PublicLayout({ children }: PublicLayoutProps) {
             <div className="space-y-3">
               <h4 className="text-sm font-bold text-foreground uppercase tracking-wider">Community</h4>
               <ul className="space-y-2 text-sm">
-                <li><Link to="/referral" className="hover:text-primary transition-colors">Referral Program</Link></li>
+                <li><Link to="/referrals" className="hover:text-primary transition-colors">Referral Program</Link></li>
                 <li><Link to="/blog" className="hover:text-primary transition-colors">Latest News & Blog</Link></li>
                 <li><Link to="/support" className="hover:text-primary transition-colors">Customer Support</Link></li>
                 <li><Link to="/faq" className="hover:text-primary transition-colors">FAQ & Guides</Link></li>

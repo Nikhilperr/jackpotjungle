@@ -10,17 +10,20 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VipClubRouteImport } from './routes/vip-club'
+import { Route as VipRouteImport } from './routes/vip'
 import { Route as VerifyOtpRouteImport } from './routes/verify-otp'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SupportRouteImport } from './routes/support'
 import { Route as RewardsRouteImport } from './routes/rewards'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as ReferralsRouteImport } from './routes/referrals'
 import { Route as ReferralRouteImport } from './routes/referral'
 import { Route as PromotionsRouteImport } from './routes/promotions'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as FaqRouteImport } from './routes/faq'
+import { Route as DownloadRouteImport } from './routes/download'
 import { Route as BlogRouteImport } from './routes/blog'
 import { Route as AuthCallbackRouteImport } from './routes/auth-callback'
 import { Route as AuthRouteImport } from './routes/auth'
@@ -56,6 +59,11 @@ const VipClubRoute = VipClubRouteImport.update({
   path: '/vip-club',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VipRoute = VipRouteImport.update({
+  id: '/vip',
+  path: '/vip',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VerifyOtpRoute = VerifyOtpRouteImport.update({
   id: '/verify-otp',
   path: '/verify-otp',
@@ -79,6 +87,11 @@ const RewardsRoute = RewardsRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReferralsRoute = ReferralsRouteImport.update({
+  id: '/referrals',
+  path: '/referrals',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReferralRoute = ReferralRouteImport.update({
@@ -109,6 +122,11 @@ const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
 const FaqRoute = FaqRouteImport.update({
   id: '/faq',
   path: '/faq',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadRoute = DownloadRouteImport.update({
+  id: '/download',
+  path: '/download',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BlogRoute = BlogRouteImport.update({
@@ -266,17 +284,20 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
   '/blog': typeof BlogRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/leaderboard': typeof LeaderboardRoute
   '/privacy': typeof PrivacyRoute
   '/promotions': typeof PromotionsRoute
   '/referral': typeof ReferralRoute
+  '/referrals': typeof ReferralsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/rewards': typeof RewardsRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
   '/verify-otp': typeof VerifyOtpRoute
+  '/vip': typeof VipRoute
   '/vip-club': typeof VipClubRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/chat': typeof AuthenticatedChatRouteWithChildren
@@ -306,17 +327,20 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
   '/blog': typeof BlogRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/leaderboard': typeof LeaderboardRoute
   '/privacy': typeof PrivacyRoute
   '/promotions': typeof PromotionsRoute
   '/referral': typeof ReferralRoute
+  '/referrals': typeof ReferralsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/rewards': typeof RewardsRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
   '/verify-otp': typeof VerifyOtpRoute
+  '/vip': typeof VipRoute
   '/vip-club': typeof VipClubRoute
   '/app': typeof AppIndexRoute
   '/admin': typeof AuthenticatedAdminRoute
@@ -347,17 +371,20 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
   '/blog': typeof BlogRoute
+  '/download': typeof DownloadRoute
   '/faq': typeof FaqRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/leaderboard': typeof LeaderboardRoute
   '/privacy': typeof PrivacyRoute
   '/promotions': typeof PromotionsRoute
   '/referral': typeof ReferralRoute
+  '/referrals': typeof ReferralsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/rewards': typeof RewardsRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
   '/verify-otp': typeof VerifyOtpRoute
+  '/vip': typeof VipRoute
   '/vip-club': typeof VipClubRoute
   '/app/_authenticated': typeof AppAuthenticatedRouteRouteWithChildren
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
@@ -391,17 +418,20 @@ export interface FileRouteTypes {
     | '/auth'
     | '/auth-callback'
     | '/blog'
+    | '/download'
     | '/faq'
     | '/forgot-password'
     | '/leaderboard'
     | '/privacy'
     | '/promotions'
     | '/referral'
+    | '/referrals'
     | '/reset-password'
     | '/rewards'
     | '/support'
     | '/terms'
     | '/verify-otp'
+    | '/vip'
     | '/vip-club'
     | '/admin'
     | '/chat'
@@ -431,17 +461,20 @@ export interface FileRouteTypes {
     | '/auth'
     | '/auth-callback'
     | '/blog'
+    | '/download'
     | '/faq'
     | '/forgot-password'
     | '/leaderboard'
     | '/privacy'
     | '/promotions'
     | '/referral'
+    | '/referrals'
     | '/reset-password'
     | '/rewards'
     | '/support'
     | '/terms'
     | '/verify-otp'
+    | '/vip'
     | '/vip-club'
     | '/app'
     | '/admin'
@@ -471,17 +504,20 @@ export interface FileRouteTypes {
     | '/auth'
     | '/auth-callback'
     | '/blog'
+    | '/download'
     | '/faq'
     | '/forgot-password'
     | '/leaderboard'
     | '/privacy'
     | '/promotions'
     | '/referral'
+    | '/referrals'
     | '/reset-password'
     | '/rewards'
     | '/support'
     | '/terms'
     | '/verify-otp'
+    | '/vip'
     | '/vip-club'
     | '/app/_authenticated'
     | '/_authenticated/admin'
@@ -515,17 +551,20 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   BlogRoute: typeof BlogRoute
+  DownloadRoute: typeof DownloadRoute
   FaqRoute: typeof FaqRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LeaderboardRoute: typeof LeaderboardRoute
   PrivacyRoute: typeof PrivacyRoute
   PromotionsRoute: typeof PromotionsRoute
   ReferralRoute: typeof ReferralRoute
+  ReferralsRoute: typeof ReferralsRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   RewardsRoute: typeof RewardsRoute
   SupportRoute: typeof SupportRoute
   TermsRoute: typeof TermsRoute
   VerifyOtpRoute: typeof VerifyOtpRoute
+  VipRoute: typeof VipRoute
   VipClubRoute: typeof VipClubRoute
 }
 
@@ -536,6 +575,13 @@ declare module '@tanstack/react-router' {
       path: '/vip-club'
       fullPath: '/vip-club'
       preLoaderRoute: typeof VipClubRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vip': {
+      id: '/vip'
+      path: '/vip'
+      fullPath: '/vip'
+      preLoaderRoute: typeof VipRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/verify-otp': {
@@ -571,6 +617,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/referrals': {
+      id: '/referrals'
+      path: '/referrals'
+      fullPath: '/referrals'
+      preLoaderRoute: typeof ReferralsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/referral': {
@@ -613,6 +666,13 @@ declare module '@tanstack/react-router' {
       path: '/faq'
       fullPath: '/faq'
       preLoaderRoute: typeof FaqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/download': {
+      id: '/download'
+      path: '/download'
+      fullPath: '/download'
+      preLoaderRoute: typeof DownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/blog': {
@@ -920,17 +980,20 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   BlogRoute: BlogRoute,
+  DownloadRoute: DownloadRoute,
   FaqRoute: FaqRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LeaderboardRoute: LeaderboardRoute,
   PrivacyRoute: PrivacyRoute,
   PromotionsRoute: PromotionsRoute,
   ReferralRoute: ReferralRoute,
+  ReferralsRoute: ReferralsRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   RewardsRoute: RewardsRoute,
   SupportRoute: SupportRoute,
   TermsRoute: TermsRoute,
   VerifyOtpRoute: VerifyOtpRoute,
+  VipRoute: VipRoute,
   VipClubRoute: VipClubRoute,
 }
 export const routeTree = rootRouteImport

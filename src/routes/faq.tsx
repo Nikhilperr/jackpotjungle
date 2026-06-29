@@ -2,35 +2,101 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { PublicLayout } from "@/components/landing/PublicLayout";
 import { HelpCircle, ChevronDown, ArrowRight } from "lucide-react";
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export const Route = createFileRoute("/faq")({
-  head: () => ({ meta: [{ title: "FAQ — Jackpot Jungle" }] }),
+  head: () => ({
+    meta: [
+      { title: "FAQ & Help Center — Jackpot Jungle Casino" },
+      { name: "description", content: "Frequently asked questions about Jackpot Jungle accounts, logins, wallet credits, daily rewards, VIP Club levels, referral structures, and messaging features." },
+      { property: "og:title", content: "FAQ & Help Center — Jackpot Jungle Casino" },
+      { property: "og:description", content: "Find instant answers to common questions about Jackpot Jungle. Wallet setup, rewards, VIP cashback, and notifications guidelines." },
+      { property: "og:url", content: "https://playjackpotjungle.com/faq" },
+      { name: "twitter:title", content: "FAQ & Help Center — Jackpot Jungle Casino" },
+      { name: "twitter:description", content: "Access the Jackpot Jungle self-service FAQ database. Detailed help docs for accounts, gaming, and privacy." },
+    ],
+  }),
   component: FAQPage,
 });
 
+type Category = "account" | "wallet" | "vip" | "chat" | "security";
+
+interface FAQItemData {
+  q: string;
+  a: string;
+  cat: Category;
+}
+
 function FAQPage() {
-  const faqs = [
+  const [activeCategory, setActiveCategory] = useState<Category>("account");
+
+  const categories: Array<{ id: Category; label: string }> = [
+    { id: "account", label: "Account & Login" },
+    { id: "wallet", label: "Wallet & Credits" },
+    { id: "vip", label: "VIP & Rewards" },
+    { id: "chat", label: "Chat & Notifications" },
+    { id: "security", label: "Security & Safety" },
+  ];
+
+  const faqs: FAQItemData[] = [
+    // Account
     {
+      cat: "account",
       q: "What is Jackpot Jungle?",
-      a: "Jackpot Jungle is a next-generation real-time messenger and social gaming application. Users can invite friends, chat, make voice and video calls, track rankings on a live leaderboard, and earn rewards based on daily interactions.",
+      a: "Jackpot Jungle is a social gaming and messenger platform where players can chat, call friends, make sweeps slot spins, level up on leaderboards, and claim daily free coins securely.",
     },
     {
-      q: "How do I claim my welcome bonus?",
-      a: "Simply sign up and complete your onboarding profile (verifying your first name, last name, and email). Once completed, your free $5.00 wallet credit bonus is instantly deposited.",
+      cat: "account",
+      q: "How do I sign up and complete onboarding?",
+      a: "Creating an account is free. Enter an email and choose a password, verify your email with the OTP code, then input a username and name to complete the initial profile onboarding steps.",
+    },
+    // Wallet
+    {
+      cat: "wallet",
+      q: "How do I claim my signup welcome credits?",
+      a: "Once you complete your onboarding profile verification, our backend automatically credits your wallet balance with a $5.00 welcome bonus.",
     },
     {
-      q: "How does the Referral Program work?",
-      a: "Each user has a unique referral code. When someone signs up using your code, both of you receive a signup credit, and you earn a 10% commission on all of their active rewards activities forever.",
+      cat: "wallet",
+      q: "How do I check my transaction history log?",
+      a: "Open your wallet tab inside the Jackpot Jungle application dashboard to view all historical reward spins, referral payout logs, and user credit transfers.",
+    },
+    // VIP
+    {
+      cat: "vip",
+      q: "How do the VIP tier levels work?",
+      a: "Our VIP program has 5 levels (Bronze, Silver, Gold, Platinum, Diamond) based on wallet holdings. Leveling up unlocks greater daily cashback rates (up to 8%), weekly multipliers, and dedicated host support.",
     },
     {
-      q: "Is the platform secure?",
-      a: "Yes. Jackpot Jungle uses industry-standard database row-level security (RLS) policies, secure email OTP codes, and Google OAuth credentials to ensure your account information and private communications are kept secure.",
+      cat: "vip",
+      q: "How does the Referral partner program work?",
+      a: "Share your referral code with friends. Once they verify their onboarding profile, both of you receive instant bonus credits, and you accumulate 10% lifetime commissions on their reward activities.",
+    },
+    // Chat
+    {
+      cat: "chat",
+      q: "Can I make voice and video calls inside the app?",
+      a: "Yes. Our messenger integrates real-time signaling websockets. Simply click the telephone or video icon inside any player chat screen to start call sessions.",
     },
     {
-      q: "How can I contact customer support?",
-      a: "Support is available 24/7. Logged-in users can reach a live admin operator directly via the official support page link inside the application chat screen. Alternatively, you can email support@playjackpotjungle.com.",
+      cat: "chat",
+      q: "Why am I not receiving chat push notifications?",
+      a: "Check that notification permissions are allowed on your mobile device. If using our native Android APK, verify that background battery activity is not restricted.",
+    },
+    // Security
+    {
+      cat: "security",
+      q: "How is my account profile kept secure?",
+      a: "All database tables are governed by Row Level Security (RLS). Private messaging logs are protected with secure encryption, and signin requests utilize Google OAuth or secure email OTP checks.",
+    },
+    {
+      cat: "security",
+      q: "Are the social slots spins checked for fairness?",
+      a: "Yes. Spin payouts utilize server-side cryptographically secure pseudorandom generators, ensuring completely unbiased rewards.",
     },
   ];
+
+  const filteredFaqs = faqs.filter((f) => f.cat === activeCategory);
 
   return (
     <PublicLayout>
@@ -48,11 +114,42 @@ function FAQPage() {
           </p>
         </div>
 
+        {/* Categories Tab Bar */}
+        <div className="flex flex-wrap justify-center gap-2 border-b border-border/40 pb-6">
+          {categories.map((c) => {
+            const active = activeCategory === c.id;
+            return (
+              <button
+                key={c.id}
+                onClick={() => setActiveCategory(c.id)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  active 
+                    ? "bg-secondary text-primary border-primary border" 
+                    : "text-muted-foreground hover:bg-secondary/40"
+                }`}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+
         {/* FAQs */}
-        <div className="space-y-4">
-          {faqs.map((faq, idx) => (
-            <FAQItem key={idx} question={faq.q} answer={faq.a} />
-          ))}
+        <div className="space-y-4 min-h-[300px]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeCategory}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-4"
+            >
+              {filteredFaqs.map((faq, idx) => (
+                <FAQItem key={idx} question={faq.q} answer={faq.a} />
+              ))}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* Still Have Questions Banner */}

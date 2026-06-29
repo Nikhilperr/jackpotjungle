@@ -1,31 +1,65 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PublicLayout } from "@/components/landing/PublicLayout";
-import { Gift, Zap, HelpCircle, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Gift, Zap, HelpCircle, ArrowRight, CheckCircle2, Clock, Award, Crown, Calendar } from "lucide-react";
 
 export const Route = createFileRoute("/rewards")({
-  head: () => ({ meta: [{ title: "Rewards — Jackpot Jungle" }] }),
+  head: () => ({
+    meta: [
+      { title: "Free Daily Rewards & Spins — Jackpot Jungle" },
+      { name: "description", content: "Claim your daily rewards, weekly multipliers, monthly cashbacks, referral commissions, and VIP milestone spins on Jackpot Jungle." },
+      { property: "og:title", content: "Free Daily Rewards & Spins — Jackpot Jungle" },
+      { property: "og:description", content: "Get free coins & spins at Jackpot Jungle. Complete streaks, spin the lucky wheel, and claim birthday rewards." },
+      { property: "og:url", content: "https://playjackpotjungle.com/rewards" },
+      { name: "twitter:title", content: "Free Daily Rewards & Spins — Jackpot Jungle" },
+      { name: "twitter:description", content: "Unlock all daily, weekly, monthly, and VIP rewards in the Jackpot Jungle Social Casino app." },
+    ],
+  }),
   component: RewardsPage,
 });
 
 function RewardsPage() {
-  const activeRewards = [
+  const categories = [
     {
-      title: "Daily Lucky Wheel",
+      title: "Daily lucky wheel",
       desc: "Spin the wheel once every 24 hours to earn free credits up to $100 instantly.",
+      val: "Up to $100.00",
       type: "Daily Spin",
-      value: "Up to $100.00",
+      icon: Clock,
     },
     {
       title: "7-Day Login Streak",
       desc: "Log in daily to claim consecutive rewards. Compounding bonuses are awarded on day 7.",
-      type: "Login Streak",
-      value: "Multipliers active",
+      val: "Weekly multipliers",
+      type: "Weekly Bonus",
+      icon: Calendar,
     },
     {
-      title: "Referral Commission",
+      title: "Monthly VIP Cashback",
+      desc: "Receive compounding cashback directly deposited into your wallet based on your active play status.",
+      val: "Up to 8% cashback",
+      type: "Monthly Rewards",
+      icon: Crown,
+    },
+    {
+      title: "Referral commissions",
       desc: "Get rewarded instantly when friends join with your code, plus 10% lifetime commissions.",
-      type: "Referral",
-      value: "10% Lifetime",
+      val: "10% Lifetime",
+      type: "Referral Rewards",
+      icon: Gift,
+    },
+    {
+      title: "Milestone achievements",
+      desc: "Complete messenger tasks, join sweeps tournaments, and gain levels to claim cash coins.",
+      val: "Progressive bonuses",
+      type: "Achievement Rewards",
+      icon: Award,
+    },
+    {
+      title: "Birthday celebration",
+      desc: "Celebrate your special day with a customized coin voucher from the Jackpot Jungle support hosts.",
+      val: "Varies by Tier",
+      type: "Birthday Rewards",
+      icon: Gift,
     },
   ];
 
@@ -47,34 +81,40 @@ function RewardsPage() {
 
         {/* Rewards List */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {activeRewards.map((reward) => (
-            <div 
-              key={reward.title}
-              className="p-6 rounded-2xl bg-card border border-border/60 hover:border-primary/50 transition-all flex flex-col justify-between shadow-md"
-            >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="px-3 py-1 rounded-full bg-primary/15 text-primary text-xs font-semibold">
-                    {reward.type}
-                  </span>
-                  <span className="text-sm font-black text-amber-500">{reward.value}</span>
+          {categories.map((reward) => {
+            const Icon = reward.icon;
+            return (
+              <div 
+                key={reward.title}
+                className="p-6 rounded-2xl bg-card border border-border/60 hover:border-primary/50 transition-all flex flex-col justify-between shadow-md"
+              >
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="px-3 py-1 rounded-full bg-primary/15 text-primary text-xs font-semibold">
+                      {reward.type}
+                    </span>
+                    <span className="text-sm font-black text-amber-500">{reward.val}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-5 w-5 text-primary shrink-0" />
+                    <h3 className="font-extrabold text-lg text-foreground">{reward.title}</h3>
+                  </div>
+                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                    {reward.desc}
+                  </p>
                 </div>
-                <h3 className="font-extrabold text-xl text-foreground">{reward.title}</h3>
-                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                  {reward.desc}
-                </p>
+                <div className="pt-6">
+                  <Link
+                    to="/app/auth"
+                    className="w-full py-3 rounded-xl font-bold text-xs bg-primary text-primary-foreground hover:opacity-90 transition-all flex items-center justify-center gap-1.5 shadow-md shadow-primary/10"
+                  >
+                    <span>Claim Now</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
               </div>
-              <div className="pt-6">
-                <Link
-                  to="/app/auth"
-                  className="w-full py-3 rounded-xl font-bold text-xs bg-primary text-primary-foreground hover:opacity-90 transition-all flex items-center justify-center gap-1.5 shadow-md shadow-primary/10"
-                >
-                  <span>Claim Now</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Highlights */}

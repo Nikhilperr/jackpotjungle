@@ -1,13 +1,45 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PublicLayout } from "@/components/landing/PublicLayout";
-import { MessageSquare, Mail, ShieldAlert, ArrowRight, HelpCircle } from "lucide-react";
+import { MessageSquare, Mail, ShieldAlert, ArrowRight, HelpCircle, CheckCircle, Info } from "lucide-react";
 
 export const Route = createFileRoute("/support")({
-  head: () => ({ meta: [{ title: "Customer Support — Jackpot Jungle" }] }),
+  head: () => ({
+    meta: [
+      { title: "24/7 Customer Support — Jackpot Jungle Casino" },
+      { name: "description", content: "Need help? Reach out to Jackpot Jungle support. Find email ticketing details, troubleshooting steps for wallets/notifications, and safety guidelines." },
+      { property: "og:title", content: "24/7 Customer Support — Jackpot Jungle Casino" },
+      { property: "og:description", content: "Jackpot Jungle live helpdesk. Get real-time support on chats, reward claiming, and deposit syncs." },
+      { property: "og:url", content: "https://playjackpotjungle.com/support" },
+      { name: "twitter:title", content: "24/7 Customer Support — Jackpot Jungle Casino" },
+      { name: "twitter:description", content: "Access the Jackpot Jungle Customer Care portal. Find live chat options, guidelines, and safety practices." },
+    ],
+  }),
   component: SupportPage,
 });
 
 function SupportPage() {
+  const troubleshooting = [
+    {
+      title: "Push Notification Issues",
+      desc: "If you aren't receiving chat notifications, check your device settings and ensure background activity permissions are allowed for our application.",
+    },
+    {
+      title: "Google Authentication Error",
+      desc: "If signing in with Google fails on desktop, clear your browser cookies and disable tracking blocking plugins temporarily.",
+    },
+    {
+      title: "Wallet Credit Delays",
+      desc: "Sweeps bonuses normally apply in real time. If a balance lag occurs, check your connection state or verify the task completion log.",
+    },
+  ];
+
+  const safetyTips = [
+    "Never share your Jackpot Jungle login credentials or security password with anyone.",
+    "Jackpot Jungle support managers will never ask you for your account credentials.",
+    "Enable Google two-factor authentication where available to protect transaction histories.",
+    "Verify that the URL points to playjackpotjungle.com before entering login details.",
+  ];
+
   return (
     <PublicLayout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-16">
@@ -88,6 +120,38 @@ function SupportPage() {
                 <span>View FAQs</span>
               </Link>
             </div>
+          </div>
+        </div>
+
+        {/* Troubleshooting Support Guide */}
+        <div className="space-y-8 max-w-5xl mx-auto">
+          <h2 className="text-2xl font-bold text-foreground text-center">Troubleshooting Support Guide</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {troubleshooting.map((item) => (
+              <div key={item.title} className="p-6 rounded-3xl bg-secondary/15 border border-border/40 space-y-3 shadow-inner">
+                <h4 className="font-bold text-base text-foreground flex items-center gap-2">
+                  <Info className="h-4 w-4 text-primary shrink-0" />
+                  <span>{item.title}</span>
+                </h4>
+                <p className="text-xs text-muted-foreground leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Safety Tips Banner */}
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-3xl p-8 sm:p-12 max-w-4xl mx-auto space-y-6">
+          <div className="flex items-center gap-3">
+            <ShieldAlert className="h-7 w-7 text-amber-500" />
+            <h3 className="text-xl font-extrabold text-foreground">Safety & Verification Tips</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm text-muted-foreground">
+            {safetyTips.map((tip, idx) => (
+              <div key={idx} className="flex items-start gap-2.5">
+                <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>{tip}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
