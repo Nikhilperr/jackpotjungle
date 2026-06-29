@@ -5,7 +5,6 @@ import { User, Phone, MapPin, Mail, Camera, Loader2, Check, X, Search, Globe } f
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
-import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { AuthInput } from "@/components/auth/AuthInput";

@@ -12,22 +12,8 @@ import { AuthInput } from "@/components/auth/AuthInput";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { PasswordStrength } from "@/components/auth/PasswordStrength";
 import { Capacitor } from "@capacitor/core";
-import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 
 import { z } from "zod";
-
-// Initialize Native Google Auth on mobile startup with explicit configurations for remote server support
-if (typeof window !== "undefined" && Capacitor.isNativePlatform()) {
-  try {
-    GoogleAuth.initialize({
-      clientId: "877420815591-feisfm6hjc1n8omdhrbv9li9tdk1v63t.apps.googleusercontent.com",
-      scopes: ["profile", "email"],
-      grantOfflineAccess: true,
-    });
-  } catch (e) {
-    console.error("Failed to initialize GoogleAuth:", e);
-  }
-}
 
 const searchSchema = z.object({
   mode: z.enum(["welcome", "login", "signup"]).optional(),
@@ -76,6 +62,17 @@ function AuthPage() {
 
       if (nativeCheck) {
         // Use native Google Sign-In on mobile devices
+        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+        try {
+          await GoogleAuth.initialize({
+            clientId: "877420815591-feisfm6hjc1n8omdhrbv9li9tdk1v63t.apps.googleusercontent.com",
+            scopes: ["profile", "email"],
+            grantOfflineAccess: true,
+          });
+        } catch (e) {
+          // If already initialized, it might throw, which is fine to ignore
+          console.log("GoogleAuth initialized or already active:", e);
+        }
         const userResult = await GoogleAuth.signIn();
         const idToken = userResult.authentication.idToken;
         if (!idToken) throw new Error("Google Sign-In did not return an ID token.");

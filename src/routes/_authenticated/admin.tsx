@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRole, type AppRole } from "@/hooks/useRole";
 import { useAuth } from "@/hooks/useAuth";
 import { Capacitor } from "@capacitor/core";
-import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 import { useNativePush } from "@/hooks/useNativePush";
 import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
@@ -195,6 +194,7 @@ function AdminPage() {
 
     if (Capacitor.isNativePlatform()) {
       try {
+        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
         await GoogleAuth.signOut();
       } catch (e) {
         console.error("Google native sign out failed:", e);

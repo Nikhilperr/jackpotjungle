@@ -11,7 +11,6 @@ import { initializeNativeBridge } from "@/lib/native";
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 import { Capacitor } from "@capacitor/core";
-import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 
 const DrawerCtx = createContext<{ open: () => void }>({ open: () => {} });
 export const useAppDrawer = () => useContext(DrawerCtx);
@@ -49,6 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     if (Capacitor.isNativePlatform()) {
       try {
+        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
         await GoogleAuth.signOut();
       } catch (e) {
         console.error("Google native sign out failed:", e);
