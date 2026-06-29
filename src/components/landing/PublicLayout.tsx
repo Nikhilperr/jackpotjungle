@@ -45,13 +45,13 @@ export function PublicLayout({ children }: PublicLayoutProps) {
   ];
 
   return (
-    <div className="min-h-screen w-full bg-background text-foreground flex flex-col font-sans selection:bg-primary selection:text-primary-foreground transition-colors duration-300">
+    <div className="h-screen w-full overflow-y-auto bg-background text-foreground flex flex-col font-sans selection:bg-primary selection:text-primary-foreground transition-colors duration-300">
       {/* Top Announcement Banner */}
-      <div className="bg-gradient-to-r from-primary via-purple-600 to-amber-500 text-white text-xs py-2 px-4 text-center font-medium flex items-center justify-center gap-2 shadow-inner">
+      <div className="bg-gradient-to-r from-amber-500 via-primary to-purple-600 text-white text-xs py-2 px-4 text-center font-bold flex items-center justify-center gap-2 shadow-inner">
         <Sparkles className="h-3.5 w-3.5 animate-spin" style={{ animationDuration: "6s" }} />
-        <span>Join the Jackpot Jungle VIP Club today for exclusive instant cash rewards & bonuses!</span>
-        <Link to="/vip-club" className="underline font-bold hover:opacity-90 ml-1 inline-flex items-center gap-0.5">
-          Learn more <ChevronRight className="h-3 w-3" />
+        <span>🎰 Welcome to Jackpot Jungle Social Casino! Claim your daily free coins & VIP bonuses today!</span>
+        <Link to="/rewards" className="underline font-black hover:opacity-90 ml-1 inline-flex items-center gap-0.5">
+          Claim Free Chips <ChevronRight className="h-3 w-3" />
         </Link>
       </div>
 
