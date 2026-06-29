@@ -481,6 +481,7 @@ function OnboardingPage() {
                 try {
                   if (Capacitor.isNativePlatform()) {
                     try {
+                      const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
                       await GoogleAuth.signOut();
                     } catch (e) {
                       console.error("Google native sign out failed:", e);

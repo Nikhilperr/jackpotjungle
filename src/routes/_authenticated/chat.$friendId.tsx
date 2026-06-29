@@ -1031,7 +1031,7 @@ function ChatView() {
             <Smile className="h-5 w-5" />
           </button>
           <Input ref={inputRef} value={draft} onChange={(e) => onDraftChange(e.target.value)} placeholder="Aa"
-            className="rounded-full bg-secondary border-transparent" />
+            className="flex-1 min-w-0 rounded-full bg-secondary border-transparent" />
           <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0 send-btn-active">
             <Send className="h-4 w-4" />
           </Button>

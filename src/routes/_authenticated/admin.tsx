@@ -1606,7 +1606,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
               else if (e.key === "ArrowUp") { e.preventDefault(); setSuggestIdx((i) => (i - 1 + suggestions.length) % suggestions.length); }
               else if (e.key === "Escape") { setSuggestIdx(0); }
             }}
-            className="rounded-full bg-secondary border-transparent h-11" />
+            className="flex-1 min-w-0 rounded-full bg-secondary border-transparent h-11" />
           <Button type="submit" size="icon" disabled={!text.trim()} className="rounded-full h-11 w-11 shrink-0 send-btn-active">
             <Send className="h-4 w-4" />
           </Button>
