@@ -784,16 +784,27 @@ function Conversation({
 
   const [forwardTargetMsg, setForwardTargetMsg] = useState<PageMsg | null>(null);
   const [forwardingTargetId, setForwardingTargetId] = useState<string | null>(null);
+  const [forwardSearch, setForwardSearch] = useState("");
 
   async function executeForward(target: ConvRow) {
     if (!forwardTargetMsg || !meId) return;
     setForwardingTargetId(target.conversationId);
     try {
+      const contentPrefix = "[system:forwarded] ";
+      let newContent = forwardTargetMsg.content;
+      if (newContent) {
+        if (!newContent.startsWith("[system:forwarded]")) {
+          newContent = contentPrefix + newContent;
+        }
+      } else {
+        newContent = "[system:forwarded]";
+      }
+
       const { error } = await supabase.from("page_messages").insert({
         conversation_id: target.conversationId,
         sender_id: meId,
         from_page: true,
-        content: forwardTargetMsg.content,
+        content: newContent,
         image_url: forwardTargetMsg.image_url,
         audio_url: forwardTargetMsg.audio_url
       } as any);
@@ -1108,6 +1119,7 @@ function Conversation({
       isSystemPin?: boolean;
       isSystemUnpin?: boolean;
       isUnsent?: boolean;
+      isForwarded?: boolean;
     }> = [];
 
     const reactionMap: Record<string, Record<string, string[]>> = {};
@@ -1181,9 +1193,21 @@ function Conversation({
 
       let replyTo: any = undefined;
       let cleanContent = m.content;
+      let isForwarded = false;
 
-      if (m.content?.startsWith("[reply:")) {
-        const match = m.content.match(/^\[reply:([^:]+):([^:]+):([^\]]*)\]\s*([\s\S]*)/);
+      if (cleanContent?.startsWith("[system:forwarded] ")) {
+        isForwarded = true;
+        cleanContent = cleanContent.slice("[system:forwarded] ".length);
+      } else if (cleanContent?.startsWith("[system:forwarded]")) {
+        isForwarded = true;
+        cleanContent = cleanContent.slice("[system:forwarded]".length).trim() || null;
+      } else if (cleanContent === "[system:forwarded]") {
+        isForwarded = true;
+        cleanContent = null;
+      }
+
+      if (cleanContent?.startsWith("[reply:")) {
+        const match = cleanContent.match(/^\[reply:([^:]+):([^:]+):([^\]]*)\]\s*([\s\S]*)/);
         if (match) {
           const [_, targetId, senderName, text, actualText] = match;
           replyTo = { id: targetId, senderName, text };
@@ -1197,6 +1221,7 @@ function Conversation({
         reactions: reactionMap[m.id] || {},
         replyTo,
         isPinned: pinSet.has(m.id),
+        isForwarded,
       });
     }
 
@@ -1917,46 +1942,67 @@ function Conversation({
       )}
 
       {/* Forward Modal */}
-      {forwardTargetMsg && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="absolute inset-0" onClick={() => setForwardTargetMsg(null)} />
-          <div className="relative bg-card border border-border w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[70vh] overflow-hidden animate-in zoom-in-95 duration-200 z-10 text-foreground">
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0 bg-card">
-              <h3 className="font-bold text-base">Forward message</h3>
-              <button type="button" onClick={() => setForwardTargetMsg(null)} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {convs.length === 0 ? (
-                <p className="text-center text-xs text-muted-foreground py-6">No active conversations found.</p>
-              ) : (
-                convs.map((c) => (
-                  <div key={c.conversationId} className="flex items-center justify-between gap-3 p-2 rounded-xl bg-secondary/30 border border-border/40 hover:bg-secondary/60 transition-colors animate-in slide-in-from-bottom-2 duration-150">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Avatar name={c.username} url={c.avatar_url} size={36} />
-                      <div className="min-w-0">
-                        <p className="font-semibold text-sm truncate">{c.username}</p>
-                        {c.credit > 0 && (
-                          <p className="text-[10px] text-emerald-500 font-semibold leading-none">Credit ${c.credit.toFixed(2)}</p>
-                        )}
+      {forwardTargetMsg && (() => {
+        const filteredCandidates = convs.filter((c) =>
+          c.username.toLowerCase().includes(forwardSearch.toLowerCase())
+        );
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="absolute inset-0" onClick={() => { setForwardTargetMsg(null); setForwardSearch(""); }} />
+            <div className="relative bg-background/70 dark:bg-card/65 backdrop-blur-xl border border-border/80 w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[70vh] overflow-hidden animate-in zoom-in-95 duration-200 z-10 text-foreground">
+              <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between shrink-0 bg-transparent">
+                <h3 className="font-bold text-base">Forward message</h3>
+                <button type="button" onClick={() => { setForwardTargetMsg(null); setForwardSearch(""); }} className="h-8 w-8 rounded-full hover:bg-secondary/40 flex items-center justify-center">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              
+              {/* Messenger style Search Bar */}
+              <div className="px-4 py-2 border-b border-border/40 bg-transparent shrink-0">
+                <div className="relative">
+                  <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/80" />
+                  <Input
+                    placeholder="Search conversations"
+                    value={forwardSearch}
+                    onChange={(e) => setForwardSearch(e.target.value)}
+                    className="pl-9 rounded-full bg-secondary/40 border-transparent text-xs h-8 focus:bg-secondary/60 focus:ring-1 focus:ring-primary/40"
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {convs.length === 0 ? (
+                  <p className="text-center text-xs text-muted-foreground py-6">No active conversations found.</p>
+                ) : filteredCandidates.length === 0 ? (
+                  <p className="text-center text-xs text-muted-foreground py-6">No matching conversations found.</p>
+                ) : (
+                  filteredCandidates.map((c) => (
+                    <div key={c.conversationId} className="flex items-center justify-between gap-3 p-2 rounded-xl bg-secondary/15 border border-border/20 hover:bg-secondary/35 transition-colors animate-in slide-in-from-bottom-2 duration-150">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar name={c.username} url={c.avatar_url} size={36} />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">{c.username}</p>
+                          {c.credit > 0 && (
+                            <p className="text-[10px] text-emerald-500 font-semibold leading-none">Credit ${c.credit.toFixed(2)}</p>
+                          )}
+                        </div>
                       </div>
+                      <Button 
+                        onClick={() => executeForward(c)} 
+                        disabled={forwardingTargetId !== null} 
+                        size="sm" 
+                        className="rounded-full shrink-0 shadow-sm"
+                      >
+                        {forwardingTargetId === c.conversationId ? "Sending..." : "Send"}
+                      </Button>
                     </div>
-                    <Button 
-                      onClick={() => executeForward(c)} 
-                      disabled={forwardingTargetId !== null} 
-                      size="sm" 
-                      className="rounded-full shrink-0"
-                    >
-                      {forwardingTargetId === c.conversationId ? "Sending..." : "Send"}
-                    </Button>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 }
@@ -2309,6 +2355,15 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
               <span className="font-bold text-primary block text-[8px] uppercase tracking-wider">Replying to {m.replyTo.senderName}</span>
               <span className="italic truncate block">{m.replyTo.text}</span>
             </div>
+          </div>
+        )}
+
+        {m.isForwarded && (
+          <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-0.5 px-2`}>
+            <span className="text-[10px] text-muted-foreground/60 italic flex items-center gap-1 select-none">
+              <Forward className="h-3 w-3 text-muted-foreground/50" />
+              Forwarded
+            </span>
           </div>
         )}
 

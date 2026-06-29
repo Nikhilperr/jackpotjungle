@@ -74,6 +74,7 @@ function PageChatView() {
   const [forwardTargetMsg, setForwardTargetMsg] = useState<Msg | null>(null);
   const [forwardCandidates, setForwardCandidates] = useState<Array<{ id: string; name: string; avatar: string | null; type: "friend" | "page" }>>([]);
   const [forwardingTargetId, setForwardingTargetId] = useState<string | null>(null);
+  const [forwardSearch, setForwardSearch] = useState("");
 
   useEffect(() => {
     if (!forwardTargetMsg || !meId) return;
@@ -103,6 +104,16 @@ function PageChatView() {
     if (!forwardTargetMsg || !meId) return;
     setForwardingTargetId(target.id);
     try {
+      const contentPrefix = "[system:forwarded] ";
+      let newContent = forwardTargetMsg.content;
+      if (newContent) {
+        if (!newContent.startsWith("[system:forwarded]")) {
+          newContent = contentPrefix + newContent;
+        }
+      } else {
+        newContent = "[system:forwarded]";
+      }
+
       if (target.type === "page") {
         let { data: conv } = await supabase.from("page_conversations").select("id").eq("user_id", meId).maybeSingle();
         if (!conv) {
@@ -115,7 +126,7 @@ function PageChatView() {
           conversation_id: conv.id,
           sender_id: meId,
           from_page: false,
-          content: forwardTargetMsg.content,
+          content: newContent,
           image_url: forwardTargetMsg.image_url,
           audio_url: forwardTargetMsg.audio_url
         } as any);
@@ -124,7 +135,7 @@ function PageChatView() {
         const { error } = await supabase.from("messages").insert({
           sender_id: meId,
           receiver_id: target.id,
-          content: forwardTargetMsg.content,
+          content: newContent,
           image_url: forwardTargetMsg.image_url,
           audio_url: forwardTargetMsg.audio_url
         } as any);
@@ -178,6 +189,7 @@ function PageChatView() {
       isSystemPin?: boolean;
       isSystemUnpin?: boolean;
       isUnsent?: boolean;
+      isForwarded?: boolean;
     }> = [];
 
     const reactionMap: Record<string, Record<string, string[]>> = {};
@@ -251,9 +263,21 @@ function PageChatView() {
 
       let replyTo: any = undefined;
       let cleanContent = m.content;
+      let isForwarded = false;
 
-      if (m.content?.startsWith("[reply:")) {
-        const match = m.content.match(/^\[reply:([^:]+):([^:]+):([^\]]*)\]\s*([\s\S]*)/);
+      if (cleanContent?.startsWith("[system:forwarded] ")) {
+        isForwarded = true;
+        cleanContent = cleanContent.slice("[system:forwarded] ".length);
+      } else if (cleanContent?.startsWith("[system:forwarded]")) {
+        isForwarded = true;
+        cleanContent = cleanContent.slice("[system:forwarded]".length).trim() || null;
+      } else if (cleanContent === "[system:forwarded]") {
+        isForwarded = true;
+        cleanContent = null;
+      }
+
+      if (cleanContent?.startsWith("[reply:")) {
+        const match = cleanContent.match(/^\[reply:([^:]+):([^:]+):([^\]]*)\]\s*([\s\S]*)/);
         if (match) {
           const [_, targetId, senderName, text, actualText] = match;
           replyTo = { id: targetId, senderName, text };
@@ -267,6 +291,7 @@ function PageChatView() {
         reactions: reactionMap[m.id] || {},
         replyTo,
         isPinned: pinSet.has(m.id),
+        isForwarded,
       });
     }
 
@@ -869,48 +894,69 @@ function PageChatView() {
       </Sheet>
 
       {/* Forward Modal */}
-      {forwardTargetMsg && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="absolute inset-0" onClick={() => setForwardTargetMsg(null)} />
-          <div className="relative bg-card border border-border w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[70vh] overflow-hidden animate-in zoom-in-95 duration-200 z-10 text-foreground">
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0 bg-card">
-              <h3 className="font-bold text-base">Forward message</h3>
-              <button type="button" onClick={() => setForwardTargetMsg(null)} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {forwardCandidates.length === 0 ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+      {forwardTargetMsg && (() => {
+        const filteredCandidates = forwardCandidates.filter((c) =>
+          c.name.toLowerCase().includes(forwardSearch.toLowerCase())
+        );
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="absolute inset-0" onClick={() => { setForwardTargetMsg(null); setForwardSearch(""); }} />
+            <div className="relative bg-background/70 dark:bg-card/65 backdrop-blur-xl border border-border/80 w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[70vh] overflow-hidden animate-in zoom-in-95 duration-200 z-10 text-foreground">
+              <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between shrink-0 bg-transparent">
+                <h3 className="font-bold text-base">Forward message</h3>
+                <button type="button" onClick={() => { setForwardTargetMsg(null); setForwardSearch(""); }} className="h-8 w-8 rounded-full hover:bg-secondary/40 flex items-center justify-center">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              
+              {/* Messenger style Search Bar */}
+              <div className="px-4 py-2 border-b border-border/40 bg-transparent shrink-0">
+                <div className="relative">
+                  <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/80" />
+                  <Input
+                    placeholder="Search friends"
+                    value={forwardSearch}
+                    onChange={(e) => setForwardSearch(e.target.value)}
+                    className="pl-9 rounded-full bg-secondary/40 border-transparent text-xs h-8 focus:bg-secondary/60 focus:ring-1 focus:ring-primary/40"
+                  />
                 </div>
-              ) : (
-                forwardCandidates.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between gap-3 p-2 rounded-xl bg-secondary/30 border border-border/40 hover:bg-secondary/60 transition-colors animate-in slide-in-from-bottom-2 duration-150">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Avatar name={c.name} url={c.avatar} size={36} />
-                      <div className="min-w-0">
-                        <p className="font-semibold text-sm truncate">{c.name}</p>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                          {c.type === "page" ? "Official page" : "Friend"}
-                        </p>
-                      </div>
-                    </div>
-                    <Button 
-                      onClick={() => executeForward(c)} 
-                      disabled={forwardingTargetId !== null} 
-                      size="sm" 
-                      className="rounded-full shrink-0"
-                    >
-                      {forwardingTargetId === c.id ? "Sending..." : "Send"}
-                    </Button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {forwardCandidates.length === 0 ? (
+                  <div className="flex justify-center py-6">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
                   </div>
-                ))
-              )}
+                ) : filteredCandidates.length === 0 ? (
+                  <p className="text-center text-xs text-muted-foreground py-6">No matching candidates found.</p>
+                ) : (
+                  filteredCandidates.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between gap-3 p-2 rounded-xl bg-secondary/15 border border-border/20 hover:bg-secondary/35 transition-colors animate-in slide-in-from-bottom-2 duration-150">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar name={c.name} url={c.avatar} size={36} />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">{c.name}</p>
+                          <p className="text-[10px] text-muted-foreground/75 uppercase tracking-wide">
+                            {c.type === "page" ? "Official page" : "Friend"}
+                          </p>
+                        </div>
+                      </div>
+                      <Button 
+                        onClick={() => executeForward(c)} 
+                        disabled={forwardingTargetId !== null} 
+                        size="sm" 
+                        className="rounded-full shrink-0 shadow-sm"
+                      >
+                        {forwardingTargetId === c.id ? "Sending..." : "Send"}
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Message Context Menu & Reactions */}
       {activeMsgMenu && (() => {
@@ -1374,6 +1420,15 @@ const PageMessageItem = React.memo(function PageMessageItem({
               <span className="font-semibold text-primary">{m.replyTo.senderName}</span>
               <span className="truncate max-w-[120px]">{m.replyTo.text}</span>
             </div>
+          </div>
+        )}
+
+        {m.isForwarded && (
+          <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-0.5 px-2`}>
+            <span className="text-[10px] text-muted-foreground/60 italic flex items-center gap-1 select-none">
+              <Forward className="h-3 w-3 text-muted-foreground/50" />
+              Forwarded
+            </span>
           </div>
         )}
 
