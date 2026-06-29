@@ -70,6 +70,75 @@ function PageChatView() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  const [forwardTargetMsg, setForwardTargetMsg] = useState<Msg | null>(null);
+  const [forwardCandidates, setForwardCandidates] = useState<Array<{ id: string; name: string; avatar: string | null; type: "friend" | "page" }>>([]);
+  const [forwardingTargetId, setForwardingTargetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!forwardTargetMsg || !meId) return;
+    (async () => {
+      const { data: fr } = await supabase.from("friendships").select("user_a, user_b");
+      const fids = (fr ?? []).map((f) => (f.user_a === meId ? f.user_b : f.user_a));
+      let list: Array<{ id: string; name: string; avatar: string | null; type: "friend" | "page" }> = [];
+      
+      list.push({ id: "support-page", name: "Jackpot Jungle Support", avatar: null, type: "page" });
+
+      if (fids.length > 0) {
+        const { data: fprofs } = (await supabase
+          .from("profiles")
+          .select("id, username, avatar_url, first_name, last_name" as any)
+          .in("id", fids)) as { data: any[] | null; error: any };
+        
+        (fprofs ?? []).forEach((p) => {
+          const displayName = p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username;
+          list.push({ id: p.id, name: displayName, avatar: p.avatar_url, type: "friend" });
+        });
+      }
+      setForwardCandidates(list);
+    })();
+  }, [forwardTargetMsg, meId]);
+
+  async function executeForward(target: typeof forwardCandidates[0]) {
+    if (!forwardTargetMsg || !meId) return;
+    setForwardingTargetId(target.id);
+    try {
+      if (target.type === "page") {
+        let { data: conv } = await supabase.from("page_conversations").select("id").eq("user_id", meId).maybeSingle();
+        if (!conv) {
+          const ins = await supabase.from("page_conversations").insert({ user_id: meId }).select("id").single();
+          conv = ins.data;
+        }
+        if (!conv) throw new Error("Could not find or create support conversation");
+
+        const { error } = await supabase.from("page_messages").insert({
+          conversation_id: conv.id,
+          sender_id: meId,
+          from_page: false,
+          content: forwardTargetMsg.content,
+          image_url: forwardTargetMsg.image_url,
+          audio_url: forwardTargetMsg.audio_url
+        } as any);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("messages").insert({
+          sender_id: meId,
+          receiver_id: target.id,
+          content: forwardTargetMsg.content,
+          image_url: forwardTargetMsg.image_url,
+          audio_url: forwardTargetMsg.audio_url
+        } as any);
+        if (error) throw error;
+      }
+      toast.success(`Message forwarded to ${target.name}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to forward message");
+    } finally {
+      setForwardingTargetId(null);
+      setForwardTargetMsg(null);
+    }
+  }
+
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [confirmPinTarget, setConfirmPinTarget] = useState<string | null>(null);
   const [activeMsgMenu, setActiveMsgMenu] = useState<string | null>(null);
@@ -301,8 +370,7 @@ function PageChatView() {
   }, []);
 
   const handleForward = useCallback((m: any) => {
-    const note = prompt("Forward this message to:");
-    if (note) toast.success("Forwarded message successfully");
+    setForwardTargetMsg(m);
   }, []);
 
   const handlePreviewImage = useCallback((url: string) => {
@@ -800,6 +868,50 @@ function PageChatView() {
         </SheetContent>
       </Sheet>
 
+      {/* Forward Modal */}
+      {forwardTargetMsg && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="absolute inset-0" onClick={() => setForwardTargetMsg(null)} />
+          <div className="relative bg-card border border-border w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[70vh] overflow-hidden animate-in zoom-in-95 duration-200 z-10 text-foreground">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0 bg-card">
+              <h3 className="font-bold text-base">Forward message</h3>
+              <button type="button" onClick={() => setForwardTargetMsg(null)} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {forwardCandidates.length === 0 ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </div>
+              ) : (
+                forwardCandidates.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between gap-3 p-2 rounded-xl bg-secondary/30 border border-border/40 hover:bg-secondary/60 transition-colors animate-in slide-in-from-bottom-2 duration-150">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar name={c.name} url={c.avatar} size={36} />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm truncate">{c.name}</p>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                          {c.type === "page" ? "Official page" : "Friend"}
+                        </p>
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={() => executeForward(c)} 
+                      disabled={forwardingTargetId !== null} 
+                      size="sm" 
+                      className="rounded-full shrink-0"
+                    >
+                      {forwardingTargetId === c.id ? "Sending..." : "Send"}
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Message Context Menu & Reactions */}
       {activeMsgMenu && (() => {
         const m = parsedMessages.find(x => x.id === activeMsgMenu);
@@ -890,22 +1002,17 @@ function PageChatView() {
                   <Trash2 className="h-4 w-4 text-destructive" />
                   <span>Delete</span>
                 </button>
-                {!mine && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const note = prompt("Forward this message to:");
-                      if (note) {
-                        toast.success("Forwarded message successfully");
-                      }
-                      setActiveMsgMenu(null);
-                    }}
-                    className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
-                  >
-                    <Forward className="h-4 w-4 text-primary" />
-                    <span>Forward</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForwardTargetMsg(m);
+                    setActiveMsgMenu(null);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Forward className="h-4 w-4 text-primary" />
+                  <span>Forward</span>
+                </button>
               </div>
             </div>
           </div>

@@ -684,7 +684,14 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       {/* Conversation pane — full screen on mobile when open */}
       <div className={`${active ? "flex" : "hidden sm:flex"} flex-1 min-w-0 flex-col bg-background min-h-0`}>
         {active ? (
-          <Conversation meId={meId} conv={active} onBack={() => setActiveId(null)} onOpenDetail={() => setDetailOpen(true)} onToggleSpam={() => setConvSpam(active, !active.isSpam)} />
+          <Conversation 
+            meId={meId} 
+            conv={active} 
+            convs={convs} 
+            onBack={() => setActiveId(null)} 
+            onOpenDetail={() => setDetailOpen(true)} 
+            onToggleSpam={() => setConvSpam(active, !active.isSpam)} 
+          />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center px-6 text-muted-foreground">
             <Inbox className="h-12 w-12 mb-3 opacity-50" />
@@ -756,10 +763,49 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean; failed?: boolean };
 type CallRow = { id: string; caller_id: string; callee_id: string; call_type: "voice" | "video"; status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled"; duration_seconds: number; created_at: string };
 
-function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void; onToggleSpam: () => void }) {
+function Conversation({ 
+  meId, 
+  conv, 
+  convs = [], 
+  onBack, 
+  onOpenDetail, 
+  onToggleSpam 
+}: { 
+  meId: string; 
+  conv: ConvRow; 
+  convs?: ConvRow[]; 
+  onBack: () => void; 
+  onOpenDetail: () => void; 
+  onToggleSpam: () => void 
+}) {
   const { startCall } = useCalls();
   const [messages, setMessages] = useState<PageMsg[]>([]);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+
+  const [forwardTargetMsg, setForwardTargetMsg] = useState<PageMsg | null>(null);
+  const [forwardingTargetId, setForwardingTargetId] = useState<string | null>(null);
+
+  async function executeForward(target: ConvRow) {
+    if (!forwardTargetMsg || !meId) return;
+    setForwardingTargetId(target.conversationId);
+    try {
+      const { error } = await supabase.from("page_messages").insert({
+        conversation_id: target.conversationId,
+        sender_id: meId,
+        from_page: true,
+        content: forwardTargetMsg.content,
+        image_url: forwardTargetMsg.image_url,
+        audio_url: forwardTargetMsg.audio_url
+      } as any);
+      if (error) throw error;
+      toast.success(`Message forwarded to ${target.username}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to forward message");
+    } finally {
+      setForwardingTargetId(null);
+      setForwardTargetMsg(null);
+    }
+  }
   const isNearBottomRef = useRef(true);
   const isInitialLoadRef = useRef(true);
   const [calls, setCalls] = useState<CallRow[]>([]);
@@ -1032,8 +1078,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
   }, []);
 
   const handleForward = useCallback((m: any) => {
-    const note = prompt("Forward this message to:");
-    if (note) toast.success("Forwarded message successfully");
+    setForwardTargetMsg(m);
   }, []);
 
   const handlePreviewImage = useCallback((url: string) => {
@@ -1711,22 +1756,17 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
                   <Trash2 className="h-4 w-4 text-destructive" />
                   <span>Delete</span>
                 </button>
-                {!mine && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const note = prompt("Forward this message to:");
-                      if (note) {
-                        toast.success("Forwarded message successfully");
-                      }
-                      setActiveMsgMenu(null);
-                    }}
-                    className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
-                  >
-                    <Forward className="h-4 w-4 text-primary" />
-                    <span>Forward</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForwardTargetMsg(m);
+                    setActiveMsgMenu(null);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Forward className="h-4 w-4 text-primary" />
+                  <span>Forward</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1872,6 +1912,48 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Forward Modal */}
+      {forwardTargetMsg && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="absolute inset-0" onClick={() => setForwardTargetMsg(null)} />
+          <div className="relative bg-card border border-border w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[70vh] overflow-hidden animate-in zoom-in-95 duration-200 z-10 text-foreground">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0 bg-card">
+              <h3 className="font-bold text-base">Forward message</h3>
+              <button type="button" onClick={() => setForwardTargetMsg(null)} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {convs.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground py-6">No active conversations found.</p>
+              ) : (
+                convs.map((c) => (
+                  <div key={c.conversationId} className="flex items-center justify-between gap-3 p-2 rounded-xl bg-secondary/30 border border-border/40 hover:bg-secondary/60 transition-colors animate-in slide-in-from-bottom-2 duration-150">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar name={c.username} url={c.avatar_url} size={36} />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm truncate">{c.username}</p>
+                        {c.credit > 0 && (
+                          <p className="text-[10px] text-emerald-500 font-semibold leading-none">Credit ${c.credit.toFixed(2)}</p>
+                        )}
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={() => executeForward(c)} 
+                      disabled={forwardingTargetId !== null} 
+                      size="sm" 
+                      className="rounded-full shrink-0"
+                    >
+                      {forwardingTargetId === c.conversationId ? "Sending..." : "Send"}
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
