@@ -15,6 +15,12 @@ import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import { toast } from "sonner";
 import { unsendMessagesServer } from "@/lib/messages.functions";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import {
+  getCachedProfile,
+  getCachedMessages,
+  setCachedProfile,
+  setCachedMessages,
+} from "@/lib/chat-cache";
 
 type CallRow = {
   id: string;
@@ -58,6 +64,8 @@ function ChatView() {
   const [friend, setFriend] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [calls, setCalls] = useState<CallRow[]>([]);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const friendDisplayName = friend
     ? (friend.first_name && friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.username)
     : "Friend";
@@ -84,34 +92,85 @@ function ChatView() {
 
   useEffect(() => {
     let mounted = true;
+    isInitialLoadRef.current = true;
+
     (async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user || !mounted) return;
-      setMeId(u.user.id);
+      const myId = u.user.id;
+      setMeId(myId);
 
+      // ── Step 1: Show cached data INSTANTLY (zero wait) ──────────────────
+      const cachedProfile = getCachedProfile(friendId);
+      const cachedMsgs = getCachedMessages(friendId, myId);
+      if (cachedProfile) setFriend(cachedProfile);
+      if (cachedMsgs) setMessages(cachedMsgs);
+
+      // ── Step 2: Fetch fresh data in background ───────────────────────────
+      const PAGE = 50;
       const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
         supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen").eq("id", friendId).maybeSingle(),
         supabase.from("messages").select("*")
-          .or(`and(sender_id.eq.${u.user.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${u.user.id})`)
-          .order("created_at", { ascending: true }).limit(500),
-        supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", u.user.id).maybeSingle(),
+          .or(`and(sender_id.eq.${myId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${myId})`)
+          .order("created_at", { ascending: false }).limit(PAGE + 1),
+        supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", myId).maybeSingle(),
         supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-          .or(`and(caller_id.eq.${u.user.id},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${u.user.id})`)
+          .or(`and(caller_id.eq.${myId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${myId})`)
           .eq("context", "friend")
           .order("created_at", { ascending: true }).limit(200),
       ]);
       if (!mounted) return;
+
       const profile = prof as Profile | null;
       if (profile && spamRow) profile.online = false;
-      setFriend(profile);
-      setMessages((msgs as Message[]) ?? []);
+      if (profile) { setFriend(profile); setCachedProfile(friendId, profile); }
+
+      // msgs came back newest-first; check if there are more
+      const rawMsgs = (msgs ?? []) as Message[];
+      const hasMore = rawMsgs.length > PAGE;
+      const pageMsgs = rawMsgs.slice(0, PAGE).reverse(); // back to oldest-first
+      setHasOlderMessages(hasMore);
+      setMessages(pageMsgs);
+      setCachedMessages(friendId, myId, pageMsgs);
+
       setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
 
       await supabase.from("messages").update({ seen: true, delivered: true } as any)
-        .eq("sender_id", friendId).eq("receiver_id", u.user.id).eq("seen", false);
+        .eq("sender_id", friendId).eq("receiver_id", myId).eq("seen", false);
     })();
     return () => { mounted = false; };
   }, [friendId]);
+
+  // Load 50 older messages above the current batch
+  async function loadOlderMessages() {
+    if (!meId || loadingOlder || !hasOlderMessages) return;
+    setLoadingOlder(true);
+    const oldest = messages[0]?.created_at;
+    const PAGE = 50;
+    const query = supabase
+      .from("messages")
+      .select("*")
+      .or(
+        `and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`
+      )
+      .order("created_at", { ascending: false })
+      .limit(PAGE + 1);
+    if (oldest) query.lt("created_at", oldest);
+    const { data } = await query;
+    const rows = (data ?? []) as Message[];
+    const hasMore = rows.length > PAGE;
+    const batch = rows.slice(0, PAGE).reverse();
+    // Preserve scroll position: remember height before adding messages
+    const el = scrollRef.current;
+    const prevHeight = el?.scrollHeight ?? 0;
+    setMessages((prev) => [...batch, ...prev]);
+    setHasOlderMessages(hasMore);
+    setLoadingOlder(false);
+    // After render, restore scroll so user stays at same position
+    requestAnimationFrame(() => {
+      if (el) el.scrollTop = el.scrollHeight - prevHeight;
+    });
+  }
 
   useEffect(() => {
     if (!meId) return;
@@ -700,6 +759,20 @@ function ChatView() {
       )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-2">
+        {/* Load older messages button */}
+        {hasOlderMessages && (
+          <div className="flex justify-center pb-2">
+            <button
+              type="button"
+              onClick={loadOlderMessages}
+              disabled={loadingOlder}
+              className="flex items-center gap-1.5 text-xs text-primary font-semibold bg-primary/10 hover:bg-primary/20 disabled:opacity-50 px-4 py-1.5 rounded-full transition-colors"
+            >
+              {loadingOlder ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChevronUp className="h-3 w-3" />}
+              {loadingOlder ? "Loading..." : "Load older messages"}
+            </button>
+          </div>
+        )}
         {parsedMessages.length === 0 && calls.length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-12">No messages yet. Say hi 👋</div>
         )}

@@ -10,6 +10,7 @@ import { useRole } from "@/hooks/useRole";
 import { toast } from "sonner";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 import { motion, AnimatePresence } from "framer-motion";
+import { prefetchConversation } from "@/lib/chat-cache";
 
 export const Route = createFileRoute("/_authenticated/chat")({
   head: () => ({ meta: [{ title: "Chats — JJ Messenger" }] }),
@@ -552,7 +553,13 @@ function ChatLayout() {
                     <Link
                       to="/chat/$friendId"
                       params={{ friendId: c.friendId }}
-                      onPointerDown={() => startTouch(c.friendId)}
+                      onPointerDown={() => {
+                        startTouch(c.friendId);
+                        if (meId) prefetchConversation(meId, c.friendId);
+                      }}
+                      onMouseEnter={() => {
+                        if (meId) prefetchConversation(meId, c.friendId);
+                      }}
                       onPointerUp={endTouch}
                       onPointerMove={endTouch}
                       onPointerLeave={endTouch}
