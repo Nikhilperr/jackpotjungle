@@ -1,5 +1,5 @@
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { unsendPageMessagesServer } from "@/lib/messages.functions";
 import { Avatar } from "@/components/messenger/Avatar";
+import { getCachedPageMessages, setCachedPageMessages } from "@/lib/chat-cache";
 
 type CallRow = {
   id: string;
@@ -55,6 +56,8 @@ function PageChatView() {
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const isNearBottomRef = useRef(true);
   const { startCall } = useCalls();
   const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set());
   const [showDetail, setShowDetail] = useState(false);
@@ -67,6 +70,7 @@ function PageChatView() {
   const [showDeleteBottomSheet, setShowDeleteBottomSheet] = useState(false);
   const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const pressTimerRef = useRef<any>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const jumpToMessage = (id: string) => {
     const el = msgRefs.current[id];
@@ -253,6 +257,53 @@ function PageChatView() {
     }
   }
 
+  const handleSelect = useCallback((id: string) => {
+    setSelectedMsgs(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleReact = useCallback((id: string, emoji: string) => {
+    reactToMessage(id, emoji);
+  }, [meId, convId]);
+
+  const handlePin = useCallback((id: string) => {
+    setConfirmPinTarget(id);
+  }, []);
+
+  const handleUnpin = useCallback((id: string) => {
+    unpinMessage(id);
+  }, [meId, convId]);
+
+  const handleReply = useCallback((m: any) => {
+    setReplyingTo(m);
+  }, []);
+
+  const handleCopy = useCallback((text: string) => {
+    navigator.clipboard.writeText(text || "");
+    toast.success("Copied to clipboard");
+  }, []);
+
+  const handleDelete = useCallback((id: string) => {
+    setSelectionMode(true);
+    setSelectedMsgs(new Set([id]));
+  }, []);
+
+  const handleForward = useCallback((m: any) => {
+    const note = prompt("Forward this message to:");
+    if (note) toast.success("Forwarded message successfully");
+  }, []);
+
+  const handlePreviewImage = useCallback((url: string) => {
+    setPreview(url);
+  }, []);
+
+  const handleMenuOpen = useCallback((id: string) => {
+    setActiveMsgMenu(id);
+  }, []);
+
   useEffect(() => {
     const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
     setDeletedForMeIds(new Set(list));
@@ -269,6 +320,10 @@ function PageChatView() {
       if (!u.user || !mounted) return;
       setMeId(u.user.id);
 
+      // ── Step 1: Show cached data INSTANTLY ──────────────────────────────
+      const cached = getCachedPageMessages("support-page");
+      if (cached) setMessages(cached);
+
       let { data: conv } = await supabase.from("page_conversations").select("id").eq("user_id", u.user.id).maybeSingle();
       if (!conv) {
         const ins = await supabase.from("page_conversations").insert({ user_id: u.user.id }).select("id").single();
@@ -277,10 +332,36 @@ function PageChatView() {
       if (!conv || !mounted) return;
       setConvId(conv.id);
 
-      const { data: msgs } = await supabase.from("page_messages")
-        .select("id, sender_id, from_page, content, image_url, audio_url, seen, created_at")
-        .eq("conversation_id", conv.id).order("created_at", { ascending: true });
-      if (mounted) setMessages((msgs as Msg[]) ?? []);
+      // ── Step 2: Fetch fresh data/delta in background ─────────────────────
+      const lastCachedMsg = cached && cached.length > 0 ? cached[cached.length - 1] : null;
+
+      if (lastCachedMsg) {
+        const { data: deltaMsgs } = await supabase.from("page_messages")
+          .select("id, sender_id, from_page, content, image_url, audio_url, seen, created_at")
+          .eq("conversation_id", conv.id)
+          .gt("created_at", lastCachedMsg.created_at)
+          .order("created_at", { ascending: true });
+        if (mounted) {
+          const delta = (deltaMsgs ?? []) as Msg[];
+          const combined = [...(cached || [])];
+          delta.forEach((m) => {
+            if (!combined.some((x) => x.id === m.id)) {
+              combined.push(m);
+            }
+          });
+          setMessages(combined);
+          setCachedPageMessages("support-page", combined);
+        }
+      } else {
+        const { data: msgs } = await supabase.from("page_messages")
+          .select("id, sender_id, from_page, content, image_url, audio_url, seen, created_at")
+          .eq("conversation_id", conv.id).order("created_at", { ascending: true });
+        if (mounted) {
+          const fresh = (msgs as Msg[]) ?? [];
+          setMessages(fresh);
+          setCachedPageMessages("support-page", fresh);
+        }
+      }
 
       // Ring the active page inbox first, instead of a random/offline admin.
       const { data: adminRows } = await supabase.from("user_roles")
@@ -359,9 +440,37 @@ function PageChatView() {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
       isInitialLoadRef.current = false;
     } else {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+      const lastMsg = messages[messages.length - 1];
+      const isMine = lastMsg && !lastMsg.from_page;
+      if (isMine || isNearBottomRef.current) {
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+        setShowScrollToBottom(false);
+      } else {
+        setShowScrollToBottom(true);
+      }
     }
   }, [messages, calls]);
+
+  useEffect(() => {
+    // Focus support text input on page mount
+    setTimeout(() => inputRef.current?.focus(), 100);
+  }, []);
+
+  useEffect(() => {
+    if (replyingTo) {
+      inputRef.current?.focus();
+    }
+  }, [replyingTo]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const isNear = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    isNearBottomRef.current = isNear;
+    if (isNear) {
+      setShowScrollToBottom(false);
+    }
+  };
 
   function addOptimistic(partial: Partial<Msg>): string {
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -538,7 +647,22 @@ function PageChatView() {
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
+        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto smooth-scroll px-4 py-6 space-y-1 relative">
+          {/* Floating scroll bottom indicator */}
+          {showScrollToBottom && (
+            <button
+              type="button"
+              onClick={() => {
+                scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+                setShowScrollToBottom(false);
+              }}
+              className="absolute bottom-20 right-6 bg-primary text-primary-foreground p-3 rounded-full shadow-lg hover:opacity-90 flex items-center gap-1.5 text-xs font-semibold animate-bounce z-40"
+            >
+              <ChevronDown className="h-4 w-4" />
+              <span>New messages</span>
+            </button>
+          )}
+
           {messages.length === 0 && calls.length === 0 && (
             <div className="text-center text-sm text-muted-foreground py-12">
               Welcome to Jackpot Jungle 👋 Send us a message — an admin will reply soon.
@@ -560,8 +684,10 @@ function PageChatView() {
                 return (
                   <div key={`call-${c.id}`}>
                     {showTime && (
-                      <div className="text-center text-xs text-muted-foreground py-2">
-                        {format(new Date(c.created_at), "MMM d, h:mm a")}
+                      <div className="flex justify-center py-3 select-none">
+                        <span className="premium-date-header">
+                          {format(new Date(c.created_at), "MMM d, h:mm a")}
+                        </span>
                       </div>
                     )}
                     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
@@ -574,157 +700,29 @@ function PageChatView() {
               const mine = !m.from_page;
               const nextIt = items[i + 1];
               const isLastMine = mine && (!nextIt || nextIt.kind !== "msg" || nextIt.msg.from_page);
-              const reactionKeys = Object.keys(m.reactions || {}).filter(k => m.reactions[k].length > 0);
-
-              const isSelected = selectedMsgs.has(m.id);
-              const toggleSelect = () => {
-                setSelectedMsgs(prev => {
-                  const next = new Set(prev);
-                  if (next.has(m.id)) next.delete(m.id);
-                  else next.add(m.id);
-                  return next;
-                });
-              };
-
-              const startPress = () => {
-                if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
-                pressTimerRef.current = setTimeout(() => {
-                  setActiveMsgMenu(m.id);
-                }, 600);
-              };
-              const cancelPress = () => {
-                if (pressTimerRef.current) {
-                  clearTimeout(pressTimerRef.current);
-                  pressTimerRef.current = null;
-                }
-              };
-
-              if (m.isSystemPin) {
-                return (
-                  <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
-                    <Pin className="h-3 w-3 rotate-45 text-muted-foreground/60 fill-muted-foreground/30" />
-                    {mine ? "You pinned a message" : "Jackpot Jungle pinned a message"}
-                  </div>
-                );
-              }
-
-              if (m.isSystemUnpin) {
-                return (
-                  <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
-                    <Pin className="h-3 w-3 rotate-45 text-muted-foreground/40" />
-                    {mine ? "You unpinned a message" : "Jackpot Jungle unpinned a message"}
-                  </div>
-                );
-              }
-
-              if (m.isUnsent) {
-                return (
-                  <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} py-1`}>
-                    <div className="max-w-[240px] px-4 py-2 rounded-2xl border border-border bg-secondary/10 text-muted-foreground/50 text-[13px] italic select-none">
-                      {mine ? "You unsent a message" : "This message was unsent"}
-                    </div>
-                  </div>
-                );
-              }
 
               return (
-                <div 
+                <PageMessageItem
                   key={m.id}
-                  ref={(el) => { msgRefs.current[m.id] = el; }}
-                  className={`group/msg py-1 flex items-center gap-3 transition-colors ${selectionMode ? "hover:bg-secondary/10 cursor-pointer" : ""}`}
-                  onClick={() => {
-                    if (selectionMode) {
-                      toggleSelect();
-                    }
-                  }}
-                >
-                  {selectionMode && (
-                    <div className="pl-3 shrink-0 flex items-center justify-center">
-                      <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
-                        {isSelected && (
-                          <svg className="h-3 w-3 fill-current stroke-current" viewBox="0 0 24 24" strokeWidth="3">
-                            <polyline points="20 6 9 17 4 12" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex-1 min-w-0">
-                    {showTime && (
-                      <div className="text-center text-xs text-muted-foreground py-2 select-none">
-                        {format(new Date(m.created_at), "MMM d, h:mm a")}
-                      </div>
-                    )}
-                    
-                    {/* Reply To Preview */}
-                    {m.replyTo && (
-                      <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
-                        <div 
-                          onClick={(e) => { e.stopPropagation(); jumpToMessage(m.replyTo!.id); }}
-                          className="max-w-[70%] flex items-center gap-1.5 px-3 py-1 bg-secondary/40 border border-border/40 rounded-xl text-xs text-muted-foreground select-none cursor-pointer hover:bg-secondary/80 transition-colors"
-                        >
-                          <Reply className="h-3 w-3 shrink-0" />
-                          <span className="font-semibold text-primary">{m.replyTo.senderName}</span>
-                          <span className="truncate max-w-[120px]">{m.replyTo.text}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-                      <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                        <div
-                          onPointerDown={selectionMode ? undefined : startPress}
-                          onPointerUp={selectionMode ? undefined : cancelPress}
-                          onPointerMove={selectionMode ? undefined : cancelPress}
-                          onPointerLeave={selectionMode ? undefined : cancelPress}
-                          onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) setActiveMsgMenu(m.id); }}
-                          className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
-                        >
-                          {m.image_url ? (
-                            <button onClick={() => setPreview(m.image_url)} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block">
-                              <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
-                            </button>
-                          ) : m.audio_url ? (
-                            <div className="block">
-                              <VoiceMessage src={m.audio_url} mine={mine} />
-                            </div>
-                          ) : (
-                            <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                              <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Reactions */}
-                      {reactionKeys.length > 0 && (
-                        <div className={`flex gap-1 mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
-                          {reactionKeys.map(emoji => (
-                            <div key={emoji} className="flex items-center gap-1 bg-secondary border border-border px-1.5 py-0.5 rounded-full text-xs shadow-sm select-none">
-                              <span>{emoji}</span>
-                              <span className="text-[10px] text-muted-foreground font-semibold">{m.reactions[emoji].length}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {mine && (isLastMine || m.failed) && (
-                      <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
-                        {m.failed ? (
-                          <span className="inline-flex items-center gap-1 text-destructive"><span className="h-2 w-2 rounded-full bg-destructive shrink-0" />Not delivered</span>
-                        ) : m.id.startsWith("temp-") ? (
-                          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
-                        ) : m.seen ? (
-                          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />Seen</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Delivered</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  m={m}
+                  meId={meId}
+                  isLastMine={isLastMine}
+                  showTime={showTime}
+                  selectionMode={selectionMode}
+                  isSelected={selectedMsgs.has(m.id)}
+                  msgRefs={msgRefs}
+                  onSelect={handleSelect}
+                  onReact={handleReact}
+                  onPin={handlePin}
+                  onUnpin={handleUnpin}
+                  onReply={handleReply}
+                  onCopy={handleCopy}
+                  onDelete={handleDelete}
+                  onForward={handleForward}
+                  onPreviewImage={handlePreviewImage}
+                  onMenuOpen={handleMenuOpen}
+                  jumpToMessage={jumpToMessage}
+                />
               );
             });
           })()}
@@ -732,7 +730,7 @@ function PageChatView() {
 
         {/* Replying banner */}
         {replyingTo && (
-          <div className="px-4 py-2 bg-secondary/80 border-t border-border flex items-center justify-between text-xs z-10 animate-in slide-in-from-bottom-2 duration-150 select-none">
+          <div className="px-4 py-2 bg-secondary/80 border-t border-border flex items-center justify-between text-xs z-10 reply-preview-enter animate-in slide-in-from-bottom-2 duration-150 select-none">
             <div className="truncate flex-1">
               <span className="font-bold text-primary block text-[10px] uppercase">Replying to {replyingTo.from_page ? "Jackpot Jungle" : "yourself"}</span>
               <span className="truncate block italic">{replyingTo.content || "Media / Attachment"}</span>
@@ -762,9 +760,9 @@ function PageChatView() {
             </button>
             <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
             <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
-            <Input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Jackpot Jungle"
+            <Input ref={inputRef} autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Jackpot Jungle"
               className="rounded-full bg-secondary border-transparent" />
-            <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0">
+            <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0 send-btn-active">
               <Send className="h-4 w-4" />
             </Button>
           </form>
@@ -794,7 +792,7 @@ function PageChatView() {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setActiveMsgMenu(null)} />
-            <div className="relative w-full max-w-[280px] flex flex-col gap-3 animate-in zoom-in-95 duration-200 z-10">
+            <div className="relative w-full max-w-[280px] flex flex-col gap-3 context-menu-pop z-10">
               {/* Reactions Bar */}
               <div className="bg-card border border-border/80 rounded-full py-2 px-3 shadow-2xl flex items-center justify-between gap-1">
                 {["❤️", "😂", "😮", "😢", "😡", "👍"].map(emoji => (
@@ -805,7 +803,7 @@ function PageChatView() {
                       reactToMessage(m.id, emoji);
                       setActiveMsgMenu(null);
                     }}
-                    className="text-2xl hover:scale-125 active:scale-95 transition-transform duration-150"
+                    className="text-2xl reaction-emoji-btn"
                   >
                     {emoji}
                   </button>
@@ -1123,3 +1121,192 @@ export function ConversationDetailPanel({ username, avatar, isPage = false, pinn
     </div>
   );
 }
+
+interface PageMessageItemProps {
+  m: any;
+  meId: string | null;
+  isLastMine: boolean;
+  showTime: boolean;
+  selectionMode: boolean;
+  isSelected: boolean;
+  msgRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
+  onSelect: (id: string) => void;
+  onReact: (id: string, emoji: string) => void;
+  onPin: (id: string) => void;
+  onUnpin: (id: string) => void;
+  onReply: (m: any) => void;
+  onCopy: (text: string) => void;
+  onDelete: (id: string) => void;
+  onForward: (m: any) => void;
+  onPreviewImage: (url: string) => void;
+  onMenuOpen: (id: string) => void;
+  jumpToMessage: (id: string) => void;
+}
+
+const PageMessageItem = React.memo(function PageMessageItem({
+  m,
+  meId,
+  isLastMine,
+  showTime,
+  selectionMode,
+  isSelected,
+  msgRefs,
+  onSelect,
+  onReact,
+  onPin,
+  onUnpin,
+  onReply,
+  onCopy,
+  onDelete,
+  onForward,
+  onPreviewImage,
+  onMenuOpen,
+  jumpToMessage,
+}: PageMessageItemProps) {
+  const mine = !m.from_page;
+  const reactionKeys = Object.keys(m.reactions || {}).filter(k => m.reactions[k].length > 0);
+
+  const pressTimerRef = useRef<any>(null);
+  const startPress = () => {
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = setTimeout(() => {
+      onMenuOpen(m.id);
+    }, 600);
+  };
+  const cancelPress = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  if (m.isSystemPin) {
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
+        <Pin className="h-3 w-3 rotate-45 text-muted-foreground/60 fill-muted-foreground/30" />
+        {mine ? "You pinned a message" : "Jackpot Jungle pinned a message"}
+      </div>
+    );
+  }
+
+  if (m.isSystemUnpin) {
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
+        <Pin className="h-3 w-3 rotate-45 text-muted-foreground/40" />
+        {mine ? "You unpinned a message" : "Jackpot Jungle unpinned a message"}
+      </div>
+    );
+  }
+
+  if (m.isUnsent) {
+    return (
+      <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} py-1`}>
+        <div className="max-w-[240px] px-4 py-2 rounded-2xl border border-border bg-secondary/10 text-muted-foreground/50 text-[13px] italic select-none">
+          {mine ? "You unsent a message" : "This message was unsent"}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      ref={(el) => { msgRefs.current[m.id] = el; }}
+      className={`group/msg py-1 flex items-center gap-3 transition-colors ${selectionMode ? "hover:bg-secondary/10 cursor-pointer" : ""}`}
+      onClick={() => {
+        if (selectionMode) {
+          onSelect(m.id);
+        }
+      }}
+    >
+      {selectionMode && (
+        <div className="pl-3 shrink-0 flex items-center justify-center">
+          <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
+            {isSelected && (
+              <svg className="h-3 w-3 fill-current stroke-current" viewBox="0 0 24 24" strokeWidth="3">
+                <polyline points="20 6 9 17 4 12" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 min-w-0">
+        {showTime && (
+          <div className="flex justify-center py-3 select-none">
+            <span className="premium-date-header">
+              {format(new Date(m.created_at), "MMM d, h:mm a")}
+            </span>
+          </div>
+        )}
+        
+        {/* Reply To Preview */}
+        {m.replyTo && (
+          <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
+            <div 
+              onClick={(e) => { e.stopPropagation(); jumpToMessage(m.replyTo!.id); }}
+              className="max-w-[70%] flex items-center gap-1.5 px-3 py-1 bg-secondary/40 border border-border/40 rounded-xl text-xs text-muted-foreground select-none cursor-pointer hover:bg-secondary/80 transition-colors"
+            >
+              <Reply className="h-3 w-3 shrink-0" />
+              <span className="font-semibold text-primary">{m.replyTo.senderName}</span>
+              <span className="truncate max-w-[120px]">{m.replyTo.text}</span>
+            </div>
+          </div>
+        )}
+
+        <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+          <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+            <div
+              onPointerDown={selectionMode ? undefined : startPress}
+              onPointerUp={selectionMode ? undefined : cancelPress}
+              onPointerMove={selectionMode ? undefined : cancelPress}
+              onPointerLeave={selectionMode ? undefined : cancelPress}
+              onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) onMenuOpen(m.id); }}
+              className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
+            >
+              {m.image_url ? (
+                <button onClick={() => onPreviewImage(m.image_url)} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block">
+                  <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
+                </button>
+              ) : m.audio_url ? (
+                <div className="block">
+                  <VoiceMessage src={m.audio_url} mine={mine} />
+                </div>
+              ) : (
+                <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
+                  <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Reactions */}
+          {reactionKeys.length > 0 && (
+            <div className={`flex gap-1 mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
+              {reactionKeys.map(emoji => (
+                <div key={emoji} className="flex items-center gap-1 bg-secondary border border-border px-1.5 py-0.5 rounded-full text-xs shadow-sm select-none">
+                  <span>{emoji}</span>
+                  <span className="text-[10px] text-muted-foreground font-semibold">{m.reactions[emoji].length}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {mine && (isLastMine || m.failed) && (
+          <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
+            {m.failed ? (
+              <span className="inline-flex items-center gap-1 text-destructive"><span className="h-2 w-2 rounded-full bg-destructive shrink-0" />Not delivered</span>
+            ) : m.id.startsWith("temp-") ? (
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
+            ) : m.seen ? (
+              <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />Seen</span>
+            ) : (
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Delivered</span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+

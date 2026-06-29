@@ -29,9 +29,22 @@ export type CachedMessage = {
   failed?: boolean;
 };
 
+export type CachedPageMessage = {
+  id: string;
+  sender_id: string;
+  from_page: boolean;
+  content: string | null;
+  image_url: string | null;
+  audio_url: string | null;
+  seen: boolean;
+  created_at: string;
+  failed?: boolean;
+};
+
 // ─── Stores ──────────────────────────────────────────────────────────────────
 const profileCache = new Map<string, CachedProfile>();
 const messageCache = new Map<string, { messages: CachedMessage[]; loadedAt: number }>();
+const pageMessageCache = new Map<string, { messages: CachedPageMessage[]; loadedAt: number }>();
 const inflight = new Set<string>(); // prevent duplicate in-flight requests
 
 const MESSAGE_CACHE_TTL_MS = 30_000; // 30 s — stale after this, will refresh silently
@@ -63,6 +76,22 @@ export function setCachedMessages(meId: string, friendId: string, messages: Cach
 
 export function invalidateMessageCache(meId: string, friendId: string) {
   messageCache.delete(msgKey(meId, friendId));
+}
+
+// ─── Page Message cache ───────────────────────────────────────────────────────
+export function getCachedPageMessages(conversationId: string): CachedPageMessage[] | null {
+  const entry = pageMessageCache.get(conversationId);
+  if (!entry) return null;
+  if (Date.now() - entry.loadedAt > MESSAGE_CACHE_TTL_MS) return null; // expired
+  return entry.messages;
+}
+
+export function setCachedPageMessages(conversationId: string, messages: CachedPageMessage[]) {
+  pageMessageCache.set(conversationId, { messages, loadedAt: Date.now() });
+}
+
+export function invalidatePageMessageCache(conversationId: string) {
+  pageMessageCache.delete(conversationId);
 }
 
 // ─── Prefetch ─────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRole, type AppRole } from "@/hooks/useRole";
 import { useAuth } from "@/hooks/useAuth";
@@ -58,6 +58,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { toast } from "sonner";
 import { unsendPageMessagesServer } from "@/lib/messages.functions";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
+import { getCachedPageMessages, setCachedPageMessages } from "@/lib/chat-cache";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -758,6 +759,9 @@ type CallRow = { id: string; caller_id: string; callee_id: string; call_type: "v
 function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId: string; conv: ConvRow; onBack: () => void; onOpenDetail: () => void; onToggleSpam: () => void }) {
   const { startCall } = useCalls();
   const [messages, setMessages] = useState<PageMsg[]>([]);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const isNearBottomRef = useRef(true);
+  const isInitialLoadRef = useRef(true);
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -851,22 +855,61 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
   }
 
   async function load() {
-    const [{ data }, { data: callRows }] = await Promise.all([
-      supabase
-        .from("page_messages")
-        .select("id, sender_id, content, image_url, audio_url, created_at, seen, from_page")
-        .eq("conversation_id", conv.conversationId)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("calls")
-        .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-        .eq("context", "page")
-        .eq("page_conversation_id", conv.conversationId)
-        .order("created_at", { ascending: true })
-        .limit(200),
-    ]);
-    setMessages((data as PageMsg[]) ?? []);
-    setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
+    const cacheKey = `admin-page-${conv.conversationId}`;
+    const cached = getCachedPageMessages(cacheKey);
+    if (cached && messages.length === 0) {
+      setMessages(cached);
+    }
+
+    const lastCachedMsg = cached && cached.length > 0 ? cached[cached.length - 1] : null;
+
+    if (lastCachedMsg) {
+      const [{ data: deltaMsgs }, { data: callRows }] = await Promise.all([
+        supabase
+          .from("page_messages")
+          .select("id, sender_id, content, image_url, audio_url, created_at, seen, from_page")
+          .eq("conversation_id", conv.conversationId)
+          .gt("created_at", lastCachedMsg.created_at)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("calls")
+          .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+          .eq("context", "page")
+          .eq("page_conversation_id", conv.conversationId)
+          .order("created_at", { ascending: true })
+          .limit(200),
+      ]);
+      const delta = (deltaMsgs ?? []) as PageMsg[];
+      const combined = [...(cached || [])];
+      delta.forEach((m) => {
+        if (!combined.some((x) => x.id === m.id)) {
+          combined.push(m);
+        }
+      });
+      setMessages(combined);
+      setCachedPageMessages(cacheKey, combined);
+      setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
+    } else {
+      const [{ data }, { data: callRows }] = await Promise.all([
+        supabase
+          .from("page_messages")
+          .select("id, sender_id, content, image_url, audio_url, created_at, seen, from_page")
+          .eq("conversation_id", conv.conversationId)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("calls")
+          .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+          .eq("context", "page")
+          .eq("page_conversation_id", conv.conversationId)
+          .order("created_at", { ascending: true })
+          .limit(200),
+      ]);
+      const fresh = (data as PageMsg[]) ?? [];
+      setMessages(fresh);
+      setCachedPageMessages(cacheKey, fresh);
+      setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
+    }
+
     await supabase.from("page_messages").update({ seen: true })
       .eq("conversation_id", conv.conversationId).eq("from_page", false).eq("seen", false);
   }
@@ -887,7 +930,9 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
             (x.audio_url ?? null) === (m.audio_url ?? null)
           );
           if (idx >= 0) { const copy = prev.slice(); copy[idx] = m; return copy; }
-          return [...prev, m];
+          const next = [...prev, m];
+          setCachedPageMessages(`admin-page-${conv.conversationId}`, next);
+          return next;
         });
         if (!m.from_page) {
           supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
@@ -895,11 +940,19 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${conv.conversationId}` }, (payload) => {
         const m = payload.new as PageMsg;
-        setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
+        setMessages((prev) => {
+          const next = prev.map((x) => (x.id === m.id ? m : x));
+          setCachedPageMessages(`admin-page-${conv.conversationId}`, next);
+          return next;
+        });
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${conv.conversationId}` }, (payload) => {
         const m = payload.old as PageMsg;
-        setMessages((prev) => prev.filter((x) => x.id !== m.id));
+        setMessages((prev) => {
+          const next = prev.filter((x) => x.id !== m.id);
+          setCachedPageMessages(`admin-page-${conv.conversationId}`, next);
+          return next;
+        });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `page_conversation_id=eq.${conv.conversationId}` }, (payload) => {
         const row = (payload.new ?? payload.old) as CallRow;
@@ -915,12 +968,92 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conv.conversationId]);
 
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages, calls]);
+  useEffect(() => {
+    if (messages.length > 0 && isInitialLoadRef.current) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+      isInitialLoadRef.current = false;
+    } else {
+      const lastMsg = messages[messages.length - 1];
+      const isMine = lastMsg && lastMsg.from_page;
+      if (isMine || isNearBottomRef.current) {
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+        setShowScrollToBottom(false);
+      } else {
+        setShowScrollToBottom(true);
+      }
+    }
+  }, [messages, calls]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const isNear = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    isNearBottomRef.current = isNear;
+    if (isNear) {
+      setShowScrollToBottom(false);
+    }
+  };
+
+  const handleSelect = useCallback((id: string) => {
+    setSelectedMsgs(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handlePin = useCallback((id: string) => {
+    setConfirmPinTarget(id);
+  }, []);
+
+  const handleUnpin = useCallback((id: string) => {
+    if (!meId) return;
+    supabase.from("page_messages").insert({
+      conversation_id: conv.conversationId,
+      sender_id: meId,
+      from_page: true,
+      content: `[system:unpin:${id}]`,
+      seen: true,
+    } as any).then();
+  }, [meId, conv.conversationId]);
+
+  const handleReply = useCallback((m: any) => {
+    setReplyingTo(m);
+  }, []);
+
+  const handleCopy = useCallback((text: string) => {
+    navigator.clipboard.writeText(text || "");
+    toast.success("Copied to clipboard");
+  }, []);
+
+  const handleDelete = useCallback((id: string) => {
+    setSelectionMode(true);
+    setSelectedMsgs(new Set([id]));
+  }, []);
+
+  const handleForward = useCallback((m: any) => {
+    const note = prompt("Forward this message to:");
+    if (note) toast.success("Forwarded message successfully");
+  }, []);
+
+  const handlePreviewImage = useCallback((url: string) => {
+    setPreview(url);
+  }, []);
+
+  const handleMenuOpen = useCallback((id: string) => {
+    setActiveMsgMenu(id);
+  }, []);
 
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [confirmPinTarget, setConfirmPinTarget] = useState<string | null>(null);
   const [activeMsgMenu, setActiveMsgMenu] = useState<string | null>(null);
   const [showAllPins, setShowAllPins] = useState(false);
+
+  useEffect(() => {
+    if (replyingTo) {
+      inputRef.current?.focus();
+    }
+  }, [replyingTo]);
 
   const parsedMessages = useMemo(() => {
     const visible: Array<PageMsg & {
@@ -1320,7 +1453,22 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto smooth-scroll px-5 py-4 space-y-2 relative">
+        {/* Floating scroll bottom indicator */}
+        {showScrollToBottom && (
+          <button
+            type="button"
+            onClick={() => {
+              scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+              setShowScrollToBottom(false);
+            }}
+            className="absolute bottom-20 right-6 bg-primary text-primary-foreground p-3 rounded-full shadow-lg hover:opacity-90 flex items-center gap-1.5 text-xs font-semibold animate-bounce z-40"
+          >
+            <ChevronDown className="h-4 w-4" />
+            <span>New messages</span>
+          </button>
+        )}
+
         {parsedMessages.length === 0 && calls.length === 0 ? (
           <p className="text-center text-xs text-muted-foreground py-8">No messages yet.</p>
         ) : (() => {
@@ -1340,8 +1488,10 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
               return (
                 <div key={`call-${c.id}`}>
                   {showTime && (
-                    <div className="text-center text-[11px] text-muted-foreground py-2 select-none">
-                      {format(new Date(c.created_at), "MMM d, h:mm a")}
+                    <div className="flex justify-center py-3 select-none">
+                      <span className="premium-date-header">
+                        {format(new Date(c.created_at), "MMM d, h:mm a")}
+                      </span>
                     </div>
                   )}
                   <div className={`flex ${mine ? "justify-end" : "justify-start"} p-1`}>
@@ -1360,174 +1510,39 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
             const mine = m.from_page;
             const nextIt = items[i + 1];
             const isLastMine = mine && (!nextIt || nextIt.kind !== "msg" || !nextIt.msg.from_page);
-            
-            const startPress = () => {
-              if (pressTimer.current) clearTimeout(pressTimer.current);
-              pressTimer.current = setTimeout(() => {
-                setActiveMsgMenu(m.id);
-              }, 600);
-            };
-            const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
-
-            const reactionKeys = Object.keys(m.reactions).filter(k => m.reactions[k].length > 0);
-            const isMatch = matchIds.includes(m.id);
-            const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
-            const isSelected = selectedMsgs.has(m.id);
-            const toggleSelect = () => {
-              const next = new Set(selectedMsgs);
-              if (next.has(m.id)) {
-                next.delete(m.id);
-              } else {
-                next.add(m.id);
-              }
-              setSelectedMsgs(next);
-            };
-
-            if (m.isSystemPin) {
-              return (
-                <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
-                  <Pin className="h-3 w-3 rotate-45 text-muted-foreground/60 fill-muted-foreground/30" />
-                  {mine ? "You pinned a message" : `${conv.username || "User"} pinned a message`}
-                </div>
-              );
-            }
-
-            if (m.isSystemUnpin) {
-              return (
-                <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
-                  <Pin className="h-3 w-3 rotate-45 text-muted-foreground/40" />
-                  {mine ? "You unpinned a message" : `${conv.username || "User"} unpinned a message`}
-                </div>
-              );
-            }
-
-            if (m.isUnsent) {
-              return (
-                <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} py-1`}>
-                  <div className="max-w-[240px] px-4 py-2 rounded-2xl border border-border bg-secondary/10 text-muted-foreground/50 text-[13px] italic select-none">
-                    {mine ? "You unsent a message" : "This message was unsent"}
-                  </div>
-                </div>
-              );
-            }
 
             return (
-              <div 
-                key={m.id} 
-                ref={(el) => { msgRefs.current[m.id] = el; }} 
-                className={`group/msg py-1 flex items-center gap-3 transition-colors ${selectionMode ? "hover:bg-secondary/10 cursor-pointer" : ""}`}
-                onClick={() => {
-                  if (selectionMode) {
-                    toggleSelect();
-                  }
-                }}
-              >
-                {selectionMode && (
-                  <div className="pl-3 shrink-0 flex items-center justify-center">
-                    <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
-                      {isSelected && (
-                        <svg className="h-3 w-3 fill-current stroke-current" viewBox="0 0 24 24" strokeWidth="3">
-                          <polyline points="20 6 9 17 4 12" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-                <div className="flex-1 min-w-0">
-                  {showTime && (
-                    <div className="text-center text-[11px] text-muted-foreground py-2 select-none">
-                      {format(new Date(m.created_at), "MMM d, h:mm a")}
-                    </div>
-                  )}
-                  
-                  {/* Reply To Preview */}
-                  {m.replyTo && (
-                    <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
-                      <div 
-                        onClick={() => m.replyTo && scrollToMessage(m.replyTo.id)}
-                        className="max-w-[60%] text-[10px] bg-secondary/80 hover:bg-secondary border border-border/60 rounded-2xl px-3 py-1 text-muted-foreground truncate cursor-pointer transition-colors"
-                      >
-                        <span className="font-bold text-primary block text-[8px] uppercase tracking-wider">Replying to {m.replyTo.senderName}</span>
-                        <span className="italic truncate block">{m.replyTo.text}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                    <div 
-                      onPointerDown={selectionMode ? undefined : startPress}
-                      onPointerUp={selectionMode ? undefined : cancelPress}
-                      onPointerMove={selectionMode ? undefined : cancelPress}
-                      onPointerLeave={selectionMode ? undefined : cancelPress}
-                      onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) setActiveMsgMenu(m.id); }}
-                      className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
-                    >
-                      {m.image_url ? (
-                        <button onClick={() => setPreview(m.image_url)} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none">
-                          <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
-                        </button>
-                      ) : m.audio_url ? (
-                        <div className="block"><VoiceMessage src={m.audio_url} mine={mine} /></div>
-                      ) : (
-                        <div className={`max-w-[240px] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
-                          <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
-                            {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Reactions Badge */}
-                  {reactionKeys.length > 0 && (
-                    <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
-                      <div className="inline-flex items-center gap-1 bg-secondary border border-border/80 px-2 py-0.5 rounded-full shadow-sm text-xs leading-none">
-                        {reactionKeys.map(k => (
-                          <span key={k} title={m.reactions[k].join(", ")}>{k}</span>
-                        ))}
-                        {reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0) > 1 && (
-                          <span className="text-[9px] font-bold text-muted-foreground">{reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0)}</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Pin Badge */}
-                  {m.isPinned && (
-                    <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
-                      <span className="text-[9px] text-muted-foreground flex items-center gap-1">
-                        <Pin className="h-3 w-3 rotate-45 text-primary fill-primary shrink-0" />
-                        Pinned
-                      </span>
-                    </div>
-                  )}
-
-                  {mine && (isLastMine || m.failed) && (
-                    <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
-                      {m.failed ? (
-                        <span className="inline-flex items-center gap-1 text-destructive"><span className="h-2 w-2 rounded-full bg-destructive shrink-0" />Not delivered</span>
-                      ) : m.id.startsWith("temp-") ? (
-                        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
-                      ) : m.seen ? (
-                        <span className="inline-flex items-center gap-1">
-                          {conv.avatar_url ? <img src={conv.avatar_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border" /> : <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />}
-                          Seen
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Delivered</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <AdminConversationMessageItem
+                key={m.id}
+                m={m}
+                meId={meId}
+                conv={conv}
+                isLastMine={isLastMine}
+                showTime={showTime}
+                selectionMode={selectionMode}
+                isSelected={selectedMsgs.has(m.id)}
+                msgRefs={msgRefs}
+                onSelect={handleSelect}
+                onPin={handlePin}
+                onUnpin={handleUnpin}
+                onReply={handleReply}
+                onCopy={handleCopy}
+                onDelete={handleDelete}
+                onForward={handleForward}
+                onPreviewImage={handlePreviewImage}
+                onMenuOpen={handleMenuOpen}
+                searchQuery={searchQuery}
+                highlight={highlight}
+                matchIds={matchIds}
+                activeMatch={activeMatch}
+              />
             );
           });
         })()}
       </div>
 
       {replyingTo && (
-        <div className="px-4 py-2 border-t border-border bg-secondary/30 flex items-center justify-between text-xs text-muted-foreground animate-in slide-in-from-bottom-2 duration-200">
+        <div className="px-4 py-2 border-t border-border bg-secondary/30 flex items-center justify-between text-xs text-muted-foreground reply-preview-enter animate-in slide-in-from-bottom-2 duration-200">
           <div className="truncate flex-1">
             <span className="font-bold text-primary block text-[10px] uppercase">Replying to {replyingTo.from_page ? "yourself" : (conv?.username || "User")}</span>
             <span className="truncate block italic">{replyingTo.content || "Media / Attachment"}</span>
@@ -1592,7 +1607,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
               else if (e.key === "Escape") { setSuggestIdx(0); }
             }}
             className="rounded-full bg-secondary border-transparent h-11" />
-          <Button type="submit" size="icon" disabled={!text.trim()} className="rounded-full h-11 w-11 shrink-0">
+          <Button type="submit" size="icon" disabled={!text.trim()} className="rounded-full h-11 w-11 shrink-0 send-btn-active">
             <Send className="h-4 w-4" />
           </Button>
         </form>
@@ -1615,7 +1630,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setActiveMsgMenu(null)} />
-            <div className="relative w-full max-w-[280px] flex flex-col gap-3 animate-in zoom-in-95 duration-200 z-10">
+            <div className="relative w-full max-w-[280px] flex flex-col gap-3 context-menu-pop z-10">
               {/* Reactions Bar */}
               <div className="bg-card border border-border/80 rounded-full py-2 px-3 shadow-2xl flex items-center justify-between gap-1">
                 {["❤️", "😂", "😮", "😢", "😡", "👍"].map(emoji => (
@@ -1626,7 +1641,7 @@ function Conversation({ meId, conv, onBack, onOpenDetail, onToggleSpam }: { meId
                       reactToMessage(m.id, emoji);
                       setActiveMsgMenu(null);
                     }}
-                    className="text-2xl hover:scale-125 active:scale-95 transition-transform duration-150"
+                    className="text-2xl reaction-emoji-btn"
                   >
                     {emoji}
                   </button>
@@ -2076,3 +2091,212 @@ function AddAdminDialog({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+
+interface AdminConversationMessageItemProps {
+  m: any;
+  meId: string;
+  conv: ConvRow;
+  isLastMine: boolean;
+  showTime: boolean;
+  selectionMode: boolean;
+  isSelected: boolean;
+  msgRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
+  onSelect: (id: string) => void;
+  onPin: (id: string) => void;
+  onUnpin: (id: string) => void;
+  onReply: (m: any) => void;
+  onCopy: (text: string) => void;
+  onDelete: (id: string) => void;
+  onForward: (m: any) => void;
+  onPreviewImage: (url: string) => void;
+  onMenuOpen: (id: string) => void;
+  searchQuery: string;
+  highlight: (text: string, query: string) => React.ReactNode;
+  matchIds: string[];
+  activeMatch: number;
+}
+
+const AdminConversationMessageItem = React.memo(function AdminConversationMessageItem({
+  m,
+  meId,
+  conv,
+  isLastMine,
+  showTime,
+  selectionMode,
+  isSelected,
+  msgRefs,
+  onSelect,
+  onPin,
+  onUnpin,
+  onReply,
+  onCopy,
+  onDelete,
+  onForward,
+  onPreviewImage,
+  onMenuOpen,
+  searchQuery,
+  highlight,
+  matchIds,
+  activeMatch,
+}: AdminConversationMessageItemProps) {
+  const mine = m.from_page;
+  const reactionKeys = Object.keys(m.reactions).filter(k => m.reactions[k].length > 0);
+  const isMatch = matchIds.includes(m.id);
+  const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
+
+  const pressTimerRef = useRef<any>(null);
+  const startPress = () => {
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = setTimeout(() => {
+      onMenuOpen(m.id);
+    }, 600);
+  };
+  const cancelPress = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  if (m.isSystemPin) {
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
+        <Pin className="h-3 w-3 rotate-45 text-muted-foreground/60 fill-muted-foreground/30" />
+        {mine ? "You pinned a message" : `${conv.username || "User"} pinned a message`}
+      </div>
+    );
+  }
+
+  if (m.isSystemUnpin) {
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic flex items-center justify-center gap-1">
+        <Pin className="h-3 w-3 rotate-45 text-muted-foreground/40" />
+        {mine ? "You unpinned a message" : `${conv.username || "User"} unpinned a message`}
+      </div>
+    );
+  }
+
+  if (m.isUnsent) {
+    return (
+      <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} py-1`}>
+        <div className="max-w-[240px] px-4 py-2 rounded-2xl border border-border bg-secondary/10 text-muted-foreground/50 text-[13px] italic select-none">
+          {mine ? "You unsent a message" : "This message was unsent"}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      ref={(el) => { msgRefs.current[m.id] = el; }} 
+      className={`group/msg py-1 flex items-center gap-3 transition-colors ${selectionMode ? "hover:bg-secondary/10 cursor-pointer" : ""}`}
+      onClick={() => {
+        if (selectionMode) {
+          onSelect(m.id);
+        }
+      }}
+    >
+      {selectionMode && (
+        <div className="pl-3 shrink-0 flex items-center justify-center">
+          <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
+            {isSelected && (
+              <svg className="h-3 w-3 fill-current stroke-current" viewBox="0 0 24 24" strokeWidth="3">
+                <polyline points="20 6 9 17 4 12" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+        </div>
+      )}
+      
+      <div className="flex-1 min-w-0">
+        {showTime && (
+          <div className="flex justify-center py-3 select-none">
+            <span className="premium-date-header">
+              {format(new Date(m.created_at), "MMM d, h:mm a")}
+            </span>
+          </div>
+        )}
+        
+        {/* Reply To Preview */}
+        {m.replyTo && (
+          <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
+            <div 
+              onClick={() => m.replyTo && msgRefs.current[m.replyTo.id]?.scrollIntoView({ behavior: "smooth", block: "center" })}
+              className="max-w-[60%] text-[10px] bg-secondary/80 hover:bg-secondary border border-border/60 rounded-2xl px-3 py-1 text-muted-foreground truncate cursor-pointer transition-colors"
+            >
+              <span className="font-bold text-primary block text-[8px] uppercase tracking-wider">Replying to {m.replyTo.senderName}</span>
+              <span className="italic truncate block">{m.replyTo.text}</span>
+            </div>
+          </div>
+        )}
+
+        <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+          <div 
+            onPointerDown={selectionMode ? undefined : startPress}
+            onPointerUp={selectionMode ? undefined : cancelPress}
+            onPointerMove={selectionMode ? undefined : cancelPress}
+            onPointerLeave={selectionMode ? undefined : cancelPress}
+            onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) onMenuOpen(m.id); }}
+            className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
+          >
+            {m.image_url ? (
+              <button onClick={() => onPreviewImage(m.image_url)} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none">
+                <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
+              </button>
+            ) : m.audio_url ? (
+              <div className="block"><VoiceMessage src={m.audio_url} mine={mine} /></div>
+            ) : (
+              <div className={`max-w-[240px] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
+                <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
+                  {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Reactions Badge */}
+        {reactionKeys.length > 0 && (
+          <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
+            <div className="inline-flex items-center gap-1 bg-secondary border border-border/80 px-2 py-0.5 rounded-full shadow-sm text-xs leading-none">
+              {reactionKeys.map(k => (
+                <span key={k} title={m.reactions[k].join(", ")}>{k}</span>
+              ))}
+              {reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0) > 1 && (
+                <span className="text-[9px] font-bold text-muted-foreground">{reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0)}</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Pin Badge */}
+        {m.isPinned && (
+          <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
+            <span className="text-[9px] text-muted-foreground flex items-center gap-1">
+              <Pin className="h-3 w-3 rotate-45 text-primary fill-primary shrink-0" />
+              Pinned
+            </span>
+          </div>
+        )}
+
+        {mine && (isLastMine || m.failed) && (
+          <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
+            {m.failed ? (
+              <span className="inline-flex items-center gap-1 text-destructive"><span className="h-2 w-2 rounded-full bg-destructive shrink-0" />Not delivered</span>
+            ) : m.id.startsWith("temp-") ? (
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
+            ) : m.seen ? (
+              <span className="inline-flex items-center gap-1">
+                {conv.avatar_url ? <img src={conv.avatar_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border" /> : <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />}
+                Seen
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Delivered</span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+

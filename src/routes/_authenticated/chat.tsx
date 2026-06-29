@@ -1,5 +1,5 @@
+import React, { useEffect, useState, useRef } from "react";
 import { createFileRoute, Link, Outlet, useParams, useLocation } from "@tanstack/react-router";
-import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
@@ -545,61 +545,21 @@ function ChatLayout() {
                   : "No matches."}
               </div>
             ) : (
-              sorted.map((c) => {
-                const isSpam = spamIds.has(c.friendId);
-                const isPinned = pinnedFriends.includes(c.friendId);
-                return (
-                  <div key={c.friendId} className="group relative">
-                    <Link
-                      to="/chat/$friendId"
-                      params={{ friendId: c.friendId }}
-                      onPointerDown={() => {
-                        startTouch(c.friendId);
-                        if (meId) prefetchConversation(meId, c.friendId);
-                      }}
-                      onMouseEnter={() => {
-                        if (meId) prefetchConversation(meId, c.friendId);
-                      }}
-                      onPointerUp={endTouch}
-                      onPointerMove={endTouch}
-                      onPointerLeave={endTouch}
-                      onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(c.friendId); }}
-                      className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors select-none ${activeId === c.friendId ? "bg-secondary" : ""}`}
-                    >
-                      <div className="relative shrink-0">
-                        <Avatar name={c.displayName} url={c.avatar_url} />
-                        {c.online && !isSpam && !spammedByIds.has(c.friendId) && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
-                      </div>
-                      <div className="flex-1 min-w-0 pr-10">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <p className={`truncate flex items-center gap-1.5 ${c.unread > 0 ? "font-bold" : "font-semibold"}`}>
-                            {c.displayName}
-                            {isPinned && <Pin className="h-3 w-3 text-primary rotate-45 fill-primary shrink-0" />}
-                          </p>
-                          {c.lastAt && (
-                            <span className="text-xs text-muted-foreground shrink-0">
-                              {formatDistanceToNow(new Date(c.lastAt), { addSuffix: false })}
-                            </span>
-                          )}
-                        </div>
-                        <p className={`text-sm truncate ${c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                          {c.lastMessage ?? "Say hi 👋"}
-                        </p>
-                      </div>
-                      {c.unread > 0 && <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />}
-                    </Link>
-                    <button
-                      onClick={(e) => toggleSpam(e, c.friendId, isSpam)}
-                      title={isSpam ? "Remove from spam" : "Move to spam"}
-                      aria-label={isSpam ? "Remove from spam" : "Move to spam"}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex md:opacity-0 md:group-hover:opacity-100"
-                      style={isSpam ? { opacity: 1 } : undefined}
-                    >
-                      {isSpam ? <RotateCcw className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
-                    </button>
-                  </div>
-                );
-              })
+              sorted.map((c) => (
+                <ConversationItem
+                  key={c.friendId}
+                  c={c}
+                  isSpam={spamIds.has(c.friendId)}
+                  isPinned={pinnedFriends.includes(c.friendId)}
+                  isActive={activeId === c.friendId}
+                  meId={meId}
+                  isSpammedBy={spammedByIds.has(c.friendId)}
+                  startTouch={startTouch}
+                  endTouch={endTouch}
+                  setContextMenuTarget={setContextMenuTarget}
+                  toggleSpam={toggleSpam}
+                />
+              ))
             )}
           </PullToRefresh>
           </div>
@@ -750,3 +710,79 @@ function EmptyState() {
 }
 
 export { Avatar } from "@/components/messenger/Avatar";
+
+const ConversationItem = React.memo(function ConversationItem({
+  c,
+  isSpam,
+  isPinned,
+  isActive,
+  meId,
+  isSpammedBy,
+  startTouch,
+  endTouch,
+  setContextMenuTarget,
+  toggleSpam,
+}: {
+  c: Conversation;
+  isSpam: boolean;
+  isPinned: boolean;
+  isActive: boolean;
+  meId: string | null;
+  isSpammedBy: boolean;
+  startTouch: (id: string) => void;
+  endTouch: () => void;
+  setContextMenuTarget: (id: string) => void;
+  toggleSpam: (e: React.MouseEvent, id: string, isSpam: boolean) => void;
+}) {
+  return (
+    <div className="group relative">
+      <Link
+        to="/chat/$friendId"
+        params={{ friendId: c.friendId }}
+        onPointerDown={() => {
+          startTouch(c.friendId);
+          if (meId) prefetchConversation(meId, c.friendId);
+        }}
+        onMouseEnter={() => {
+          if (meId) prefetchConversation(meId, c.friendId);
+        }}
+        onPointerUp={endTouch}
+        onPointerMove={endTouch}
+        onPointerLeave={endTouch}
+        onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(c.friendId); }}
+        className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors select-none ${isActive ? "bg-secondary" : ""}`}
+      >
+        <div className="relative shrink-0">
+          <Avatar name={c.displayName} url={c.avatar_url} />
+          {c.online && !isSpam && !isSpammedBy && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+        </div>
+        <div className="flex-1 min-w-0 pr-10">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className={`truncate text-sm flex items-center gap-1.5 ${c.unread > 0 ? "font-bold" : "font-semibold"}`}>
+              {c.displayName}
+              {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
+            </p>
+            {c.lastAt && (
+              <span className="text-xs text-muted-foreground shrink-0">
+                {formatDistanceToNow(new Date(c.lastAt), { addSuffix: false })}
+              </span>
+            )}
+          </div>
+          <p className={`text-sm truncate ${c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+            {c.lastMessage ?? "Say hi 👋"}
+          </p>
+        </div>
+        {c.unread > 0 && <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />}
+      </Link>
+      <button
+        onClick={(e) => toggleSpam(e, c.friendId, isSpam)}
+        title={isSpam ? "Remove from spam" : "Move to spam"}
+        aria-label={isSpam ? "Remove from spam" : "Move to spam"}
+        className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex md:opacity-0 md:group-hover:opacity-100"
+        style={isSpam ? { opacity: 1 } : undefined}
+      >
+        {isSpam ? <RotateCcw className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+});
