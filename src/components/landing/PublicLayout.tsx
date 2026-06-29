@@ -105,7 +105,7 @@ export function PublicLayout({ children }: PublicLayoutProps) {
             <ThemeToggle className="shadow-sm border border-border/40" />
             
             <Link
-              to="/auth"
+              to="/app/auth"
               className="px-4 py-2 rounded-full text-sm font-semibold text-foreground hover:bg-secondary transition-colors flex items-center gap-1.5 border border-border/50"
             >
               <LogIn className="h-4 w-4 text-primary" />
@@ -113,7 +113,7 @@ export function PublicLayout({ children }: PublicLayoutProps) {
             </Link>
 
             <Link
-              to="/auth"
+              to="/app/auth"
               className="px-5 py-2.5 rounded-full text-sm font-bold bg-primary text-primary-foreground hover:opacity-90 transition-all shadow-lg hover:shadow-primary/25 flex items-center gap-1.5 active:scale-95"
             >
               <UserPlus className="h-4 w-4" />
@@ -182,7 +182,7 @@ export function PublicLayout({ children }: PublicLayoutProps) {
 
                 <div className="pt-2 flex flex-col gap-2">
                   <Link
-                    to="/auth"
+                    to="/app/auth"
                     onClick={() => setMobileMenuOpen(false)}
                     className="w-full py-3 rounded-xl text-center font-bold bg-primary text-primary-foreground shadow-md flex items-center justify-center gap-2"
                   >
@@ -190,7 +190,7 @@ export function PublicLayout({ children }: PublicLayoutProps) {
                     <span>Create Free Account</span>
                   </Link>
                   <Link
-                    to="/auth"
+                    to="/app/auth"
                     onClick={() => setMobileMenuOpen(false)}
                     className="w-full py-3 rounded-xl text-center font-semibold bg-secondary text-foreground hover:bg-accent border border-border/50 flex items-center justify-center gap-2"
                   >
@@ -258,7 +258,7 @@ export function PublicLayout({ children }: PublicLayoutProps) {
               <ul className="space-y-2 text-sm">
                 <li><Link to="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
                 <li><Link to="/terms" className="hover:text-primary transition-colors">Terms & Conditions</Link></li>
-                <li><Link to="/auth" className="hover:text-primary transition-colors font-semibold text-primary">Web Messenger Login</Link></li>
+                <li><Link to="/app/auth" className="hover:text-primary transition-colors font-semibold text-primary">Web Messenger Login</Link></li>
               </ul>
             </div>
           </div>

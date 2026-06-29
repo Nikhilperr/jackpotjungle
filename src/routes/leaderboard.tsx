@@ -72,7 +72,7 @@ function LeaderboardPage() {
           <div className="p-6 bg-secondary/30 text-center border-t border-border/40 space-y-3">
             <p className="text-xs text-muted-foreground">Want your name on top of the global leaderboard?</p>
             <Link
-              to="/auth"
+              to="/app/auth"
               className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full font-bold text-xs bg-primary text-primary-foreground hover:opacity-90 transition-all shadow-md"
             >
               <span>Start Playing Now</span>

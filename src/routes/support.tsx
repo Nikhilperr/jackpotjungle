@@ -39,7 +39,7 @@ function SupportPage() {
             </div>
             <div className="pt-6">
               <Link
-                to="/auth"
+                to="/app/auth"
                 className="w-full py-3 rounded-xl font-bold text-xs bg-primary text-primary-foreground hover:opacity-90 transition-all flex items-center justify-center gap-1.5 shadow-md shadow-primary/10"
               >
                 <span>Launch Live Chat</span>

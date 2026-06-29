@@ -64,7 +64,7 @@ function BlogPage() {
               </div>
               <div className="pt-6">
                 <Link
-                  to="/auth"
+                  to="/app/auth"
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
                 >
                   <span>Read Article</span>

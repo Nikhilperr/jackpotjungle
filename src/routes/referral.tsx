@@ -61,7 +61,7 @@ function ReferralPage() {
           </p>
           <div>
             <Link
-              to="/auth"
+              to="/app/auth"
               className="inline-flex items-center gap-2 px-8 py-3.5 rounded-full font-bold text-sm bg-primary text-primary-foreground hover:opacity-90 transition-all shadow-lg hover:shadow-primary/20"
             >
               <span>Get Your Referral Link</span>

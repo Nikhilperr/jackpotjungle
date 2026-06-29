@@ -24,16 +24,32 @@ import { Route as FaqRouteImport } from './routes/faq'
 import { Route as BlogRouteImport } from './routes/blog'
 import { Route as AuthCallbackRouteImport } from './routes/auth-callback'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AppRouteImport } from './routes/app'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppVerifyOtpRouteImport } from './routes/app/verify-otp'
+import { Route as AppResetPasswordRouteImport } from './routes/app/reset-password'
+import { Route as AppForgotPasswordRouteImport } from './routes/app/forgot-password'
+import { Route as AppAuthCallbackRouteImport } from './routes/app/auth-callback'
+import { Route as AppAuthRouteImport } from './routes/app/auth'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedFriendsRouteImport } from './routes/_authenticated/friends'
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AppAuthenticatedRouteRouteImport } from './routes/app/_authenticated/route'
 import { Route as AuthenticatedChatIndexRouteImport } from './routes/_authenticated/chat.index'
+import { Route as AppAuthenticatedProfileRouteImport } from './routes/app/_authenticated/profile'
+import { Route as AppAuthenticatedOnboardingRouteImport } from './routes/app/_authenticated/onboarding'
+import { Route as AppAuthenticatedFriendsRouteImport } from './routes/app/_authenticated/friends'
+import { Route as AppAuthenticatedChatRouteImport } from './routes/app/_authenticated/chat'
+import { Route as AppAuthenticatedAdminRouteImport } from './routes/app/_authenticated/admin'
 import { Route as AuthenticatedChatPageRouteImport } from './routes/_authenticated/chat.page'
 import { Route as AuthenticatedChatFriendIdRouteImport } from './routes/_authenticated/chat.$friendId'
+import { Route as AppAuthenticatedChatIndexRouteImport } from './routes/app/_authenticated/chat.index'
+import { Route as AppAuthenticatedChatPageRouteImport } from './routes/app/_authenticated/chat.page'
+import { Route as AppAuthenticatedChatFriendIdRouteImport } from './routes/app/_authenticated/chat.$friendId'
 
 const VipClubRoute = VipClubRouteImport.update({
   id: '/vip-club',
@@ -110,6 +126,11 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
@@ -118,6 +139,36 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppVerifyOtpRoute = AppVerifyOtpRouteImport.update({
+  id: '/verify-otp',
+  path: '/verify-otp',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppResetPasswordRoute = AppResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppForgotPasswordRoute = AppForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuthCallbackRoute = AppAuthCallbackRouteImport.update({
+  id: '/auth-callback',
+  path: '/auth-callback',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuthRoute = AppAuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => AppRoute,
 } as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
@@ -144,10 +195,40 @@ const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AppAuthenticatedRouteRoute = AppAuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => AppRoute,
+} as any)
 const AuthenticatedChatIndexRoute = AuthenticatedChatIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedChatRoute,
+} as any)
+const AppAuthenticatedProfileRoute = AppAuthenticatedProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AppAuthenticatedRouteRoute,
+} as any)
+const AppAuthenticatedOnboardingRoute =
+  AppAuthenticatedOnboardingRouteImport.update({
+    id: '/onboarding',
+    path: '/onboarding',
+    getParentRoute: () => AppAuthenticatedRouteRoute,
+  } as any)
+const AppAuthenticatedFriendsRoute = AppAuthenticatedFriendsRouteImport.update({
+  id: '/friends',
+  path: '/friends',
+  getParentRoute: () => AppAuthenticatedRouteRoute,
+} as any)
+const AppAuthenticatedChatRoute = AppAuthenticatedChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => AppAuthenticatedRouteRoute,
+} as any)
+const AppAuthenticatedAdminRoute = AppAuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AppAuthenticatedRouteRoute,
 } as any)
 const AuthenticatedChatPageRoute = AuthenticatedChatPageRouteImport.update({
   id: '/page',
@@ -160,9 +241,28 @@ const AuthenticatedChatFriendIdRoute =
     path: '/$friendId',
     getParentRoute: () => AuthenticatedChatRoute,
   } as any)
+const AppAuthenticatedChatIndexRoute =
+  AppAuthenticatedChatIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppAuthenticatedChatRoute,
+  } as any)
+const AppAuthenticatedChatPageRoute =
+  AppAuthenticatedChatPageRouteImport.update({
+    id: '/page',
+    path: '/page',
+    getParentRoute: () => AppAuthenticatedChatRoute,
+  } as any)
+const AppAuthenticatedChatFriendIdRoute =
+  AppAuthenticatedChatFriendIdRouteImport.update({
+    id: '/$friendId',
+    path: '/$friendId',
+    getParentRoute: () => AppAuthenticatedChatRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
   '/blog': typeof BlogRoute
@@ -183,9 +283,23 @@ export interface FileRoutesByFullPath {
   '/friends': typeof AuthenticatedFriendsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/app/auth': typeof AppAuthRoute
+  '/app/auth-callback': typeof AppAuthCallbackRoute
+  '/app/forgot-password': typeof AppForgotPasswordRoute
+  '/app/reset-password': typeof AppResetPasswordRoute
+  '/app/verify-otp': typeof AppVerifyOtpRoute
+  '/app/': typeof AppIndexRoute
   '/chat/$friendId': typeof AuthenticatedChatFriendIdRoute
   '/chat/page': typeof AuthenticatedChatPageRoute
+  '/app/admin': typeof AppAuthenticatedAdminRoute
+  '/app/chat': typeof AppAuthenticatedChatRouteWithChildren
+  '/app/friends': typeof AppAuthenticatedFriendsRoute
+  '/app/onboarding': typeof AppAuthenticatedOnboardingRoute
+  '/app/profile': typeof AppAuthenticatedProfileRoute
   '/chat/': typeof AuthenticatedChatIndexRoute
+  '/app/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
+  '/app/chat/page': typeof AppAuthenticatedChatPageRoute
+  '/app/chat/': typeof AppAuthenticatedChatIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -204,18 +318,32 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/verify-otp': typeof VerifyOtpRoute
   '/vip-club': typeof VipClubRoute
+  '/app': typeof AppIndexRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/friends': typeof AuthenticatedFriendsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/app/auth': typeof AppAuthRoute
+  '/app/auth-callback': typeof AppAuthCallbackRoute
+  '/app/forgot-password': typeof AppForgotPasswordRoute
+  '/app/reset-password': typeof AppResetPasswordRoute
+  '/app/verify-otp': typeof AppVerifyOtpRoute
   '/chat/$friendId': typeof AuthenticatedChatFriendIdRoute
   '/chat/page': typeof AuthenticatedChatPageRoute
+  '/app/admin': typeof AppAuthenticatedAdminRoute
+  '/app/friends': typeof AppAuthenticatedFriendsRoute
+  '/app/onboarding': typeof AppAuthenticatedOnboardingRoute
+  '/app/profile': typeof AppAuthenticatedProfileRoute
   '/chat': typeof AuthenticatedChatIndexRoute
+  '/app/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
+  '/app/chat/page': typeof AppAuthenticatedChatPageRoute
+  '/app/chat': typeof AppAuthenticatedChatIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
   '/blog': typeof BlogRoute
@@ -231,19 +359,35 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/verify-otp': typeof VerifyOtpRoute
   '/vip-club': typeof VipClubRoute
+  '/app/_authenticated': typeof AppAuthenticatedRouteRouteWithChildren
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/chat': typeof AuthenticatedChatRouteWithChildren
   '/_authenticated/friends': typeof AuthenticatedFriendsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
+  '/app/auth': typeof AppAuthRoute
+  '/app/auth-callback': typeof AppAuthCallbackRoute
+  '/app/forgot-password': typeof AppForgotPasswordRoute
+  '/app/reset-password': typeof AppResetPasswordRoute
+  '/app/verify-otp': typeof AppVerifyOtpRoute
+  '/app/': typeof AppIndexRoute
   '/_authenticated/chat/$friendId': typeof AuthenticatedChatFriendIdRoute
   '/_authenticated/chat/page': typeof AuthenticatedChatPageRoute
+  '/app/_authenticated/admin': typeof AppAuthenticatedAdminRoute
+  '/app/_authenticated/chat': typeof AppAuthenticatedChatRouteWithChildren
+  '/app/_authenticated/friends': typeof AppAuthenticatedFriendsRoute
+  '/app/_authenticated/onboarding': typeof AppAuthenticatedOnboardingRoute
+  '/app/_authenticated/profile': typeof AppAuthenticatedProfileRoute
   '/_authenticated/chat/': typeof AuthenticatedChatIndexRoute
+  '/app/_authenticated/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
+  '/app/_authenticated/chat/page': typeof AppAuthenticatedChatPageRoute
+  '/app/_authenticated/chat/': typeof AppAuthenticatedChatIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/app'
     | '/auth'
     | '/auth-callback'
     | '/blog'
@@ -264,9 +408,23 @@ export interface FileRouteTypes {
     | '/friends'
     | '/onboarding'
     | '/profile'
+    | '/app/auth'
+    | '/app/auth-callback'
+    | '/app/forgot-password'
+    | '/app/reset-password'
+    | '/app/verify-otp'
+    | '/app/'
     | '/chat/$friendId'
     | '/chat/page'
+    | '/app/admin'
+    | '/app/chat'
+    | '/app/friends'
+    | '/app/onboarding'
+    | '/app/profile'
     | '/chat/'
+    | '/app/chat/$friendId'
+    | '/app/chat/page'
+    | '/app/chat/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -285,17 +443,31 @@ export interface FileRouteTypes {
     | '/terms'
     | '/verify-otp'
     | '/vip-club'
+    | '/app'
     | '/admin'
     | '/friends'
     | '/onboarding'
     | '/profile'
+    | '/app/auth'
+    | '/app/auth-callback'
+    | '/app/forgot-password'
+    | '/app/reset-password'
+    | '/app/verify-otp'
     | '/chat/$friendId'
     | '/chat/page'
+    | '/app/admin'
+    | '/app/friends'
+    | '/app/onboarding'
+    | '/app/profile'
     | '/chat'
+    | '/app/chat/$friendId'
+    | '/app/chat/page'
+    | '/app/chat'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/app'
     | '/auth'
     | '/auth-callback'
     | '/blog'
@@ -311,19 +483,35 @@ export interface FileRouteTypes {
     | '/terms'
     | '/verify-otp'
     | '/vip-club'
+    | '/app/_authenticated'
     | '/_authenticated/admin'
     | '/_authenticated/chat'
     | '/_authenticated/friends'
     | '/_authenticated/onboarding'
     | '/_authenticated/profile'
+    | '/app/auth'
+    | '/app/auth-callback'
+    | '/app/forgot-password'
+    | '/app/reset-password'
+    | '/app/verify-otp'
+    | '/app/'
     | '/_authenticated/chat/$friendId'
     | '/_authenticated/chat/page'
+    | '/app/_authenticated/admin'
+    | '/app/_authenticated/chat'
+    | '/app/_authenticated/friends'
+    | '/app/_authenticated/onboarding'
+    | '/app/_authenticated/profile'
     | '/_authenticated/chat/'
+    | '/app/_authenticated/chat/$friendId'
+    | '/app/_authenticated/chat/page'
+    | '/app/_authenticated/chat/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   BlogRoute: typeof BlogRoute
@@ -448,6 +636,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated': {
       id: '/_authenticated'
       path: ''
@@ -461,6 +656,48 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/app/': {
+      id: '/app/'
+      path: '/'
+      fullPath: '/app/'
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/verify-otp': {
+      id: '/app/verify-otp'
+      path: '/verify-otp'
+      fullPath: '/app/verify-otp'
+      preLoaderRoute: typeof AppVerifyOtpRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/reset-password': {
+      id: '/app/reset-password'
+      path: '/reset-password'
+      fullPath: '/app/reset-password'
+      preLoaderRoute: typeof AppResetPasswordRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/forgot-password': {
+      id: '/app/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/app/forgot-password'
+      preLoaderRoute: typeof AppForgotPasswordRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/auth-callback': {
+      id: '/app/auth-callback'
+      path: '/auth-callback'
+      fullPath: '/app/auth-callback'
+      preLoaderRoute: typeof AppAuthCallbackRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/auth': {
+      id: '/app/auth'
+      path: '/auth'
+      fullPath: '/app/auth'
+      preLoaderRoute: typeof AppAuthRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_authenticated/profile': {
       id: '/_authenticated/profile'
@@ -497,12 +734,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/app/_authenticated': {
+      id: '/app/_authenticated'
+      path: ''
+      fullPath: '/app'
+      preLoaderRoute: typeof AppAuthenticatedRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_authenticated/chat/': {
       id: '/_authenticated/chat/'
       path: '/'
       fullPath: '/chat/'
       preLoaderRoute: typeof AuthenticatedChatIndexRouteImport
       parentRoute: typeof AuthenticatedChatRoute
+    }
+    '/app/_authenticated/profile': {
+      id: '/app/_authenticated/profile'
+      path: '/profile'
+      fullPath: '/app/profile'
+      preLoaderRoute: typeof AppAuthenticatedProfileRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
+    '/app/_authenticated/onboarding': {
+      id: '/app/_authenticated/onboarding'
+      path: '/onboarding'
+      fullPath: '/app/onboarding'
+      preLoaderRoute: typeof AppAuthenticatedOnboardingRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
+    '/app/_authenticated/friends': {
+      id: '/app/_authenticated/friends'
+      path: '/friends'
+      fullPath: '/app/friends'
+      preLoaderRoute: typeof AppAuthenticatedFriendsRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
+    '/app/_authenticated/chat': {
+      id: '/app/_authenticated/chat'
+      path: '/chat'
+      fullPath: '/app/chat'
+      preLoaderRoute: typeof AppAuthenticatedChatRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
+    '/app/_authenticated/admin': {
+      id: '/app/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/app/admin'
+      preLoaderRoute: typeof AppAuthenticatedAdminRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
     }
     '/_authenticated/chat/page': {
       id: '/_authenticated/chat/page'
@@ -517,6 +796,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/chat/$friendId'
       preLoaderRoute: typeof AuthenticatedChatFriendIdRouteImport
       parentRoute: typeof AuthenticatedChatRoute
+    }
+    '/app/_authenticated/chat/': {
+      id: '/app/_authenticated/chat/'
+      path: '/'
+      fullPath: '/app/chat/'
+      preLoaderRoute: typeof AppAuthenticatedChatIndexRouteImport
+      parentRoute: typeof AppAuthenticatedChatRoute
+    }
+    '/app/_authenticated/chat/page': {
+      id: '/app/_authenticated/chat/page'
+      path: '/page'
+      fullPath: '/app/chat/page'
+      preLoaderRoute: typeof AppAuthenticatedChatPageRouteImport
+      parentRoute: typeof AppAuthenticatedChatRoute
+    }
+    '/app/_authenticated/chat/$friendId': {
+      id: '/app/_authenticated/chat/$friendId'
+      path: '/$friendId'
+      fullPath: '/app/chat/$friendId'
+      preLoaderRoute: typeof AppAuthenticatedChatFriendIdRouteImport
+      parentRoute: typeof AppAuthenticatedChatRoute
     }
   }
 }
@@ -555,9 +855,68 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface AppAuthenticatedChatRouteChildren {
+  AppAuthenticatedChatFriendIdRoute: typeof AppAuthenticatedChatFriendIdRoute
+  AppAuthenticatedChatPageRoute: typeof AppAuthenticatedChatPageRoute
+  AppAuthenticatedChatIndexRoute: typeof AppAuthenticatedChatIndexRoute
+}
+
+const AppAuthenticatedChatRouteChildren: AppAuthenticatedChatRouteChildren = {
+  AppAuthenticatedChatFriendIdRoute: AppAuthenticatedChatFriendIdRoute,
+  AppAuthenticatedChatPageRoute: AppAuthenticatedChatPageRoute,
+  AppAuthenticatedChatIndexRoute: AppAuthenticatedChatIndexRoute,
+}
+
+const AppAuthenticatedChatRouteWithChildren =
+  AppAuthenticatedChatRoute._addFileChildren(AppAuthenticatedChatRouteChildren)
+
+interface AppAuthenticatedRouteRouteChildren {
+  AppAuthenticatedAdminRoute: typeof AppAuthenticatedAdminRoute
+  AppAuthenticatedChatRoute: typeof AppAuthenticatedChatRouteWithChildren
+  AppAuthenticatedFriendsRoute: typeof AppAuthenticatedFriendsRoute
+  AppAuthenticatedOnboardingRoute: typeof AppAuthenticatedOnboardingRoute
+  AppAuthenticatedProfileRoute: typeof AppAuthenticatedProfileRoute
+}
+
+const AppAuthenticatedRouteRouteChildren: AppAuthenticatedRouteRouteChildren = {
+  AppAuthenticatedAdminRoute: AppAuthenticatedAdminRoute,
+  AppAuthenticatedChatRoute: AppAuthenticatedChatRouteWithChildren,
+  AppAuthenticatedFriendsRoute: AppAuthenticatedFriendsRoute,
+  AppAuthenticatedOnboardingRoute: AppAuthenticatedOnboardingRoute,
+  AppAuthenticatedProfileRoute: AppAuthenticatedProfileRoute,
+}
+
+const AppAuthenticatedRouteRouteWithChildren =
+  AppAuthenticatedRouteRoute._addFileChildren(
+    AppAuthenticatedRouteRouteChildren,
+  )
+
+interface AppRouteChildren {
+  AppAuthenticatedRouteRoute: typeof AppAuthenticatedRouteRouteWithChildren
+  AppAuthRoute: typeof AppAuthRoute
+  AppAuthCallbackRoute: typeof AppAuthCallbackRoute
+  AppForgotPasswordRoute: typeof AppForgotPasswordRoute
+  AppResetPasswordRoute: typeof AppResetPasswordRoute
+  AppVerifyOtpRoute: typeof AppVerifyOtpRoute
+  AppIndexRoute: typeof AppIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppAuthenticatedRouteRoute: AppAuthenticatedRouteRouteWithChildren,
+  AppAuthRoute: AppAuthRoute,
+  AppAuthCallbackRoute: AppAuthCallbackRoute,
+  AppForgotPasswordRoute: AppForgotPasswordRoute,
+  AppResetPasswordRoute: AppResetPasswordRoute,
+  AppVerifyOtpRoute: AppVerifyOtpRoute,
+  AppIndexRoute: AppIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   BlogRoute: BlogRoute,

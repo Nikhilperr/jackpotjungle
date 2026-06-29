@@ -15,7 +15,7 @@ export const Route = createFileRoute("/")({
     );
 
     if (isRecovery) {
-      throw redirect({ to: "/reset-password" });
+      throw redirect({ to: "/app/reset-password" });
     }
 
     const session = await waitInitialSession();
@@ -25,7 +25,7 @@ export const Route = createFileRoute("/")({
       // Fetch user role to route them correctly
       const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", uid);
       const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
-      throw redirect({ to: isAdmin ? "/admin" : "/chat" });
+      throw redirect({ to: isAdmin ? "/app/admin" : "/app/chat" });
     }
   },
   component: LandingContainer,

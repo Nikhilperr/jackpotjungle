@@ -144,7 +144,7 @@ export function LandingContainer() {
                 className="pt-4 flex flex-col sm:flex-row items-center gap-4"
               >
                 <Link
-                  to="/auth"
+                  to="/app/auth"
                   className="w-full sm:w-auto px-8 py-4 rounded-full font-extrabold text-base bg-amber-500 text-black hover:bg-amber-400 transition-all shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 group active:scale-95 border border-amber-400/40"
                 >
                   <Coins className="h-5 w-5 fill-black animate-pulse" />
@@ -325,7 +325,7 @@ export function LandingContainer() {
                 
                 <div className="pt-4 flex flex-wrap gap-4">
                   <Link
-                    to="/auth"
+                    to="/app/auth"
                     className="px-6 py-3.5 rounded-full font-bold text-sm bg-amber-500 text-black hover:bg-amber-400 transition-all shadow-md flex items-center gap-2 active:scale-95"
                   >
                     <Globe className="h-4 w-4" /> Play Instant Web App

@@ -83,7 +83,7 @@ function VIPPage() {
               </div>
               <div className="pt-6">
                 <Link
-                  to="/auth"
+                  to="/app/auth"
                   className="w-full py-2.5 rounded-xl font-bold text-xs bg-secondary text-foreground hover:bg-accent border border-border/60 transition-colors flex items-center justify-center gap-1.5"
                 >
                   Join VIP

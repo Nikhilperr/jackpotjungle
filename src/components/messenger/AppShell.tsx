@@ -56,15 +56,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
 
     await supabase.auth.signOut();
-    navigate({ to: "/auth", replace: true });
+    navigate({ to: "/app/auth", replace: true });
   }
 
   const navItems: Array<{ to: string; icon: typeof MessageCircle; label: string }> = [
-    { to: "/chat", icon: MessageCircle, label: "Chats" },
-    { to: "/friends", icon: Users, label: "Friends" },
-    { to: "/profile", icon: UserIcon, label: "Profile" },
+    { to: "/app/chat", icon: MessageCircle, label: "Chats" },
+    { to: "/app/friends", icon: Users, label: "Friends" },
+    { to: "/app/profile", icon: UserIcon, label: "Profile" },
   ];
-  if (isAdmin) navItems.push({ to: "/admin", icon: Shield, label: "Admin" });
+  if (isAdmin) navItems.push({ to: "/app/admin", icon: Shield, label: "Admin" });
 
   const Drawer = (
     <aside className="w-72 h-full bg-card border-r border-border flex flex-col">
