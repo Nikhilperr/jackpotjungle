@@ -336,6 +336,15 @@ function ChatView() {
   const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set());
   const [showDeleteBottomSheet, setShowDeleteBottomSheet] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
@@ -815,9 +824,17 @@ function ChatView() {
             className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
             aria-label="Search in conversation"
           >
-          <Search className="h-5 w-5" />
-        </button>
-      </header>
+            <Search className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowDetail((v) => !v)}
+            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
+            aria-label="Toggle details sidebar"
+          >
+            <Info className="h-5 w-5" />
+          </button>
+        </header>
       )}
 
       {searchOpen && (
@@ -1316,7 +1333,7 @@ function ChatView() {
       )}
 
       {/* Mobile/Tablet Detail Sheet */}
-      <Sheet open={showDetail} onOpenChange={setShowDetail}>
+      <Sheet open={showDetail && isMobile} onOpenChange={setShowDetail}>
         <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden bg-card border-l border-border text-foreground">
           <ConversationDetailPanel friend={friend} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
         </SheetContent>

@@ -191,18 +191,30 @@ function FriendsPage() {
                 Refresh list
               </Button>
             </div>
-            {searchResult && (
-              <div className="mt-4 flex items-center gap-3 p-4 rounded-2xl bg-secondary">
-                <Avatar name={searchResult.username} url={searchResult.avatar_url} />
-                <div className="flex-1">
-                  <p className="font-semibold">{searchResult.username}</p>
-                  <p className="text-xs text-muted-foreground">{searchResult.friend_code}</p>
+            {searchResult && (() => {
+              const isAlreadyFriend = friends.some((f) => f.id === searchResult.id);
+              return (
+                <div className="mt-4 flex items-center gap-3 p-4 rounded-2xl bg-secondary animate-in fade-in duration-200">
+                  <Avatar name={searchResult.username} url={searchResult.avatar_url} />
+                  <div className="flex-1">
+                    <p className="font-semibold">{searchResult.username}</p>
+                    <p className="text-xs text-muted-foreground">{searchResult.friend_code}</p>
+                  </div>
+                  {isAlreadyFriend ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground font-semibold">Already friends</span>
+                      <Button onClick={() => navigate({ to: "/chat/$friendId", params: { friendId: searchResult.id } })} size="sm" variant="secondary" className="rounded-full">
+                        <MessageCircle className="h-4 w-4 mr-1" /> Chat
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button onClick={() => sendRequest(searchResult.id)} size="sm" className="rounded-full">
+                      <UserPlus className="h-4 w-4 mr-1" /> Add
+                    </Button>
+                  )}
                 </div>
-                <Button onClick={() => sendRequest(searchResult.id)} size="sm" className="rounded-full">
-                  <UserPlus className="h-4 w-4 mr-1" /> Add
-                </Button>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           {incoming.length > 0 && (
