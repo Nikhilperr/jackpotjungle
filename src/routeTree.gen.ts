@@ -9,9 +9,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VipClubRouteImport } from './routes/vip-club'
 import { Route as VerifyOtpRouteImport } from './routes/verify-otp'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as SupportRouteImport } from './routes/support'
+import { Route as RewardsRouteImport } from './routes/rewards'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as ReferralRouteImport } from './routes/referral'
+import { Route as PromotionsRouteImport } from './routes/promotions'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as FaqRouteImport } from './routes/faq'
+import { Route as BlogRouteImport } from './routes/blog'
 import { Route as AuthCallbackRouteImport } from './routes/auth-callback'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
@@ -25,9 +35,29 @@ import { Route as AuthenticatedChatIndexRouteImport } from './routes/_authentica
 import { Route as AuthenticatedChatPageRouteImport } from './routes/_authenticated/chat.page'
 import { Route as AuthenticatedChatFriendIdRouteImport } from './routes/_authenticated/chat.$friendId'
 
+const VipClubRoute = VipClubRouteImport.update({
+  id: '/vip-club',
+  path: '/vip-club',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VerifyOtpRoute = VerifyOtpRouteImport.update({
   id: '/verify-otp',
   path: '/verify-otp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportRoute = SupportRouteImport.update({
+  id: '/support',
+  path: '/support',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RewardsRoute = RewardsRouteImport.update({
+  id: '/rewards',
+  path: '/rewards',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -35,9 +65,39 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
   path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReferralRoute = ReferralRouteImport.update({
+  id: '/referral',
+  path: '/referral',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PromotionsRoute = PromotionsRouteImport.update({
+  id: '/promotions',
+  path: '/promotions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeaderboardRoute = LeaderboardRouteImport.update({
+  id: '/leaderboard',
+  path: '/leaderboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FaqRoute = FaqRouteImport.update({
+  id: '/faq',
+  path: '/faq',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogRoute = BlogRouteImport.update({
+  id: '/blog',
+  path: '/blog',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
@@ -105,9 +165,19 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
+  '/blog': typeof BlogRoute
+  '/faq': typeof FaqRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/leaderboard': typeof LeaderboardRoute
+  '/privacy': typeof PrivacyRoute
+  '/promotions': typeof PromotionsRoute
+  '/referral': typeof ReferralRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/rewards': typeof RewardsRoute
+  '/support': typeof SupportRoute
+  '/terms': typeof TermsRoute
   '/verify-otp': typeof VerifyOtpRoute
+  '/vip-club': typeof VipClubRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/chat': typeof AuthenticatedChatRouteWithChildren
   '/friends': typeof AuthenticatedFriendsRoute
@@ -121,9 +191,19 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
+  '/blog': typeof BlogRoute
+  '/faq': typeof FaqRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/leaderboard': typeof LeaderboardRoute
+  '/privacy': typeof PrivacyRoute
+  '/promotions': typeof PromotionsRoute
+  '/referral': typeof ReferralRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/rewards': typeof RewardsRoute
+  '/support': typeof SupportRoute
+  '/terms': typeof TermsRoute
   '/verify-otp': typeof VerifyOtpRoute
+  '/vip-club': typeof VipClubRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/friends': typeof AuthenticatedFriendsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
@@ -138,9 +218,19 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
+  '/blog': typeof BlogRoute
+  '/faq': typeof FaqRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/leaderboard': typeof LeaderboardRoute
+  '/privacy': typeof PrivacyRoute
+  '/promotions': typeof PromotionsRoute
+  '/referral': typeof ReferralRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/rewards': typeof RewardsRoute
+  '/support': typeof SupportRoute
+  '/terms': typeof TermsRoute
   '/verify-otp': typeof VerifyOtpRoute
+  '/vip-club': typeof VipClubRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/chat': typeof AuthenticatedChatRouteWithChildren
   '/_authenticated/friends': typeof AuthenticatedFriendsRoute
@@ -156,9 +246,19 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/auth-callback'
+    | '/blog'
+    | '/faq'
     | '/forgot-password'
+    | '/leaderboard'
+    | '/privacy'
+    | '/promotions'
+    | '/referral'
     | '/reset-password'
+    | '/rewards'
+    | '/support'
+    | '/terms'
     | '/verify-otp'
+    | '/vip-club'
     | '/admin'
     | '/chat'
     | '/friends'
@@ -172,9 +272,19 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/auth-callback'
+    | '/blog'
+    | '/faq'
     | '/forgot-password'
+    | '/leaderboard'
+    | '/privacy'
+    | '/promotions'
+    | '/referral'
     | '/reset-password'
+    | '/rewards'
+    | '/support'
+    | '/terms'
     | '/verify-otp'
+    | '/vip-club'
     | '/admin'
     | '/friends'
     | '/onboarding'
@@ -188,9 +298,19 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/auth-callback'
+    | '/blog'
+    | '/faq'
     | '/forgot-password'
+    | '/leaderboard'
+    | '/privacy'
+    | '/promotions'
+    | '/referral'
     | '/reset-password'
+    | '/rewards'
+    | '/support'
+    | '/terms'
     | '/verify-otp'
+    | '/vip-club'
     | '/_authenticated/admin'
     | '/_authenticated/chat'
     | '/_authenticated/friends'
@@ -206,18 +326,56 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  BlogRoute: typeof BlogRoute
+  FaqRoute: typeof FaqRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
+  LeaderboardRoute: typeof LeaderboardRoute
+  PrivacyRoute: typeof PrivacyRoute
+  PromotionsRoute: typeof PromotionsRoute
+  ReferralRoute: typeof ReferralRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  RewardsRoute: typeof RewardsRoute
+  SupportRoute: typeof SupportRoute
+  TermsRoute: typeof TermsRoute
   VerifyOtpRoute: typeof VerifyOtpRoute
+  VipClubRoute: typeof VipClubRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/vip-club': {
+      id: '/vip-club'
+      path: '/vip-club'
+      fullPath: '/vip-club'
+      preLoaderRoute: typeof VipClubRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/verify-otp': {
       id: '/verify-otp'
       path: '/verify-otp'
       fullPath: '/verify-otp'
       preLoaderRoute: typeof VerifyOtpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support': {
+      id: '/support'
+      path: '/support'
+      fullPath: '/support'
+      preLoaderRoute: typeof SupportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rewards': {
+      id: '/rewards'
+      path: '/rewards'
+      fullPath: '/rewards'
+      preLoaderRoute: typeof RewardsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -227,11 +385,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/referral': {
+      id: '/referral'
+      path: '/referral'
+      fullPath: '/referral'
+      preLoaderRoute: typeof ReferralRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/promotions': {
+      id: '/promotions'
+      path: '/promotions'
+      fullPath: '/promotions'
+      preLoaderRoute: typeof PromotionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leaderboard': {
+      id: '/leaderboard'
+      path: '/leaderboard'
+      fullPath: '/leaderboard'
+      preLoaderRoute: typeof LeaderboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/forgot-password': {
       id: '/forgot-password'
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/faq': {
+      id: '/faq'
+      path: '/faq'
+      fullPath: '/faq'
+      preLoaderRoute: typeof FaqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog': {
+      id: '/blog'
+      path: '/blog'
+      fullPath: '/blog'
+      preLoaderRoute: typeof BlogRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth-callback': {
@@ -360,9 +560,19 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  BlogRoute: BlogRoute,
+  FaqRoute: FaqRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
+  LeaderboardRoute: LeaderboardRoute,
+  PrivacyRoute: PrivacyRoute,
+  PromotionsRoute: PromotionsRoute,
+  ReferralRoute: ReferralRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  RewardsRoute: RewardsRoute,
+  SupportRoute: SupportRoute,
+  TermsRoute: TermsRoute,
   VerifyOtpRoute: VerifyOtpRoute,
+  VipClubRoute: VipClubRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
