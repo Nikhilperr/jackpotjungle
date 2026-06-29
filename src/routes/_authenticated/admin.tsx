@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRole, type AppRole } from "@/hooks/useRole";
 import { useAuth } from "@/hooks/useAuth";
+import { Capacitor } from "@capacitor/core";
+import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 import { useNativePush } from "@/hooks/useNativePush";
 import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
@@ -179,12 +181,25 @@ function AdminPage() {
   }, [loading, isAdmin, navigate]);
 
   async function signOut() {
-    await supabase
-      .from("profiles")
-      .update({ online: false, last_seen: new Date().toISOString() })
-      .eq("id", (await supabase.auth.getUser()).data.user?.id ?? "");
+    try {
+      await supabase
+        .from("profiles")
+        .update({ online: false, last_seen: new Date().toISOString() })
+        .eq("id", (await supabase.auth.getUser()).data.user?.id ?? "");
+    } catch (e) {
+      console.error("Failed to update profile presence during sign out:", e);
+    }
     await qc.cancelQueries();
     qc.clear();
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await GoogleAuth.signOut();
+      } catch (e) {
+        console.error("Google native sign out failed:", e);
+      }
+    }
+
     await supabase.auth.signOut();
     navigate({ to: "/auth", replace: true });
   }

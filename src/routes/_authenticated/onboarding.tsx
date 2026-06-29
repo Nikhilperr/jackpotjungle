@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { User, Phone, MapPin, Mail, Camera, Loader2, Check, X, Search, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { Capacitor } from "@capacitor/core";
+import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { AuthInput } from "@/components/auth/AuthInput";
@@ -478,6 +480,13 @@ function OnboardingPage() {
               type="button"
               onClick={async () => {
                 try {
+                  if (Capacitor.isNativePlatform()) {
+                    try {
+                      await GoogleAuth.signOut();
+                    } catch (e) {
+                      console.error("Google native sign out failed:", e);
+                    }
+                  }
                   await supabase.auth.signOut();
                   navigate({ to: "/auth", search: { mode: "login" } });
                 } catch (err: any) {

@@ -10,6 +10,8 @@ import { useNativePush } from "@/hooks/useNativePush";
 import { initializeNativeBridge } from "@/lib/native";
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
+import { Capacitor } from "@capacitor/core";
+import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 
 const DrawerCtx = createContext<{ open: () => void }>({ open: () => {} });
 export const useAppDrawer = () => useContext(DrawerCtx);
@@ -34,12 +36,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined") {
       localStorage.removeItem("profile_complete");
     }
-    await supabase
-      .from("profiles")
-      .update({ online: false, last_seen: new Date().toISOString() })
-      .eq("id", (await supabase.auth.getUser()).data.user?.id ?? "");
+    try {
+      await supabase
+        .from("profiles")
+        .update({ online: false, last_seen: new Date().toISOString() })
+        .eq("id", (await supabase.auth.getUser()).data.user?.id ?? "");
+    } catch (e) {
+      console.error("Failed to update profile presence during sign out:", e);
+    }
     await qc.cancelQueries();
     qc.clear();
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await GoogleAuth.signOut();
+      } catch (e) {
+        console.error("Google native sign out failed:", e);
+      }
+    }
+
     await supabase.auth.signOut();
     navigate({ to: "/auth", replace: true });
   }
