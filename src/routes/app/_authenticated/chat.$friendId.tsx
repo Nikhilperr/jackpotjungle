@@ -65,7 +65,7 @@ type Profile = {
 };
 
 function ChatView() {
-  const { friendId } = useParams({ from: "/_authenticated/chat/$friendId" });
+  const { friendId } = useParams({ from: "/app/_authenticated/chat/$friendId" });
   const [meId, setMeId] = useState<string | null>(null);
   const [friend, setFriend] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
