@@ -1,6 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { waitInitialSession } from "@/lib/auth-wait";
+import { LandingContainer } from "@/components/landing/LandingContainer";
 
 export const Route = createFileRoute("/")({
   ssr: false,
@@ -25,8 +26,7 @@ export const Route = createFileRoute("/")({
       const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", uid);
       const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
       throw redirect({ to: isAdmin ? "/admin" : "/chat" });
-    } else {
-      throw redirect({ to: "/auth" });
     }
   },
+  component: LandingContainer,
 });
