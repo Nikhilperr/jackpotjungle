@@ -1642,7 +1642,11 @@ function Conversation({
           </button>
         </div>
       ) : (
-        <form onSubmit={send} className="relative p-3 border-t border-border bg-card flex items-center gap-2">
+        <form
+          onSubmit={send}
+          className="relative px-4 py-3 border-t border-border bg-card flex items-center gap-2 shrink-0"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
           {suggestions.length > 0 && (
             <div className="absolute left-3 right-3 bottom-full mb-2 bg-popover border border-border rounded-xl shadow-lg overflow-hidden z-20">
               <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-secondary/50 flex items-center gap-1">
@@ -1663,7 +1667,7 @@ function Conversation({
             </div>
           )}
           <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
+            className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 transition-colors" aria-label="Send image">
             {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
           </button>
           <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
@@ -1683,8 +1687,8 @@ function Conversation({
               else if (e.key === "ArrowUp") { e.preventDefault(); setSuggestIdx((i) => (i - 1 + suggestions.length) % suggestions.length); }
               else if (e.key === "Escape") { setSuggestIdx(0); }
             }}
-            className="flex-1 min-w-0 rounded-full bg-secondary border-transparent h-11" />
-          <Button type="submit" size="icon" disabled={!text.trim()} className="rounded-full h-11 w-11 shrink-0 send-btn-active">
+            className="flex-1 min-w-0 rounded-full bg-secondary border-transparent h-11 focus-visible:ring-1 focus-visible:ring-primary/30" />
+          <Button type="submit" size="icon" disabled={!text.trim()} className="rounded-full h-11 w-11 shrink-0 flex items-center justify-center send-btn-active bg-primary text-primary-foreground hover:bg-primary/95 transition-all">
             <Send className="h-4 w-4" />
           </Button>
         </form>

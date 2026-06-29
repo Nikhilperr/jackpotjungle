@@ -1133,22 +1133,22 @@ function ChatView() {
       ) : (
         <form
           onSubmit={send}
-          className="relative px-3 pt-3 border-t border-border flex items-center gap-2 bg-card"
-          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          className="relative px-4 py-3 border-t border-border flex items-center gap-2 bg-card shrink-0"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
           <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
+            className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 transition-colors" aria-label="Send image">
             {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
           </button>
           <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
           <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
           <button type="button" onClick={() => setShowEmoji((v) => !v)}
-            className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary ${showEmoji ? "text-primary" : "text-muted-foreground"}`} aria-label="Emoji">
+            className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary transition-colors ${showEmoji ? "text-primary" : "text-muted-foreground"}`} aria-label="Emoji">
             <Smile className="h-5 w-5" />
           </button>
           <Input ref={inputRef} value={draft} onChange={(e) => onDraftChange(e.target.value)} placeholder="Aa"
-            className="flex-1 min-w-0 rounded-full bg-secondary border-transparent" />
-          <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0 send-btn-active">
+            className="flex-1 min-w-0 h-10 rounded-full bg-secondary border-transparent focus-visible:ring-1 focus-visible:ring-primary/30" />
+          <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="h-10 w-10 rounded-full shrink-0 flex items-center justify-center send-btn-active bg-primary text-primary-foreground hover:bg-primary/95 transition-all">
             <Send className="h-4 w-4" />
           </Button>
         </form>
