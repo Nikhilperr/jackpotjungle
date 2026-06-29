@@ -546,7 +546,35 @@ function ChatView() {
     return parts;
   }
 
-  if (!friend) return <div className="h-full flex items-center justify-center text-muted-foreground">Loading…</div>;
+  // Show skeleton UI while loading — feels instant like Messenger
+  if (!friend) return (
+    <div className="h-full flex-1 flex flex-col min-h-0 bg-background">
+      {/* Skeleton Header */}
+      <header className="px-3 py-3 border-b border-border flex items-center gap-3 bg-card min-h-[65px]">
+        <div className="h-9 w-9 rounded-full bg-secondary animate-pulse" />
+        <div className="h-10 w-10 rounded-full bg-secondary animate-pulse" />
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <div className="h-3.5 w-28 rounded bg-secondary animate-pulse" />
+          <div className="h-2.5 w-16 rounded bg-secondary/60 animate-pulse" />
+        </div>
+      </header>
+      {/* Skeleton Messages */}
+      <div className="flex-1 overflow-hidden px-4 py-6 space-y-4">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
+            <div className={`h-9 rounded-2xl bg-secondary animate-pulse ${i % 3 === 0 ? 'w-40' : i % 3 === 1 ? 'w-56' : 'w-32'}`} style={{ animationDelay: `${i * 80}ms` }} />
+          </div>
+        ))}
+      </div>
+      {/* Skeleton Input Bar */}
+      <div className="p-3 border-t border-border flex items-center gap-2 bg-card">
+        <div className="h-10 w-10 rounded-full bg-secondary animate-pulse" />
+        <div className="h-10 w-10 rounded-full bg-secondary animate-pulse" />
+        <div className="flex-1 h-10 rounded-full bg-secondary animate-pulse" />
+        <div className="h-10 w-10 rounded-full bg-secondary animate-pulse" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="h-full flex-1 flex min-h-0 relative">
@@ -931,7 +959,11 @@ function ChatView() {
           </button>
         </div>
       ) : (
-        <form onSubmit={send} className="relative p-3 border-t border-border flex items-center gap-2 bg-card">
+        <form
+          onSubmit={send}
+          className="relative px-3 pt-3 border-t border-border flex items-center gap-2 bg-card"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        >
           <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
             className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50" aria-label="Send image">
             {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
@@ -942,7 +974,7 @@ function ChatView() {
             className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary ${showEmoji ? "text-primary" : "text-muted-foreground"}`} aria-label="Emoji">
             <Smile className="h-5 w-5" />
           </button>
-          <Input autoFocus value={draft} onChange={(e) => onDraftChange(e.target.value)} placeholder="Aa"
+          <Input value={draft} onChange={(e) => onDraftChange(e.target.value)} placeholder="Aa"
             className="rounded-full bg-secondary border-transparent" />
           <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="rounded-full shrink-0">
             <Send className="h-4 w-4" />
