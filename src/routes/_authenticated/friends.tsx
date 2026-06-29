@@ -84,17 +84,18 @@ function FriendsPage() {
 
   async function findByCode(e: React.FormEvent) {
     e.preventDefault();
-    if (!code.trim()) return;
+    const searchVal = code.trim();
+    if (!searchVal) return;
     setSearching(true);
     setSearchResult(null);
     const { data } = await supabase
       .from("profiles")
       .select("id, username, avatar_url, friend_code")
-      .eq("friend_code", code.trim().toUpperCase())
+      .or(`friend_code.eq.${searchVal.toUpperCase()},username.ilike.${searchVal}`)
       .maybeSingle();
     setSearching(false);
-    if (!data) { toast.error("No user found with that friend code."); return; }
-    if (data.id === meId) { toast.info("That's your friend code 😄"); return; }
+    if (!data) { toast.error("No user found with that friend code or username."); return; }
+    if (data.id === meId) { toast.info("That's your own profile 😄"); return; }
     setSearchResult(data as Profile);
   }
 
@@ -154,15 +155,15 @@ function FriendsPage() {
               <HamburgerButton />
               <h1 className="text-2xl font-bold">Add a friend</h1>
             </div>
-            <p className="text-sm text-muted-foreground mb-4">Enter a friend code like <code className="bg-secondary px-2 py-0.5 rounded">JJM-123456</code></p>
+            <p className="text-sm text-muted-foreground mb-4">Enter a friend code (e.g. <code className="bg-secondary px-2 py-0.5 rounded">JJM-123456</code>) or username</p>
             <form onSubmit={findByCode} className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="JJM-______"
+                  placeholder="Enter friend code or username..."
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  className="pl-9 rounded-full bg-secondary border-transparent uppercase"
+                  className="pl-9 rounded-full bg-secondary border-transparent"
                 />
               </div>
               <Button type="submit" disabled={searching} className="rounded-full">

@@ -55,7 +55,12 @@ type Profile = {
   last_name?: string | null; 
   avatar_url: string | null; 
   online: boolean; 
-  last_seen: string 
+  last_seen: string;
+  friend_code?: string;
+  referral_code?: string;
+  phone?: string | null;
+  address?: string | null;
+  created_at?: string;
 };
 
 function ChatView() {
@@ -115,7 +120,7 @@ function ChatView() {
 
       if (lastCachedMsg) {
         const [{ data: prof }, { data: deltaMsgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
-          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen").eq("id", friendId).maybeSingle(),
+          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
           supabase.from("messages").select("*")
             .or(`and(sender_id.eq.${myId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${myId})`)
             .gt("created_at", lastCachedMsg.created_at)
@@ -145,7 +150,7 @@ function ChatView() {
         setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
       } else {
         const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
-          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen").eq("id", friendId).maybeSingle(),
+          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
           supabase.from("messages").select("*")
             .or(`and(sender_id.eq.${myId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${myId})`)
             .order("created_at", { ascending: false }).limit(PAGE + 1),
@@ -1306,23 +1311,58 @@ function ChatView() {
       {/* Desktop Detail Sidebar */}
       {showDetail && (
         <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto animate-in slide-in-from-right duration-200 shrink-0">
-          <ConversationDetailPanel username={friendDisplayName} avatar={friend.avatar_url} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
+          <ConversationDetailPanel friend={friend} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
         </aside>
       )}
 
       {/* Mobile/Tablet Detail Sheet */}
       <Sheet open={showDetail} onOpenChange={setShowDetail}>
         <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden bg-card border-l border-border text-foreground">
-          <ConversationDetailPanel username={friend.username} avatar={friend.avatar_url} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
+          <ConversationDetailPanel friend={friend} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
         </SheetContent>
       </Sheet>
     </div>
   );
 }
 
-export function ConversationDetailPanel({ username, avatar, isPage = false, pinnedMessages = [], onClose }: { username: string; avatar: string | null; isPage?: boolean; pinnedMessages?: any[]; onClose?: () => void }) {
+export function ConversationDetailPanel({ 
+  friend, 
+  pinnedMessages = [], 
+  onClose 
+}: { 
+  friend: Profile | null; 
+  pinnedMessages?: any[]; 
+  onClose?: () => void 
+}) {
   const [notif, setNotif] = useState(true);
-  
+  const [totalFriends, setTotalFriends] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!friend?.id) return;
+    supabase
+      .from("friendships")
+      .select("user_a, user_b", { count: "exact", head: true })
+      .or(`user_a.eq.${friend.id},user_b.eq.${friend.id}`)
+      .then(({ count }) => {
+        setTotalFriends(count ?? 0);
+      });
+  }, [friend?.id]);
+
+  if (!friend) {
+    return (
+      <div className="h-full flex items-center justify-center p-6 text-muted-foreground select-none">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  const displayName = friend.first_name && friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.username;
+
+  function handleCopy(text: string, label: string) {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copied!`);
+  }
+
   return (
     <div className="h-full flex flex-col bg-card select-none">
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border shrink-0 bg-card">
@@ -1335,17 +1375,56 @@ export function ConversationDetailPanel({ username, avatar, isPage = false, pinn
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         <div className="flex flex-col items-center text-center">
-          {isPage ? (
-            <div className="h-20 w-20 rounded-full bg-primary flex items-center justify-center shrink-0 mb-3 shadow-md">
-              <Sparkles className="h-10 w-10 text-primary-foreground" />
+          <div className="mb-3">
+            <Avatar name={friend.username} url={friend.avatar_url} size={80} />
+          </div>
+          <p className="font-bold text-lg">{displayName}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">@{friend.username}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {friend.online ? "Active now" : "Offline"}
+          </p>
+        </div>
+
+        {/* Contact Info */}
+        <div className="space-y-3">
+          <p className="text-[10px] uppercase text-muted-foreground font-semibold px-2">Contact Info</p>
+          <div className="bg-secondary/40 border border-border/50 rounded-2xl p-4 space-y-3">
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase text-muted-foreground font-semibold">Phone</span>
+              <p className="text-sm font-semibold text-foreground break-words">{friend.phone || "Not specified"}</p>
             </div>
-          ) : (
-            <div className="mb-3">
-              <Avatar name={username} url={avatar} size={80} />
+            <div className="space-y-1 pt-1.5 border-t border-border/40">
+              <span className="text-[10px] uppercase text-muted-foreground font-semibold">Address</span>
+              <p className="text-sm font-semibold text-foreground break-words">{friend.address || "Not specified"}</p>
             </div>
-          )}
-          <p className="font-bold text-lg">{username}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{isPage ? "Official page" : "Active now"}</p>
+          </div>
+        </div>
+
+        {/* Profile Info */}
+        <div className="space-y-3">
+          <p className="text-[10px] uppercase text-muted-foreground font-semibold px-2">Profile Details</p>
+          <div className="bg-secondary/40 border border-border/50 rounded-2xl p-4 space-y-3">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Friend Code</span>
+              <button 
+                onClick={() => friend.friend_code && handleCopy(friend.friend_code, "Friend code")} 
+                className="font-mono font-bold text-foreground hover:text-primary transition-colors flex items-center gap-1.5"
+              >
+                <span>{friend.friend_code || "—"}</span>
+                {friend.friend_code && <Copy className="h-3 w-3" />}
+              </button>
+            </div>
+            <div className="flex justify-between items-center text-sm pt-2 border-t border-border/40">
+              <span className="text-muted-foreground">Total Friends</span>
+              <span className="font-bold text-foreground">{totalFriends !== null ? totalFriends : "..."}</span>
+            </div>
+            {friend.created_at && (
+              <div className="flex justify-between items-center text-sm pt-2 border-t border-border/40">
+                <span className="text-muted-foreground">Member Since</span>
+                <span className="font-medium text-foreground">{new Date(friend.created_at).toLocaleDateString()}</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Options */}
