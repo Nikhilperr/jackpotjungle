@@ -491,7 +491,7 @@ function ChatLayout() {
                 {onlineFriends.map((f) => (
                   <Link
                     key={f.friendId}
-                    to="/chat/$friendId"
+                    to="/app/chat/$friendId"
                     params={{ friendId: f.friendId }}
                     className="flex flex-col items-center shrink-0 w-[60px] text-center group cursor-pointer"
                   >
@@ -524,7 +524,7 @@ function ChatLayout() {
           <PullToRefresh onRefresh={async () => { if (meId) { await Promise.all([load(meId), loadPage(meId), loadSpam(meId)]); } }}>
             {!isAdmin && tab === "all" && (
               <Link
-                to="/chat/page"
+                to="/app/chat/page"
                 className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors ${isPageActive ? "bg-secondary" : ""}`}
               >
                 <div className="relative shrink-0">
@@ -749,7 +749,7 @@ const ConversationItem = React.memo(function ConversationItem({
   return (
     <div className="group relative">
       <Link
-        to="/chat/$friendId"
+        to="/app/chat/$friendId"
         params={{ friendId: c.friendId }}
         onPointerDown={() => {
           startTouch(c.friendId);
