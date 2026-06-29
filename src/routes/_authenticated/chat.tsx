@@ -81,7 +81,7 @@ function ChatLayout() {
     const [{ data: last }, { data: lastCalls }] = await Promise.all([
       supabase
         .from("page_messages")
-        .select("id, content, created_at, from_page, seen")
+        .select("id, content, created_at, from_page, seen, image_url, audio_url")
         .eq("conversation_id", conv.id)
         .order("created_at", { ascending: false })
         .limit(50),
@@ -111,6 +111,12 @@ function ChatLayout() {
       content = "Unpinned a message";
     } else if (content?.startsWith("[system:unsent]")) {
       content = "Unsent a message";
+    } else if (content?.startsWith("[system:forwarded] ")) {
+      content = content.slice("[system:forwarded] ".length);
+    } else if (content?.startsWith("[system:forwarded]")) {
+      content = content.slice("[system:forwarded]".length).trim() || (firstMsg?.image_url ? "📷 Photo" : firstMsg?.audio_url ? "🎤 Voice message" : "Forwarded message");
+    } else if (content === "[system:forwarded]") {
+      content = firstMsg?.image_url ? "📷 Photo" : firstMsg?.audio_url ? "🎤 Voice message" : "Forwarded message";
     } else if (content?.startsWith("[reply:")) {
       const match = content.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
       if (match) content = match[1];
@@ -185,6 +191,12 @@ function ChatLayout() {
         preview = "Unpinned a message";
       } else if (preview?.startsWith("[system:unsent]")) {
         preview = "Unsent a message";
+      } else if (preview?.startsWith("[system:forwarded] ")) {
+        preview = preview.slice("[system:forwarded] ".length);
+      } else if (preview?.startsWith("[system:forwarded]")) {
+        preview = preview.slice("[system:forwarded]".length).trim() || (m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message");
+      } else if (preview === "[system:forwarded]") {
+        preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message";
       } else if (preview?.startsWith("[reply:")) {
         const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
         if (match) preview = match[1];

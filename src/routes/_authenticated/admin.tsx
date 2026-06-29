@@ -415,7 +415,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds),
       supabase
         .from("page_messages")
-        .select("conversation_id, content, created_at, seen, from_page")
+        .select("conversation_id, content, created_at, seen, from_page, image_url, audio_url")
         .in("conversation_id", convIds)
         .order("created_at", { ascending: false }),
       supabase.from("tags").select("id, name, color").order("name"),
@@ -457,6 +457,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         lastMessage = "Unpinned a message";
       } else if (lastMessage?.startsWith("[system:unsent]")) {
         lastMessage = "Unsent a message";
+      } else if (lastMessage?.startsWith("[system:forwarded] ")) {
+        lastMessage = lastMessage.slice("[system:forwarded] ".length);
+      } else if (lastMessage?.startsWith("[system:forwarded]")) {
+        lastMessage = lastMessage.slice("[system:forwarded]".length).trim() || (lastMsg?.image_url ? "📷 Photo" : lastMsg?.audio_url ? "🎤 Voice message" : "Forwarded message");
+      } else if (lastMessage === "[system:forwarded]") {
+        lastMessage = lastMsg?.image_url ? "📷 Photo" : lastMsg?.audio_url ? "🎤 Voice message" : "Forwarded message";
       } else if (lastMessage?.startsWith("[reply:")) {
         const match = lastMessage.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
         if (match) lastMessage = match[1];
