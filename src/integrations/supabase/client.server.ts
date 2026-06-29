@@ -19,13 +19,37 @@ function createSupabaseAdminClient() {
     throw new Error(message);
   }
 
-  return createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  const client = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
       storage: undefined,
       persistSession: false,
       autoRefreshToken: false,
+    },
+    realtime: {
+      url: "wss://ws.playjackpotjungle.com/realtime/v1/websocket"
     }
   });
+
+  // Intercept storage client public URLs to serve from the CDN subdomain
+  const originalFrom = client.storage.from.bind(client.storage);
+  client.storage.from = (id: string) => {
+    const bucketClient = originalFrom(id);
+    const originalGetPublicUrl = bucketClient.getPublicUrl.bind(bucketClient);
+    bucketClient.getPublicUrl = (path: string, options?: any) => {
+      const res = originalGetPublicUrl(path, options);
+      if (res.data?.publicUrl) {
+        const cdnUrl = "https://cdn.playjackpotjungle.com";
+        const storagePrefix = `${SUPABASE_URL}/storage/v1/object/public`;
+        if (res.data.publicUrl.startsWith(storagePrefix)) {
+          res.data.publicUrl = res.data.publicUrl.replace(storagePrefix, `${cdnUrl}/${id}`);
+        }
+      }
+      return res;
+    };
+    return bucketClient;
+  };
+
+  return client;
 }
 
 let _supabaseAdmin: ReturnType<typeof createSupabaseAdminClient> | undefined;

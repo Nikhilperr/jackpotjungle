@@ -18,13 +18,57 @@ function createSupabaseClient() {
     throw new Error(message);
   }
 
-  return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  const client = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: {
-      storage: typeof window !== 'undefined' ? localStorage : undefined,
+      storage: typeof window !== 'undefined' ? {
+        getItem: (key: string) => {
+          const cookieMatch = document.cookie.match('(^|;)\\s*' + key + '\\s*=\\s*([^;]+)');
+          if (cookieMatch) {
+            return decodeURIComponent(cookieMatch.pop() || '');
+          }
+          return localStorage.getItem(key);
+        },
+        setItem: (key: string, value: string) => {
+          localStorage.setItem(key, value);
+          const isProdDomain = window.location.hostname.endsWith('playjackpotjungle.com');
+          const domain = isProdDomain ? '; domain=.playjackpotjungle.com; path=/' : '; path=/';
+          document.cookie = `${key}=${encodeURIComponent(value)}${domain}; max-age=31536000; SameSite=Lax; Secure`;
+        },
+        removeItem: (key: string) => {
+          localStorage.removeItem(key);
+          const isProdDomain = window.location.hostname.endsWith('playjackpotjungle.com');
+          const domain = isProdDomain ? '; domain=.playjackpotjungle.com; path=/' : '; path=/';
+          document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC${domain}`;
+        }
+      } : undefined,
       persistSession: true,
       autoRefreshToken: true,
+    },
+    realtime: {
+      url: "wss://ws.playjackpotjungle.com/realtime/v1/websocket"
     }
   });
+
+  // Intercept storage client public URLs to serve from the CDN subdomain
+  const originalFrom = client.storage.from.bind(client.storage);
+  client.storage.from = (id: string) => {
+    const bucketClient = originalFrom(id);
+    const originalGetPublicUrl = bucketClient.getPublicUrl.bind(bucketClient);
+    bucketClient.getPublicUrl = (path: string, options?: any) => {
+      const res = originalGetPublicUrl(path, options);
+      if (res.data?.publicUrl) {
+        const cdnUrl = "https://cdn.playjackpotjungle.com";
+        const storagePrefix = `${SUPABASE_URL}/storage/v1/object/public`;
+        if (res.data.publicUrl.startsWith(storagePrefix)) {
+          res.data.publicUrl = res.data.publicUrl.replace(storagePrefix, `${cdnUrl}/${id}`);
+        }
+      }
+      return res;
+    };
+    return bucketClient;
+  };
+
+  return client;
 }
 
 let _supabase: ReturnType<typeof createSupabaseClient> | undefined;

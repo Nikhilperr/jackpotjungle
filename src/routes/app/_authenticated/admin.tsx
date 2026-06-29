@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { toCDNUrl } from "@/config";
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRole, type AppRole } from "@/hooks/useRole";
@@ -2383,11 +2384,11 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
             className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
           >
             {m.image_url ? (
-              <button onClick={() => onPreviewImage(m.image_url)} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none">
-                <img src={m.image_url} alt="" className="block max-h-72 w-auto object-cover" />
+              <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none">
+                <img src={toCDNUrl(m.image_url)} alt="" className="block max-h-72 w-auto object-cover" />
               </button>
             ) : m.audio_url ? (
-              <div className="block"><VoiceMessage src={m.audio_url} mine={mine} /></div>
+              <div className="block"><VoiceMessage src={toCDNUrl(m.audio_url)} mine={mine} /></div>
             ) : (
               <div className={`max-w-[240px] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
                 <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">

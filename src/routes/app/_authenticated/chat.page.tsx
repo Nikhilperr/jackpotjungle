@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -1443,12 +1444,12 @@ const PageMessageItem = React.memo(function PageMessageItem({
               className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
             >
               {m.image_url ? (
-                <button onClick={() => onPreviewImage(m.image_url)} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block">
-                  <img src={m.image_url} alt="" className="block max-h-80 w-auto object-cover" />
+                <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block">
+                  <img src={toCDNUrl(m.image_url)} alt="" className="block max-h-80 w-auto object-cover" />
                 </button>
               ) : m.audio_url ? (
                 <div className="block">
-                  <VoiceMessage src={m.audio_url} mine={mine} />
+                  <VoiceMessage src={toCDNUrl(m.audio_url)} mine={mine} />
                 </div>
               ) : (
                 <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
