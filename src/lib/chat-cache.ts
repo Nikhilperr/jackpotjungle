@@ -66,7 +66,7 @@ function msgKey(meId: string, friendId: string) {
 export function getCachedMessages(meId: string, friendId: string): CachedMessage[] | null {
   const entry = messageCache.get(msgKey(meId, friendId));
   if (!entry) return null;
-  if (Date.now() - entry.loadedAt > MESSAGE_CACHE_TTL_MS) return null; // expired
+  // Always return cached messages immediately for instant loading (stale-while-revalidate)
   return entry.messages;
 }
 
@@ -82,7 +82,7 @@ export function invalidateMessageCache(meId: string, friendId: string) {
 export function getCachedPageMessages(conversationId: string): CachedPageMessage[] | null {
   const entry = pageMessageCache.get(conversationId);
   if (!entry) return null;
-  if (Date.now() - entry.loadedAt > MESSAGE_CACHE_TTL_MS) return null; // expired
+  // Always return cached messages immediately for instant loading (stale-while-revalidate)
   return entry.messages;
 }
 

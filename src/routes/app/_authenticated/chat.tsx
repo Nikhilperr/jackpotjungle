@@ -342,22 +342,135 @@ function ChatLayout() {
 
     const channel = supabase
       .channel("conv-list")
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
-        if (mounted) load(meId);
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
+        if (!mounted) return;
+        const m = payload.new as any;
+        if (!m || !m.sender_id || !m.receiver_id) return;
+        const isMine = m.sender_id === meId;
+        const friendId = isMine ? m.receiver_id : m.sender_id;
+
+        if (payload.eventType === "INSERT") {
+          setConversations((prev) => {
+            const idx = prev.findIndex((c) => c.friendId === friendId);
+            if (idx === -1) {
+              // New chat/relationship, load from DB to fetch profile and metadata
+              load(meId);
+              return prev;
+            }
+            
+            let preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
+            if (preview?.startsWith("[system:reaction:")) {
+              preview = "Reacted to a message";
+            } else if (preview?.startsWith("[system:pin:")) {
+              preview = "Pinned a message";
+            } else if (preview?.startsWith("[system:unpin:")) {
+              preview = "Unpinned a message";
+            } else if (preview?.startsWith("[system:unsent]")) {
+              preview = "Unsent a message";
+            } else if (preview?.startsWith("[system:forwarded] ")) {
+              preview = preview.slice("[system:forwarded] ".length);
+            } else if (preview?.startsWith("[system:forwarded]")) {
+              preview = preview.slice("[system:forwarded]".length).trim() || (m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message");
+            } else if (preview === "[system:forwarded]") {
+              preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message";
+            } else if (preview?.startsWith("[reply:")) {
+              const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+              if (match) preview = match[1];
+            }
+
+            const updated = { ...prev[idx] };
+            updated.lastMessage = preview;
+            updated.lastAt = m.created_at;
+            if (m.content) updated.allText += " " + m.content.toLowerCase();
+            if (m.receiver_id === meId && !m.seen) {
+              updated.unread += 1;
+            }
+
+            const next = prev.filter((_, i) => i !== idx);
+            next.push(updated);
+            return next.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+          });
+        } else if (payload.eventType === "UPDATE") {
+          if (m.receiver_id === meId && m.seen) {
+            setConversations((prev) =>
+              prev.map((c) => (c.friendId === friendId ? { ...c, unread: 0 } : c))
+            );
+          }
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => {
         if (mounted) load(meId);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, () => {
-        if (mounted) loadPage(meId);
+      .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, (payload) => {
+        if (!mounted) return;
+        const m = payload.new as any;
+        if (!m) return;
+        if (payload.eventType === "INSERT") {
+          let preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
+          if (preview?.startsWith("[system:reaction:")) {
+            preview = "Reacted to a message";
+          } else if (preview?.startsWith("[system:pin:")) {
+            preview = "Pinned a message";
+          } else if (preview?.startsWith("[system:unpin:")) {
+            preview = "Unpinned a message";
+          } else if (preview?.startsWith("[system:unsent]")) {
+            preview = "Unsent a message";
+          } else if (preview?.startsWith("[system:forwarded] ")) {
+            preview = preview.slice("[system:forwarded] ".length);
+          } else if (preview?.startsWith("[system:forwarded]")) {
+            preview = preview.slice("[system:forwarded]".length).trim() || (m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message");
+          } else if (preview === "[system:forwarded]") {
+            preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message";
+          } else if (preview?.startsWith("[reply:")) {
+            const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+            if (match) preview = match[1];
+          }
+
+          setPageLast({ content: preview, at: m.created_at });
+          if (m.from_page && !m.seen) {
+            setPageUnread((prev) => prev + 1);
+          }
+        } else if (payload.eventType === "UPDATE") {
+          if (m.from_page && m.seen) {
+            setPageUnread(0);
+          }
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "spam_list" }, () => {
         if (mounted) loadSpam(meId);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, () => {
-        if (mounted) {
-          load(meId);
-          loadPage(meId);
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, (payload) => {
+        if (!mounted) return;
+        const c = payload.new as any;
+        if (!c) return;
+        
+        const callPreview = c.call_type === "video" ? "📹 Video call" : "📞 Voice call";
+
+        if (c.context === "page" || c.context === "page_broadcast") {
+          setPageLast((prev) => {
+            if (!prev.at || new Date(c.created_at) > new Date(prev.at)) {
+              return { content: callPreview, at: c.created_at };
+            }
+            return prev;
+          });
+        } else if (c.context === "friend") {
+          const friendId = c.caller_id === meId ? c.callee_id : c.caller_id;
+          if (!friendId) return;
+
+          setConversations((prev) => {
+            const idx = prev.findIndex((item) => item.friendId === friendId);
+            if (idx === -1) return prev;
+
+            const updated = { ...prev[idx] };
+            if (!updated.lastAt || new Date(c.created_at) > new Date(updated.lastAt)) {
+              updated.lastMessage = callPreview;
+              updated.lastAt = c.created_at;
+            }
+
+            const next = prev.filter((_, i) => i !== idx);
+            next.push(updated);
+            return next.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+          });
         }
       })
       .subscribe();
