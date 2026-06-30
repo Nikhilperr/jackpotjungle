@@ -109,7 +109,11 @@ function ChatLayout() {
         .limit(10)
     ]);
 
-    const deletedIds = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+    let deletedIds: string[] = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+      deletedIds = Array.isArray(parsed) ? parsed : [];
+    } catch {}
     const deletedSet = new Set<string>(deletedIds);
     const arr = (last ?? []).filter((m) => !deletedSet.has(m.id));
     const firstMsg = arr[0];
@@ -175,7 +179,11 @@ function ChatLayout() {
           .limit(200)
       ]);
 
-      const deletedIds = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+      let deletedIds: string[] = [];
+      try {
+        const parsed = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+        deletedIds = Array.isArray(parsed) ? parsed : [];
+      } catch {}
       const deletedSet = new Set<string>(deletedIds);
 
       const byFriend: Record<string, Conversation> = {};

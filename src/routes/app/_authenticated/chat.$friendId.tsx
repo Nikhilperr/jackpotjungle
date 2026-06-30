@@ -131,7 +131,7 @@ function ChatView() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  let mounted = true;
+  const isMountedRef = useRef(true);
   const load = useCallback(async () => {
     if (!meId) return;
     isInitialLoadRef.current = true;
@@ -160,7 +160,7 @@ function ChatView() {
             .eq("context", "friend")
             .order("created_at", { ascending: true }).limit(200),
         ]);
-        if (!mounted) return;
+        if (!isMountedRef.current) return;
 
         const profile = prof as Profile | null;
         if (profile && spamRow) profile.online = false;
@@ -189,7 +189,7 @@ function ChatView() {
             .eq("context", "friend")
             .order("created_at", { ascending: true }).limit(200),
         ]);
-        if (!mounted) return;
+        if (!isMountedRef.current) return;
 
         const profile = prof as Profile | null;
         if (profile && spamRow) profile.online = false;
@@ -212,8 +212,9 @@ function ChatView() {
   }, [friendId, meId]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     load();
-    return () => { mounted = false; };
+    return () => { isMountedRef.current = false; };
   }, [load]);
 
   // Load 50 older messages above the current batch
@@ -268,7 +269,7 @@ function ChatView() {
           setMessages((prev) => {
             if (prev.some((x) => x.id === m.id)) return prev;
             const idx = prev.findIndex((x) =>
-              x.id.startsWith("temp-") &&
+              x.id && typeof x.id === "string" && x.id.startsWith("temp-") &&
               x.sender_id === m.sender_id &&
               (x.content ?? null) === (m.content ?? null) &&
               (x.image_url ?? null) === (m.image_url ?? null) &&
@@ -510,15 +511,25 @@ function ChatView() {
   }
 
   useEffect(() => {
-    const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
-    setDeletedForMeIds(new Set(list));
+    try {
+      const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+      setDeletedForMeIds(new Set(Array.isArray(list) ? list : []));
+    } catch {
+      setDeletedForMeIds(new Set());
+    }
   }, []);
 
   const deleteForMe = (ids: string[]) => {
-    const nextList = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
-    const nextSet = new Set<string>([...nextList, ...ids]);
-    localStorage.setItem("jj_deleted_messages", JSON.stringify(Array.from(nextSet)));
-    setDeletedForMeIds(nextSet);
+    try {
+      const nextList = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+      const nextSet = new Set<string>([...(Array.isArray(nextList) ? nextList : []), ...ids]);
+      localStorage.setItem("jj_deleted_messages", JSON.stringify(Array.from(nextSet)));
+      setDeletedForMeIds(nextSet);
+    } catch {
+      const nextSet = new Set<string>(ids);
+      localStorage.setItem("jj_deleted_messages", JSON.stringify(ids));
+      setDeletedForMeIds(nextSet);
+    }
   };
 
   const parsedMessages = useMemo(() => {
@@ -1965,7 +1976,7 @@ const MessageItem = React.memo(function MessageItem({
                 <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />
                 Not delivered
               </span>
-            ) : m.id.startsWith("temp-") ? (
+            ) : (m.id && typeof m.id === "string" && m.id.startsWith("temp-")) ? (
               <span className="inline-flex items-center gap-1">
                 <span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />
                 Sending…

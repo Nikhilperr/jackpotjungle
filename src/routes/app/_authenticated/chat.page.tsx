@@ -196,10 +196,16 @@ function PageChatView() {
   };
 
   const deleteForMe = (ids: string[]) => {
-    const nextList = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
-    const nextSet = new Set<string>([...nextList, ...ids]);
-    localStorage.setItem("jj_deleted_messages", JSON.stringify(Array.from(nextSet)));
-    setDeletedForMeIds(nextSet);
+    try {
+      const nextList = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+      const nextSet = new Set<string>([...(Array.isArray(nextList) ? nextList : []), ...ids]);
+      localStorage.setItem("jj_deleted_messages", JSON.stringify(Array.from(nextSet)));
+      setDeletedForMeIds(nextSet);
+    } catch {
+      const nextSet = new Set<string>(ids);
+      localStorage.setItem("jj_deleted_messages", JSON.stringify(ids));
+      setDeletedForMeIds(nextSet);
+    }
   };
 
   const parsedMessages = useMemo(() => {
@@ -428,8 +434,12 @@ function PageChatView() {
   }, []);
 
   useEffect(() => {
-    const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
-    setDeletedForMeIds(new Set(list));
+    try {
+      const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+      setDeletedForMeIds(new Set(Array.isArray(list) ? list : []));
+    } catch {
+      setDeletedForMeIds(new Set());
+    }
   }, []);
 
   const pinnedMessages = useMemo(() => {

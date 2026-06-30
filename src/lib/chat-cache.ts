@@ -56,8 +56,13 @@ export function getCachedProfile(friendId: string): CachedProfile | undefined {
     try {
       const stored = localStorage.getItem(`jj_profile_${friendId}`);
       if (stored) {
-        cached = JSON.parse(stored);
-        profileCache.set(friendId, cached!);
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          cached = parsed;
+          profileCache.set(friendId, cached!);
+        } else {
+          localStorage.removeItem(`jj_profile_${friendId}`);
+        }
       }
     } catch {}
   }
@@ -87,8 +92,12 @@ export function getCachedMessages(meId: string, friendId: string): CachedMessage
       const stored = localStorage.getItem(`jj_msgs_${key}`);
       if (stored) {
         const messages = JSON.parse(stored);
-        messageCache.set(key, { messages, loadedAt: Date.now() });
-        return messages;
+        if (Array.isArray(messages)) {
+          messageCache.set(key, { messages, loadedAt: Date.now() });
+          return messages;
+        } else {
+          localStorage.removeItem(`jj_msgs_${key}`);
+        }
       }
     } catch {}
   }
@@ -124,8 +133,12 @@ export function getCachedPageMessages(conversationId: string): CachedPageMessage
       const stored = localStorage.getItem(`jj_page_msgs_${conversationId}`);
       if (stored) {
         const messages = JSON.parse(stored);
-        pageMessageCache.set(conversationId, { messages, loadedAt: Date.now() });
-        return messages;
+        if (Array.isArray(messages)) {
+          pageMessageCache.set(conversationId, { messages, loadedAt: Date.now() });
+          return messages;
+        } else {
+          localStorage.removeItem(`jj_page_msgs_${conversationId}`);
+        }
       }
     } catch {}
   }
