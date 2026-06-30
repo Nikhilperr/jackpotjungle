@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: "dist",
   server: {
     // Points directly to the production VPS web server.
-    url: "https://playjackpotjungle.com",
+    url: "https://chat.playjackpotjungle.com/app/auth",
     cleartext: false,
   },
   android: {

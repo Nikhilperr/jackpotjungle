@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
-import { Mail, Lock, User, CheckSquare, Square } from "lucide-react";
+import { Mail, Lock, User, CheckSquare, Square, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuthLayout } from "@/components/auth/AuthLayout";
@@ -125,26 +125,89 @@ function AuthPage() {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout hideHeader={mode === "welcome"}>
       <AnimatePresence mode="wait">
         {mode === "welcome" && (
-          <AuthCard key="welcome" delay={0.1}>
-            <div className="text-center space-y-4 py-4">
-              <h2 className="text-2xl font-extrabold text-foreground">Welcome to Jackpot Jungle</h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Connect instantly with friends, admins, and support teams. Explore our fast, modern messenger experience.
-              </p>
-              
-              <div className="space-y-3 pt-4">
-                <AuthButton onClick={() => setMode("login")} variant="primary">
-                  Sign In
-                </AuthButton>
-                <AuthButton onClick={() => setMode("signup")} variant="secondary">
-                  Create New Account
-                </AuthButton>
+          <motion.div
+            key="welcome"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
+            className="w-full max-w-sm flex flex-col items-center justify-between min-h-[70vh] py-8 text-center select-none"
+          >
+            {/* Logo and Brand Animation */}
+            <div className="flex-1 flex flex-col items-center justify-center space-y-6">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.5, rotate: -15 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ duration: 0.8, type: "spring", stiffness: 100 }}
+                className="relative inline-flex items-center justify-center"
+              >
+                {/* Glow ring */}
+                <motion.div
+                  animate={{ scale: [1, 1.12, 1], opacity: [0.15, 0.35, 0.15] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute -inset-4 rounded-[32px] bg-gradient-to-tr from-primary to-accent blur-md"
+                />
+                <img 
+                  src="/icons/icon-256.webp" 
+                  alt="Logo" 
+                  className="relative h-28 w-28 rounded-[28px] shadow-2xl object-cover border border-border/25 bg-card"
+                />
+              </motion.div>
+
+              <div className="space-y-2">
+                <motion.h1
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3, duration: 0.6 }}
+                  className="text-4xl font-extrabold tracking-tight text-foreground flex items-center justify-center gap-1.5"
+                >
+                  Jackpot Jungle
+                  <Sparkles className="h-6 w-6 text-primary animate-pulse" />
+                </motion.h1>
+                <motion.p
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.45, duration: 0.6 }}
+                  className="text-sm text-muted-foreground/80 font-medium tracking-wide"
+                >
+                  Messenger
+                </motion.p>
               </div>
+
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.6, duration: 0.8 }}
+                className="text-xs text-muted-foreground/60 max-w-[280px] leading-relaxed pt-2"
+              >
+                Connect instantly with friends, admins, and support teams. Explore our fast, modern messenger experience.
+              </motion.p>
             </div>
-          </AuthCard>
+
+            {/* Premium Get Started Button */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.75, duration: 0.6 }}
+              className="w-full px-4 pt-8"
+            >
+              <button
+                onClick={() => setMode("login")}
+                className="w-full py-4 bg-primary text-primary-foreground hover:bg-primary/95 active:scale-[0.98] font-bold rounded-2xl text-sm transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.35)] hover:shadow-[0_0_25px_rgba(var(--primary-rgb),0.55)] flex items-center justify-center gap-2 group cursor-pointer"
+              >
+                <span>Get Started</span>
+                <motion.span
+                  animate={{ x: [0, 4, 0] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  →
+                </motion.span>
+              </button>
+            </motion.div>
+          </motion.div>
         )}
 
         {mode === "login" && (
