@@ -691,7 +691,7 @@ function ChatLayout() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline justify-between gap-2">
                     <p className={`truncate ${pageUnread > 0 ? "font-bold" : "font-semibold"}`}>Jackpot Jungle</p>
-                    {pageLast.at && (
+                    {pageLast.at && !isNaN(new Date(pageLast.at).getTime()) && (
                       <span className="text-xs text-muted-foreground shrink-0">
                         {formatDistanceToNow(new Date(pageLast.at), { addSuffix: false })}
                       </span>
@@ -950,7 +950,7 @@ const ConversationItem = React.memo(function ConversationItem({
               {c.displayName}
               {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
             </p>
-            {c.lastAt && (
+            {c.lastAt && !isNaN(new Date(c.lastAt).getTime()) && (
               <span className="text-xs text-muted-foreground shrink-0">
                 {formatDistanceToNow(new Date(c.lastAt), { addSuffix: false })}
               </span>
