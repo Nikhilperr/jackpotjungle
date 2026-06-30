@@ -482,7 +482,7 @@ function PageChatView() {
       // Load call history for this page conversation
       const { data: callRows } = await supabase.from("calls")
         .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-        .eq("context", "page").eq("page_conversation_id", conv.id)
+        .in("context", ["page", "page_broadcast"]).eq("page_conversation_id", conv.id)
         .order("created_at", { ascending: true }).limit(200);
       if (mounted) setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
 
@@ -1437,44 +1437,54 @@ const PageMessageItem = React.memo(function PageMessageItem({
           </div>
         )}
 
-        <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-          <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-            <div
-              onPointerDown={selectionMode ? undefined : startPress}
-              onPointerUp={selectionMode ? undefined : cancelPress}
-              onPointerMove={selectionMode ? undefined : cancelPress}
-              onPointerLeave={selectionMode ? undefined : cancelPress}
-              onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) onMenuOpen(m.id); }}
-              className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
-            >
-              {m.image_url ? (
-                <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block">
-                  <img src={toCDNUrl(m.image_url)} alt="" className="block max-h-80 w-auto object-cover" />
-                </button>
-              ) : m.audio_url ? (
-                <div className="block">
-                  <VoiceMessage src={toCDNUrl(m.audio_url)} mine={mine} />
-                </div>
-              ) : (
-                <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                  <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>
-                </div>
+        <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+          <div
+            onPointerDown={selectionMode ? undefined : startPress}
+            onPointerUp={selectionMode ? undefined : cancelPress}
+            onPointerMove={selectionMode ? undefined : cancelPress}
+            onPointerLeave={selectionMode ? undefined : cancelPress}
+            onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) onMenuOpen(m.id); }}
+            className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
+          >
+            {m.image_url ? (
+              <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none">
+                <img src={toCDNUrl(m.image_url)} alt="" className="block max-h-80 w-auto object-cover" />
+              </button>
+            ) : m.audio_url ? (
+              <div className="block">
+                <VoiceMessage src={toCDNUrl(m.audio_url)} mine={mine} />
+              </div>
+            ) : (
+              <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
+                <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Reactions Badge */}
+        {reactionKeys.length > 0 && (
+          <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
+            <div className="inline-flex items-center gap-1 bg-secondary border border-border/80 px-2 py-0.5 rounded-full shadow-sm text-xs leading-none">
+              {reactionKeys.map(k => (
+                <span key={k} onClick={() => onReact(m.id, k)} className="cursor-pointer" title={m.reactions[k].join(", ")}>{k}</span>
+              ))}
+              {reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0) > 1 && (
+                <span className="text-[9px] font-bold text-muted-foreground">{reactionKeys.reduce((acc, k) => acc + m.reactions[k].length, 0)}</span>
               )}
             </div>
           </div>
+        )}
 
-          {/* Reactions */}
-          {reactionKeys.length > 0 && (
-            <div className={`flex gap-1 mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
-              {reactionKeys.map(emoji => (
-                <div key={emoji} className="flex items-center gap-1 bg-secondary border border-border px-1.5 py-0.5 rounded-full text-xs shadow-sm select-none">
-                  <span>{emoji}</span>
-                  <span className="text-[10px] text-muted-foreground font-semibold">{m.reactions[emoji].length}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Pin Badge */}
+        {m.isPinned && (
+          <div className={`flex mt-1 ${mine ? "justify-end" : "justify-start"} px-1`}>
+            <span className="text-[9px] text-muted-foreground flex items-center gap-1">
+              <Pin className="h-3 w-3 rotate-45 text-primary fill-primary shrink-0" />
+              Pinned
+            </span>
+          </div>
+        )}
 
         {mine && (isLastMine || m.failed) && (
           <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">

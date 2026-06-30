@@ -594,12 +594,12 @@ function ChatLayout() {
     <AppShell>
       <div className="flex h-full w-full overflow-hidden bg-background">
         <motion.div
-          animate={isMobile ? { x: hasActive ? "-100vw" : "0vw" } : { x: "0px" }}
+          animate={isMobile ? { x: hasActive ? "-50%" : "0%" } : { x: "0px" }}
           transition={{ type: "spring", damping: 26, stiffness: 240 }}
-          className="flex h-full w-[200vw] md:w-full shrink-0 md:shrink"
+          className="flex h-full w-[200%] md:w-full shrink-0 md:shrink"
         >
           {/* Sidebar Panel */}
-          <div className="w-[100vw] md:w-full md:max-w-sm md:border-r md:border-border flex flex-col min-h-0 shrink-0">
+          <div className="w-[50%] md:w-full md:max-w-sm md:border-r md:border-border flex flex-col min-h-0 shrink-0">
           <div className="p-4 border-b border-border">
             <div className="flex items-center gap-2 mb-3">
               <HamburgerButton />
@@ -719,7 +719,7 @@ function ChatLayout() {
           </PullToRefresh>
           </div>
           {/* Active Chat Panel */}
-          <div className="w-[100vw] md:flex-1 flex flex-col min-h-0 shrink-0 md:shrink">
+          <div className="w-[50%] md:flex-1 flex flex-col min-h-0 shrink-0 md:shrink">
             {hasActive ? <Outlet /> : <EmptyState />}
           </div>
         </motion.div>
