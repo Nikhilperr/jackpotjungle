@@ -52,6 +52,14 @@ function AuthPage() {
 
   useEffect(() => {
     if (loading || roleLoading) return;
+    
+    // Ignore redirect if we are inside a password recovery flow
+    const isRecovery = typeof window !== "undefined" && (
+      window.location.hash.includes("recovery") ||
+      window.location.search.includes("recovery")
+    );
+    if (isRecovery) return;
+
     if (user) navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
   }, [user, loading, isAdmin, roleLoading, navigate]);
 

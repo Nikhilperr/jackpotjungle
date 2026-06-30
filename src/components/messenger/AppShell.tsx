@@ -56,6 +56,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
 
     await supabase.auth.signOut();
+    await new Promise((resolve) => setTimeout(resolve, 150));
     navigate({ to: "/app/auth", replace: true });
   }
 

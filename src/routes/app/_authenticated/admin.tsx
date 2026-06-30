@@ -203,6 +203,7 @@ function AdminPage() {
     }
 
     await supabase.auth.signOut();
+    await new Promise((resolve) => setTimeout(resolve, 150));
     navigate({ to: "/app/auth", replace: true });
   }
 

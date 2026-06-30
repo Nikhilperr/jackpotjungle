@@ -488,6 +488,7 @@ function OnboardingPage() {
                     }
                   }
                   await supabase.auth.signOut();
+                  await new Promise((resolve) => setTimeout(resolve, 150));
                   navigate({ to: "/app/auth", search: { mode: "login" } });
                 } catch (err: any) {
                   toast.error(err.message || "Failed to sign out");
