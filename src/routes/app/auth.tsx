@@ -125,46 +125,31 @@ function AuthPage() {
   }
 
   return (
-    <AuthLayout mode={mode}>
+    <AuthLayout>
       <AnimatePresence mode="popLayout">
         {mode === "welcome" && (
-          <motion.div
-            key="welcome"
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 140, damping: 24, mass: 1.1 }}
-            className="w-full max-w-sm flex flex-col items-center justify-center pt-2 pb-6 text-center select-none"
-          >
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.25, duration: 0.6 }}
-              className="text-xs text-muted-foreground/75 max-w-[280px] leading-relaxed mb-6"
-            >
-              Connect instantly with friends, admins, and support teams. Explore our fast, modern messenger experience.
-            </motion.p>
+          <AuthCard key="welcome">
+            <div className="text-center space-y-4 py-2 select-none">
+              <p className="text-xs text-muted-foreground/75 leading-relaxed mx-auto max-w-[280px]">
+                Connect instantly with friends, admins, and support teams. Explore our fast, modern messenger experience.
+              </p>
 
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35, duration: 0.5 }}
-              className="w-full px-4"
-            >
-              <button
-                onClick={() => setMode("login")}
-                className="w-full py-4 bg-primary text-primary-foreground hover:bg-primary/95 active:scale-[0.98] font-bold rounded-2xl text-sm transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_25px_rgba(var(--primary-rgb),0.55)] flex items-center justify-center gap-2 group cursor-pointer"
-              >
-                <span>Get Started</span>
-                <motion.span
-                  animate={{ x: [0, 4, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              <div className="pt-2">
+                <button
+                  onClick={() => setMode("login")}
+                  className="w-full py-4 bg-primary text-primary-foreground hover:bg-primary/95 active:scale-[0.98] font-bold rounded-2xl text-sm transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_25px_rgba(var(--primary-rgb),0.55)] flex items-center justify-center gap-2 group cursor-pointer"
                 >
-                  →
-                </motion.span>
-              </button>
-            </motion.div>
-          </motion.div>
+                  <span>Get Started</span>
+                  <motion.span
+                    animate={{ x: [0, 4, 0] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                  >
+                    →
+                  </motion.span>
+                </button>
+              </div>
+            </div>
+          </AuthCard>
         )}
 
         {mode === "login" && (
