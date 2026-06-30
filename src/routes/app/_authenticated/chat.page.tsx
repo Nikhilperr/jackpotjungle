@@ -44,9 +44,29 @@ type Msg = {
 };
 
 function PageChatView() {
-  const [meId, setMeId] = useState<string | null>(null);
-  const [convId, setConvId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [meId, setMeId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("jj_me_id");
+  });
+  const [convId, setConvId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const myId = localStorage.getItem("jj_me_id");
+    return myId ? localStorage.getItem(`jj_page_conv_id_${myId}`) : null;
+  });
+  const [messages, setMessages] = useState<Msg[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const myId = localStorage.getItem("jj_me_id");
+      if (myId) {
+        const cachedConvId = localStorage.getItem(`jj_page_conv_id_${myId}`);
+        if (cachedConvId) {
+          const cached = getCachedPageMessages(`page-chat-${cachedConvId}`);
+          return cached || [];
+        }
+      }
+    } catch {}
+    return [];
+  });
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [adminId, setAdminId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");

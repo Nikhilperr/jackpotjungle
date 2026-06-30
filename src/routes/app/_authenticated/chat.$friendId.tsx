@@ -68,9 +68,39 @@ type Profile = {
 function ChatView() {
   const { friendId } = useParams({ from: "/app/_authenticated/chat/$friendId" });
   const { user } = useAuth();
-  const meId = user?.id || null;
-  const [friend, setFriend] = useState<Profile | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [meId, setMeId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("jj_me_id");
+  });
+
+  useEffect(() => {
+    if (user?.id) {
+      setMeId(user.id);
+      try {
+        localStorage.setItem("jj_me_id", user.id);
+      } catch {}
+    }
+  }, [user]);
+
+  const [friend, setFriend] = useState<Profile | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const cachedProfile = getCachedProfile(friendId);
+      return cachedProfile || null;
+    } catch {}
+    return null;
+  });
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const myId = localStorage.getItem("jj_me_id");
+      if (myId) {
+        const cachedMsgs = getCachedMessages(myId, friendId);
+        return cachedMsgs || [];
+      }
+    } catch {}
+    return [];
+  });
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);

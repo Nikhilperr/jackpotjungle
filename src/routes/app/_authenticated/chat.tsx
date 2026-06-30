@@ -253,6 +253,9 @@ function ChatLayout() {
       if (u.user && mounted) {
         setMeId(u.user.id);
         setCurrentUser(u.user);
+        try {
+          localStorage.setItem("jj_me_id", u.user.id);
+        } catch {}
       }
     })();
     return () => { mounted = false; };
@@ -736,7 +739,7 @@ function ChatLayout() {
         </div>
           {/* Active Chat Panel — full screen on mobile when open */}
           <div className={`${hasActive ? "flex flex-col" : "hidden md:flex flex-col"} flex-1 min-h-0 w-full overflow-hidden`}>
-            <AnimatePresence mode="wait">
+            <AnimatePresence>
               {hasActive ? (
                 <motion.div
                   key={location.pathname}

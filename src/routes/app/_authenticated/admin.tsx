@@ -178,6 +178,14 @@ function AdminPage() {
   useNativePush();
 
   useEffect(() => {
+    if (user) {
+      try {
+        localStorage.setItem("jj_me_id", user.id);
+      } catch {}
+    }
+  }, [user]);
+
+  useEffect(() => {
     if (!loading && !isAdmin) navigate({ to: "/app/chat", replace: true });
   }, [loading, isAdmin, navigate]);
 
