@@ -1152,7 +1152,7 @@ function ChatView() {
               const mine = c.caller_id === meId;
               return (
                 <div key={`call-${c.id}`}>
-                  {showTime && (
+                  {showTime && c.created_at && !isNaN(new Date(c.created_at).getTime()) && (
                     <div className="flex justify-center py-3 select-none">
                       <span className="premium-date-header">
                         {format(new Date(c.created_at), "MMM d, h:mm a")}
@@ -1447,7 +1447,7 @@ function ChatView() {
                         {m.sender_id === meId ? "You" : friendDisplayName}
                       </span>
                       <div className="flex items-center gap-2">
-                        <span>{formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}</span>
+                        <span>{m.created_at && !isNaN(new Date(m.created_at).getTime()) ? formatDistanceToNow(new Date(m.created_at), { addSuffix: true }) : ""}</span>
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1877,7 +1877,7 @@ const MessageItem = React.memo(function MessageItem({
       )}
       
       <div className="flex-1 min-w-0">
-        {showTime && (
+        {showTime && m.created_at && !isNaN(new Date(m.created_at).getTime()) && (
           <div className="flex justify-center py-3 select-none">
             <span className="premium-date-header">
               {format(new Date(m.created_at), "MMM d, h:mm a")}
