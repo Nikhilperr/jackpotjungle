@@ -31,6 +31,7 @@ type Conversation = {
 
 function ChatLayout() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loadingConvs, setLoadingConvs] = useState(true);
   const [spamIds, setSpamIds] = useState<Set<string>>(new Set());
   const [spammedByIds, setSpammedByIds] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<"all" | "spam">("all");
@@ -132,95 +133,99 @@ function ChatLayout() {
   }
 
   async function load(myId: string) {
-    const { data: friends } = await supabase
-      .from("friendships")
-      .select("user_a, user_b");
-    if (!friends) return;
-    const friendIds = friends.map((f) => (f.user_a === myId ? f.user_b : f.user_a));
-    if (friendIds.length === 0) { setConversations([]); return; }
+    try {
+      const { data: friends } = await supabase
+        .from("friendships")
+        .select("user_a, user_b");
+      if (!friends) return;
+      const friendIds = friends.map((f) => (f.user_a === myId ? f.user_b : f.user_a));
+      if (friendIds.length === 0) { setConversations([]); return; }
 
-    const [{ data: profiles }, { data: msgs }, { data: friendCalls }] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id, username, first_name, last_name, avatar_url, online")
-        .in("id", friendIds),
-      supabase
-        .from("messages")
-        .select("id, sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
-        .or(friendIds.map((id) => `and(sender_id.eq.${id},receiver_id.eq.${myId}),and(sender_id.eq.${myId},receiver_id.eq.${id})`).join(","))
-        .order("created_at", { ascending: false })
-        .limit(500),
-      supabase
-        .from("calls")
-        .select("id, caller_id, callee_id, call_type, status, created_at")
-        .eq("context", "friend")
-        .or(`caller_id.eq.${myId},callee_id.eq.${myId}`)
-        .order("created_at", { ascending: false })
-        .limit(200)
-    ]);
+      const [{ data: profiles }, { data: msgs }, { data: friendCalls }] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, username, first_name, last_name, avatar_url, online")
+          .in("id", friendIds),
+        supabase
+          .from("messages")
+          .select("id, sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
+          .or(friendIds.map((id) => `and(sender_id.eq.${id},receiver_id.eq.${myId}),and(sender_id.eq.${myId},receiver_id.eq.${id})`).join(","))
+          .order("created_at", { ascending: false })
+          .limit(500),
+        supabase
+          .from("calls")
+          .select("id, caller_id, callee_id, call_type, status, created_at")
+          .eq("context", "friend")
+          .or(`caller_id.eq.${myId},callee_id.eq.${myId}`)
+          .order("created_at", { ascending: false })
+          .limit(200)
+      ]);
 
-    const deletedIds = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
-    const deletedSet = new Set<string>(deletedIds);
+      const deletedIds = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
+      const deletedSet = new Set<string>(deletedIds);
 
-    const byFriend: Record<string, Conversation> = {};
-    (profiles ?? []).forEach((p) => {
-      const displayName = p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username;
-      byFriend[p.id] = { 
-        friendId: p.id, 
-        username: p.username, 
-        displayName,
-        avatar_url: p.avatar_url, 
-        online: p.online, 
-        lastMessage: null, 
-        lastAt: null, 
-        unread: 0, 
-        allText: "" 
-      };
-    });
-    const filteredMsgs = (msgs ?? []).filter((m) => !deletedSet.has(m.id));
-    filteredMsgs.forEach((m: any) => {
-      const fid = m.sender_id === myId ? m.receiver_id : m.sender_id;
-      const c = byFriend[fid];
-      if (!c) return;
-      let preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
-      if (preview?.startsWith("[system:reaction:")) {
-        preview = "Reacted to a message";
-      } else if (preview?.startsWith("[system:pin:")) {
-        preview = "Pinned a message";
-      } else if (preview?.startsWith("[system:unpin:")) {
-        preview = "Unpinned a message";
-      } else if (preview?.startsWith("[system:unsent]")) {
-        preview = "Unsent a message";
-      } else if (preview?.startsWith("[system:forwarded] ")) {
-        preview = preview.slice("[system:forwarded] ".length);
-      } else if (preview?.startsWith("[system:forwarded]")) {
-        preview = preview.slice("[system:forwarded]".length).trim() || (m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message");
-      } else if (preview === "[system:forwarded]") {
-        preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message";
-      } else if (preview?.startsWith("[reply:")) {
-        const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
-        if (match) preview = match[1];
-      }
-      if (!c.lastAt) { c.lastMessage = preview; c.lastAt = m.created_at; }
-      if (m.content) c.allText += " " + m.content.toLowerCase();
-      if (m.receiver_id === myId && !m.seen) c.unread++;
-    });
+      const byFriend: Record<string, Conversation> = {};
+      (profiles ?? []).forEach((p) => {
+        const displayName = p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username;
+        byFriend[p.id] = { 
+          friendId: p.id, 
+          username: p.username, 
+          displayName,
+          avatar_url: p.avatar_url, 
+          online: p.online, 
+          lastMessage: null, 
+          lastAt: null, 
+          unread: 0, 
+          allText: "" 
+        };
+      });
+      const filteredMsgs = (msgs ?? []).filter((m) => !deletedSet.has(m.id));
+      filteredMsgs.forEach((m: any) => {
+        const fid = m.sender_id === myId ? m.receiver_id : m.sender_id;
+        const c = byFriend[fid];
+        if (!c) return;
+        let preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
+        if (preview?.startsWith("[system:reaction:")) {
+          preview = "Reacted to a message";
+        } else if (preview?.startsWith("[system:pin:")) {
+          preview = "Pinned a message";
+        } else if (preview?.startsWith("[system:unpin:")) {
+          preview = "Unpinned a message";
+        } else if (preview?.startsWith("[system:unsent]")) {
+          preview = "Unsent a message";
+        } else if (preview?.startsWith("[system:forwarded] ")) {
+          preview = preview.slice("[system:forwarded] ".length);
+        } else if (preview?.startsWith("[system:forwarded]")) {
+          preview = preview.slice("[system:forwarded]".length).trim() || (m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message");
+        } else if (preview === "[system:forwarded]") {
+          preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message";
+        } else if (preview?.startsWith("[reply:")) {
+          const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+          if (match) preview = match[1];
+        }
+        if (!c.lastAt) { c.lastMessage = preview; c.lastAt = m.created_at; }
+        if (m.content) c.allText += " " + m.content.toLowerCase();
+        if (m.receiver_id === myId && !m.seen) c.unread++;
+      });
 
-    // Merge recent calls into friendship items
-    (friendCalls ?? []).forEach((call: any) => {
-      const fid = call.caller_id === myId ? call.callee_id : call.caller_id;
-      if (!fid) return;
-      const c = byFriend[fid];
-      if (!c) return;
+      // Merge recent calls into friendship items
+      (friendCalls ?? []).forEach((call: any) => {
+        const fid = call.caller_id === myId ? call.callee_id : call.caller_id;
+        if (!fid) return;
+        const c = byFriend[fid];
+        if (!c) return;
 
-      const callPreview = call.call_type === "video" ? "📹 Video call" : "📞 Voice call";
-      if (!c.lastAt || new Date(call.created_at) > new Date(c.lastAt)) {
-        c.lastMessage = callPreview;
-        c.lastAt = call.created_at;
-      }
-    });
+        const callPreview = call.call_type === "video" ? "📹 Video call" : "📞 Voice call";
+        if (!c.lastAt || new Date(call.created_at) > new Date(c.lastAt)) {
+          c.lastMessage = callPreview;
+          c.lastAt = call.created_at;
+        }
+      });
 
-    setConversations(Object.values(byFriend).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? "")));
+      setConversations(Object.values(byFriend).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? "")));
+    } finally {
+      setLoadingConvs(false);
+    }
   }
 
   useEffect(() => {
@@ -681,7 +686,12 @@ function ChatLayout() {
               </Link>
             )}
 
-            {sorted.length === 0 ? (
+            {loadingConvs && conversations.length === 0 ? (
+              <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <span>Loading chats…</span>
+              </div>
+            ) : sorted.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
                 {tab === "spam"
                   ? "No spam conversations."

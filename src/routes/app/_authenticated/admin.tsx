@@ -282,18 +282,40 @@ function AdminPage() {
         </div>
       )}
 
-      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        {tab === "inbox" && <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} />}
-        {tab === "quickreplies" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Quick Replies"><QuickRepliesView meId={user.id} /></ScrollWrap>}
-        {tab === "tags" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Tags"><TagsView /></ScrollWrap>}
-        {tab === "broadcasts" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Broadcasts"><BroadcastsView /></ScrollWrap>}
-        {tab === "followups" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Follow-ups"><FollowupsView meId={user.id} /></ScrollWrap>}
-        {tab === "autoresp" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Auto-response"><AutoResponsesView meId={user.id} /></ScrollWrap>}
-        {tab === "referrals" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Referrals"><ReferralsAdminView /></ScrollWrap>}
-        {tab === "logs" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Logs"><LogsView /></ScrollWrap>}
-        {tab === "admins" && <AdminsView onOpenNav={() => setNavOpen(true)} />}
-        {tab === "super" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Super admin"><SuperAdminView /></ScrollWrap>}
-        {tab === "profile" && <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={user.id} email={user.email ?? null} /></ScrollWrap>}
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "inbox" ? "" : "hidden"}`}>
+          <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} />
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "quickreplies" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Quick Replies"><QuickRepliesView meId={user.id} /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "tags" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Tags"><TagsView /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "broadcasts" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Broadcasts"><BroadcastsView /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "followups" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Follow-ups"><FollowupsView meId={user.id} /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "autoresp" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Auto-response"><AutoResponsesView meId={user.id} /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "referrals" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Referrals"><ReferralsAdminView /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "logs" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Logs"><LogsView /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "admins" ? "" : "hidden"}`}>
+          <AdminsView onOpenNav={() => setNavOpen(true)} />
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "super" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Super admin"><SuperAdminView /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "profile" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={user.id} email={user.email ?? null} /></ScrollWrap>
+        </div>
       </main>
 
       <SignOutDialog isOpen={confirmOut} onClose={() => setConfirmOut(false)} onConfirm={signOut} />
@@ -349,6 +371,7 @@ function NavLink({ to, icon: Icon, label, onClick }: { to: string; icon: typeof 
 function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void }) {
   const navigate = useNavigate();
   const [convs, setConvs] = useState<ConvRow[]>([]);
+  const [loadingConvs, setLoadingConvs] = useState(true);
   const [search, setSearch] = useState("");
   const searchParams = Route.useSearch();
   
@@ -405,96 +428,100 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   };
 
   async function load() {
-    const { data: convList } = await supabase
-      .from("page_conversations")
-      .select("id, user_id, last_message_at, is_spam");
-    if (!convList) return;
-    const userIds = convList.map((c) => c.user_id);
-    const convIds = convList.map((c) => c.id);
-    if (userIds.length === 0) { setConvs([]); return; }
+    try {
+      const { data: convList } = await supabase
+        .from("page_conversations")
+        .select("id, user_id, last_message_at, is_spam");
+      if (!convList) return;
+      const userIds = convList.map((c) => c.user_id);
+      const convIds = convList.map((c) => c.id);
+      if (userIds.length === 0) { setConvs([]); return; }
 
-    const [{ data: profiles }, { data: msgs }, { data: tagsData }, { data: utRows }, { data: credRows }, { data: supportCalls }] = await Promise.all([
-      supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds),
-      supabase
-        .from("page_messages")
-        .select("conversation_id, content, created_at, seen, from_page, image_url, audio_url")
-        .in("conversation_id", convIds)
-        .order("created_at", { ascending: false }),
-      supabase.from("tags").select("id, name, color").order("name"),
-      supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds),
-      supabase.from("user_credits").select("user_id, balance").in("user_id", userIds),
-      supabase
-        .from("calls")
-        .select("id, caller_id, callee_id, call_type, status, created_at")
-        .in("context", ["page", "page_broadcast"])
-        .order("created_at", { ascending: false })
-        .limit(300)
-    ]);
+      const [{ data: profiles }, { data: msgs }, { data: tagsData }, { data: utRows }, { data: credRows }, { data: supportCalls }] = await Promise.all([
+        supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds),
+        supabase
+          .from("page_messages")
+          .select("conversation_id, content, created_at, seen, from_page, image_url, audio_url")
+          .in("conversation_id", convIds)
+          .order("created_at", { ascending: false }),
+        supabase.from("tags").select("id, name, color").order("name"),
+        supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds),
+        supabase.from("user_credits").select("user_id, balance").in("user_id", userIds),
+        supabase
+          .from("calls")
+          .select("id, caller_id, callee_id, call_type, status, created_at")
+          .in("context", ["page", "page_broadcast"])
+          .order("created_at", { ascending: false })
+          .limit(300)
+      ]);
 
-    setAllTags(tagsData ?? []);
-    const map: Record<string, string[]> = {};
-    (utRows ?? []).forEach((r: any) => {
-      (map[r.user_id] = map[r.user_id] || []).push(r.tag_id);
-    });
-    setUserTagMap(map);
+      setAllTags(tagsData ?? []);
+      const map: Record<string, string[]> = {};
+      (utRows ?? []).forEach((r: any) => {
+        (map[r.user_id] = map[r.user_id] || []).push(r.tag_id);
+      });
+      setUserTagMap(map);
 
-    const creditMap = new Map<string, number>((credRows ?? []).map((c: any) => [c.user_id, Number(c.balance) || 0]));
-    const byUser = new Map((profiles ?? []).map((p) => [p.id, p]));
-    const rows: ConvRow[] = convList.map((c) => {
-      const p = byUser.get(c.user_id);
-      const convMsgs = (msgs ?? []).filter((m) => m.conversation_id === c.id);
-      const lastMsg = convMsgs[0];
-      const unread = convMsgs.filter((m) => !m.from_page && !m.seen).length;
+      const creditMap = new Map<string, number>((credRows ?? []).map((c: any) => [c.user_id, Number(c.balance) || 0]));
+      const byUser = new Map((profiles ?? []).map((p) => [p.id, p]));
+      const rows: ConvRow[] = convList.map((c) => {
+        const p = byUser.get(c.user_id);
+        const convMsgs = (msgs ?? []).filter((m) => m.conversation_id === c.id);
+        const lastMsg = convMsgs[0];
+        const unread = convMsgs.filter((m) => !m.from_page && !m.seen).length;
 
-      // Find most recent call associated with this user
-      const userCalls = (supportCalls ?? []).filter((call) => call.caller_id === c.user_id || call.callee_id === c.user_id);
-      const lastCall = userCalls[0];
+        // Find most recent call associated with this user
+        const userCalls = (supportCalls ?? []).filter((call) => call.caller_id === c.user_id || call.callee_id === c.user_id);
+        const lastCall = userCalls[0];
 
-      let lastMessage = lastMsg?.content ?? null;
-      if (lastMessage?.startsWith("[system:reaction:")) {
-        lastMessage = "Reacted to a message";
-      } else if (lastMessage?.startsWith("[system:pin:")) {
-        lastMessage = "Pinned a message";
-      } else if (lastMessage?.startsWith("[system:unpin:")) {
-        lastMessage = "Unpinned a message";
-      } else if (lastMessage?.startsWith("[system:unsent]")) {
-        lastMessage = "Unsent a message";
-      } else if (lastMessage?.startsWith("[system:forwarded] ")) {
-        lastMessage = lastMessage.slice("[system:forwarded] ".length);
-      } else if (lastMessage?.startsWith("[system:forwarded]")) {
-        lastMessage = lastMessage.slice("[system:forwarded]".length).trim() || (lastMsg?.image_url ? "📷 Photo" : lastMsg?.audio_url ? "🎤 Voice message" : "Forwarded message");
-      } else if (lastMessage === "[system:forwarded]") {
-        lastMessage = lastMsg?.image_url ? "📷 Photo" : lastMsg?.audio_url ? "🎤 Voice message" : "Forwarded message";
-      } else if (lastMessage?.startsWith("[reply:")) {
-        const match = lastMessage.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
-        if (match) lastMessage = match[1];
-      }
-      let lastAt = lastMsg?.created_at ?? null;
+        let lastMessage = lastMsg?.content ?? null;
+        if (lastMessage?.startsWith("[system:reaction:")) {
+          lastMessage = "Reacted to a message";
+        } else if (lastMessage?.startsWith("[system:pin:")) {
+          lastMessage = "Pinned a message";
+        } else if (lastMessage?.startsWith("[system:unpin:")) {
+          lastMessage = "Unpinned a message";
+        } else if (lastMessage?.startsWith("[system:unsent]")) {
+          lastMessage = "Unsent a message";
+        } else if (lastMessage?.startsWith("[system:forwarded] ")) {
+          lastMessage = lastMessage.slice("[system:forwarded] ".length);
+        } else if (lastMessage?.startsWith("[system:forwarded]")) {
+          lastMessage = lastMessage.slice("[system:forwarded]".length).trim() || (lastMsg?.image_url ? "📷 Photo" : lastMsg?.audio_url ? "🎤 Voice message" : "Forwarded message");
+        } else if (lastMessage === "[system:forwarded]") {
+          lastMessage = lastMsg?.image_url ? "📷 Photo" : lastMsg?.audio_url ? "🎤 Voice message" : "Forwarded message";
+        } else if (lastMessage?.startsWith("[reply:")) {
+          const match = lastMessage.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+          if (match) lastMessage = match[1];
+        }
+        let lastAt = lastMsg?.created_at ?? null;
 
-      if (lastCall && (!lastAt || new Date(lastCall.created_at) > new Date(lastAt))) {
-        lastMessage = lastCall.call_type === "video" ? "📹 Video call" : "📞 Voice call";
-        lastAt = lastCall.created_at;
-      }
+        if (lastCall && (!lastAt || new Date(lastCall.created_at) > new Date(lastAt))) {
+          lastMessage = lastCall.call_type === "video" ? "📹 Video call" : "📞 Voice call";
+          lastAt = lastCall.created_at;
+        }
 
-      return {
-        conversationId: c.id,
-        userId: c.user_id,
-        username: p?.username ?? "(unknown)",
-        avatar_url: p?.avatar_url ?? null,
-        online: p?.online ?? false,
-        last_seen: p?.last_seen ?? c.last_message_at,
-        lastMessage,
-        lastAt,
-        unread,
-        credit: creditMap.get(c.user_id) ?? 0,
-        isSpam: (c as any).is_spam ?? false,
-      };
-    });
+        return {
+          conversationId: c.id,
+          userId: c.user_id,
+          username: p?.username ?? "(unknown)",
+          avatar_url: p?.avatar_url ?? null,
+          online: p?.online ?? false,
+          last_seen: p?.last_seen ?? c.last_message_at,
+          lastMessage,
+          lastAt,
+          unread,
+          credit: creditMap.get(c.user_id) ?? 0,
+          isSpam: (c as any).is_spam ?? false,
+        };
+      });
 
-    // Sort conversations strictly by most recent activity
-    rows.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+      // Sort conversations strictly by most recent activity
+      rows.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
 
-    setConvs(rows);
+      setConvs(rows);
+    } finally {
+      setLoadingConvs(false);
+    }
   }
 
   useEffect(() => {
@@ -688,9 +715,14 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           </div>
         </div>
         <PullToRefresh onRefresh={load}>
-          {sorted.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">{viewSpam ? "No spam conversations." : "No conversations."}</p>
-          ) : sorted.map((u) => {
+            {loadingConvs && convs.length === 0 ? (
+              <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <span>Loading chats…</span>
+              </div>
+            ) : sorted.length === 0 ? (
+              <p className="p-6 text-center text-sm text-muted-foreground">{viewSpam ? "No spam conversations." : "No conversations."}</p>
+            ) : sorted.map((u) => {
             const startPress = () => {
               if (pressTimer.current) clearTimeout(pressTimer.current);
               pressTimer.current = setTimeout(() => setContextMenuTarget(u.conversationId), 600);
@@ -1160,8 +1192,12 @@ function Conversation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conv.conversationId]);
 
+  const lastMsgCountRef = useRef(0);
   const lastConvIdRef = useRef<string | null>(null);
   useEffect(() => {
+    const prevCount = lastMsgCountRef.current;
+    lastMsgCountRef.current = messages.length;
+
     if (conv.conversationId !== lastConvIdRef.current) {
       // Switched chat. Scroll to bottom instantly
       if (scrollRef.current) {
@@ -1176,11 +1212,16 @@ function Conversation({
     } else if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
       const isMine = lastMsg && lastMsg.from_page;
-      if (isMine || isNearBottomRef.current) {
+      const isSingleNewMessage = messages.length === prevCount + 1;
+
+      if (isSingleNewMessage && (isMine || isNearBottomRef.current)) {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
         setShowScrollToBottom(false);
       } else {
-        setShowScrollToBottom(true);
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+        setShowScrollToBottom(false);
       }
     }
   }, [messages, calls, conv.conversationId]);

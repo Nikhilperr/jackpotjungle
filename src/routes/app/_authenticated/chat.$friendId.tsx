@@ -316,8 +316,12 @@ function ChatView() {
     };
   }, [meId]);
 
+  const lastMsgCountRef = useRef(0);
   const lastFriendIdRef = useRef<string | null>(null);
   useEffect(() => {
+    const prevCount = lastMsgCountRef.current;
+    lastMsgCountRef.current = messages.length;
+
     if (friendId !== lastFriendIdRef.current) {
       // Switched chat. Scroll to bottom instantly
       if (scrollRef.current) {
@@ -332,11 +336,16 @@ function ChatView() {
     } else if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
       const isMine = lastMsg?.sender_id === meId;
-      if (isMine || isNearBottomRef.current) {
+      const isSingleNewMessage = messages.length === prevCount + 1;
+
+      if (isSingleNewMessage && (isMine || isNearBottomRef.current)) {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
         setShowScrollToBottom(false);
       } else {
-        setShowScrollToBottom(true);
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+        setShowScrollToBottom(false);
       }
     }
   }, [messages, calls, friendTyping, friendId, meId]);
