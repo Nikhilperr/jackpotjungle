@@ -126,7 +126,7 @@ function AuthPage() {
 
   return (
     <AuthLayout mode={mode} setMode={setMode}>
-      <AnimatePresence mode="popLayout">
+      <AnimatePresence mode="wait">
         {mode === "welcome" && (
           <AuthCard key="welcome">
             <div className="text-center space-y-4 py-2 select-none">

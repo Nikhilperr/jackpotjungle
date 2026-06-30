@@ -131,14 +131,6 @@ export function AuthLayout({ children, mode = "login", setMode, hideHeader = fal
                   <p className="text-xs text-white/70 leading-relaxed">
                     Connect instantly with friends, admins, and support teams. Explore our fast, modern messenger.
                   </p>
-                  {setMode && (
-                    <button
-                      onClick={() => setMode("login")}
-                      className="mt-4 border-2 border-white hover:bg-white hover:text-primary text-white font-bold px-8 py-2.5 rounded-full text-xs uppercase tracking-wider transition-all duration-300 active:scale-95"
-                    >
-                      Get Started
-                    </button>
-                  )}
                 </>
               )}
             </div>
