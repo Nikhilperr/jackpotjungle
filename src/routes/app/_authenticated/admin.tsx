@@ -370,7 +370,15 @@ function NavLink({ to, icon: Icon, label, onClick }: { to: string; icon: typeof 
 
 function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void }) {
   const navigate = useNavigate();
-  const [convs, setConvs] = useState<ConvRow[]>([]);
+  const [convs, setConvs] = useState<ConvRow[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem("jj_cached_admin_conversations");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [search, setSearch] = useState("");
   const searchParams = Route.useSearch();
@@ -522,6 +530,9 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       rows.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
 
       setConvs(rows);
+      try {
+        localStorage.setItem("jj_cached_admin_conversations", JSON.stringify(rows));
+      } catch {}
     } finally {
       setLoadingConvs(false);
     }

@@ -51,11 +51,26 @@ const MESSAGE_CACHE_TTL_MS = 30_000; // 30 s — stale after this, will refresh 
 
 // ─── Profile cache ────────────────────────────────────────────────────────────
 export function getCachedProfile(friendId: string): CachedProfile | undefined {
-  return profileCache.get(friendId);
+  let cached = profileCache.get(friendId);
+  if (!cached && typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(`jj_profile_${friendId}`);
+      if (stored) {
+        cached = JSON.parse(stored);
+        profileCache.set(friendId, cached!);
+      }
+    } catch {}
+  }
+  return cached;
 }
 
 export function setCachedProfile(friendId: string, profile: CachedProfile) {
   profileCache.set(friendId, profile);
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(`jj_profile_${friendId}`, JSON.stringify(profile));
+    } catch {}
+  }
 }
 
 // ─── Message cache ────────────────────────────────────────────────────────────
@@ -64,34 +79,75 @@ function msgKey(meId: string, friendId: string) {
 }
 
 export function getCachedMessages(meId: string, friendId: string): CachedMessage[] | null {
-  const entry = messageCache.get(msgKey(meId, friendId));
-  if (!entry) return null;
-  // Always return cached messages immediately for instant loading (stale-while-revalidate)
-  return entry.messages;
+  const key = msgKey(meId, friendId);
+  const entry = messageCache.get(key);
+  if (entry) return entry.messages;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(`jj_msgs_${key}`);
+      if (stored) {
+        const messages = JSON.parse(stored);
+        messageCache.set(key, { messages, loadedAt: Date.now() });
+        return messages;
+      }
+    } catch {}
+  }
+  return null;
 }
 
 export function setCachedMessages(meId: string, friendId: string, messages: CachedMessage[]) {
-  messageCache.set(msgKey(meId, friendId), { messages, loadedAt: Date.now() });
+  const key = msgKey(meId, friendId);
+  messageCache.set(key, { messages, loadedAt: Date.now() });
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(`jj_msgs_${key}`, JSON.stringify(messages));
+    } catch {}
+  }
 }
 
 export function invalidateMessageCache(meId: string, friendId: string) {
-  messageCache.delete(msgKey(meId, friendId));
+  const key = msgKey(meId, friendId);
+  messageCache.delete(key);
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(`jj_msgs_${key}`);
+    } catch {}
+  }
 }
 
 // ─── Page Message cache ───────────────────────────────────────────────────────
 export function getCachedPageMessages(conversationId: string): CachedPageMessage[] | null {
   const entry = pageMessageCache.get(conversationId);
-  if (!entry) return null;
-  // Always return cached messages immediately for instant loading (stale-while-revalidate)
-  return entry.messages;
+  if (entry) return entry.messages;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(`jj_page_msgs_${conversationId}`);
+      if (stored) {
+        const messages = JSON.parse(stored);
+        pageMessageCache.set(conversationId, { messages, loadedAt: Date.now() });
+        return messages;
+      }
+    } catch {}
+  }
+  return null;
 }
 
 export function setCachedPageMessages(conversationId: string, messages: CachedPageMessage[]) {
   pageMessageCache.set(conversationId, { messages, loadedAt: Date.now() });
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(`jj_page_msgs_${conversationId}`, JSON.stringify(messages));
+    } catch {}
+  }
 }
 
 export function invalidatePageMessageCache(conversationId: string) {
   pageMessageCache.delete(conversationId);
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(`jj_page_msgs_${conversationId}`);
+    } catch {}
+  }
 }
 
 // ─── Prefetch ─────────────────────────────────────────────────────────────────

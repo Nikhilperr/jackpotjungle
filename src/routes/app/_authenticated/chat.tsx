@@ -30,7 +30,15 @@ type Conversation = {
 };
 
 function ChatLayout() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem("jj_cached_conversations");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [spamIds, setSpamIds] = useState<Set<string>>(new Set());
   const [spammedByIds, setSpammedByIds] = useState<Set<string>>(new Set());
@@ -222,7 +230,11 @@ function ChatLayout() {
         }
       });
 
-      setConversations(Object.values(byFriend).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? "")));
+      const sortedList = Object.values(byFriend).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+      setConversations(sortedList);
+      try {
+        localStorage.setItem("jj_cached_conversations", JSON.stringify(sortedList));
+      } catch {}
     } finally {
       setLoadingConvs(false);
     }
