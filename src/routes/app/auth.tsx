@@ -60,7 +60,12 @@ function AuthPage() {
     );
     if (isRecovery) return;
 
-    if (user) navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
+    if (user) {
+      const timer = setTimeout(() => {
+        navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
   }, [user, loading, isAdmin, roleLoading, navigate]);
 
   async function signInWithGoogle() {
