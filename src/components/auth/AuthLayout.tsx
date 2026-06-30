@@ -12,8 +12,16 @@ interface AuthLayoutProps {
 export function AuthLayout({ children, mode = "login", hideHeader = false }: AuthLayoutProps) {
   const isWelcome = mode === "welcome";
 
+  // Hardware-accelerated physics spring for buttery smooth 120Hz/60Hz viewport animations
+  const springTransition = {
+    type: "spring",
+    stiffness: 140, // Elegant, deliberate movement
+    damping: 24,    // Clean dampening with no janky overshoot
+    mass: 1.1       // Real physics weight
+  };
+
   return (
-    <div className="relative min-h-screen w-full flex flex-col items-center justify-center bg-background px-4 py-8 overflow-hidden transition-colors duration-500">
+    <div className="relative min-h-screen w-full flex flex-col items-center justify-start md:justify-center bg-background px-4 py-8 overflow-y-auto transition-colors duration-500">
       {/* Background Animated Gradient Mesh/Circles */}
       <div className="absolute inset-0 pointer-events-none z-0">
         <motion.div
@@ -42,18 +50,6 @@ export function AuthLayout({ children, mode = "login", hideHeader = false }: Aut
           }}
           className="absolute -bottom-[10%] -right-[10%] w-[60%] h-[60%] rounded-full bg-accent/10 blur-[100px]"
         />
-        <motion.div
-          animate={{
-            scale: [0.8, 1.1, 0.8],
-            opacity: [0.3, 0.6, 0.3],
-          }}
-          transition={{
-            duration: 10,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-          className="absolute top-[35%] left-[25%] w-[30%] h-[30%] rounded-full bg-primary/5 blur-[60px]"
-        />
       </div>
 
       {/* Floating Theme Toggle */}
@@ -61,64 +57,49 @@ export function AuthLayout({ children, mode = "login", hideHeader = false }: Aut
         <ThemeToggle className="shadow-lg border border-border/30" />
       </div>
 
-      {/* Auth Content */}
-      <div className="relative w-full max-w-md z-10 flex flex-col items-center">
-        {/* Header App Brand - Animates dynamically using shared layout animations */}
+      {/* Auth Content Wrapper */}
+      <div className="relative w-full max-w-md z-10 flex flex-col items-center py-4">
+        {/* Header App Brand - GPU accelerated scale/translate movements to bypass layout reflows */}
         {!hideHeader && (
           <motion.div 
-          layout
-          transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
-          className={`text-center select-none flex flex-col items-center ${
-            isWelcome ? "mt-6 mb-6" : "mb-8 animate-in fade-in slide-in-from-top duration-300"
-          }`}
-        >
-          <motion.div
-            layout
-            className="relative inline-flex items-center justify-center"
+            animate={{
+              y: isWelcome ? 35 : 0,
+              scale: isWelcome ? 1.15 : 0.82,
+            }}
+            transition={springTransition}
+            className="text-center select-none flex flex-col items-center mb-6 origin-center z-10"
           >
-            {/* Glow ring */}
-            <motion.div
-              layout
-              animate={{ 
-                scale: isWelcome ? [1, 1.12, 1] : [1, 1.05, 1],
-                opacity: isWelcome ? [0.15, 0.35, 0.15] : [0.05, 0.15, 0.05]
-              }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute -inset-4 rounded-3xl bg-gradient-to-tr from-primary to-accent blur-md"
-            />
-            <motion.img 
-              layout
-              src="/icons/icon-256.webp" 
-              alt="Logo" 
-              className={`relative rounded-2xl shadow-xl object-cover border border-border/20 bg-card transition-all duration-500 ${
-                isWelcome ? "h-28 w-28 rounded-[28px]" : "h-16 w-16"
-              }`}
-            />
+            <div className="relative inline-flex items-center justify-center">
+              {/* Glow ring */}
+              <motion.div
+                animate={{ 
+                  scale: isWelcome ? [1, 1.1, 1] : [1, 1.05, 1],
+                  opacity: isWelcome ? [0.15, 0.35, 0.15] : [0.05, 0.15, 0.05]
+                }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute -inset-4 rounded-3xl bg-gradient-to-tr from-primary to-accent blur-md pointer-events-none"
+              />
+              <img 
+                src="/icons/icon-256.webp" 
+                alt="Logo" 
+                className="relative h-24 w-24 rounded-3xl shadow-xl object-cover border border-border/20 bg-card"
+              />
+            </div>
+
+            <h1 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center justify-center gap-1.5 mt-4">
+              Jackpot Jungle
+              <Sparkles className="h-5.5 w-5.5 text-primary animate-pulse" />
+            </h1>
+            <p className="text-sm text-muted-foreground font-medium tracking-wide mt-1">
+              Messenger
+            </p>
           </motion.div>
+        )}
 
-          <motion.h1 
-            layout
-            className={`font-extrabold tracking-tight text-foreground flex items-center justify-center gap-1.5 transition-all duration-500 ${
-              isWelcome ? "text-4xl mt-6" : "text-2xl mt-3"
-            }`}
-          >
-            Jackpot Jungle
-            <Sparkles className={`text-primary animate-pulse transition-all duration-500 ${
-              isWelcome ? "h-6 w-6" : "h-4.5 w-4.5"
-            }`} />
-          </motion.h1>
-          <motion.p 
-            layout
-            className={`text-muted-foreground font-medium mt-1 transition-all duration-500 ${
-              isWelcome ? "text-sm tracking-wide" : "text-xs"
-            }`}
-          >
-            Messenger
-          </motion.p>
-        </motion.div>
-      )}
-
-        {children}
+        {/* Form area */}
+        <div className="w-full flex flex-col items-center">
+          {children}
+        </div>
       </div>
     </div>
   );
