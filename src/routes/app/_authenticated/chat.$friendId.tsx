@@ -213,19 +213,26 @@ function ChatView() {
     });
   }
 
+  const activeFriendIdRef = useRef(friendId);
+  useEffect(() => {
+    activeFriendIdRef.current = friendId;
+    load();
+  }, [friendId]);
+
   useEffect(() => {
     if (!meId) return;
-    const pairKey = [meId, friendId].sort().join("-");
 
     const msgChannel = supabase
-      .channel(`chat-${pairKey}`)
+      .channel("chat-active-friend-global")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
         const m = payload.new as Message;
-        if ((m.sender_id === meId && m.receiver_id === friendId) ||
-            (m.sender_id === friendId && m.receiver_id === meId)) {
+        const currentFriendId = activeFriendIdRef.current;
+        const involves = (m.sender_id === meId && m.receiver_id === currentFriendId) ||
+                         (m.sender_id === currentFriendId && m.receiver_id === meId);
+
+        if (involves) {
           setMessages((prev) => {
             if (prev.some((x) => x.id === m.id)) return prev;
-            // Reconcile optimistic temp message (same sender, same content/url, temp id)
             const idx = prev.findIndex((x) =>
               x.id.startsWith("temp-") &&
               x.sender_id === m.sender_id &&
@@ -243,18 +250,37 @@ function ChatView() {
           if (m.receiver_id === meId) {
             supabase.from("messages").update({ seen: true, delivered: true } as any).eq("id", m.id).then();
           }
+        } else {
+          const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
+          const cached = getCachedMessages(meId, otherFid);
+          if (cached && !cached.some(x => x.id === m.id)) {
+            setCachedMessages(meId, otherFid, [...cached, m]);
+          }
         }
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
         const m = payload.new as Message;
-        setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
+        const currentFriendId = activeFriendIdRef.current;
+        const involves = (m.sender_id === meId && m.receiver_id === currentFriendId) ||
+                         (m.sender_id === currentFriendId && m.receiver_id === meId);
+
+        if (involves) {
+          setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
+        } else {
+          const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
+          const cached = getCachedMessages(meId, otherFid);
+          if (cached) {
+            setCachedMessages(meId, otherFid, cached.map(x => x.id === m.id ? m : x));
+          }
+        }
       })
       .subscribe();
 
     const typingChannel = supabase
-      .channel(`typing-${pairKey}`, { config: { broadcast: { self: false } } })
+      .channel("typing-active-friend-global", { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "typing" }, (payload) => {
-        if ((payload.payload as { from: string })?.from === friendId) {
+        const data = payload.payload as { from: string; to: string };
+        if (data && data.from === activeFriendIdRef.current && data.to === meId) {
           setFriendTyping(true);
           if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
           typingTimeoutRef.current = setTimeout(() => setFriendTyping(false), 2500);
@@ -264,13 +290,18 @@ function ChatView() {
     typingChannelRef.current = typingChannel;
 
     const callsChannel = supabase
-      .channel(`calls-${pairKey}`)
+      .channel("calls-active-friend-global")
       .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, (payload) => {
         const row = (payload.new ?? payload.old) as CallRow & { context?: string };
-        if (!row) return;
-        const involves = (row.caller_id === meId && row.callee_id === friendId) || (row.caller_id === friendId && row.callee_id === meId);
-        if (!involves || (row as any).context !== "friend") return;
+        if (!row || (row as any).context !== "friend") return;
+        
+        const currentFriendId = activeFriendIdRef.current;
+        const involves = (row.caller_id === meId && row.callee_id === currentFriendId) || 
+                         (row.caller_id === currentFriendId && row.callee_id === meId);
+                         
+        if (!involves) return;
         if (row.status === "ringing" || row.status === "active") return;
+        
         setCalls((prev) => {
           const exists = prev.some((c) => c.id === row.id);
           if (exists) return prev.map((c) => (c.id === row.id ? (row as CallRow) : c));
@@ -285,13 +316,22 @@ function ChatView() {
       supabase.removeChannel(callsChannel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-  }, [meId, friendId]);
+  }, [meId]);
 
+  const lastFriendIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (messages.length > 0 && isInitialLoadRef.current) {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    if (friendId !== lastFriendIdRef.current) {
+      // Switched chat. Scroll to bottom instantly
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        // Schedule microtask to guarantee bottom placement after layout reflow
+        requestAnimationFrame(() => {
+          if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        });
+      }
+      lastFriendIdRef.current = friendId;
       isInitialLoadRef.current = false;
-    } else {
+    } else if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
       const isMine = lastMsg?.sender_id === meId;
       if (isMine || isNearBottomRef.current) {
@@ -301,7 +341,7 @@ function ChatView() {
         setShowScrollToBottom(true);
       }
     }
-  }, [messages, calls, friendTyping]);
+  }, [messages, calls, friendTyping, friendId, meId]);
 
   useEffect(() => {
     if (friend) {
@@ -684,7 +724,7 @@ function ChatView() {
     const now = Date.now();
     if (typingChannelRef.current && meId && now - lastTypingSentRef.current > 1500) {
       lastTypingSentRef.current = now;
-      typingChannelRef.current.send({ type: "broadcast", event: "typing", payload: { from: meId } });
+      typingChannelRef.current.send({ type: "broadcast", event: "typing", payload: { from: meId, to: friendId } });
     }
   }
 

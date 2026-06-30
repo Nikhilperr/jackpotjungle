@@ -499,16 +499,80 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 
   useEffect(() => {
     load();
+    let mounted = true;
     const ch = supabase
       .channel("admin-page-inbox")
-      .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "page_conversations" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "user_tags" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "tags" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "user_credits" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, (payload) => {
+        if (!mounted) return;
+        const m = payload.new as any;
+        if (!m) return;
+        if (payload.eventType === "INSERT") {
+          setConvs((prev) => {
+            const idx = prev.findIndex((c) => c.conversationId === m.conversation_id);
+            if (idx === -1) {
+              load();
+              return prev;
+            }
+            let preview = m.content;
+            if (preview?.startsWith("[system:reaction:")) {
+              preview = "Reacted to a message";
+            } else if (preview?.startsWith("[system:pin:")) {
+              preview = "Pinned a message";
+            } else if (preview?.startsWith("[system:unpin:")) {
+              preview = "Unpinned a message";
+            } else if (preview?.startsWith("[system:unsent]")) {
+              preview = "Unsent a message";
+            } else if (preview?.startsWith("[system:forwarded] ")) {
+              preview = preview.slice("[system:forwarded] ".length);
+            } else if (preview?.startsWith("[system:forwarded]")) {
+              preview = preview.slice("[system:forwarded]".length).trim() || (m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message");
+            } else if (preview === "[system:forwarded]") {
+              preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message";
+            } else if (preview?.startsWith("[reply:")) {
+              const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+              if (match) preview = match[1];
+            } else if (!preview) {
+              preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Message";
+            }
+            
+            const copy = [...prev];
+            const updated = { ...copy[idx] };
+            updated.lastMessage = preview;
+            updated.lastAt = m.created_at;
+            if (!m.from_page && !m.seen) {
+              updated.unread += 1;
+            }
+            copy[idx] = updated;
+            return copy.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+          });
+        } else if (payload.eventType === "UPDATE") {
+          if (!m.from_page && m.seen) {
+            setConvs((prev) =>
+              prev.map((c) => (c.conversationId === m.conversation_id ? { ...c, unread: 0 } : c))
+            );
+          }
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "page_conversations" }, () => {
+        if (mounted) load();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_tags" }, () => {
+        if (mounted) load();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "tags" }, () => {
+        if (mounted) load();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_credits" }, () => {
+        if (mounted) load();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, () => {
+        if (mounted) load();
+      })
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      mounted = false;
+      supabase.removeChannel(ch);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meId]);
 
@@ -979,49 +1043,89 @@ function Conversation({
       .eq("conversation_id", conv.conversationId).eq("from_page", false).eq("seen", false);
   }
 
+  const activeIdRef = useRef(conv.conversationId);
   useEffect(() => {
+    activeIdRef.current = conv.conversationId;
     load();
-    const ch = supabase
-      .channel(`admin-page-conv-${conv.conversationId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "page_messages", filter: `conversation_id=eq.${conv.conversationId}` }, (payload) => {
+  }, [conv.conversationId]);
+
+  useEffect(() => {
+    if (!meId) return;
+
+    const msgChannel = supabase
+      .channel("admin-active-page-chat-global")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "page_messages" }, (payload) => {
         const m = payload.new as PageMsg;
-        setMessages((prev) => {
-          if (prev.some((x) => x.id === m.id)) return prev;
-          const idx = prev.findIndex((x) =>
-            typeof x.id === "string" && x.id.startsWith("temp-") &&
-            x.from_page === m.from_page &&
-            (x.content ?? null) === (m.content ?? null) &&
-            (x.image_url ?? null) === (m.image_url ?? null) &&
-            (x.audio_url ?? null) === (m.audio_url ?? null)
-          );
-          if (idx >= 0) { const copy = prev.slice(); copy[idx] = m; return copy; }
-          const next = [...prev, m];
-          setCachedPageMessages(`admin-page-${conv.conversationId}`, next);
-          return next;
-        });
-        if (!m.from_page) {
-          supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
+        const currentConvId = activeIdRef.current;
+        
+        if (m.conversation_id === currentConvId) {
+          setMessages((prev) => {
+            if (prev.some((x) => x.id === m.id)) return prev;
+            const idx = prev.findIndex((x) =>
+              typeof x.id === "string" && x.id.startsWith("temp-") &&
+              x.from_page === m.from_page &&
+              (x.content ?? null) === (m.content ?? null) &&
+              (x.image_url ?? null) === (m.image_url ?? null) &&
+              (x.audio_url ?? null) === (m.audio_url ?? null)
+            );
+            if (idx >= 0) { const copy = prev.slice(); copy[idx] = m; return copy; }
+            const next = [...prev, m];
+            setCachedPageMessages(`admin-page-${currentConvId}`, next);
+            return next;
+          });
+          if (!m.from_page) {
+            supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
+          }
+        } else {
+          // Update other page conversations' cache in memory
+          const cacheKey = `admin-page-${m.conversation_id}`;
+          const cached = getCachedPageMessages(cacheKey);
+          if (cached && !cached.some(x => x.id === m.id)) {
+            setCachedPageMessages(cacheKey, [...cached, m]);
+          }
         }
       })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${conv.conversationId}` }, (payload) => {
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "page_messages" }, (payload) => {
         const m = payload.new as PageMsg;
-        setMessages((prev) => {
-          const next = prev.map((x) => (x.id === m.id ? m : x));
-          setCachedPageMessages(`admin-page-${conv.conversationId}`, next);
-          return next;
-        });
+        const currentConvId = activeIdRef.current;
+        
+        if (m.conversation_id === currentConvId) {
+          setMessages((prev) => {
+            const next = prev.map((x) => (x.id === m.id ? m : x));
+            setCachedPageMessages(`admin-page-${currentConvId}`, next);
+            return next;
+          });
+        } else {
+          const cacheKey = `admin-page-${m.conversation_id}`;
+          const cached = getCachedPageMessages(cacheKey);
+          if (cached) {
+            setCachedPageMessages(cacheKey, cached.map(x => x.id === m.id ? m : x));
+          }
+        }
       })
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${conv.conversationId}` }, (payload) => {
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "page_messages" }, (payload) => {
         const m = payload.old as PageMsg;
-        setMessages((prev) => {
-          const next = prev.filter((x) => x.id !== m.id);
-          setCachedPageMessages(`admin-page-${conv.conversationId}`, next);
-          return next;
-        });
+        const currentConvId = activeIdRef.current;
+        
+        if (m.conversation_id === currentConvId) {
+          setMessages((prev) => {
+            const next = prev.filter((x) => x.id !== m.id);
+            setCachedPageMessages(`admin-page-${currentConvId}`, next);
+            return next;
+          });
+        } else {
+          const cacheKey = `admin-page-${m.conversation_id}`;
+          const cached = getCachedPageMessages(cacheKey);
+          if (cached) {
+            setCachedPageMessages(cacheKey, cached.filter(x => x.id !== m.id));
+          }
+        }
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `page_conversation_id=eq.${conv.conversationId}` }, (payload) => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, (payload) => {
         const row = (payload.new ?? payload.old) as CallRow;
         if (!row || row.status === "ringing" || row.status === "active") return;
+        if (row.page_conversation_id !== activeIdRef.current) return;
+        
         setCalls((prev) => {
           const exists = prev.some((c) => c.id === row.id);
           if (exists) return prev.map((c) => (c.id === row.id ? row : c));
@@ -1029,15 +1133,25 @@ function Conversation({
         });
       })
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+
+    return () => { supabase.removeChannel(msgChannel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conv.conversationId]);
 
+  const lastConvIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (messages.length > 0 && isInitialLoadRef.current) {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    if (conv.conversationId !== lastConvIdRef.current) {
+      // Switched chat. Scroll to bottom instantly
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        // Schedule microtask to guarantee bottom placement after layout reflow
+        requestAnimationFrame(() => {
+          if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        });
+      }
+      lastConvIdRef.current = conv.conversationId;
       isInitialLoadRef.current = false;
-    } else {
+    } else if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
       const isMine = lastMsg && lastMsg.from_page;
       if (isMine || isNearBottomRef.current) {
@@ -1047,7 +1161,7 @@ function Conversation({
         setShowScrollToBottom(true);
       }
     }
-  }, [messages, calls]);
+  }, [messages, calls, conv.conversationId]);
 
   const handleScroll = () => {
     const el = scrollRef.current;
