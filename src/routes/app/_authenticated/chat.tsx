@@ -594,7 +594,7 @@ function ChatLayout() {
     <AppShell>
       <div className="flex h-full w-full overflow-hidden bg-background">
         {/* Sidebar Panel — hidden on mobile when a chat is open */}
-        <div className={`${hasActive ? "hidden md:flex" : "flex"} w-full md:max-w-sm md:border-r md:border-border flex flex-col min-h-0 shrink-0`}>
+        <div className={`${hasActive ? "hidden md:flex flex-col" : "flex flex-col"} w-full md:max-w-sm md:border-r md:border-border min-h-0 shrink-0`}>
           <div className="p-4 border-b border-border">
             <div className="flex items-center gap-2 mb-3">
               <HamburgerButton />
@@ -714,7 +714,7 @@ function ChatLayout() {
           </PullToRefresh>
         </div>
           {/* Active Chat Panel — full screen on mobile when open */}
-          <div className={`${hasActive ? "flex" : "hidden md:flex"} flex-1 flex flex-col min-h-0`}>
+          <div className={`${hasActive ? "flex flex-col" : "hidden md:flex flex-col"} flex-1 min-h-0`}>
             {hasActive ? <Outlet /> : <EmptyState />}
           </div>
       </div>
