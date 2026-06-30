@@ -44,10 +44,24 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   }, [error]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
+      <div className="max-w-xl text-center flex flex-col items-center">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">Something went wrong</h1>
         <p className="mt-2 text-sm text-muted-foreground">Try again or head back home.</p>
+        
+        {error && (
+          <div className="mt-5 w-full text-left bg-secondary/40 border border-border p-4 rounded-2xl max-h-72 overflow-y-auto select-text">
+            <p className="text-xs font-bold text-destructive font-mono break-all leading-relaxed">
+              Error: {error.message || String(error)}
+            </p>
+            {error.stack && (
+              <pre className="text-[10px] text-muted-foreground mt-3 font-mono whitespace-pre-wrap leading-normal overflow-x-auto border-t border-border/50 pt-2.5">
+                {error.stack}
+              </pre>
+            )}
+          </div>
+        )}
+
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => { router.invalidate(); reset(); }}
