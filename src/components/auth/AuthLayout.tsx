@@ -5,10 +5,11 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface AuthLayoutProps {
   children: ReactNode;
-  mode: "welcome" | "login" | "signup";
+  mode?: "welcome" | "login" | "signup";
+  hideHeader?: boolean;
 }
 
-export function AuthLayout({ children, mode }: AuthLayoutProps) {
+export function AuthLayout({ children, mode = "login", hideHeader = false }: AuthLayoutProps) {
   const isWelcome = mode === "welcome";
 
   return (
@@ -63,7 +64,8 @@ export function AuthLayout({ children, mode }: AuthLayoutProps) {
       {/* Auth Content */}
       <div className="relative w-full max-w-md z-10 flex flex-col items-center">
         {/* Header App Brand - Animates dynamically using shared layout animations */}
-        <motion.div 
+        {!hideHeader && (
+          <motion.div 
           layout
           transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
           className={`text-center select-none flex flex-col items-center ${
@@ -114,6 +116,7 @@ export function AuthLayout({ children, mode }: AuthLayoutProps) {
             Messenger
           </motion.p>
         </motion.div>
+      )}
 
         {children}
       </div>

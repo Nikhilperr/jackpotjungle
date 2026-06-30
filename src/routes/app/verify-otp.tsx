@@ -66,19 +66,18 @@ function VerifyOtpPage() {
     return `${m}:${s}`;
   };
 
-  async function onVerify(e: React.FormEvent) {
-    e.preventDefault();
+  async function verifyCode(codeStr: string) {
     if (expiryTime === 0) {
       toast.error("This verification code has expired. Please request a new one.");
       return;
     }
-    if (code.length !== 6) { toast.error("Enter the 6-digit code."); return; }
+    if (codeStr.length !== 6) return;
     setBusy(true);
     setHasError(false);
     try {
       const { error } = await supabase.auth.verifyOtp({
         email,
-        token: code,
+        token: codeStr,
         type: mode === "recovery" ? "recovery" : "email",
       });
       if (error) throw error;
@@ -100,6 +99,11 @@ function VerifyOtpPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onVerify(e: React.FormEvent) {
+    e.preventDefault();
+    verifyCode(code);
   }
 
   async function onResend() {
@@ -133,7 +137,7 @@ function VerifyOtpPage() {
   const providerUrl = getEmailProviderLink();
 
   return (
-    <AuthLayout>
+    <AuthLayout mode="login">
       <AnimatePresence mode="wait">
         {!showSuccess ? (
           <AuthCard key="otp-form">
@@ -169,6 +173,9 @@ function VerifyOtpPage() {
                   onChange={(val) => {
                     setCode(val);
                     if (hasError) setHasError(false);
+                    if (val.length === 6) {
+                      verifyCode(val);
+                    }
                   }}
                   disabled={expiryTime === 0 || busy}
                   hasError={hasError}
@@ -201,9 +208,12 @@ function VerifyOtpPage() {
               </div>
 
               <div className="space-y-3">
-                <AuthButton type="submit" disabled={code.length !== 6 || expiryTime === 0 || busy} busy={busy}>
-                  Verify & Confirm
-                </AuthButton>
+                {busy && (
+                  <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <span>Verifying code...</span>
+                  </div>
+                )}
 
                 {providerUrl && (
                   <a
