@@ -20,7 +20,7 @@ export function AuthCard({ children, className = "", delay = 0 }: AuthCardProps)
         mass: 1.1,
         delay 
       }}
-      className={`w-full bg-card/75 backdrop-blur-md border border-border/60 rounded-3xl p-6 md:p-8 shadow-2xl shadow-black/10 hover:shadow-black/15 transition-all duration-300 ${className}`}
+      className={`w-full transition-all duration-300 ${className}`}
     >
       {children}
     </motion.div>

@@ -125,7 +125,7 @@ function AuthPage() {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout mode={mode} setMode={setMode}>
       <AnimatePresence mode="popLayout">
         {mode === "welcome" && (
           <AuthCard key="welcome">
