@@ -101,7 +101,8 @@ function ChatView() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  let mounted = true;
+  const load = useCallback(async () => {
     if (!meId) return;
     isInitialLoadRef.current = true;
 
@@ -112,73 +113,74 @@ function ChatView() {
     setMessages(cachedMsgs || []);
 
     // ── Step 2: Fetch fresh data/delta in background ─────────────────────
-    let mounted = true;
-    (async () => {
-      const PAGE = 50;
-      const lastCachedMsg = cachedMsgs && cachedMsgs.length > 0 ? cachedMsgs[cachedMsgs.length - 1] : null;
+    const PAGE = 50;
+    const lastCachedMsg = cachedMsgs && cachedMsgs.length > 0 ? cachedMsgs[cachedMsgs.length - 1] : null;
 
-      if (lastCachedMsg) {
-        const [{ data: prof }, { data: deltaMsgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
-          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
-          supabase.from("messages").select("*")
-            .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
-            .gt("created_at", lastCachedMsg.created_at)
-            .order("created_at", { ascending: false }),
-          supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
-          supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-            .or(`and(caller_id.eq.${meId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${meId})`)
-            .eq("context", "friend")
-            .order("created_at", { ascending: true }).limit(200),
-        ]);
-        if (!mounted) return;
+    if (lastCachedMsg) {
+      const [{ data: prof }, { data: deltaMsgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
+        supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
+        supabase.from("messages").select("*")
+          .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
+          .gt("created_at", lastCachedMsg.created_at)
+          .order("created_at", { ascending: false }),
+        supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
+        supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+          .or(`and(caller_id.eq.${meId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${meId})`)
+          .eq("context", "friend")
+          .order("created_at", { ascending: true }).limit(200),
+      ]);
+      if (!mounted) return;
 
-        const profile = prof as Profile | null;
-        if (profile && spamRow) profile.online = false;
-        if (profile) { setFriend(profile); setCachedProfile(friendId, profile); }
+      const profile = prof as Profile | null;
+      if (profile && spamRow) profile.online = false;
+      if (profile) { setFriend(profile); setCachedProfile(friendId, profile); }
 
-        const delta = (deltaMsgs ?? []) as Message[];
-        const combined = [...(cachedMsgs || [])];
-        delta.reverse().forEach((m) => {
-          if (!combined.some((x) => x.id === m.id)) {
-            combined.push(m);
-          }
-        });
+      const delta = (deltaMsgs ?? []) as Message[];
+      const combined = [...(cachedMsgs || [])];
+      delta.reverse().forEach((m) => {
+        if (!combined.some((x) => x.id === m.id)) {
+          combined.push(m);
+        }
+      });
 
-        setMessages(combined);
-        setCachedMessages(meId, friendId, combined);
-        setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
-      } else {
-        const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
-          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
-          supabase.from("messages").select("*")
-            .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
-            .order("created_at", { ascending: false }).limit(PAGE + 1),
-          supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
-          supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-            .or(`and(caller_id.eq.${meId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${meId})`)
-            .eq("context", "friend")
-            .order("created_at", { ascending: true }).limit(200),
-        ]);
-        if (!mounted) return;
+      setMessages(combined);
+      setCachedMessages(meId, friendId, combined);
+      setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
+    } else {
+      const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
+        supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
+        supabase.from("messages").select("*")
+          .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
+          .order("created_at", { ascending: false }).limit(PAGE + 1),
+        supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
+        supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+          .or(`and(caller_id.eq.${meId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${meId})`)
+          .eq("context", "friend")
+          .order("created_at", { ascending: true }).limit(200),
+      ]);
+      if (!mounted) return;
 
-        const profile = prof as Profile | null;
-        if (profile && spamRow) profile.online = false;
-        if (profile) { setFriend(profile); setCachedProfile(friendId, profile); }
+      const profile = prof as Profile | null;
+      if (profile && spamRow) profile.online = false;
+      if (profile) { setFriend(profile); setCachedProfile(friendId, profile); }
 
-        const rawMsgs = (msgs ?? []) as Message[];
-        const hasMore = rawMsgs.length > PAGE;
-        const pageMsgs = rawMsgs.slice(0, PAGE).reverse();
-        setHasOlderMessages(hasMore);
-        setMessages(pageMsgs);
-        setCachedMessages(meId, friendId, pageMsgs);
-        setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
-      }
+      const rawMsgs = (msgs ?? []) as Message[];
+      const hasMore = rawMsgs.length > PAGE;
+      const pageMsgs = rawMsgs.slice(0, PAGE).reverse();
+      setHasOlderMessages(hasMore);
+      setMessages(pageMsgs);
+      setCachedMessages(meId, friendId, pageMsgs);
+      setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
+    }
 
-      await supabase.from("messages").update({ seen: true, delivered: true } as any)
-        .eq("sender_id", friendId).eq("receiver_id", meId).eq("seen", false);
-    })();
-    return () => { mounted = false; };
+    await supabase.from("messages").update({ seen: true, delivered: true } as any)
+      .eq("sender_id", friendId).eq("receiver_id", meId).eq("seen", false);
   }, [friendId, meId]);
+
+  useEffect(() => {
+    load();
+    return () => { mounted = false; };
+  }, [load]);
 
   // Load 50 older messages above the current batch
   async function loadOlderMessages() {
