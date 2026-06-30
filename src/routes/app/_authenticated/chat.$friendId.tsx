@@ -257,8 +257,10 @@ function ChatView() {
   useEffect(() => {
     if (!meId) return;
 
+    const rand = Math.random().toString(36).slice(2, 9);
+
     const msgChannel = supabase
-      .channel("chat-active-friend-global")
+      .channel(`chat-active-friend-global-${rand}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
         const m = payload.new as Message;
         const currentFriendId = activeFriendIdRef.current;
@@ -312,7 +314,7 @@ function ChatView() {
       .subscribe();
 
     const typingChannel = supabase
-      .channel("typing-active-friend-global", { config: { broadcast: { self: false } } })
+      .channel(`typing-active-friend-global-${rand}`, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "typing" }, (payload) => {
         const data = payload.payload as { from: string; to: string };
         if (data && data.from === activeFriendIdRef.current && data.to === meId) {
@@ -325,7 +327,7 @@ function ChatView() {
     typingChannelRef.current = typingChannel;
 
     const callsChannel = supabase
-      .channel("calls-active-friend-global")
+      .channel(`calls-active-friend-global-${rand}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, (payload) => {
         const row = (payload.new ?? payload.old) as CallRow & { context?: string };
         if (!row || (row as any).context !== "friend") return;

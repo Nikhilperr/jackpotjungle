@@ -374,8 +374,9 @@ function ChatLayout() {
     loadPage(meId);
     loadSpam(meId);
 
+    const rand = Math.random().toString(36).slice(2, 9);
     const channel = supabase
-      .channel("conv-list")
+      .channel(`conv-list-${rand}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
         if (!mounted) return;
         const m = payload.new as any;

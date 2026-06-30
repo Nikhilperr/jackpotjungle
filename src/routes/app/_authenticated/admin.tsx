@@ -549,8 +549,9 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   useEffect(() => {
     load();
     let mounted = true;
+    const rand = Math.random().toString(36).slice(2, 9);
     const ch = supabase
-      .channel("admin-page-inbox")
+      .channel(`admin-page-inbox-${rand}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, (payload) => {
         if (!mounted) return;
         const m = payload.new as any;
@@ -1140,8 +1141,9 @@ function Conversation({
   useEffect(() => {
     if (!meId) return;
 
+    const rand = Math.random().toString(36).slice(2, 9);
     const msgChannel = supabase
-      .channel("admin-active-page-chat-global")
+      .channel(`admin-active-page-chat-global-${rand}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "page_messages" }, (payload) => {
         const m = payload.new as PageMsg;
         const currentConvId = activeIdRef.current;

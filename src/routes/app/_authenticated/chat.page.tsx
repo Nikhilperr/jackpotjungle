@@ -542,8 +542,9 @@ function PageChatView() {
 
   useEffect(() => {
     if (!convId) return;
+    const rand = Math.random().toString(36).slice(2, 9);
     const ch = supabase
-      .channel(`user-page-${convId}`)
+      .channel(`user-page-${convId}-${rand}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "page_messages", filter: `conversation_id=eq.${convId}` }, (payload) => {
         const m = payload.new as Msg;
         setMessages((prev) => {
@@ -572,7 +573,7 @@ function PageChatView() {
       .subscribe();
 
     const callsCh = supabase
-      .channel(`user-page-calls-${convId}`)
+      .channel(`user-page-calls-${convId}-${rand}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `page_conversation_id=eq.${convId}` }, (payload) => {
         const row = (payload.new ?? payload.old) as CallRow;
         if (!row || row.status === "ringing" || row.status === "active") return;

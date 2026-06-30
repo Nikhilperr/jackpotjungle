@@ -70,8 +70,9 @@ function FriendsPage() {
       setMeId(data.user.id);
       load(data.user.id);
     });
+    const rand = Math.random().toString(36).slice(2, 9);
     const channel = supabase
-      .channel("friends-page")
+      .channel(`friends-page-${rand}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests" }, () => {
         supabase.auth.getUser().then(({ data }) => { if (data.user && mounted) load(data.user.id); });
       })
