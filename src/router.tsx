@@ -11,15 +11,22 @@ function DefaultPending() {
 }
 
 export const getRouter = () => {
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        refetchOnWindowFocus: false, // Prevent background refetches from triggering on window/app focus
+        staleTime: 30000,            // Consider cached query data fresh for 30s
+      },
+    },
+  });
 
   const router = createRouter({
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
-    defaultPreloadStaleTime: 0,
+    defaultPreloadStaleTime: 15000, // Preloaded data is fresh for 15s
     defaultPendingComponent: DefaultPending,
-    defaultPendingMs: 0,
+    defaultPendingMs: 300,          // Only display full-screen loading spinner if page load exceeds 300ms
   });
 
   return router;

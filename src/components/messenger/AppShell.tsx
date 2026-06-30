@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState, useRouter } from "@tanstack/react-router";
-import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X } from "lucide-react";
+import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,6 +14,53 @@ import { Capacitor } from "@capacitor/core";
 
 const DrawerCtx = createContext<{ open: () => void }>({ open: () => {} });
 export const useAppDrawer = () => useContext(DrawerCtx);
+
+function OnlineStatusBanner() {
+  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [showConnected, setShowConnected] = useState(false);
+
+  useEffect(() => {
+    function handleOnline() {
+      setIsOnline(true);
+      setShowConnected(true);
+      const timer = setTimeout(() => {
+        setShowConnected(false);
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+    function handleOffline() {
+      setIsOnline(false);
+      setShowConnected(false);
+    }
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  if (!isOnline) {
+    return (
+      <div className="bg-amber-600 dark:bg-amber-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0">
+        <WifiOff className="h-3.5 w-3.5" />
+        <span>No internet connection</span>
+      </div>
+    );
+  }
+
+  if (showConnected) {
+    return (
+      <div className="bg-emerald-600 dark:bg-emerald-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top exit-to-top duration-300 shadow-sm shrink-0">
+        <Wifi className="h-3.5 w-3.5" />
+        <span>Connection restored</span>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -127,7 +174,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        <main className="flex-1 min-w-0 min-h-0 flex flex-col safe-pt safe-pb safe-pl safe-pr">{children}</main>
+        <main className="flex-1 min-w-0 min-h-0 flex flex-col safe-pt safe-pb safe-pl safe-pr">
+          <OnlineStatusBanner />
+          {children}
+        </main>
 
         <SignOutDialog isOpen={confirmOut} onClose={() => setConfirmOut(false)} onConfirm={signOut} />
       </div>
