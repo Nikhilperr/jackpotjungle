@@ -479,10 +479,9 @@ function PageChatView() {
         if (mounted && admins?.[0]) setAdminId(admins[0].id);
       }
 
-      // Load call history for this page conversation
       const { data: callRows } = await supabase.from("calls")
         .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-        .in("context", ["page", "page_broadcast"]).eq("page_conversation_id", conv.id)
+        .eq("context", "page").eq("page_conversation_id", conv.id)
         .order("created_at", { ascending: true }).limit(200);
       if (mounted) setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
 

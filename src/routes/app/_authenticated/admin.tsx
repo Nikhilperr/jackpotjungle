@@ -1053,7 +1053,7 @@ function Conversation({
         supabase
           .from("calls")
           .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-          .in("context", ["page", "page_broadcast"])
+          .eq("context", "page")
           .eq("page_conversation_id", conv.conversationId)
           .order("created_at", { ascending: true })
           .limit(200),
@@ -1078,7 +1078,7 @@ function Conversation({
         supabase
           .from("calls")
           .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-          .in("context", ["page", "page_broadcast"])
+          .eq("context", "page")
           .eq("page_conversation_id", conv.conversationId)
           .order("created_at", { ascending: true })
           .limit(200),
