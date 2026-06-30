@@ -147,6 +147,12 @@ server {
     ssl_certificate     /etc/letsencrypt/live/playjackpotjungle.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/playjackpotjungle.com/privkey.pem;
 
+    # Whitelist of allowed origins for credentialed CORS
+    set $cors_origin "";
+    if ($http_origin ~* "^https://(chat|admin|www)?\.?playjackpotjungle\.com$") {
+        set $cors_origin $http_origin;
+    }
+
     location / {
         # Proxy to local self-hosted Supabase Kong API gateway
         proxy_pass http://127.0.0.1:8000;
@@ -154,12 +160,26 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
+
+        # Hide upstream CORS headers from Kong to avoid duplicates
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Allow-Credentials;
+
+        # CORS headers on ALL responses (not just OPTIONS)
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE, PATCH' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, x-client-info, apikey, X-Supabase-Api-Version, Accept, Range, Content-Range, Prefer' always;
+        add_header 'Access-Control-Expose-Headers' 'Content-Range, Content-Length' always;
+
         # CORS Preflight
         if ($request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' '*';
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE, PATCH';
-            add_header 'Access-Control-Allow-Headers' '*';
+            add_header 'Access-Control-Allow-Origin' $cors_origin always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE, PATCH' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, x-client-info, apikey, X-Supabase-Api-Version, Accept, Range, Content-Range, Prefer' always;
             add_header 'Access-Control-Max-Age' 1728000;
             return 204;
         }
