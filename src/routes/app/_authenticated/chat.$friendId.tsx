@@ -938,8 +938,8 @@ function ChatView() {
   );
 
   return (
-    <div className="h-full flex-1 flex min-h-0 relative">
-      <div className="flex-1 flex flex-col min-h-0 bg-background">
+    <div className="h-full flex-1 flex min-h-0 relative w-full overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 bg-background w-full overflow-hidden">
         {selectionMode ? (
         <header className="px-3 md:px-5 py-3 border-b border-border flex items-center justify-between bg-card min-h-[65px]">
           <button

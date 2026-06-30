@@ -714,7 +714,7 @@ function ChatLayout() {
           </PullToRefresh>
         </div>
           {/* Active Chat Panel — full screen on mobile when open */}
-          <div className={`${hasActive ? "flex flex-col" : "hidden md:flex flex-col"} flex-1 min-h-0`}>
+          <div className={`${hasActive ? "flex flex-col" : "hidden md:flex flex-col"} flex-1 min-h-0 w-full overflow-hidden`}>
             {hasActive ? <Outlet /> : <EmptyState />}
           </div>
       </div>
