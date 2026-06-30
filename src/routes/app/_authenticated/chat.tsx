@@ -45,6 +45,11 @@ function ChatLayout() {
   const [tab, setTab] = useState<"all" | "spam">("all");
   const [pageUnread, setPageUnread] = useState(0);
   const [pageLast, setPageLast] = useState<{ content: string | null; at: string | null }>({ content: null, at: null });
+  const [pageConvId, setPageConvId] = useState<string | null>(null);
+  const pageConvIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    pageConvIdRef.current = pageConvId;
+  }, [pageConvId]);
   const [search, setSearch] = useState("");
   const [meId, setMeId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
@@ -86,6 +91,7 @@ function ChatLayout() {
       .eq("user_id", myId)
       .maybeSingle();
     if (!conv) return;
+    setPageConvId(conv.id);
 
     const [{ data: last }, { data: lastCalls }] = await Promise.all([
       supabase
@@ -420,8 +426,10 @@ function ChatLayout() {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, (payload) => {
         if (!mounted) return;
-        const m = payload.new as any;
+        const m = (payload.new ?? payload.old) as any;
         if (!m) return;
+        if (m.conversation_id !== pageConvIdRef.current) return;
+
         if (payload.eventType === "INSERT") {
           let preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
           if (preview?.startsWith("[system:reaction:")) {
@@ -464,6 +472,7 @@ function ChatLayout() {
         const callPreview = c.call_type === "video" ? "📹 Video call" : "📞 Voice call";
 
         if (c.context === "page" || c.context === "page_broadcast") {
+          if (c.page_conversation_id && c.page_conversation_id !== pageConvIdRef.current) return;
           setPageLast((prev) => {
             if (!prev.at || new Date(c.created_at) > new Date(prev.at)) {
               return { content: callPreview, at: c.created_at };
@@ -727,7 +736,22 @@ function ChatLayout() {
         </div>
           {/* Active Chat Panel — full screen on mobile when open */}
           <div className={`${hasActive ? "flex flex-col" : "hidden md:flex flex-col"} flex-1 min-h-0 w-full overflow-hidden`}>
-            {hasActive ? <Outlet /> : <EmptyState />}
+            <AnimatePresence mode="wait">
+              {hasActive ? (
+                <motion.div
+                  key={location.pathname}
+                  initial={{ opacity: 0, x: 15 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -15 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="flex-1 flex flex-col min-h-0 w-full overflow-hidden"
+                >
+                  <Outlet />
+                </motion.div>
+              ) : (
+                <EmptyState />
+              )}
+            </AnimatePresence>
           </div>
       </div>
 

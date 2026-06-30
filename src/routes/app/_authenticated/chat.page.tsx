@@ -424,8 +424,12 @@ function PageChatView() {
       setMeId(u.user.id);
 
       // ── Step 1: Show cached data INSTANTLY ──────────────────────────────
-      const cached = getCachedPageMessages("support-page");
-      if (cached) setMessages(cached);
+      const cachedConvId = typeof window !== "undefined" ? localStorage.getItem(`jj_page_conv_id_${u.user.id}`) : null;
+      if (cachedConvId) {
+        setConvId(cachedConvId);
+        const cached = getCachedPageMessages(`page-chat-${cachedConvId}`);
+        if (cached) setMessages(cached);
+      }
 
       let { data: conv } = await supabase.from("page_conversations").select("id").eq("user_id", u.user.id).maybeSingle();
       if (!conv) {
@@ -434,6 +438,13 @@ function PageChatView() {
       }
       if (!conv || !mounted) return;
       setConvId(conv.id);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`jj_page_conv_id_${u.user.id}`, conv.id);
+      }
+
+      const cacheKey = `page-chat-${conv.id}`;
+      const cached = getCachedPageMessages(cacheKey);
+      if (cached) setMessages(cached);
 
       // ── Step 2: Fetch fresh data/delta in background ─────────────────────
       const lastCachedMsg = cached && cached.length > 0 ? cached[cached.length - 1] : null;
@@ -453,8 +464,9 @@ function PageChatView() {
             }
           });
           setMessages(combined);
-          setCachedPageMessages("support-page", combined);
+          setCachedPageMessages(cacheKey, combined);
         }
+      } else {
         const { data: msgs } = await supabase.from("page_messages")
           .select("id, sender_id, from_page, content, image_url, audio_url, seen, created_at")
           .eq("conversation_id", conv.id)
@@ -464,7 +476,7 @@ function PageChatView() {
           const fresh = (msgs as Msg[]) ?? [];
           const reversed = [...fresh].reverse();
           setMessages(reversed);
-          setCachedPageMessages("support-page", reversed);
+          setCachedPageMessages(cacheKey, reversed);
         }
       }
 
@@ -491,6 +503,12 @@ function PageChatView() {
     })();
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    if (messages.length > 0 && convId) {
+      setCachedPageMessages(`page-chat-${convId}`, messages);
+    }
+  }, [messages, convId]);
 
   useEffect(() => {
     if (!convId) return;
