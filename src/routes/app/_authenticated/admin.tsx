@@ -763,6 +763,22 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             onBack={() => setActiveId(null)} 
             onOpenDetail={() => setDetailOpen(true)} 
             onToggleSpam={() => setConvSpam(active, !active.isSpam)} 
+            onLastMessageUpdate={(content, image_url, audio_url, created_at) => {
+              setConvs((prev) => {
+                const idx = prev.findIndex((c) => c.conversationId === active.conversationId);
+                if (idx === -1) return prev;
+                let preview = content;
+                if (!preview) {
+                  preview = image_url ? "📷 Photo" : audio_url ? "🎤 Voice message" : "Message";
+                }
+                const copy = [...prev];
+                const updated = { ...copy[idx] };
+                updated.lastMessage = preview;
+                updated.lastAt = created_at;
+                copy[idx] = updated;
+                return copy.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+              });
+            }}
           />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center px-6 text-muted-foreground">
@@ -841,14 +857,16 @@ function Conversation({
   convs = [], 
   onBack, 
   onOpenDetail, 
-  onToggleSpam 
+  onToggleSpam,
+  onLastMessageUpdate,
 }: { 
   meId: string; 
   conv: ConvRow; 
   convs?: ConvRow[]; 
   onBack: () => void; 
   onOpenDetail: () => void; 
-  onToggleSpam: () => void 
+  onToggleSpam: () => void;
+  onLastMessageUpdate: (content: string | null, image_url: string | null, audio_url: string | null, created_at: string) => void;
 }) {
   const { startCall } = useCalls();
   const [messages, setMessages] = useState<PageMsg[]>([]);
@@ -1046,6 +1064,10 @@ function Conversation({
   const activeIdRef = useRef(conv.conversationId);
   useEffect(() => {
     activeIdRef.current = conv.conversationId;
+    const cacheKey = `admin-page-${conv.conversationId}`;
+    const cached = getCachedPageMessages(cacheKey);
+    setMessages(cached || []);
+    
     load();
   }, [conv.conversationId]);
 
@@ -1448,6 +1470,7 @@ function Conversation({
     setReplyingTo(null);
 
     const tempId = addOptimistic({ content });
+    onLastMessageUpdate(content, null, null, new Date().toISOString());
     const { data, error } = await supabase
       .from("page_messages")
       .insert({ conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: finalContent })
@@ -1484,6 +1507,7 @@ function Conversation({
     setUploading(true);
     const localPreview = URL.createObjectURL(file);
     const tempId = addOptimistic({ image_url: localPreview });
+    onLastMessageUpdate(null, localPreview, null, new Date().toISOString());
     try {
       const { uploadAndSign } = await import("@/lib/chat-media");
       const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
@@ -1505,6 +1529,7 @@ function Conversation({
     setRecUploading(true);
     const localPreview = URL.createObjectURL(blob);
     const tempId = addOptimistic({ audio_url: localPreview });
+    onLastMessageUpdate(null, null, localPreview, new Date().toISOString());
     try {
       const { uploadAndSign } = await import("@/lib/chat-media");
       const url = await uploadAndSign("chat-audio", meId, blob, ext, mime);

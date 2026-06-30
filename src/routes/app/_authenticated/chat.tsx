@@ -481,6 +481,26 @@ function ChatLayout() {
     };
   }, [meId]);
 
+  useEffect(() => {
+    function handleSent(e: Event) {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.friendId === detail.receiverId);
+        if (idx === -1) return prev;
+        let preview = detail.content;
+        if (!preview) {
+          preview = detail.image_url ? "📷 Photo" : detail.audio_url ? "🎤 Voice message" : "Message";
+        }
+        const updated = { ...prev[idx], lastMessage: preview, lastAt: detail.created_at || new Date().toISOString() };
+        const copy = prev.filter((_, i) => i !== idx);
+        return [updated, ...copy].sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+      });
+    }
+    window.addEventListener("jj-message-sent", handleSent);
+    return () => window.removeEventListener("jj-message-sent", handleSent);
+  }, []);
+
   // Optimistically clear unread badges for active chats
   useEffect(() => {
     if (activeId) {

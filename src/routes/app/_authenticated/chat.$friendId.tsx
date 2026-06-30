@@ -14,6 +14,7 @@ import { uploadAndSign } from "@/lib/chat-media";
 import { format, formatDistanceToNow } from "date-fns";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 import { unsendMessagesServer } from "@/lib/messages.functions";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
@@ -66,7 +67,8 @@ type Profile = {
 
 function ChatView() {
   const { friendId } = useParams({ from: "/app/_authenticated/chat/$friendId" });
-  const [meId, setMeId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const meId = user?.id || null;
   const [friend, setFriend] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [calls, setCalls] = useState<CallRow[]>([]);
@@ -100,22 +102,18 @@ function ChatView() {
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    let mounted = true;
+    if (!meId) return;
     isInitialLoadRef.current = true;
 
+    // ── Step 1: Show cached data INSTANTLY (zero wait) ──────────────────
+    const cachedProfile = getCachedProfile(friendId);
+    const cachedMsgs = getCachedMessages(meId, friendId);
+    setFriend(cachedProfile || null);
+    setMessages(cachedMsgs || []);
+
+    // ── Step 2: Fetch fresh data/delta in background ─────────────────────
+    let mounted = true;
     (async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user || !mounted) return;
-      const myId = u.user.id;
-      setMeId(myId);
-
-      // ── Step 1: Show cached data INSTANTLY (zero wait) ──────────────────
-      const cachedProfile = getCachedProfile(friendId);
-      const cachedMsgs = getCachedMessages(myId, friendId);
-      if (cachedProfile) setFriend(cachedProfile);
-      if (cachedMsgs) setMessages(cachedMsgs);
-
-      // ── Step 2: Fetch fresh data/delta in background ─────────────────────
       const PAGE = 50;
       const lastCachedMsg = cachedMsgs && cachedMsgs.length > 0 ? cachedMsgs[cachedMsgs.length - 1] : null;
 
@@ -123,12 +121,12 @@ function ChatView() {
         const [{ data: prof }, { data: deltaMsgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
           supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
           supabase.from("messages").select("*")
-            .or(`and(sender_id.eq.${myId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${myId})`)
+            .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
             .gt("created_at", lastCachedMsg.created_at)
             .order("created_at", { ascending: false }),
-          supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", myId).maybeSingle(),
+          supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
           supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-            .or(`and(caller_id.eq.${myId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${myId})`)
+            .or(`and(caller_id.eq.${meId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${meId})`)
             .eq("context", "friend")
             .order("created_at", { ascending: true }).limit(200),
         ]);
@@ -147,17 +145,17 @@ function ChatView() {
         });
 
         setMessages(combined);
-        setCachedMessages(myId, friendId, combined);
+        setCachedMessages(meId, friendId, combined);
         setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
       } else {
         const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
           supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
           supabase.from("messages").select("*")
-            .or(`and(sender_id.eq.${myId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${myId})`)
+            .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
             .order("created_at", { ascending: false }).limit(PAGE + 1),
-          supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", myId).maybeSingle(),
+          supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
           supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-            .or(`and(caller_id.eq.${myId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${myId})`)
+            .or(`and(caller_id.eq.${meId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${meId})`)
             .eq("context", "friend")
             .order("created_at", { ascending: true }).limit(200),
         ]);
@@ -172,15 +170,15 @@ function ChatView() {
         const pageMsgs = rawMsgs.slice(0, PAGE).reverse();
         setHasOlderMessages(hasMore);
         setMessages(pageMsgs);
-        setCachedMessages(myId, friendId, pageMsgs);
+        setCachedMessages(meId, friendId, pageMsgs);
         setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
       }
 
       await supabase.from("messages").update({ seen: true, delivered: true } as any)
-        .eq("sender_id", friendId).eq("receiver_id", myId).eq("seen", false);
+        .eq("sender_id", friendId).eq("receiver_id", meId).eq("seen", false);
     })();
     return () => { mounted = false; };
-  }, [friendId]);
+  }, [friendId, meId]);
 
   // Load 50 older messages above the current batch
   async function loadOlderMessages() {
@@ -760,6 +758,17 @@ function ChatView() {
     setReplyingTo(null);
 
     const tempId = addOptimistic({ content });
+    window.dispatchEvent(
+      new CustomEvent("jj-message-sent", {
+        detail: {
+          receiverId: friendId,
+          content,
+          image_url: null,
+          audio_url: null,
+          created_at: new Date().toISOString()
+        }
+      })
+    );
     const { data, error } = await supabase
       .from("messages")
       .insert({ sender_id: meId, receiver_id: friendId, content: finalContent })
@@ -798,6 +807,17 @@ function ChatView() {
     setUploading(true);
     const localPreview = URL.createObjectURL(file);
     const tempId = addOptimistic({ image_url: localPreview });
+    window.dispatchEvent(
+      new CustomEvent("jj-message-sent", {
+        detail: {
+          receiverId: friendId,
+          content: null,
+          image_url: localPreview,
+          audio_url: null,
+          created_at: new Date().toISOString()
+        }
+      })
+    );
     try {
       const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
       const { data } = await supabase
@@ -819,6 +839,17 @@ function ChatView() {
     setRecUploading(true);
     const localPreview = URL.createObjectURL(blob);
     const tempId = addOptimistic({ audio_url: localPreview });
+    window.dispatchEvent(
+      new CustomEvent("jj-message-sent", {
+        detail: {
+          receiverId: friendId,
+          content: null,
+          image_url: null,
+          audio_url: localPreview,
+          created_at: new Date().toISOString()
+        }
+      })
+    );
     try {
       const url = await uploadAndSign("chat-audio", meId, blob, ext, mime);
       const { data } = await supabase
