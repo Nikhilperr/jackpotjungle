@@ -2,16 +2,16 @@ import { useEffect, useState } from "react";
 import { Moon, Sun, Sparkles, Zap, Layers } from "lucide-react";
 
 function getInitialTheme(): "dark" | "light" | "jackpot" | "amoled" | "glass" {
-  if (typeof window === "undefined") return "amoled";
+  if (typeof window === "undefined") return "jackpot";
   const stored = localStorage.getItem("theme");
   if (stored === "dark" || stored === "light" || stored === "jackpot" || stored === "amoled" || stored === "glass") {
     return stored;
   }
-  return "amoled";
+  return "jackpot";
 }
 
 export function ThemeToggle({ className = "" }: { className?: string }) {
-  const [theme, setTheme] = useState<"dark" | "light" | "jackpot" | "amoled" | "glass">("amoled");
+  const [theme, setTheme] = useState<"dark" | "light" | "jackpot" | "amoled" | "glass">("jackpot");
 
   useEffect(() => {
     const t = getInitialTheme();

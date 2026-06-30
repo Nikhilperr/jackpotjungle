@@ -5,12 +5,12 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface AuthLayoutProps {
   children: ReactNode;
-  title?: string;
-  subtitle?: string;
-  hideHeader?: boolean;
+  mode: "welcome" | "login" | "signup";
 }
 
-export function AuthLayout({ children, title, subtitle, hideHeader = false }: AuthLayoutProps) {
+export function AuthLayout({ children, mode }: AuthLayoutProps) {
+  const isWelcome = mode === "welcome";
+
   return (
     <div className="relative min-h-screen w-full flex flex-col items-center justify-center bg-background px-4 py-8 overflow-hidden transition-colors duration-500">
       {/* Background Animated Gradient Mesh/Circles */}
@@ -62,33 +62,58 @@ export function AuthLayout({ children, title, subtitle, hideHeader = false }: Au
 
       {/* Auth Content */}
       <div className="relative w-full max-w-md z-10 flex flex-col items-center">
-        {/* Header App Brand */}
-        {!hideHeader && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="text-center mb-8 select-none"
+        {/* Header App Brand - Animates dynamically using shared layout animations */}
+        <motion.div 
+          layout
+          transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
+          className={`text-center select-none flex flex-col items-center ${
+            isWelcome ? "mt-6 mb-6" : "mb-8 animate-in fade-in slide-in-from-top duration-300"
+          }`}
+        >
+          <motion.div
+            layout
+            className="relative inline-flex items-center justify-center"
           >
-            <div className="relative inline-flex items-center justify-center mb-3">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-                className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-primary to-accent opacity-20 blur-md"
-              />
-              <img 
-                src="/icons/icon-256.webp" 
-                alt="Logo" 
-                className="relative h-20 w-20 rounded-2xl shadow-xl object-cover border border-border/20"
-              />
-            </div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center justify-center gap-1.5">
-              Jackpot Jungle
-              <Sparkles className="h-5 w-5 text-primary animate-pulse" />
-            </h1>
-            <p className="text-sm text-muted-foreground font-medium mt-1">Messenger</p>
+            {/* Glow ring */}
+            <motion.div
+              layout
+              animate={{ 
+                scale: isWelcome ? [1, 1.12, 1] : [1, 1.05, 1],
+                opacity: isWelcome ? [0.15, 0.35, 0.15] : [0.05, 0.15, 0.05]
+              }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute -inset-4 rounded-3xl bg-gradient-to-tr from-primary to-accent blur-md"
+            />
+            <motion.img 
+              layout
+              src="/icons/icon-256.webp" 
+              alt="Logo" 
+              className={`relative rounded-2xl shadow-xl object-cover border border-border/20 bg-card transition-all duration-500 ${
+                isWelcome ? "h-28 w-28 rounded-[28px]" : "h-16 w-16"
+              }`}
+            />
           </motion.div>
-        )}
+
+          <motion.h1 
+            layout
+            className={`font-extrabold tracking-tight text-foreground flex items-center justify-center gap-1.5 transition-all duration-500 ${
+              isWelcome ? "text-4xl mt-6" : "text-2xl mt-3"
+            }`}
+          >
+            Jackpot Jungle
+            <Sparkles className={`text-primary animate-pulse transition-all duration-500 ${
+              isWelcome ? "h-6 w-6" : "h-4.5 w-4.5"
+            }`} />
+          </motion.h1>
+          <motion.p 
+            layout
+            className={`text-muted-foreground font-medium mt-1 transition-all duration-500 ${
+              isWelcome ? "text-sm tracking-wide" : "text-xs"
+            }`}
+          >
+            Messenger
+          </motion.p>
+        </motion.div>
 
         {children}
       </div>

@@ -125,78 +125,35 @@ function AuthPage() {
   }
 
   return (
-    <AuthLayout hideHeader={mode === "welcome"}>
+    <AuthLayout mode={mode}>
       <AnimatePresence mode="wait">
         {mode === "welcome" && (
           <motion.div
             key="welcome"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
-            className="w-full max-w-sm flex flex-col items-center justify-between min-h-[70vh] py-8 text-center select-none"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.4, ease: "easeInOut" }}
+            className="w-full max-w-sm flex flex-col items-center justify-center pt-2 pb-6 text-center select-none"
           >
-            {/* Logo and Brand Animation */}
-            <div className="flex-1 flex flex-col items-center justify-center space-y-6">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.5, rotate: -15 }}
-                animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                transition={{ duration: 0.8, type: "spring", stiffness: 100 }}
-                className="relative inline-flex items-center justify-center"
-              >
-                {/* Glow ring */}
-                <motion.div
-                  animate={{ scale: [1, 1.12, 1], opacity: [0.15, 0.35, 0.15] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                  className="absolute -inset-4 rounded-[32px] bg-gradient-to-tr from-primary to-accent blur-md"
-                />
-                <img 
-                  src="/icons/icon-256.webp" 
-                  alt="Logo" 
-                  className="relative h-28 w-28 rounded-[28px] shadow-2xl object-cover border border-border/25 bg-card"
-                />
-              </motion.div>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.25, duration: 0.6 }}
+              className="text-xs text-muted-foreground/75 max-w-[280px] leading-relaxed mb-6"
+            >
+              Connect instantly with friends, admins, and support teams. Explore our fast, modern messenger experience.
+            </motion.p>
 
-              <div className="space-y-2">
-                <motion.h1
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3, duration: 0.6 }}
-                  className="text-4xl font-extrabold tracking-tight text-foreground flex items-center justify-center gap-1.5"
-                >
-                  Jackpot Jungle
-                  <Sparkles className="h-6 w-6 text-primary animate-pulse" />
-                </motion.h1>
-                <motion.p
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.45, duration: 0.6 }}
-                  className="text-sm text-muted-foreground/80 font-medium tracking-wide"
-                >
-                  Messenger
-                </motion.p>
-              </div>
-
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.6, duration: 0.8 }}
-                className="text-xs text-muted-foreground/60 max-w-[280px] leading-relaxed pt-2"
-              >
-                Connect instantly with friends, admins, and support teams. Explore our fast, modern messenger experience.
-              </motion.p>
-            </div>
-
-            {/* Premium Get Started Button */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.75, duration: 0.6 }}
-              className="w-full px-4 pt-8"
+              transition={{ delay: 0.35, duration: 0.5 }}
+              className="w-full px-4"
             >
               <button
                 onClick={() => setMode("login")}
-                className="w-full py-4 bg-primary text-primary-foreground hover:bg-primary/95 active:scale-[0.98] font-bold rounded-2xl text-sm transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.35)] hover:shadow-[0_0_25px_rgba(var(--primary-rgb),0.55)] flex items-center justify-center gap-2 group cursor-pointer"
+                className="w-full py-4 bg-primary text-primary-foreground hover:bg-primary/95 active:scale-[0.98] font-bold rounded-2xl text-sm transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_25px_rgba(var(--primary-rgb),0.55)] flex items-center justify-center gap-2 group cursor-pointer"
               >
                 <span>Get Started</span>
                 <motion.span
