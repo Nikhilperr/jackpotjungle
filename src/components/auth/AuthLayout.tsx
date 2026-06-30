@@ -21,7 +21,7 @@ export function AuthLayout({ children, mode = "login", hideHeader = false }: Aut
   };
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col items-center justify-start md:justify-center bg-background px-4 py-8 overflow-y-auto transition-colors duration-500">
+    <div className="relative min-h-screen w-full flex flex-col items-center justify-center bg-background px-4 py-8 overflow-y-auto transition-colors duration-500">
       {/* Background Animated Gradient Mesh/Circles */}
       <div className="absolute inset-0 pointer-events-none z-0">
         <motion.div
@@ -57,17 +57,23 @@ export function AuthLayout({ children, mode = "login", hideHeader = false }: Aut
         <ThemeToggle className="shadow-lg border border-border/30" />
       </div>
 
-      {/* Auth Content Wrapper */}
-      <div className="relative w-full max-w-md z-10 flex flex-col items-center py-4">
-        {/* Header App Brand - GPU accelerated scale/translate movements to bypass layout reflows */}
+      {/* Auth Content Wrapper - Animates in smoothly on page load to prevent popping */}
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="relative w-full max-w-sm z-10 flex flex-col items-center py-4"
+      >
+        {/* Header App Brand - GPU accelerated scale movements (bypasses y-coordinate overlap) */}
         {!hideHeader && (
           <motion.div 
             animate={{
-              y: isWelcome ? 35 : 0,
               scale: isWelcome ? 1.15 : 0.82,
             }}
             transition={springTransition}
-            className="text-center select-none flex flex-col items-center mb-6 origin-center z-10"
+            className={`text-center select-none flex flex-col items-center origin-center z-10 transition-all duration-500 ${
+              isWelcome ? "mb-10 mt-4" : "mb-6 mt-0"
+            }`}
           >
             <div className="relative inline-flex items-center justify-center">
               {/* Glow ring */}
@@ -100,7 +106,7 @@ export function AuthLayout({ children, mode = "login", hideHeader = false }: Aut
         <div className="w-full flex flex-col items-center">
           {children}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

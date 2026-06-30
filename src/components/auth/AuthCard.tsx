@@ -10,9 +10,9 @@ interface AuthCardProps {
 export function AuthCard({ children, className = "", delay = 0 }: AuthCardProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 30, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -30, scale: 0.96 }}
+      initial={{ opacity: 0, scale: 0.98, filter: "blur(6px)" }}
+      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+      exit={{ opacity: 0, scale: 0.98, filter: "blur(6px)" }}
       transition={{ 
         type: "spring", 
         stiffness: 140, 
