@@ -431,7 +431,9 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     try {
       const { data: convList } = await supabase
         .from("page_conversations")
-        .select("id, user_id, last_message_at, is_spam");
+        .select("id, user_id, last_message_at, is_spam")
+        .order("last_message_at", { ascending: false })
+        .limit(200);
       if (!convList) return;
       const userIds = convList.map((c) => c.user_id);
       const convIds = convList.map((c) => c.id);
@@ -443,7 +445,8 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           .from("page_messages")
           .select("conversation_id, content, created_at, seen, from_page, image_url, audio_url")
           .in("conversation_id", convIds)
-          .order("created_at", { ascending: false }),
+          .order("created_at", { ascending: false })
+          .limit(500),
         supabase.from("tags").select("id, name, color").order("name"),
         supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds),
         supabase.from("user_credits").select("user_id, balance").in("user_id", userIds),
@@ -1074,7 +1077,8 @@ function Conversation({
           .from("page_messages")
           .select("id, sender_id, content, image_url, audio_url, created_at, seen, from_page")
           .eq("conversation_id", conv.conversationId)
-          .order("created_at", { ascending: true }),
+          .order("created_at", { ascending: false })
+          .limit(100),
         supabase
           .from("calls")
           .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
@@ -1084,8 +1088,9 @@ function Conversation({
           .limit(200),
       ]);
       const fresh = (data as PageMsg[]) ?? [];
-      setMessages(fresh);
-      setCachedPageMessages(cacheKey, fresh);
+      const reversed = [...fresh].reverse();
+      setMessages(reversed);
+      setCachedPageMessages(cacheKey, reversed);
       setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
     }
 

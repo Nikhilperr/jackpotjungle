@@ -455,14 +455,16 @@ function PageChatView() {
           setMessages(combined);
           setCachedPageMessages("support-page", combined);
         }
-      } else {
         const { data: msgs } = await supabase.from("page_messages")
           .select("id, sender_id, from_page, content, image_url, audio_url, seen, created_at")
-          .eq("conversation_id", conv.id).order("created_at", { ascending: true });
+          .eq("conversation_id", conv.id)
+          .order("created_at", { ascending: false })
+          .limit(100);
         if (mounted) {
           const fresh = (msgs as Msg[]) ?? [];
-          setMessages(fresh);
-          setCachedPageMessages("support-page", fresh);
+          const reversed = [...fresh].reverse();
+          setMessages(reversed);
+          setCachedPageMessages("support-page", reversed);
         }
       }
 
