@@ -748,22 +748,13 @@ function ChatLayout() {
         </div>
           {/* Active Chat Panel — full screen on mobile when open */}
           <div className={`${hasActive ? "flex flex-col" : "hidden md:flex flex-col"} flex-1 min-h-0 w-full overflow-hidden`}>
-            <AnimatePresence>
-              {hasActive ? (
-                <motion.div
-                  key={location.pathname}
-                  initial={{ opacity: 0, x: 15 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -15 }}
-                  transition={{ duration: 0.15, ease: "easeOut" }}
-                  className="flex-1 flex flex-col min-h-0 w-full overflow-hidden"
-                >
-                  <Outlet />
-                </motion.div>
-              ) : (
-                <EmptyState />
-              )}
-            </AnimatePresence>
+            {hasActive ? (
+              <div className="flex-1 flex flex-col min-h-0 w-full overflow-hidden">
+                <Outlet />
+              </div>
+            ) : (
+              <EmptyState />
+            )}
           </div>
       </div>
 

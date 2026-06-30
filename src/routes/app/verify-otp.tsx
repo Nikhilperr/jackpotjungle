@@ -88,9 +88,8 @@ function VerifyOtpPage() {
           toast.success("Code verified. Set a new password.");
           navigate({ to: "/app/reset-password" });
         } else {
-          try { await supabase.auth.signOut(); } catch {}
-          toast.success("Account verified successfully");
-          navigate({ to: "/app/auth", search: { mode: "login" } });
+          toast.success("Account verified and logged in successfully!");
+          navigate({ to: "/app/chat" });
         }
       }, 1500);
     } catch (err: any) {

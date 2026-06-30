@@ -7,9 +7,13 @@ export async function waitInitialSession(timeoutMs = 4000): Promise<Session | nu
     return session;
   }
 
-  // Detect if a saved session token exists in local storage
-  const hasTokenInStorage = typeof window !== "undefined" && 
-    Object.keys(localStorage).some(key => key.startsWith("sb-") && key.endsWith("-auth-token"));
+  // Detect if a saved session token exists in local storage or if we are processing a redirect
+  const hasTokenInStorage = typeof window !== "undefined" && (
+    Object.keys(localStorage).some(key => key.startsWith("sb-") && key.endsWith("-auth-token")) ||
+    window.location.hash.includes("access_token=") ||
+    window.location.search.includes("code=") ||
+    window.location.hash.includes("id_token=")
+  );
 
   return new Promise((resolve) => {
     let resolved = false;
