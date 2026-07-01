@@ -50,6 +50,7 @@ import {
   Gift,
   Settings as SettingsIcon,
   Pin,
+  BookOpen,
 } from "lucide-react";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -81,6 +82,7 @@ import {
   ReferralsAdminView,
   AdminProfileView,
 } from "@/components/admin/AdminViews";
+import { SystemAnnouncementsAdminView } from "@/components/admin/SystemAnnouncementsAdmin";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 
 type Tab =
@@ -94,7 +96,9 @@ type Tab =
   | "logs"
   | "admins"
   | "super"
-  | "profile";
+  | "profile"
+  | "rules"
+  | "updates";
 
 type AdminSearch = {
   c?: string;
@@ -108,7 +112,8 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
   validateSearch: (search: Record<string, unknown>): AdminSearch => {
     const validTabs: Tab[] = [
       "inbox", "quickreplies", "tags", "broadcasts", "followups",
-      "autoresp", "referrals", "logs", "admins", "super", "profile"
+      "autoresp", "referrals", "logs", "admins", "super", "profile",
+      "rules", "updates"
     ];
     const incomingTab = search.tab as Tab;
     return {
@@ -189,6 +194,18 @@ function AdminPage() {
     if (!loading && !isAdmin) navigate({ to: "/app/chat", replace: true });
   }, [loading, isAdmin, navigate]);
 
+  useEffect(() => {
+    if (isSuperAdmin) {
+      import("@/lib/admin-super.functions").then(({ runDatabaseMigration }) => {
+        runDatabaseMigration().then((r) => {
+          console.log("[Migration AutoRun Result]:", r);
+        }).catch((e) => {
+          console.error("[Migration AutoRun Error]:", e.message);
+        });
+      });
+    }
+  }, [isSuperAdmin]);
+
   async function signOut() {
     try {
       await supabase
@@ -257,6 +274,9 @@ function AdminPage() {
         <SideBtn active={tab === "autoresp"} onClick={() => selectTab("autoresp")} icon={Bot} label="Auto-response" />
         <SideBtn active={tab === "referrals"} onClick={() => selectTab("referrals")} icon={Gift} label="Referrals" />
         <SideBtn active={tab === "logs"} onClick={() => selectTab("logs")} icon={Activity} label="Logs" />
+        <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Pinned Chats</p>
+        <SideBtn active={tab === "rules"} onClick={() => selectTab("rules")} icon={BookOpen} label="All Rules" />
+        <SideBtn active={tab === "updates"} onClick={() => selectTab("updates")} icon={Megaphone} label="Updates" />
         {isSuperAdmin && (
           <>
             <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Super admin</p>
@@ -314,6 +334,12 @@ function AdminPage() {
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "logs" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Logs"><LogsView /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "rules" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="All Rules"><SystemAnnouncementsAdminView channelType="rules" meId={user.id} /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "updates" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Updates"><SystemAnnouncementsAdminView channelType="updates" meId={user.id} /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "admins" ? "" : "hidden"}`}>
           <AdminsView onOpenNav={() => setNavOpen(true)} />

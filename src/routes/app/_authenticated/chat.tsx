@@ -3,7 +3,7 @@ import { createFileRoute, Link, Outlet, useParams, useLocation } from "@tanstack
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
-import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus, Pin, Loader2, Check, X } from "lucide-react";
+import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus, Pin, Loader2, Check, X, BookOpen, Megaphone } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar } from "@/components/messenger/Avatar";
 import { useRole } from "@/hooks/useRole";
@@ -52,6 +52,7 @@ function ChatLayout() {
   }, [pageConvId]);
   const [search, setSearch] = useState("");
   const [meId, setMeId] = useState<string | null>(null);
+  const [systemAnnouncements, setSystemAnnouncements] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [chosenUsername, setChosenUsername] = useState("");
@@ -74,6 +75,19 @@ function ChatLayout() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  async function loadSystemAnnouncements() {
+    try {
+      const { data, error } = await supabase
+        .from("system_announcements")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setSystemAnnouncements(data || []);
+    } catch (e: any) {
+      console.error("[System Announcements Fetch Error]:", e.message);
+    }
+  }
 
   async function loadSpam(myId: string) {
     const [{ data: outgoing }, { data: incoming }] = await Promise.all([
@@ -373,6 +387,14 @@ function ChatLayout() {
     load(meId);
     loadPage(meId);
     loadSpam(meId);
+    loadSystemAnnouncements();
+
+    const systemChannel = supabase
+      .channel("system-announcements-list")
+      .on("postgres_changes", { event: "*", schema: "public", table: "system_announcements" }, () => {
+        if (mounted) loadSystemAnnouncements();
+      })
+      .subscribe();
 
     const rand = Math.random().toString(36).slice(2, 9);
     const channel = supabase
@@ -516,6 +538,7 @@ function ChatLayout() {
     return () => {
       mounted = false;
       supabase.removeChannel(channel);
+      supabase.removeChannel(systemChannel);
     };
   }, [meId]);
 
@@ -615,13 +638,61 @@ function ChatLayout() {
 
   const onlineFriends = conversations.filter((c) => c.online && !spamIds.has(c.friendId));
 
-  const sorted = [...filtered].sort((a, b) => {
+  const rulesList = systemAnnouncements.filter(a => a.channel_type === "rules");
+  const updatesList = systemAnnouncements.filter(a => a.channel_type === "updates");
+
+  const lastRules = rulesList[0];
+  const lastUpdates = updatesList[0];
+
+  const rulesLastRead = typeof window !== "undefined" ? localStorage.getItem("jj_rules_last_read") || "" : "";
+  const updatesLastRead = typeof window !== "undefined" ? localStorage.getItem("jj_updates_last_read") || "" : "";
+
+  const unreadRules = lastRules && rulesLastRead < lastRules.created_at ? 1 : 0;
+  const unreadUpdates = lastUpdates && updatesLastRead < lastUpdates.created_at ? 1 : 0;
+
+  const virtualRules = {
+    friendId: "system-rules-chat",
+    displayName: "All Rules",
+    username: "system_rules",
+    avatar_url: null,
+    online: true,
+    lastMessage: lastRules ? (lastRules.content || "Media Attachment") : "Official platform rules",
+    lastAt: lastRules ? lastRules.created_at : null,
+    unread: unreadRules,
+    credit: 0,
+    isSpam: false,
+    allText: "rules regulations guidelines terms rules policy",
+    isSystem: true
+  };
+
+  const virtualUpdates = {
+    friendId: "system-updates-chat",
+    displayName: "Updates",
+    username: "system_updates",
+    avatar_url: null,
+    online: true,
+    lastMessage: lastUpdates ? (lastUpdates.content || "Media Attachment") : "Official announcements",
+    lastAt: lastUpdates ? lastUpdates.created_at : null,
+    unread: unreadUpdates,
+    credit: 0,
+    isSpam: false,
+    allText: "updates announcements news logs updates features",
+    isSystem: true
+  };
+
+  const systemConvs = [virtualRules, virtualUpdates].filter(c =>
+    !q || c.displayName.toLowerCase().includes(q) || c.username.toLowerCase().includes(q) || c.allText.includes(q)
+  );
+
+  const sortedNormal = [...filtered].sort((a, b) => {
     const aPinned = pinnedFriends.includes(a.friendId);
     const bPinned = pinnedFriends.includes(b.friendId);
     if (aPinned && !bPinned) return -1;
     if (!aPinned && bPinned) return 1;
     return 0;
   });
+
+  const sorted = tab === "spam" ? sortedNormal : [...systemConvs, ...sortedNormal];
 
   return (
     <AppShell>
@@ -759,6 +830,7 @@ function ChatLayout() {
       </div>
 
       {contextMenuTarget && (() => {
+        if (contextMenuTarget.startsWith("system-")) return null;
         const targetFriend = conversations.find(c => c.friendId === contextMenuTarget);
         if (!targetFriend) return null;
         const isPinned = pinnedFriends.includes(contextMenuTarget);
@@ -928,21 +1000,38 @@ const ConversationItem = React.memo(function ConversationItem({
         to="/app/chat/$friendId"
         params={{ friendId: c.friendId }}
         onPointerDown={() => {
+          if (c.friendId.startsWith("system-")) return;
           startTouch(c.friendId);
           if (meId) prefetchConversation(meId, c.friendId);
         }}
         onMouseEnter={() => {
+          if (c.friendId.startsWith("system-")) return;
           if (meId) prefetchConversation(meId, c.friendId);
         }}
         onPointerUp={endTouch}
         onPointerMove={endTouch}
         onPointerLeave={endTouch}
-        onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(c.friendId); }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (!c.friendId.startsWith("system-")) {
+            setContextMenuTarget(c.friendId);
+          }
+        }}
         className={`flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary transition-colors select-none ${isActive ? "bg-secondary" : ""}`}
       >
         <div className="relative shrink-0">
-          <Avatar name={c.displayName} url={c.avatar_url} />
-          {c.online && !isSpam && !isSpammedBy && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+          {c.friendId === "system-rules-chat" ? (
+            <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-amber-500 to-red-600 flex items-center justify-center text-white shadow-md">
+              <BookOpen className="h-5.5 w-5.5" />
+            </div>
+          ) : c.friendId === "system-updates-chat" ? (
+            <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+              <Megaphone className="h-5.5 w-5.5 animate-pulse" />
+            </div>
+          ) : (
+            <Avatar name={c.displayName} url={c.avatar_url} />
+          )}
+          {c.online && !isSpam && !isSpammedBy && !c.friendId.startsWith("system-") && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
         </div>
         <div className="flex-1 min-w-0 pr-10">
           <div className="flex items-baseline justify-between gap-2">
@@ -962,15 +1051,17 @@ const ConversationItem = React.memo(function ConversationItem({
         </div>
         {c.unread > 0 && <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />}
       </Link>
-      <button
-        onClick={(e) => toggleSpam(e, c.friendId, isSpam)}
-        title={isSpam ? "Remove from spam" : "Move to spam"}
-        aria-label={isSpam ? "Remove from spam" : "Move to spam"}
-        className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex md:opacity-0 md:group-hover:opacity-100"
-        style={isSpam ? { opacity: 1 } : undefined}
-      >
-        {isSpam ? <RotateCcw className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
-      </button>
+      {!c.friendId.startsWith("system-") && (
+        <button
+          onClick={(e) => toggleSpam(e, c.friendId, isSpam)}
+          title={isSpam ? "Remove from spam" : "Move to spam"}
+          aria-label={isSpam ? "Remove from spam" : "Move to spam"}
+          className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex md:opacity-0 md:group-hover:opacity-100"
+          style={isSpam ? { opacity: 1 } : undefined}
+        >
+          {isSpam ? <RotateCcw className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+        </button>
+      )}
     </div>
   );
 });

@@ -4,7 +4,7 @@ import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -135,6 +135,56 @@ function ChatView() {
     if (!meId) return;
     isInitialLoadRef.current = true;
 
+    const isSystem = friendId.startsWith("system-");
+    if (isSystem) {
+      const isRules = friendId === "system-rules-chat";
+      const virtualFriend = {
+        id: friendId,
+        username: isRules ? "system_rules" : "system_updates",
+        first_name: isRules ? "All Rules" : "Updates",
+        last_name: "",
+        avatar_url: null,
+        online: true,
+        last_seen: new Date().toISOString()
+      } as any;
+      setFriend(virtualFriend);
+      setMessages([]);
+
+      try {
+        const channelType = isRules ? "rules" : "updates";
+        const { data: anns, error } = await supabase
+          .from("system_announcements")
+          .select("*")
+          .eq("channel_type", channelType)
+          .order("created_at", { ascending: true });
+        
+        if (error) throw error;
+        if (!isMountedRef.current) return;
+
+        const converted = (anns ?? []).map(ann => ({
+          id: ann.id,
+          sender_id: ann.sender_id || "system",
+          receiver_id: meId,
+          content: ann.content,
+          image_url: ann.image_url,
+          audio_url: ann.audio_url,
+          created_at: ann.created_at,
+          seen: true,
+          delivered: true
+        }));
+        setMessages(converted);
+        setHasOlderMessages(false);
+
+        const lastMsg = converted[converted.length - 1];
+        if (lastMsg) {
+          localStorage.setItem(isRules ? "jj_rules_last_read" : "jj_updates_last_read", lastMsg.created_at);
+        }
+      } catch (e: any) {
+        console.error("Error loading system announcements:", e);
+      }
+      return;
+    }
+
     // ── Step 1: Show cached data INSTANTLY (zero wait) ──────────────────
     const cachedProfile = getCachedProfile(friendId);
     const cachedMsgs = getCachedMessages(meId, friendId);
@@ -257,6 +307,46 @@ function ChatView() {
     if (!meId) return;
 
     const rand = Math.random().toString(36).slice(2, 9);
+    const isSystem = friendId.startsWith("system-");
+
+    if (isSystem) {
+      const channelType = friendId === "system-rules-chat" ? "rules" : "updates";
+      const annChannel = supabase
+        .channel(`chat-active-announcements-${rand}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "system_announcements", filter: `channel_type=eq.${channelType}` }, (payload) => {
+          const ann = payload.new as any;
+          if (ann) {
+            const m = {
+              id: ann.id,
+              sender_id: ann.sender_id || "system",
+              receiver_id: meId,
+              content: ann.content,
+              image_url: ann.image_url,
+              audio_url: ann.audio_url,
+              created_at: ann.created_at,
+              seen: true,
+              delivered: true
+            } as any;
+            setMessages((prev) => {
+              if (prev.some((x) => x.id === m.id)) return prev;
+              const next = [...prev, m];
+              localStorage.setItem(channelType === "rules" ? "jj_rules_last_read" : "jj_updates_last_read", m.created_at);
+              return next;
+            });
+          }
+        })
+        .on("postgres_changes", { event: "DELETE", schema: "public", table: "system_announcements", filter: `channel_type=eq.${channelType}` }, (payload) => {
+          const old = payload.old as any;
+          if (old) {
+            setMessages((prev) => prev.filter(x => x.id !== old.id));
+          }
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(annChannel);
+      };
+    }
 
     const msgChannel = supabase
       .channel(`chat-active-friend-global-${rand}`)
@@ -352,7 +442,7 @@ function ChatView() {
       supabase.removeChannel(callsChannel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-  }, [meId]);
+  }, [meId, friendId]);
 
   const lastMsgCountRef = useRef(0);
   const lastFriendIdRef = useRef<string | null>(null);
@@ -1006,40 +1096,51 @@ function ChatView() {
           <Link to="/app/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <button
-            type="button"
-            onClick={() => setShowDetail((v) => !v)}
-            className="flex-1 min-w-0 flex items-center gap-3 -mx-1 px-1 py-1 rounded-lg hover:bg-secondary text-left"
-            aria-label="Toggle details"
-          >
+          <div className="flex-1 min-w-0 flex items-center gap-3">
             <div className="relative">
-              <Avatar name={friendDisplayName} url={friend.avatar_url} size={40} />
-              {friend.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+              {friendId === "system-rules-chat" ? (
+                <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-amber-500 to-red-600 flex items-center justify-center text-white shadow-md">
+                  <BookOpen className="h-5 w-5" />
+                </div>
+              ) : friendId === "system-updates-chat" ? (
+                <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                  <Megaphone className="h-5 w-5 animate-pulse" />
+                </div>
+              ) : (
+                <>
+                  <Avatar name={friendDisplayName} url={friend?.avatar_url ?? null} size={40} />
+                  {friend?.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+                </>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-semibold truncate">{friendDisplayName}</p>
               <p className="text-xs text-muted-foreground truncate">
-                {friendTyping ? "Typing…" : friend.online ? "Active now" :
-                  (friend.last_seen && !isNaN(new Date(friend.last_seen).getTime())) ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}` : "Offline"}
+                {friendId.startsWith("system-") ? "Official Channel" : friendTyping ? "Typing…" : friend?.online ? "Active now" :
+                  (friend?.last_seen && !isNaN(new Date(friend.last_seen).getTime())) ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}` : "Offline"}
               </p>
             </div>
-          </button>
-          <button
-            type="button"
-            onClick={() => friend && startCall({ calleeId: friend.id, kind: "voice", peer: { name: friendDisplayName, avatar: friend.avatar_url }, context: "friend" })}
-            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
-            aria-label="Voice call"
-          >
-            <Phone className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => friend && startCall({ calleeId: friend.id, kind: "video", peer: { name: friendDisplayName, avatar: friend.avatar_url }, context: "friend" })}
-            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
-            aria-label="Video call"
-          >
-            <Video className="h-5 w-5" />
-          </button>
+          </div>
+          {!friendId.startsWith("system-") && (
+            <>
+              <button
+                type="button"
+                onClick={() => friend && startCall({ calleeId: friend.id, kind: "voice", peer: { name: friendDisplayName, avatar: friend.avatar_url }, context: "friend" })}
+                className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
+                aria-label="Voice call"
+              >
+                <Phone className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => friend && startCall({ calleeId: friend.id, kind: "video", peer: { name: friendDisplayName, avatar: friend.avatar_url }, context: "friend" })}
+                className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
+                aria-label="Video call"
+              >
+                <Video className="h-5 w-5" />
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
@@ -1048,14 +1149,16 @@ function ChatView() {
           >
             <Search className="h-5 w-5" />
           </button>
-          <button
-            type="button"
-            onClick={() => setShowDetail((v) => !v)}
-            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
-            aria-label="Toggle details sidebar"
-          >
-            <Info className="h-5 w-5" />
-          </button>
+          {!friendId.startsWith("system-") && (
+            <button
+              type="button"
+              onClick={() => setShowDetail((v) => !v)}
+              className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
+              aria-label="Toggle details sidebar"
+            >
+              <Info className="h-5 w-5" />
+            </button>
+          )}
         </header>
       )}
 
@@ -1247,7 +1350,15 @@ function ChatView() {
         </div>
       )}
 
-      {selectionMode ? (
+      {friendId.startsWith("system-") ? (
+        <div className="relative px-4 py-4 border-t border-border flex flex-col gap-2 bg-card shrink-0 text-center items-center" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+          <div className="bg-secondary/40 border border-border/60 rounded-xl p-4 w-full max-w-lg text-xs text-muted-foreground flex flex-col items-center gap-2 shadow-xs">
+            <Megaphone className="h-5 w-5 text-primary" />
+            <p className="font-semibold text-foreground">Official Read-Only Channel</p>
+            <p className="max-w-md">Only administrators can send messages in this conversation. This channel is used for official announcements and important platform information.</p>
+          </div>
+        </div>
+      ) : selectionMode ? (
         <div className="p-3 border-t border-border flex items-center justify-center bg-card">
           <button
             type="button"
