@@ -30,87 +30,82 @@ GRANT ALL ON public.groups TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.group_members TO authenticated;
 GRANT ALL ON public.group_members TO service_role;
 
--- 5. Add RLS Policies for groups and group_members
--- Only group members can view the group details
+-- 5. Create SECURITY DEFINER functions to bypass RLS recursion
+CREATE OR REPLACE FUNCTION public.is_group_member(gid UUID, uid UUID)
+RETURNS BOOLEAN
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.group_members
+    WHERE group_id = gid AND user_id = uid
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.is_group_admin(gid UUID, uid UUID)
+RETURNS BOOLEAN
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.group_members
+    WHERE group_id = gid AND user_id = uid AND role = 'admin'
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+-- 6. Add RLS Policies for groups and group_members
 DROP POLICY IF EXISTS "view_groups" ON public.groups;
 CREATE POLICY "view_groups" ON public.groups FOR SELECT TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.group_members 
-      WHERE group_members.group_id = id AND group_members.user_id = auth.uid()
-    )
+    public.is_group_member(id, auth.uid())
   );
 
--- Any authenticated user can create a group
 DROP POLICY IF EXISTS "create_groups" ON public.groups;
 CREATE POLICY "create_groups" ON public.groups FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = created_by);
 
--- Only group creators or group admins can update group metadata
 DROP POLICY IF EXISTS "update_groups" ON public.groups;
 CREATE POLICY "update_groups" ON public.groups FOR UPDATE TO authenticated
   USING (
     auth.uid() = created_by OR
-    EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_members.group_id = id AND group_members.user_id = auth.uid() AND group_members.role = 'admin'
-    )
+    public.is_group_admin(id, auth.uid())
   );
 
--- Members can view membership list of groups they belong to
 DROP POLICY IF EXISTS "view_group_members" ON public.group_members;
 CREATE POLICY "view_group_members" ON public.group_members FOR SELECT TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.group_members AS gm
-      WHERE gm.group_id = group_id AND gm.user_id = auth.uid()
-    )
+    public.is_group_member(group_id, auth.uid())
   );
 
--- Members can join (if added/invited) or creators/admins can add members
 DROP POLICY IF EXISTS "insert_group_members" ON public.group_members;
 CREATE POLICY "insert_group_members" ON public.group_members FOR INSERT TO authenticated
   WITH CHECK (
-    -- Allow the user executing the query if they are adding themselves (e.g. joining or being initial creator)
     auth.uid() = user_id OR
-    -- Or allow if the current user is an admin of the group
-    EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_members.group_id = group_id AND group_members.user_id = auth.uid() AND group_members.role = 'admin'
-    )
+    public.is_group_admin(group_id, auth.uid())
   );
 
--- Admins can update member roles
 DROP POLICY IF EXISTS "update_group_members" ON public.group_members;
 CREATE POLICY "update_group_members" ON public.group_members FOR UPDATE TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_members.group_id = group_id AND group_members.user_id = auth.uid() AND group_members.role = 'admin'
-    )
+    public.is_group_admin(group_id, auth.uid())
   );
 
--- Members can leave, or admins can remove members
 DROP POLICY IF EXISTS "delete_group_members" ON public.group_members;
 CREATE POLICY "delete_group_members" ON public.group_members FOR DELETE TO authenticated
   USING (
     auth.uid() = user_id OR
-    EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_members.group_id = group_id AND group_members.user_id = auth.uid() AND group_members.role = 'admin'
-    )
+    public.is_group_admin(group_id, auth.uid())
   );
 
--- 6. Update public.messages RLS Policies to support groups
+-- 7. Update public.messages RLS Policies to support groups
 DROP POLICY IF EXISTS "view own messages" ON public.messages;
 CREATE POLICY "view own messages" ON public.messages FOR SELECT TO authenticated
   USING (
     auth.uid() = sender_id OR 
     auth.uid() = receiver_id OR
-    (group_id IS NOT NULL AND EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_members.group_id = messages.group_id AND group_members.user_id = auth.uid()
-    ))
+    (group_id IS NOT NULL AND public.is_group_member(group_id, auth.uid()))
   );
 
 DROP POLICY IF EXISTS "send messages" ON public.messages;
@@ -119,10 +114,7 @@ CREATE POLICY "send messages" ON public.messages FOR INSERT TO authenticated
     auth.uid() = sender_id 
     AND NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.is_blocked = true)
     AND (
-      group_id IS NULL OR EXISTS (
-        SELECT 1 FROM public.group_members
-        WHERE group_members.group_id = messages.group_id AND group_members.user_id = auth.uid()
-      )
+      group_id IS NULL OR public.is_group_member(group_id, auth.uid())
     )
   );
 
@@ -130,17 +122,11 @@ DROP POLICY IF EXISTS "mark seen as receiver" ON public.messages;
 CREATE POLICY "mark seen as receiver" ON public.messages FOR UPDATE TO authenticated
   USING (
     auth.uid() = receiver_id OR
-    (group_id IS NOT NULL AND EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_members.group_id = messages.group_id AND group_members.user_id = auth.uid()
-    ))
+    (group_id IS NOT NULL AND public.is_group_member(group_id, auth.uid()))
   )
   WITH CHECK (
     auth.uid() = receiver_id OR
-    (group_id IS NOT NULL AND EXISTS (
-      SELECT 1 FROM public.group_members
-      WHERE group_members.group_id = messages.group_id AND group_members.user_id = auth.uid()
-    ))
+    (group_id IS NOT NULL AND public.is_group_member(group_id, auth.uid()))
   );
 
 -- 7. Add to realtime publication
