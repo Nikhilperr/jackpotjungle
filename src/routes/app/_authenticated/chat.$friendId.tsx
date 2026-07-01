@@ -2949,11 +2949,11 @@ export function GroupAddMembersModal({
   meId,
   onMembersAdded
 }: GroupAddMembersModalProps) {
+  const [friendsList, setFriendsList] = useState<any[]>([]);
   const [potentialMembers, setPotentialMembers] = useState<any[]>([]);
   const [loadingPotential, setLoadingPotential] = useState(false);
   const [newMembersSelected, setNewMembersSelected] = useState<string[]>([]);
   const [potentialSearchQuery, setPotentialSearchQuery] = useState("");
-  const { role } = useRole();
   const [myUsername, setMyUsername] = useState("Someone");
 
   useEffect(() => {
@@ -2975,44 +2975,49 @@ export function GroupAddMembersModal({
 
       const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
 
-      if (role === "admin" || role === "super_admin") {
-        setPotentialMembers([]);
-      } else {
-        const { data: friendships } = await supabase
-          .from("friendships")
-          .select("user_a, user_b");
-        if (friendships) {
-          const friendIds = friendships
-            .map(f => f.user_a === meId ? f.user_b : f.user_a)
-            .filter(id => !existingUserIds.has(id));
-            
-          if (friendIds.length > 0) {
-            const { data: profiles } = await supabase
-              .from("profiles")
-              .select("id, username, first_name, last_name, avatar_url")
-              .in("id", friendIds);
-            setPotentialMembers(profiles ?? []);
-          }
+      const { data: friendships } = await supabase
+        .from("friendships")
+        .select("user_a, user_b");
+      
+      let initialFriends: any[] = [];
+      if (friendships) {
+        const friendIds = friendships
+          .map(f => f.user_a === meId ? f.user_b : f.user_a)
+          .filter(id => !existingUserIds.has(id));
+          
+        if (friendIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, username, first_name, last_name, avatar_url")
+            .in("id", friendIds);
+          initialFriends = profiles ?? [];
         }
       }
+      setFriendsList(initialFriends);
+      setPotentialMembers(initialFriends);
     } catch (err) {
       console.error(err);
     } finally {
       setLoadingPotential(false);
     }
-  }, [groupId, meId, role]);
+  }, [groupId, meId]);
 
   useEffect(() => {
     if (open) {
       setNewMembersSelected([]);
       setPotentialSearchQuery("");
       setPotentialMembers([]);
+      setFriendsList([]);
       loadPotential();
     }
   }, [open, loadPotential]);
 
   useEffect(() => {
-    if (!open || (role !== "admin" && role !== "super_admin") || !potentialSearchQuery.trim()) {
+    if (!open) return;
+
+    const trimmed = potentialSearchQuery.trim();
+    if (!trimmed) {
+      setPotentialMembers(friendsList);
       return;
     }
 
@@ -3029,7 +3034,7 @@ export function GroupAddMembersModal({
           .from("profiles")
           .select("id, username, first_name, last_name, avatar_url")
           .neq("id", meId)
-          .ilike("username", `%${potentialSearchQuery.trim()}%`)
+          .or(`username.ilike.%${trimmed}%,first_name.ilike.%${trimmed}%,last_name.ilike.%${trimmed}%`)
           .limit(30);
           
         const filtered = (profiles ?? []).filter(p => !existingUserIds.has(p.id));
@@ -3042,7 +3047,7 @@ export function GroupAddMembersModal({
     }, 300);
 
     return () => clearTimeout(delay);
-  }, [potentialSearchQuery, open, role, groupId, meId]);
+  }, [potentialSearchQuery, open, groupId, meId, friendsList]);
 
   async function handleAddSubmit() {
     if (!groupId || !meId || newMembersSelected.length === 0) return;
@@ -3057,7 +3062,7 @@ export function GroupAddMembersModal({
       if (error) throw error;
 
       for (const uid of newMembersSelected) {
-        const profile = potentialMembers.find(p => p.id === uid);
+        const profile = potentialMembers.find(p => p.id === uid) || friendsList.find(p => p.id === uid);
         const targetUsername = profile?.username || "Someone";
         await supabase
           .from("messages")
@@ -3088,17 +3093,15 @@ export function GroupAddMembersModal({
           </button>
         </div>
 
-        {(role === "admin" || role === "super_admin") && (
-          <div className="relative">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search user profiles..."
-              value={potentialSearchQuery}
-              onChange={(e) => setPotentialSearchQuery(e.target.value)}
-              className="pl-9 rounded-xl bg-background/50 border-border/80"
-            />
-          </div>
-        )}
+        <div className="relative">
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search users to add..."
+            value={potentialSearchQuery}
+            onChange={(e) => setPotentialSearchQuery(e.target.value)}
+            className="pl-9 rounded-xl bg-background/50 border-border/80"
+          />
+        </div>
 
         <div className="max-h-48 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 bg-background/30 animate-in fade-in duration-200">
           {loadingPotential ? (
@@ -3107,9 +3110,7 @@ export function GroupAddMembersModal({
             </div>
           ) : potentialMembers.length === 0 ? (
             <div className="text-center py-8 text-sm text-muted-foreground">
-              {role === "admin" || role === "super_admin" 
-                ? (potentialSearchQuery.trim() ? "No users found" : "Type to search users") 
-                : "All friends are already in this group"}
+              {potentialSearchQuery.trim() ? "No users found" : "No friends available to add"}
             </div>
           ) : (
             potentialMembers.map((item) => {
