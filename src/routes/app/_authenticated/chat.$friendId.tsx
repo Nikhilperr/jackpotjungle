@@ -120,10 +120,6 @@ function ChatView() {
   const [editingGroupName, setEditingGroupName] = useState("");
   const [editingGroupAvatar, setEditingGroupAvatar] = useState("");
   const [addMembersOpen, setAddMembersOpen] = useState(false);
-  const [potentialMembers, setPotentialMembers] = useState<any[]>([]);
-  const [loadingPotential, setLoadingPotential] = useState(false);
-  const [newMembersSelected, setNewMembersSelected] = useState<string[]>([]);
-  const [potentialSearchQuery, setPotentialSearchQuery] = useState("");
   const { role } = useRole();
 
   const myMemberInfo = groupMembers.find(m => m.profiles?.id === meId);
@@ -1202,102 +1198,8 @@ function ChatView() {
     }
   }
 
-  async function handleOpenAddMembers() {
+  function handleOpenAddMembers() {
     setAddMembersOpen(true);
-    setNewMembersSelected([]);
-    setPotentialSearchQuery("");
-    setPotentialMembers([]);
-    if (!meId) return;
-
-    setLoadingPotential(true);
-    try {
-      const existingUserIds = new Set(groupMembers.map(m => m.profiles?.id).filter(Boolean));
-      
-      if (role === "admin" || role === "super_admin") {
-        setPotentialMembers([]);
-      } else {
-        const { data: friendships } = await supabase
-          .from("friendships")
-          .select("user_a, user_b");
-        if (friendships) {
-          const friendIds = friendships
-            .map(f => f.user_a === meId ? f.user_b : f.user_a)
-            .filter(id => !existingUserIds.has(id));
-            
-          if (friendIds.length > 0) {
-            const { data: profiles } = await supabase
-              .from("profiles")
-              .select("id, username, first_name, last_name, avatar_url")
-              .in("id", friendIds);
-            setPotentialMembers(profiles ?? []);
-          }
-        }
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingPotential(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!addMembersOpen || (role !== "admin" && role !== "super_admin") || !potentialSearchQuery.trim()) {
-      return;
-    }
-
-    const delay = setTimeout(async () => {
-      setLoadingPotential(true);
-      try {
-        const existingUserIds = new Set(groupMembers.map(m => m.profiles?.id).filter(Boolean));
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url")
-          .neq("id", meId)
-          .ilike("username", `%${potentialSearchQuery.trim()}%`)
-          .limit(30);
-          
-        const filtered = (profiles ?? []).filter(p => !existingUserIds.has(p.id));
-        setPotentialMembers(filtered);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoadingPotential(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(delay);
-  }, [potentialSearchQuery, addMembersOpen, role, groupMembers, meId]);
-
-  async function handleAddMembersSubmit() {
-    if (!groupId || !meId || newMembersSelected.length === 0) return;
-    try {
-      const inserts = newMembersSelected.map(uid => ({
-        group_id: groupId,
-        user_id: uid,
-        role: "member"
-      }));
-
-      const { error } = await supabase.from("group_members").insert(inserts);
-      if (error) throw error;
-
-      for (const uid of newMembersSelected) {
-        const profile = potentialMembers.find(p => p.id === uid);
-        const username = profile?.username || "Someone";
-        await supabase
-          .from("messages")
-          .insert({
-            sender_id: meId,
-            group_id: groupId,
-            content: `[system:user_added:${username}:${myUsername}]`
-          } as any);
-      }
-
-      toast.success("Members added to group");
-      setAddMembersOpen(false);
-      load();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to add members");
-    }
   }
 
   function onDraftChange(v: string) {
@@ -2191,13 +2093,13 @@ function ChatView() {
 
       {/* Mobile/Tablet Detail Sheet */}
       <Sheet open={showDetail && !isGroup && isMobile} onOpenChange={setShowDetail}>
-        <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden bg-card border-l border-border text-foreground">
+        <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden bg-card border-l border-border text-foreground [&>button]:hidden">
           <ConversationDetailPanel friend={friend} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
         </SheetContent>
       </Sheet>
 
       <Sheet open={showGroupInfo && isGroup && isMobile} onOpenChange={setShowGroupInfo}>
-        <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden bg-card border-l border-border text-foreground">
+        <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden bg-card border-l border-border text-foreground [&>button]:hidden">
           <GroupDetailPanel 
             group={group} 
             members={groupMembers} 
@@ -2283,88 +2185,13 @@ function ChatView() {
       })()}
 
       {/* Group Add Members Modal */}
-      {addMembersOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setAddMembersOpen(false)} />
-          <div className="relative w-full max-w-sm bg-card border border-border rounded-3xl shadow-2xl p-6 flex flex-col gap-4 max-h-[80vh] overflow-y-auto z-50 text-foreground">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <h3 className="font-bold text-lg">Add Members</h3>
-              <button onClick={() => setAddMembersOpen(false)} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {(role === "admin" || role === "super_admin") && (
-              <div className="relative">
-                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search user profiles..."
-                  value={potentialSearchQuery}
-                  onChange={(e) => setPotentialSearchQuery(e.target.value)}
-                  className="pl-9 rounded-xl bg-background/50 border-border/80"
-                />
-              </div>
-            )}
-
-            <div className="max-h-48 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 bg-background/30 animate-in fade-in duration-200">
-              {loadingPotential ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                </div>
-              ) : potentialMembers.length === 0 ? (
-                <div className="text-center py-8 text-sm text-muted-foreground">
-                  {role === "admin" || role === "super_admin" 
-                    ? (potentialSearchQuery.trim() ? "No users found" : "Type to search users") 
-                    : "All friends are already in this group"}
-                </div>
-              ) : (
-                potentialMembers.map((item) => {
-                  const isChecked = newMembersSelected.includes(item.id);
-                  const dispName = item.first_name && item.last_name ? `${item.first_name} ${item.last_name}` : item.username;
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => {
-                        setNewMembersSelected(prev =>
-                          isChecked ? prev.filter(uid => uid !== item.id) : [...prev, item.id]
-                        );
-                      }}
-                      className="flex items-center justify-between p-3 hover:bg-secondary/40 cursor-pointer select-none"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Avatar name={dispName} url={item.avatar_url} size={36} />
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{dispName}</p>
-                          <p className="text-[10px] text-muted-foreground">@{item.username}</p>
-                        </div>
-                      </div>
-                      <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
-                        {isChecked && <Check className="h-3 w-3" />}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="flex gap-3 pt-3 border-t border-border mt-2">
-              <button
-                onClick={() => setAddMembersOpen(false)}
-                className="flex-1 h-11 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddMembersSubmit}
-                disabled={newMembersSelected.length === 0}
-                className="flex-1 h-11 bg-primary hover:opacity-90 disabled:opacity-50 text-primary-foreground font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
-              >
-                Add Selected
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <GroupAddMembersModal
+        open={addMembersOpen}
+        onClose={() => setAddMembersOpen(false)}
+        groupId={groupId!}
+        meId={meId!}
+        onMembersAdded={load}
+      />
     </div>
   );
 }
@@ -3102,6 +2929,234 @@ export function GroupDetailPanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+interface GroupAddMembersModalProps {
+  open: boolean;
+  onClose: () => void;
+  groupId: string;
+  meId: string;
+  onMembersAdded: () => void;
+}
+
+export function GroupAddMembersModal({
+  open,
+  onClose,
+  groupId,
+  meId,
+  onMembersAdded
+}: GroupAddMembersModalProps) {
+  const [potentialMembers, setPotentialMembers] = useState<any[]>([]);
+  const [loadingPotential, setLoadingPotential] = useState(false);
+  const [newMembersSelected, setNewMembersSelected] = useState<string[]>([]);
+  const [potentialSearchQuery, setPotentialSearchQuery] = useState("");
+  const { role } = useRole();
+  const [myUsername, setMyUsername] = useState("Someone");
+
+  useEffect(() => {
+    if (meId) {
+      supabase.from("profiles").select("username").eq("id", meId).single().then(({ data }) => {
+        if (data?.username) setMyUsername(data.username);
+      });
+    }
+  }, [meId]);
+
+  const loadPotential = useCallback(async () => {
+    if (!groupId || !meId) return;
+    setLoadingPotential(true);
+    try {
+      const { data: currentMembers } = await supabase
+        .from("group_members")
+        .select("user_id")
+        .eq("group_id", groupId);
+
+      const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
+
+      if (role === "admin" || role === "super_admin") {
+        setPotentialMembers([]);
+      } else {
+        const { data: friendships } = await supabase
+          .from("friendships")
+          .select("user_a, user_b");
+        if (friendships) {
+          const friendIds = friendships
+            .map(f => f.user_a === meId ? f.user_b : f.user_a)
+            .filter(id => !existingUserIds.has(id));
+            
+          if (friendIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("id, username, first_name, last_name, avatar_url")
+              .in("id", friendIds);
+            setPotentialMembers(profiles ?? []);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingPotential(false);
+    }
+  }, [groupId, meId, role]);
+
+  useEffect(() => {
+    if (open) {
+      setNewMembersSelected([]);
+      setPotentialSearchQuery("");
+      setPotentialMembers([]);
+      loadPotential();
+    }
+  }, [open, loadPotential]);
+
+  useEffect(() => {
+    if (!open || (role !== "admin" && role !== "super_admin") || !potentialSearchQuery.trim()) {
+      return;
+    }
+
+    const delay = setTimeout(async () => {
+      setLoadingPotential(true);
+      try {
+        const { data: currentMembers } = await supabase
+          .from("group_members")
+          .select("user_id")
+          .eq("group_id", groupId);
+        const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
+
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, username, first_name, last_name, avatar_url")
+          .neq("id", meId)
+          .ilike("username", `%${potentialSearchQuery.trim()}%`)
+          .limit(30);
+          
+        const filtered = (profiles ?? []).filter(p => !existingUserIds.has(p.id));
+        setPotentialMembers(filtered);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingPotential(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delay);
+  }, [potentialSearchQuery, open, role, groupId, meId]);
+
+  async function handleAddSubmit() {
+    if (!groupId || !meId || newMembersSelected.length === 0) return;
+    try {
+      const inserts = newMembersSelected.map(uid => ({
+        group_id: groupId,
+        user_id: uid,
+        role: "member"
+      }));
+
+      const { error } = await supabase.from("group_members").insert(inserts);
+      if (error) throw error;
+
+      for (const uid of newMembersSelected) {
+        const profile = potentialMembers.find(p => p.id === uid);
+        const targetUsername = profile?.username || "Someone";
+        await supabase
+          .from("messages")
+          .insert({
+            sender_id: meId,
+            group_id: groupId,
+            content: `[system:user_added:${targetUsername}:${myUsername}]`
+          } as any);
+      }
+
+      toast.success("Members added to group");
+      onMembersAdded();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add members");
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-3xl shadow-2xl p-6 flex flex-col gap-4 max-h-[80vh] overflow-y-auto z-50 text-foreground">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <h3 className="font-bold text-lg">Add Members</h3>
+          <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {(role === "admin" || role === "super_admin") && (
+          <div className="relative">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search user profiles..."
+              value={potentialSearchQuery}
+              onChange={(e) => setPotentialSearchQuery(e.target.value)}
+              className="pl-9 rounded-xl bg-background/50 border-border/80"
+            />
+          </div>
+        )}
+
+        <div className="max-h-48 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 bg-background/30 animate-in fade-in duration-200">
+          {loadingPotential ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : potentialMembers.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              {role === "admin" || role === "super_admin" 
+                ? (potentialSearchQuery.trim() ? "No users found" : "Type to search users") 
+                : "All friends are already in this group"}
+            </div>
+          ) : (
+            potentialMembers.map((item) => {
+              const isChecked = newMembersSelected.includes(item.id);
+              const dispName = item.first_name && item.last_name ? `${item.first_name} ${item.last_name}` : item.username;
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    setNewMembersSelected(prev =>
+                      isChecked ? prev.filter(uid => uid !== item.id) : [...prev, item.id]
+                    );
+                  }}
+                  className="flex items-center justify-between p-3 hover:bg-secondary/40 cursor-pointer select-none"
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar name={dispName} url={item.avatar_url} size={36} />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{dispName}</p>
+                      <p className="text-[10px] text-muted-foreground">@{item.username}</p>
+                    </div>
+                  </div>
+                  <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
+                    {isChecked && <Check className="h-3 w-3" />}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="flex gap-3 pt-3 border-t border-border mt-2">
+          <button
+            onClick={onClose}
+            className="flex-1 h-11 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleAddSubmit}
+            disabled={newMembersSelected.length === 0}
+            className="flex-1 h-11 bg-primary hover:opacity-90 disabled:opacity-50 text-primary-foreground font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+          >
+            Add
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -86,7 +86,7 @@ import {
 import { SystemAnnouncementsAdminView } from "@/components/admin/SystemAnnouncementsAdmin";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 import { CreateGroupModal } from "./chat";
-import { GroupDetailPanel } from "./chat.$friendId";
+import { GroupDetailPanel, GroupAddMembersModal } from "./chat.$friendId";
 
 type Tab =
   | "inbox"
@@ -464,6 +464,16 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [messages, setMessages] = useState<any[]>([]);
   const [selectedMemberProfile, setSelectedMemberProfile] = useState<{ id: string; username: string; avatar_url: string | null } | null>(null);
   const [myUsername, setMyUsername] = useState("Admin");
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     if (!meId) return;
@@ -1121,8 +1131,8 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       )}
 
       {/* Mobile/tablet: detail sheet (panel is hidden lg:flex by default) */}
-      <Sheet open={detailOpen && !!active} onOpenChange={setDetailOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden flex flex-col h-full bg-card">
+      <Sheet open={detailOpen && !!active && !isDesktop} onOpenChange={setDetailOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden flex flex-col h-full bg-card [&>button]:hidden">
           {active && (
             selectedMemberProfile ? (
               <UserDetailPanel
