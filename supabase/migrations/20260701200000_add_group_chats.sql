@@ -59,6 +59,7 @@ $$ LANGUAGE plpgsql;
 DROP POLICY IF EXISTS "view_groups" ON public.groups;
 CREATE POLICY "view_groups" ON public.groups FOR SELECT TO authenticated
   USING (
+    created_by = auth.uid() OR
     public.is_group_member(id, auth.uid())
   );
 
@@ -76,7 +77,11 @@ CREATE POLICY "update_groups" ON public.groups FOR UPDATE TO authenticated
 DROP POLICY IF EXISTS "view_group_members" ON public.group_members;
 CREATE POLICY "view_group_members" ON public.group_members FOR SELECT TO authenticated
   USING (
-    public.is_group_member(group_id, auth.uid())
+    public.is_group_member(group_id, auth.uid()) OR
+    EXISTS (
+      SELECT 1 FROM public.groups
+      WHERE id = group_id AND created_by = auth.uid()
+    )
   );
 
 DROP POLICY IF EXISTS "insert_group_members" ON public.group_members;
