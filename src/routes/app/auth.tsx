@@ -17,6 +17,7 @@ import { z } from "zod";
 
 const searchSchema = z.object({
   mode: z.enum(["welcome", "login", "signup"]).optional(),
+  logout: z.string().optional(),
 });
 
 export const Route = createFileRoute("/app/auth")({
@@ -40,9 +41,24 @@ function AuthPage() {
   const { user, loading } = useAuth();
   const { isAdmin, loading: roleLoading } = useRole();
   const navigate = useNavigate();
-  const { mode: urlMode } = Route.useSearch();
+  const { mode: urlMode, logout } = Route.useSearch();
   const [mode, setMode] = useState<Mode>(urlMode || "welcome");
   const [googleBusy, setGoogleBusy] = useState(false);
+
+  useEffect(() => {
+    if (logout === "true") {
+      async function clearAll() {
+        try {
+          await supabase.auth.signOut();
+        } catch {}
+        try {
+          localStorage.clear();
+        } catch {}
+        navigate({ search: (old: any) => ({ ...old, logout: undefined }), replace: true });
+      }
+      clearAll();
+    }
+  }, [logout, navigate]);
 
   useEffect(() => {
     if (urlMode) {
@@ -51,7 +67,7 @@ function AuthPage() {
   }, [urlMode]);
 
   useEffect(() => {
-    if (loading || roleLoading) return;
+    if (loading || roleLoading || logout === "true") return;
     
     // Ignore redirect if we are inside a password recovery flow
     const isRecovery = typeof window !== "undefined" && (

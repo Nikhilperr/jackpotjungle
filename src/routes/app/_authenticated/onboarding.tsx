@@ -489,7 +489,14 @@ function OnboardingPage() {
                   }
                   await supabase.auth.signOut();
                   await new Promise((resolve) => setTimeout(resolve, 150));
-                  navigate({ to: "/app/auth", search: { mode: "login" } });
+                  
+                  const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
+                  const isProdDomain = hostname.endsWith("playjackpotjungle.com");
+                  if (isProdDomain) {
+                    window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
+                  } else {
+                    navigate({ to: "/app/auth", search: { logout: "true" }, replace: true });
+                  }
                 } catch (err: any) {
                   toast.error(err.message || "Failed to sign out");
                 }

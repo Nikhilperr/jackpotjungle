@@ -104,7 +104,14 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     await supabase.auth.signOut();
     await new Promise((resolve) => setTimeout(resolve, 150));
-    navigate({ to: "/app/auth", replace: true });
+
+    const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
+    const isProdDomain = hostname.endsWith("playjackpotjungle.com");
+    if (isProdDomain) {
+      window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
+    } else {
+      navigate({ to: "/app/auth", search: { logout: "true" }, replace: true });
+    }
   }
 
   const navItems: Array<{ to: string; icon: typeof MessageCircle; label: string }> = [

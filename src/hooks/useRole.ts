@@ -9,8 +9,8 @@ export function useRole() {
 
   useEffect(() => {
     let mounted = true;
-    async function load() {
-      if (mounted) setLoading(true);
+    async function load(showLoading = false) {
+      if (showLoading && mounted) setLoading(true);
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) { if (mounted) { setRoles([]); setLoading(false); } return; }
       const { data } = await supabase
@@ -21,9 +21,9 @@ export function useRole() {
       setRoles((data ?? []).map((r) => r.role as AppRole));
       setLoading(false);
     }
-    load();
+    load(true);
     const { data: sub } = supabase.auth.onAuthStateChange((e) => {
-      if (e === "SIGNED_IN" || e === "SIGNED_OUT") load();
+      if (e === "SIGNED_IN" || e === "SIGNED_OUT") load(false);
     });
     return () => { mounted = false; sub.subscription.unsubscribe(); };
   }, []);
