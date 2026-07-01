@@ -144,3 +144,13 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.group_members;
 
 ALTER TABLE public.groups REPLICA IDENTITY FULL;
 ALTER TABLE public.group_members REPLICA IDENTITY FULL;
+
+-- 8. Add foreign key relationships to public.profiles for PostgREST joins
+ALTER TABLE public.messages DROP CONSTRAINT IF EXISTS fk_messages_sender_profile;
+ALTER TABLE public.messages ADD CONSTRAINT fk_messages_sender_profile FOREIGN KEY (sender_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
+
+ALTER TABLE public.group_members DROP CONSTRAINT IF EXISTS fk_group_members_user_profile;
+ALTER TABLE public.group_members ADD CONSTRAINT fk_group_members_user_profile FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
+
+ALTER TABLE public.groups DROP CONSTRAINT IF EXISTS fk_groups_creator_profile;
+ALTER TABLE public.groups ADD CONSTRAINT fk_groups_creator_profile FOREIGN KEY (created_by) REFERENCES public.profiles(id) ON DELETE SET NULL;
