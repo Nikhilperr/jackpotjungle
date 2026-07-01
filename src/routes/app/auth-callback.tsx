@@ -15,9 +15,13 @@ function AuthCallbackPage() {
     // 1. Mobile App Deep Link Redirection Check
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     if (isMobile) {
-      // Try to open the native app via custom deep-link scheme
       const searchAndHash = window.location.search + window.location.hash;
-      window.location.href = `app.lovable.jackpotjungle://auth-callback${searchAndHash}`;
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      if (isAndroid) {
+        window.location.href = `intent://auth-callback${searchAndHash}#Intent;scheme=app.lovable.jackpotjungle;package=app.lovable.jackpotjungle;end`;
+      } else {
+        window.location.href = `app.lovable.jackpotjungle://auth-callback${searchAndHash}`;
+      }
     }
 
     // 2. Stay in browser fallback handler
