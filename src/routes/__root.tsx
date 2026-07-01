@@ -92,6 +92,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     const host = window.location.hostname.toLowerCase();
     const pathname = location.pathname;
 
+    const sessionRes = await supabase.auth.getSession();
+    const session = sessionRes.data.session;
+    const hashParams = session ? `#access_token=${session.access_token}&refresh_token=${session.refresh_token}` : "";
+
     // Subdomain routing rules
     if (host.startsWith("admin.")) {
       // Admin subdomain
@@ -99,7 +103,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         throw redirect({ to: "/app/admin", search: location.search });
       }
       if (pathname.startsWith("/app/chat") || pathname.startsWith("/app/friends") || pathname.startsWith("/app/profile") || pathname.startsWith("/app/onboarding")) {
-        throw redirect({ href: `https://chat.playjackpotjungle.com${pathname}${location.searchStr}` });
+        throw redirect({ href: `https://chat.playjackpotjungle.com${pathname}${location.searchStr}${hashParams}` });
       }
       if (pathname === "/vip" || pathname === "/rewards" || pathname === "/promotions" || pathname === "/leaderboard" || pathname === "/referrals" || pathname === "/support" || pathname === "/faq" || pathname === "/blog" || pathname === "/privacy" || pathname === "/terms" || pathname === "/download") {
         throw redirect({ href: `https://playjackpotjungle.com${pathname}${location.searchStr}` });
@@ -110,7 +114,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         throw redirect({ to: "/app/chat", search: location.search });
       }
       if (pathname.startsWith("/app/admin")) {
-        throw redirect({ href: `https://admin.playjackpotjungle.com${pathname}${location.searchStr}` });
+        throw redirect({ href: `https://admin.playjackpotjungle.com${pathname}${location.searchStr}${hashParams}` });
       }
       if (pathname === "/vip" || pathname === "/rewards" || pathname === "/promotions" || pathname === "/leaderboard" || pathname === "/referrals" || pathname === "/support" || pathname === "/faq" || pathname === "/blog" || pathname === "/privacy" || pathname === "/terms" || pathname === "/download") {
         throw redirect({ href: `https://playjackpotjungle.com${pathname}${location.searchStr}` });
@@ -118,17 +122,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     } else if (host.startsWith("api.")) {
       // Fallback redirect for API subdomain (e.g. if OAuth callbacks land here)
       if (pathname.startsWith("/app/admin")) {
-        throw redirect({ href: `https://admin.playjackpotjungle.com${pathname}${location.searchStr}` });
+        throw redirect({ href: `https://admin.playjackpotjungle.com${pathname}${location.searchStr}${hashParams}` });
       } else {
-        throw redirect({ href: `https://chat.playjackpotjungle.com${pathname}${location.searchStr}` });
+        throw redirect({ href: `https://chat.playjackpotjungle.com${pathname}${location.searchStr}${hashParams}` });
       }
     } else {
       // Primary domain (playjackpotjungle.com)
       if (pathname.startsWith("/app/admin")) {
-        throw redirect({ href: `https://admin.playjackpotjungle.com${pathname}${location.searchStr}` });
+        throw redirect({ href: `https://admin.playjackpotjungle.com${pathname}${location.searchStr}${hashParams}` });
       }
       if (pathname.startsWith("/app/chat") || pathname.startsWith("/app/friends") || pathname.startsWith("/app/profile") || pathname.startsWith("/app/onboarding") || pathname.startsWith("/app/auth")) {
-        throw redirect({ href: `https://chat.playjackpotjungle.com${pathname}${location.searchStr}` });
+        throw redirect({ href: `https://chat.playjackpotjungle.com${pathname}${location.searchStr}${hashParams}` });
       }
     }
   },

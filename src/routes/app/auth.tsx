@@ -61,18 +61,22 @@ function AuthPage() {
     if (isRecovery) return;
 
     if (user) {
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
         const isProdDomain = hostname.endsWith("playjackpotjungle.com");
         const isChatOrPrimary = hostname.startsWith("chat.") || hostname === "playjackpotjungle.com" || hostname === "www.playjackpotjungle.com";
 
         if (isProdDomain) {
+          const sessionRes = await supabase.auth.getSession();
+          const session = sessionRes.data.session;
+          const hashParams = session ? `#access_token=${session.access_token}&refresh_token=${session.refresh_token}` : "";
+
           if (isAdmin && isChatOrPrimary) {
-            window.location.href = `https://admin.playjackpotjungle.com/app/admin${window.location.search}`;
+            window.location.href = `https://admin.playjackpotjungle.com/app/admin${window.location.search}${hashParams}`;
             return;
           }
           if (!isAdmin && hostname.startsWith("admin.")) {
-            window.location.href = `https://chat.playjackpotjungle.com/app/chat${window.location.search}`;
+            window.location.href = `https://chat.playjackpotjungle.com/app/chat${window.location.search}${hashParams}`;
             return;
           }
         }

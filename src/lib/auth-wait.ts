@@ -2,6 +2,28 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Session } from "@supabase/supabase-js";
 
 export async function waitInitialSession(timeoutMs = 4000): Promise<Session | null> {
+  if (typeof window !== "undefined") {
+    const hash = window.location.hash;
+    if (hash.includes("access_token=") && hash.includes("refresh_token=")) {
+      const cleanHash = hash.startsWith("#") ? hash.substring(1) : hash;
+      const params = new URLSearchParams(cleanHash);
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+      if (accessToken && refreshToken) {
+        try {
+          const { data } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+          if (data.session) return data.session;
+        } catch (e) {
+          console.error("Failed to set session from URL hash:", e);
+        }
+      }
+    }
+  }
+
   const { data: { session } } = await supabase.auth.getSession();
   if (session) {
     return session;
