@@ -62,6 +62,21 @@ function AuthPage() {
 
     if (user) {
       const timer = setTimeout(() => {
+        const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
+        const isProdDomain = hostname.endsWith("playjackpotjungle.com");
+        const isChatOrPrimary = hostname.startsWith("chat.") || hostname === "playjackpotjungle.com" || hostname === "www.playjackpotjungle.com";
+
+        if (isProdDomain) {
+          if (isAdmin && isChatOrPrimary) {
+            window.location.href = `https://admin.playjackpotjungle.com/app/admin${window.location.search}`;
+            return;
+          }
+          if (!isAdmin && hostname.startsWith("admin.")) {
+            window.location.href = `https://chat.playjackpotjungle.com/app/chat${window.location.search}`;
+            return;
+          }
+        }
+
         navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
       }, 100);
       return () => clearTimeout(timer);
