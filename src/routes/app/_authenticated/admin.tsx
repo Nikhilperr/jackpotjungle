@@ -312,7 +312,7 @@ function AdminPage() {
   );
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+    <div className="flex h-full flex-1 bg-background text-foreground overflow-hidden">
       {/* Side nav drawer for both desktop and mobile */}
       {navOpen && (
         <div className="fixed inset-0 z-50 flex animate-in fade-in duration-200">
@@ -1664,7 +1664,7 @@ function Conversation({
   return (
     <>
       {selectionMode ? (
-        <div className="px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center justify-between min-h-[61px]">
+        <div className="px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center justify-between min-h-[61px] shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -1679,7 +1679,7 @@ function Conversation({
           <div className="w-12" /> {/* Spacer */}
         </div>
       ) : (
-        <div className="px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center gap-3">
+        <div className="px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center gap-3 shrink-0">
           <button onClick={onBack} className="sm:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1" aria-label="Back">
             <ArrowLeft className="h-5 w-5" />
           </button>

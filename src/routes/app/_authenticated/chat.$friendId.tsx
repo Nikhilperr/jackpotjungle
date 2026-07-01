@@ -1077,7 +1077,7 @@ function ChatView() {
     <div className="h-full flex-1 flex min-h-0 relative w-full overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 bg-background w-full overflow-hidden">
         {selectionMode ? (
-        <header className="px-3 md:px-5 py-3 border-b border-border flex items-center justify-between bg-card min-h-[65px]">
+        <header className="px-3 md:px-5 py-3 border-b border-border flex items-center justify-between bg-card min-h-[65px] shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -1092,7 +1092,7 @@ function ChatView() {
           <div className="w-12" /> {/* Spacer */}
         </header>
       ) : (
-        <header className="px-3 md:px-5 py-3 border-b border-border flex items-center gap-3 bg-card">
+        <header className="px-3 md:px-5 py-3 border-b border-border flex items-center gap-3 bg-card shrink-0">
           <Link to="/app/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
             <ArrowLeft className="h-5 w-5" />
           </Link>

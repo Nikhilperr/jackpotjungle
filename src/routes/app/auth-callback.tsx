@@ -17,7 +17,7 @@ function AuthCallbackPage() {
     if (isMobile) {
       // Try to open the native app via custom deep-link scheme
       const searchAndHash = window.location.search + window.location.hash;
-      window.location.href = `chancerealm://auth-callback${searchAndHash}`;
+      window.location.href = `app.lovable.jackpotjungle://auth-callback${searchAndHash}`;
     }
 
     // 2. Stay in browser fallback handler
