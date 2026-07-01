@@ -339,10 +339,6 @@ function ChatView() {
   const isNearBottomRef = useRef(true);
   const isGroup = friendId.startsWith("group-");
   const groupId = isGroup ? friendId.substring(6) : null;
-
-  const friendDisplayName = friend
-    ? (friend.first_name ? (friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.first_name) : friend.username)
-    : (isGroup ? (group?.name || "Group") : "Friend");
   const [group, setGroup] = useState<any>(null);
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
@@ -358,6 +354,10 @@ function ChatView() {
 
   const { startCall } = useCalls();
   const [draft, setDraft] = useState("");
+
+  const friendDisplayName = friend
+    ? (friend.first_name ? (friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.first_name) : friend.username)
+    : (isGroup ? (group?.name || "Group") : "Friend");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [recUploading, setRecUploading] = useState(false);
