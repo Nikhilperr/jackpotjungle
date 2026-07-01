@@ -4,7 +4,7 @@ import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -14,6 +14,7 @@ import { uploadAndSign } from "@/lib/chat-media";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { useRole } from "@/hooks/useRole";
 import { unsendMessagesServer } from "@/lib/messages.functions";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
@@ -107,7 +108,26 @@ function ChatView() {
   const isNearBottomRef = useRef(true);
   const friendDisplayName = friend
     ? (friend.first_name ? (friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.first_name) : friend.username)
-    : "Friend";
+    : (isGroup ? (group?.name || "Group") : "Friend");
+
+  const isGroup = friendId.startsWith("group-");
+  const groupId = isGroup ? friendId.substring(6) : null;
+  const [group, setGroup] = useState<any>(null);
+  const [groupMembers, setGroupMembers] = useState<any[]>([]);
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [editingGroupName, setEditingGroupName] = useState("");
+  const [editingGroupAvatar, setEditingGroupAvatar] = useState("");
+  const [addMembersOpen, setAddMembersOpen] = useState(false);
+  const [potentialMembers, setPotentialMembers] = useState<any[]>([]);
+  const [loadingPotential, setLoadingPotential] = useState(false);
+  const [newMembersSelected, setNewMembersSelected] = useState<string[]>([]);
+  const [potentialSearchQuery, setPotentialSearchQuery] = useState("");
+  const { role } = useRole();
+
+  const myMemberInfo = groupMembers.find(m => m.profiles?.id === meId);
+  const isGroupAdmin = myMemberInfo?.role === "admin" || role === "super_admin";
+  const myUsername = user?.user_metadata?.username || user?.email?.split("@")[0] || "Someone";
 
   const { startCall } = useCalls();
   const [draft, setDraft] = useState("");
@@ -134,6 +154,50 @@ function ChatView() {
   const load = useCallback(async () => {
     if (!meId) return;
     isInitialLoadRef.current = true;
+
+    if (isGroup) {
+      // ── Group Chat Hydration ──────────────────────────────────────
+      try {
+        const [{ data: groupData }, { data: membersData }, { data: msgsData }] = await Promise.all([
+          supabase.from("groups").select("*").eq("id", groupId).maybeSingle(),
+          supabase.from("group_members").select("role, joined_at, profiles(id, username, first_name, last_name, avatar_url, online, last_seen)").eq("group_id", groupId),
+          supabase.from("messages")
+            .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+            .eq("group_id", groupId)
+            .order("created_at", { ascending: false })
+            .limit(50 + 1)
+        ]);
+
+        if (!isMountedRef.current) return;
+
+        if (groupData) {
+          setGroup(groupData);
+          setEditingGroupName(groupData.name);
+          setEditingGroupAvatar(groupData.avatar_url || "");
+        }
+        if (membersData) {
+          setGroupMembers(membersData);
+        }
+
+        const rawMsgs = (msgsData ?? []) as any[];
+        const hasMore = rawMsgs.length > 50;
+        const pageMsgs = rawMsgs.slice(0, 50).reverse();
+        setHasOlderMessages(hasMore);
+        setMessages(pageMsgs);
+        setCalls([]); // Group call logs placeholder
+
+        // Mark messages as seen for group chat
+        await supabase
+          .from("messages")
+          .update({ seen: true } as any)
+          .eq("group_id", groupId)
+          .neq("sender_id", meId)
+          .eq("seen", false);
+      } catch (err) {
+        console.error("Error loading group chat:", err);
+      }
+      return;
+    }
 
     const isSystem = friendId.startsWith("system-");
     if (isSystem) {
@@ -185,13 +249,12 @@ function ChatView() {
       return;
     }
 
-    // ── Step 1: Show cached data INSTANTLY (zero wait) ──────────────────
+    // ── Direct Chat Hydration (unchanged direct chat flow) ───────────
     const cachedProfile = getCachedProfile(friendId);
     const cachedMsgs = getCachedMessages(meId, friendId);
     setFriend(cachedProfile || null);
     setMessages(cachedMsgs || []);
 
-    // ── Step 2: Fetch fresh data/delta in background ─────────────────────
     const PAGE = 50;
     const lastCachedMsg = cachedMsgs && cachedMsgs.length > 0 ? cachedMsgs[cachedMsgs.length - 1] : null;
 
@@ -199,7 +262,7 @@ function ChatView() {
       if (lastCachedMsg) {
         const [{ data: prof }, { data: deltaMsgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
           supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
-          supabase.from("messages").select("*")
+          supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
             .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
             .gt("created_at", lastCachedMsg.created_at)
             .order("created_at", { ascending: false }),
@@ -229,7 +292,7 @@ function ChatView() {
       } else {
         const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
           supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
-          supabase.from("messages").select("*")
+          supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
             .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
             .order("created_at", { ascending: false }).limit(PAGE + 1),
           supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
@@ -274,15 +337,19 @@ function ChatView() {
     const PAGE = 50;
     const query = supabase
       .from("messages")
-      .select("*")
-      .or(
-        `and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`
-      )
+      .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
       .order("created_at", { ascending: false })
       .limit(PAGE + 1);
+
+    if (isGroup) {
+      query.eq("group_id", groupId);
+    } else {
+      query.or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`);
+    }
+
     if (oldest) query.lt("created_at", oldest);
     const { data } = await query;
-    const rows = (data ?? []) as Message[];
+    const rows = (data ?? []) as any[];
     const hasMore = rows.length > PAGE;
     const batch = rows.slice(0, PAGE).reverse();
     // Preserve scroll position: remember height before adding messages
@@ -348,15 +415,42 @@ function ChatView() {
       };
     }
 
+    const involvesGroupMsg = (m: any) => {
+      const currentFriendId = activeFriendIdRef.current;
+      const isCurrGroup = currentFriendId.startsWith("group-");
+      if (isCurrGroup) {
+        const currGroupId = currentFriendId.substring(6);
+        return m.group_id === currGroupId;
+      }
+      return !m.group_id && (
+        (m.sender_id === meId && m.receiver_id === currentFriendId) ||
+        (m.sender_id === currentFriendId && m.receiver_id === meId)
+      );
+    };
+
     const msgChannel = supabase
       .channel(`chat-active-friend-global-${rand}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
-        const m = payload.new as Message;
-        const currentFriendId = activeFriendIdRef.current;
-        const involves = (m.sender_id === meId && m.receiver_id === currentFriendId) ||
-                         (m.sender_id === currentFriendId && m.receiver_id === meId);
+        const m = payload.new as any;
+        const involves = involvesGroupMsg(m);
 
         if (involves) {
+          // If we receive a message in real-time, we want to ensure its sender relation is resolved or loaded
+          // To keep it simple, we can fetch the sender details and merge it, or resolve from groupMembers,
+          // or just append the message and trigger a background fetch if sender name is missing.
+          // Let's resolve the sender details from groupMembers if present:
+          const cachedSender = groupMembers.find(member => member.profiles?.id === m.sender_id)?.profiles;
+          const mappedMsg = {
+            ...m,
+            sender: cachedSender ? {
+              id: cachedSender.id,
+              username: cachedSender.username,
+              first_name: cachedSender.first_name || null,
+              last_name: cachedSender.last_name || null,
+              avatar_url: cachedSender.avatar_url || null
+            } : null
+          };
+
           setMessages((prev) => {
             if (prev.some((x) => x.id === m.id)) return prev;
             const idx = prev.findIndex((x) =>
@@ -368,48 +462,81 @@ function ChatView() {
             );
             if (idx >= 0) {
               const copy = prev.slice();
-              copy[idx] = m;
+              copy[idx] = mappedMsg;
               return copy;
             }
-            return [...prev, m];
+            return [...prev, mappedMsg];
           });
-          if (m.receiver_id === meId) {
-            supabase.from("messages").update({ seen: true, delivered: true } as any).eq("id", m.id).then();
+          
+          if (m.group_id) {
+            if (m.sender_id !== meId) {
+              supabase.from("messages").update({ seen: true } as any).eq("id", m.id).then();
+            }
+          } else {
+            if (m.receiver_id === meId) {
+              supabase.from("messages").update({ seen: true, delivered: true } as any).eq("id", m.id).then();
+            }
           }
         } else {
-          const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
-          const cached = getCachedMessages(meId, otherFid);
-          if (cached && !cached.some(x => x.id === m.id)) {
-            setCachedMessages(meId, otherFid, [...cached, m]);
+          if (!m.group_id) {
+            const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
+            const cached = getCachedMessages(meId, otherFid);
+            if (cached && !cached.some(x => x.id === m.id)) {
+              setCachedMessages(meId, otherFid, [...cached, m]);
+            }
           }
         }
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
-        const m = payload.new as Message;
-        const currentFriendId = activeFriendIdRef.current;
-        const involves = (m.sender_id === meId && m.receiver_id === currentFriendId) ||
-                         (m.sender_id === currentFriendId && m.receiver_id === meId);
+        const m = payload.new as any;
+        const involves = involvesGroupMsg(m);
 
         if (involves) {
-          setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
+          setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, ...m } : x)));
         } else {
-          const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
-          const cached = getCachedMessages(meId, otherFid);
-          if (cached) {
-            setCachedMessages(meId, otherFid, cached.map(x => x.id === m.id ? m : x));
+          if (!m.group_id) {
+            const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
+            const cached = getCachedMessages(meId, otherFid);
+            if (cached) {
+              setCachedMessages(meId, otherFid, cached.map(x => x.id === m.id ? { ...x, ...m } : x));
+            }
           }
         }
+      })
+      .subscribe();
+
+    const groupMemberChannel = supabase
+      .channel(`active-group-members-${rand}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "group_members", filter: isGroup ? `group_id=eq.${groupId}` : undefined }, () => {
+        load();
+      })
+      .subscribe();
+
+    const groupChannel = supabase
+      .channel(`active-groups-${rand}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "groups", filter: isGroup ? `id=eq.${groupId}` : undefined }, () => {
+        load();
       })
       .subscribe();
 
     const typingChannel = supabase
       .channel(`typing-active-friend-global-${rand}`, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "typing" }, (payload) => {
-        const data = payload.payload as { from: string; to: string };
-        if (data && data.from === activeFriendIdRef.current && data.to === meId) {
-          setFriendTyping(true);
-          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-          typingTimeoutRef.current = setTimeout(() => setFriendTyping(false), 2500);
+        const data = payload.payload as { from: string; to: string; fromUsername?: string };
+        if (data && data.to === activeFriendIdRef.current && data.from !== meId) {
+          if (isGroup) {
+            setTypingUsers((prev) => {
+              const next = new Set(prev);
+              next.add(data.fromUsername || "Someone");
+              return next;
+            });
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => setTypingUsers(new Set()), 2500);
+          } else {
+            setFriendTyping(true);
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => setFriendTyping(false), 2500);
+          }
         }
       })
       .subscribe();
@@ -418,6 +545,7 @@ function ChatView() {
     const callsChannel = supabase
       .channel(`calls-active-friend-global-${rand}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, (payload) => {
+        if (isGroup) return;
         const row = (payload.new ?? payload.old) as CallRow & { context?: string };
         if (!row || (row as any).context !== "friend") return;
         
@@ -438,6 +566,8 @@ function ChatView() {
 
     return () => {
       supabase.removeChannel(msgChannel);
+      supabase.removeChannel(groupMemberChannel);
+      supabase.removeChannel(groupChannel);
       supabase.removeChannel(typingChannel);
       supabase.removeChannel(callsChannel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -683,6 +813,70 @@ function ChatView() {
 
       if (m.content?.startsWith("[system:reaction:")) continue;
 
+      if (m.content?.startsWith("[system:group_created]")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemGroupCreated: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:user_left:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUserLeft: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:group_name_changed:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemGroupNameChanged: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:group_avatar_changed:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemGroupAvatarChanged: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:user_removed:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUserRemoved: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:user_promoted:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUserPromoted: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:user_added:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUserAdded: true,
+        } as any);
+        continue;
+      }
+
       if (m.content?.startsWith("[system:pin:")) {
         visible.push({
           ...m,
@@ -767,34 +961,40 @@ function ChatView() {
   async function reactToMessage(msgId: string, emoji: string) {
     if (!meId) return;
     const reactionContent = `[system:reaction:${msgId}:${emoji}:${meId}]`;
-    const { data, error } = await supabase.from("messages").insert({
+    const insertObj: any = {
       sender_id: meId,
-      receiver_id: friendId,
       content: reactionContent,
       seen: true,
       delivered: true,
-    } as any).select().single();
+    };
+    if (isGroup) insertObj.group_id = groupId;
+    else insertObj.receiver_id = friendId;
+
+    const { data, error } = await supabase.from("messages").insert(insertObj).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)").single();
     if (error) {
       toast.error("Failed to update reaction");
     } else {
-      setMessages(prev => [...prev, data as Message]);
+      setMessages(prev => [...prev, data as any]);
     }
   }
 
   async function pinMessage(msgId: string) {
     if (!meId) return;
     const pinContent = `[system:pin:${msgId}]`;
-    const { data, error } = await supabase.from("messages").insert({
+    const insertObj: any = {
       sender_id: meId,
-      receiver_id: friendId,
       content: pinContent,
       seen: true,
       delivered: true,
-    } as any).select().single();
+    };
+    if (isGroup) insertObj.group_id = groupId;
+    else insertObj.receiver_id = friendId;
+
+    const { data, error } = await supabase.from("messages").insert(insertObj).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)").single();
     if (error) {
       toast.error("Failed to pin message");
     } else {
-      setMessages(prev => [...prev, data as Message]);
+      setMessages(prev => [...prev, data as any]);
       toast.success("Message pinned");
     }
   }
@@ -802,17 +1002,20 @@ function ChatView() {
   async function unpinMessage(msgId: string) {
     if (!meId) return;
     const unpinContent = `[system:unpin:${msgId}]`;
-    const { data, error } = await supabase.from("messages").insert({
+    const insertObj: any = {
       sender_id: meId,
-      receiver_id: friendId,
       content: unpinContent,
       seen: true,
       delivered: true,
-    } as any).select().single();
+    };
+    if (isGroup) insertObj.group_id = groupId;
+    else insertObj.receiver_id = friendId;
+
+    const { data, error } = await supabase.from("messages").insert(insertObj).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)").single();
     if (error) {
       toast.error("Failed to unpin message");
     } else {
-      setMessages(prev => [...prev, data as Message]);
+      setMessages(prev => [...prev, data as any]);
       toast.success("Message unpinned");
     }
   }
@@ -864,12 +1067,252 @@ function ChatView() {
     setActiveMsgMenu(id);
   }, []);
 
+  async function handleLeaveGroup() {
+    if (!meId || !groupId) return;
+    const confirmLeave = window.confirm("Are you sure you want to leave this group?");
+    if (!confirmLeave) return;
+
+    try {
+      const { error } = await supabase
+        .from("group_members")
+        .delete()
+        .eq("group_id", groupId)
+        .eq("user_id", meId);
+
+      if (error) throw error;
+
+      await supabase
+        .from("messages")
+        .insert({
+          sender_id: meId,
+          group_id: groupId,
+          content: `[system:user_left:${myUsername}]`
+        } as any);
+
+      toast.success("You left the group");
+      window.location.href = "/app/chat";
+    } catch (err: any) {
+      toast.error(err.message || "Failed to leave group");
+    }
+  }
+
+  async function handleUpdateGroupName(newName: string) {
+    if (!groupId || !meId || !newName.trim()) return;
+    try {
+      const { error } = await supabase
+        .from("groups")
+        .update({ name: newName.trim() })
+        .eq("id", groupId);
+
+      if (error) throw error;
+
+      await supabase
+        .from("messages")
+        .insert({
+          sender_id: meId,
+          group_id: groupId,
+          content: `[system:group_name_changed:${newName.trim()}:${myUsername}]`
+        } as any);
+
+      toast.success("Group name updated");
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to rename group");
+    }
+  }
+
+  async function handleUpdateGroupAvatar(newAvatarUrl: string) {
+    if (!groupId || !meId) return;
+    try {
+      const { error } = await supabase
+        .from("groups")
+        .update({ avatar_url: newAvatarUrl.trim() || null })
+        .eq("id", groupId);
+
+      if (error) throw error;
+
+      await supabase
+        .from("messages")
+        .insert({
+          sender_id: meId,
+          group_id: groupId,
+          content: `[system:group_avatar_changed:${myUsername}]`
+        } as any);
+
+      toast.success("Group photo updated");
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update group photo");
+    }
+  }
+
+  async function handleRemoveMember(memberId: string, memberUsername: string) {
+    if (!groupId || !meId) return;
+    const confirmRemove = window.confirm(`Remove @${memberUsername} from group?`);
+    if (!confirmRemove) return;
+
+    try {
+      const { error } = await supabase
+        .from("group_members")
+        .delete()
+        .eq("group_id", groupId)
+        .eq("user_id", memberId);
+
+      if (error) throw error;
+
+      await supabase
+        .from("messages")
+        .insert({
+          sender_id: meId,
+          group_id: groupId,
+          content: `[system:user_removed:${memberUsername}:${myUsername}]`
+        } as any);
+
+      toast.success("Member removed");
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to remove member");
+    }
+  }
+
+  async function handlePromoteMember(memberId: string, memberUsername: string) {
+    if (!groupId || !meId) return;
+    try {
+      const { error } = await supabase
+        .from("group_members")
+        .update({ role: "admin" })
+        .eq("group_id", groupId)
+        .eq("user_id", memberId);
+
+      if (error) throw error;
+
+      await supabase
+        .from("messages")
+        .insert({
+          sender_id: meId,
+          group_id: groupId,
+          content: `[system:user_promoted:${memberUsername}:${myUsername}]`
+        } as any);
+
+      toast.success("Member promoted to admin");
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to promote member");
+    }
+  }
+
+  async function handleOpenAddMembers() {
+    setAddMembersOpen(true);
+    setNewMembersSelected([]);
+    setPotentialSearchQuery("");
+    setPotentialMembers([]);
+    if (!meId) return;
+
+    setLoadingPotential(true);
+    try {
+      const existingUserIds = new Set(groupMembers.map(m => m.profiles?.id).filter(Boolean));
+      
+      if (role === "admin" || role === "super_admin") {
+        setPotentialMembers([]);
+      } else {
+        const { data: friendships } = await supabase
+          .from("friendships")
+          .select("user_a, user_b");
+        if (friendships) {
+          const friendIds = friendships
+            .map(f => f.user_a === meId ? f.user_b : f.user_a)
+            .filter(id => !existingUserIds.has(id));
+            
+          if (friendIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("id, username, first_name, last_name, avatar_url")
+              .in("id", friendIds);
+            setPotentialMembers(profiles ?? []);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingPotential(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!addMembersOpen || (role !== "admin" && role !== "super_admin") || !potentialSearchQuery.trim()) {
+      return;
+    }
+
+    const delay = setTimeout(async () => {
+      setLoadingPotential(true);
+      try {
+        const existingUserIds = new Set(groupMembers.map(m => m.profiles?.id).filter(Boolean));
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, username, first_name, last_name, avatar_url")
+          .neq("id", meId)
+          .ilike("username", `%${potentialSearchQuery.trim()}%`)
+          .limit(30);
+          
+        const filtered = (profiles ?? []).filter(p => !existingUserIds.has(p.id));
+        setPotentialMembers(filtered);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingPotential(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delay);
+  }, [potentialSearchQuery, addMembersOpen, role, groupMembers, meId]);
+
+  async function handleAddMembersSubmit() {
+    if (!groupId || !meId || newMembersSelected.length === 0) return;
+    try {
+      const inserts = newMembersSelected.map(uid => ({
+        group_id: groupId,
+        user_id: uid,
+        role: "member"
+      }));
+
+      const { error } = await supabase.from("group_members").insert(inserts);
+      if (error) throw error;
+
+      for (const uid of newMembersSelected) {
+        const profile = potentialMembers.find(p => p.id === uid);
+        const username = profile?.username || "Someone";
+        await supabase
+          .from("messages")
+          .insert({
+            sender_id: meId,
+            group_id: groupId,
+            content: `[system:user_added:${username}:${myUsername}]`
+          } as any);
+      }
+
+      toast.success("Members added to group");
+      setAddMembersOpen(false);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add members");
+    }
+  }
+
   function onDraftChange(v: string) {
     setDraft(v);
     const now = Date.now();
     if (typingChannelRef.current && meId && now - lastTypingSentRef.current > 1500) {
       lastTypingSentRef.current = now;
-      typingChannelRef.current.send({ type: "broadcast", event: "typing", payload: { from: meId, to: friendId } });
+      typingChannelRef.current.send({
+        type: "broadcast",
+        event: "typing",
+        payload: {
+          from: meId,
+          to: friendId,
+          fromUsername: myUsername
+        }
+      });
     }
   }
 
@@ -878,7 +1321,7 @@ function ChatView() {
     const optimistic: Message = {
       id: tempId,
       sender_id: meId!,
-      receiver_id: friendId,
+      receiver_id: isGroup ? null : friendId,
       content: null,
       image_url: null,
       audio_url: null,
@@ -886,7 +1329,17 @@ function ChatView() {
       delivered: false,
       created_at: new Date().toISOString(),
       ...partial,
-    };
+    } as any;
+    if (isGroup) {
+      (optimistic as any).group_id = groupId;
+      (optimistic as any).sender = {
+        id: meId,
+        username: myUsername,
+        first_name: user?.user_metadata?.first_name || null,
+        last_name: user?.user_metadata?.last_name || null,
+        avatar_url: user?.user_metadata?.avatar_url || null
+      };
+    }
     setMessages((prev) => [...prev, optimistic]);
     return tempId;
   }
@@ -899,7 +1352,7 @@ function ChatView() {
     setShowEmoji(false);
     
     const replyPrefix = replyingTo
-      ? `[reply:${replyingTo.id}:${replyingTo.sender_id === meId ? "You" : friendDisplayName}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] `
+      ? `[reply:${replyingTo.id}:${replyingTo.sender_id === meId ? "You" : (replyingTo.sender?.username || friendDisplayName)}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] `
       : "";
     const finalContent = replyPrefix + content;
     setReplyingTo(null);
@@ -908,7 +1361,8 @@ function ChatView() {
     window.dispatchEvent(
       new CustomEvent("jj-message-sent", {
         detail: {
-          receiverId: friendId,
+          receiverId: isGroup ? null : friendId,
+          groupId: isGroup ? groupId : null,
           content,
           image_url: null,
           audio_url: null,
@@ -916,10 +1370,18 @@ function ChatView() {
         }
       })
     );
+
+    const insertObj: any = { sender_id: meId, content: finalContent };
+    if (isGroup) {
+      insertObj.group_id = groupId;
+    } else {
+      insertObj.receiver_id = friendId;
+    }
+
     const { data, error } = await supabase
       .from("messages")
-      .insert({ sender_id: meId, receiver_id: friendId, content: finalContent })
-      .select()
+      .insert(insertObj)
+      .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
       .single();
     if (error) {
       setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
@@ -927,7 +1389,7 @@ function ChatView() {
       return;
     }
     if (data) {
-      setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as Message) : x)));
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as any) : x)));
     }
   }
 
@@ -957,7 +1419,8 @@ function ChatView() {
     window.dispatchEvent(
       new CustomEvent("jj-message-sent", {
         detail: {
-          receiverId: friendId,
+          receiverId: isGroup ? null : friendId,
+          groupId: isGroup ? groupId : null,
           content: null,
           image_url: localPreview,
           audio_url: null,
@@ -967,12 +1430,16 @@ function ChatView() {
     );
     try {
       const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
+      const insertObj: any = { sender_id: meId, content: null, image_url: url };
+      if (isGroup) insertObj.group_id = groupId;
+      else insertObj.receiver_id = friendId;
+
       const { data } = await supabase
         .from("messages")
-        .insert({ sender_id: meId, receiver_id: friendId, content: null, image_url: url } as any)
-        .select()
+        .insert(insertObj as any)
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
         .single();
-      if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as Message) : x)));
+      if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as any) : x)));
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, image_url: url } : x)));
     } catch (err) {
       console.error(err);
@@ -989,7 +1456,8 @@ function ChatView() {
     window.dispatchEvent(
       new CustomEvent("jj-message-sent", {
         detail: {
-          receiverId: friendId,
+          receiverId: isGroup ? null : friendId,
+          groupId: isGroup ? groupId : null,
           content: null,
           image_url: null,
           audio_url: localPreview,
@@ -999,12 +1467,16 @@ function ChatView() {
     );
     try {
       const url = await uploadAndSign("chat-audio", meId, blob, ext, mime);
+      const insertObj: any = { sender_id: meId, content: null, audio_url: url };
+      if (isGroup) insertObj.group_id = groupId;
+      else insertObj.receiver_id = friendId;
+
       const { data } = await supabase
         .from("messages")
-        .insert({ sender_id: meId, receiver_id: friendId, content: null, audio_url: url } as any)
-        .select()
+        .insert(insertObj as any)
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
         .single();
-      if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as Message) : x)));
+      if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as any) : x)));
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, audio_url: url } : x)));
     } catch (err) {
       console.error(err);
@@ -1044,7 +1516,7 @@ function ChatView() {
   }
 
   // Show skeleton UI while loading — feels instant like Messenger
-  if (!friend) return (
+  if (isGroup ? !group : !friend) return (
     <div className="h-full flex-1 flex flex-col min-h-0 bg-background">
       {/* Skeleton Header */}
       <header className="px-3 py-3 border-b border-border flex items-center gap-3 bg-card min-h-[65px]">
@@ -1106,6 +1578,10 @@ function ChatView() {
                 <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
                   <Megaphone className="h-5 w-5 animate-pulse" />
                 </div>
+              ) : isGroup ? (
+                <>
+                  <Avatar name={friendDisplayName} url={group?.avatar_url ?? null} size={40} />
+                </>
               ) : (
                 <>
                   <Avatar name={friendDisplayName} url={friend?.avatar_url ?? null} size={40} />
@@ -1116,12 +1592,19 @@ function ChatView() {
             <div className="min-w-0 flex-1">
               <p className="font-semibold truncate">{friendDisplayName}</p>
               <p className="text-xs text-muted-foreground truncate">
-                {friendId.startsWith("system-") ? "Official Channel" : friendTyping ? "Typing…" : friend?.online ? "Active now" :
+                {friendId.startsWith("system-") ? "Official Channel" : 
+                 isGroup ? (
+                   typingUsers.size > 0 ? (
+                     typingUsers.size === 1 
+                       ? `${Array.from(typingUsers)[0]} is typing…` 
+                       : `${Array.from(typingUsers).join(", ")} are typing…`
+                   ) : `${groupMembers.length} members`
+                 ) : friendTyping ? "Typing…" : friend?.online ? "Active now" :
                   (friend?.last_seen && !isNaN(new Date(friend.last_seen).getTime())) ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}` : "Offline"}
               </p>
             </div>
           </div>
-          {!friendId.startsWith("system-") && (
+          {!friendId.startsWith("system-") && !isGroup && (
             <>
               <button
                 type="button"
@@ -1152,7 +1635,7 @@ function ChatView() {
           {!friendId.startsWith("system-") && (
             <button
               type="button"
-              onClick={() => setShowDetail((v) => !v)}
+              onClick={() => isGroup ? setShowGroupInfo((v) => !v) : setShowDetail((v) => !v)}
               className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
               aria-label="Toggle details sidebar"
             >
@@ -1321,17 +1804,32 @@ function ChatView() {
                 highlight={highlight}
                 searchQuery={searchQuery}
                 scrollToMessage={scrollToMessage}
+                isGroup={isGroup}
               />
             );
           });
         })()}
-        {friendTyping && (
+        {!isGroup && friendTyping && (
           <div className="flex justify-start pt-1">
             <div className="bg-bubble-them text-bubble-them-foreground px-4 py-2 rounded-3xl">
               <span className="inline-flex gap-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "0ms" }} />
                 <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "150ms" }} />
                 <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "300ms" }} />
+              </span>
+            </div>
+          </div>
+        )}
+        {isGroup && typingUsers.size > 0 && (
+          <div className="flex justify-start pt-1">
+            <div className="bg-bubble-them text-bubble-them-foreground px-4 py-2 rounded-3xl flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground/85 italic font-semibold">
+                {typingUsers.size === 1 ? `${Array.from(typingUsers)[0]} typing` : "typing"}
+              </span>
+              <span className="inline-flex gap-0.5">
+                <span className="h-1 w-1 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-1 w-1 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="h-1 w-1 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "300ms" }} />
               </span>
             </div>
           </div>
@@ -1654,16 +2152,52 @@ function ChatView() {
       </div>
 
       {/* Desktop Detail Sidebar */}
-      {showDetail && (
+      {showDetail && !isGroup && (
         <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto animate-in slide-in-from-right duration-200 shrink-0">
           <ConversationDetailPanel friend={friend} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
         </aside>
       )}
 
+      {showGroupInfo && isGroup && (
+        <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto animate-in slide-in-from-right duration-200 shrink-0">
+          <GroupDetailPanel 
+            group={group} 
+            members={groupMembers} 
+            messages={messages} 
+            meId={meId} 
+            onClose={() => setShowGroupInfo(false)} 
+            onLeave={handleLeaveGroup}
+            onUpdateName={handleUpdateGroupName}
+            onUpdateAvatar={handleUpdateGroupAvatar}
+            onAddMembers={handleOpenAddMembers}
+            onRemoveMember={handleRemoveMember}
+            onPromoteMember={handlePromoteMember}
+          />
+        </aside>
+      )}
+
       {/* Mobile/Tablet Detail Sheet */}
-      <Sheet open={showDetail && isMobile} onOpenChange={setShowDetail}>
+      <Sheet open={showDetail && !isGroup && isMobile} onOpenChange={setShowDetail}>
         <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden bg-card border-l border-border text-foreground">
           <ConversationDetailPanel friend={friend} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={showGroupInfo && isGroup && isMobile} onOpenChange={setShowGroupInfo}>
+        <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden bg-card border-l border-border text-foreground">
+          <GroupDetailPanel 
+            group={group} 
+            members={groupMembers} 
+            messages={messages} 
+            meId={meId} 
+            onClose={() => setShowGroupInfo(false)} 
+            onLeave={handleLeaveGroup}
+            onUpdateName={handleUpdateGroupName}
+            onUpdateAvatar={handleUpdateGroupAvatar}
+            onAddMembers={handleOpenAddMembers}
+            onRemoveMember={handleRemoveMember}
+            onPromoteMember={handlePromoteMember}
+          />
         </SheetContent>
       </Sheet>
 
@@ -1731,6 +2265,90 @@ function ChatView() {
           </div>
         );
       })()}
+
+      {/* Group Add Members Modal */}
+      {addMembersOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setAddMembersOpen(false)} />
+          <div className="relative w-full max-w-sm bg-card border border-border rounded-3xl shadow-2xl p-6 flex flex-col gap-4 max-h-[80vh] overflow-y-auto z-50 text-foreground">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="font-bold text-lg">Add Members</h3>
+              <button onClick={() => setAddMembersOpen(false)} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {(role === "admin" || role === "super_admin") && (
+              <div className="relative">
+                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search user profiles..."
+                  value={potentialSearchQuery}
+                  onChange={(e) => setPotentialSearchQuery(e.target.value)}
+                  className="pl-9 rounded-xl bg-background/50 border-border/80"
+                />
+              </div>
+            )}
+
+            <div className="max-h-48 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 bg-background/30 animate-in fade-in duration-200">
+              {loadingPotential ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : potentialMembers.length === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  {role === "admin" || role === "super_admin" 
+                    ? (potentialSearchQuery.trim() ? "No users found" : "Type to search users") 
+                    : "All friends are already in this group"}
+                </div>
+              ) : (
+                potentialMembers.map((item) => {
+                  const isChecked = newMembersSelected.includes(item.id);
+                  const dispName = item.first_name && item.last_name ? `${item.first_name} ${item.last_name}` : item.username;
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => {
+                        setNewMembersSelected(prev =>
+                          isChecked ? prev.filter(uid => uid !== item.id) : [...prev, item.id]
+                        );
+                      }}
+                      className="flex items-center justify-between p-3 hover:bg-secondary/40 cursor-pointer select-none"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Avatar name={dispName} url={item.avatar_url} size={36} />
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{dispName}</p>
+                          <p className="text-[10px] text-muted-foreground">@{item.username}</p>
+                        </div>
+                      </div>
+                      <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
+                        {isChecked && <Check className="h-3 w-3" />}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-3 border-t border-border mt-2">
+              <button
+                onClick={() => setAddMembersOpen(false)}
+                className="flex-1 h-11 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddMembersSubmit}
+                disabled={newMembersSelected.length === 0}
+                className="flex-1 h-11 bg-primary hover:opacity-90 disabled:opacity-50 text-primary-foreground font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+              >
+                Add Selected
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1904,6 +2522,7 @@ interface MessageItemProps {
   highlight: (text: string, query: string) => React.ReactNode;
   searchQuery: string;
   scrollToMessage: (id: string) => void;
+  isGroup?: boolean;
 }
 
 const MessageItem = React.memo(function MessageItem({
@@ -1931,6 +2550,7 @@ const MessageItem = React.memo(function MessageItem({
   highlight,
   searchQuery,
   scrollToMessage,
+  isGroup = false,
 }: MessageItemProps) {
   const mine = m.sender_id === meId;
   const reactionKeys = Object.keys(m.reactions || {}).filter(k => m.reactions[k].length > 0);
@@ -1948,6 +2568,72 @@ const MessageItem = React.memo(function MessageItem({
       pressTimerRef.current = null;
     }
   };
+
+  if ((m as any).isSystemGroupCreated) {
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        Group chat created
+      </div>
+    );
+  }
+  if ((m as any).isSystemUserLeft) {
+    const parts = m.content?.split(":") || [];
+    const username = parts[2]?.replace("]", "") || "Someone";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        @{username} left the group
+      </div>
+    );
+  }
+  if ((m as any).isSystemGroupNameChanged) {
+    const parts = m.content?.split(":") || [];
+    const newName = parts[2] || "";
+    const username = parts[3]?.replace("]", "") || "Someone";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        @{username} renamed the group to "{newName}"
+      </div>
+    );
+  }
+  if ((m as any).isSystemGroupAvatarChanged) {
+    const parts = m.content?.split(":") || [];
+    const username = parts[2]?.replace("]", "") || "Someone";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        @{username} updated the group photo
+      </div>
+    );
+  }
+  if ((m as any).isSystemUserRemoved) {
+    const parts = m.content?.split(":") || [];
+    const targetUser = parts[2] || "";
+    const adminUser = parts[3]?.replace("]", "") || "Someone";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        @{adminUser} removed @{targetUser} from the group
+      </div>
+    );
+  }
+  if ((m as any).isSystemUserPromoted) {
+    const parts = m.content?.split(":") || [];
+    const targetUser = parts[2] || "";
+    const adminUser = parts[3]?.replace("]", "") || "Someone";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        @{adminUser} promoted @{targetUser} to admin
+      </div>
+    );
+  }
+  if ((m as any).isSystemUserAdded) {
+    const parts = m.content?.split(":") || [];
+    const targetUser = parts[2] || "";
+    const adminUser = parts[3]?.replace("]", "") || "Someone";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        @{adminUser} added @{targetUser} to the group
+      </div>
+    );
+  }
 
   if (m.isSystemPin) {
     return (
@@ -2026,6 +2712,16 @@ const MessageItem = React.memo(function MessageItem({
             <span className="text-[10px] text-muted-foreground/60 italic flex items-center gap-1 select-none">
               <Forward className="h-3 w-3 text-muted-foreground/50" />
               Forwarded
+            </span>
+          </div>
+        )}
+
+        {isGroup && !mine && (m as any).sender && (
+          <div className="flex justify-start mb-0.5 pl-2">
+            <span className="text-[10px] font-bold text-muted-foreground/80">
+              {(m as any).sender.first_name && (m as any).sender.last_name 
+                ? `${(m as any).sender.first_name} ${(m as any).sender.last_name}` 
+                : `@${(m as any).sender.username}`}
             </span>
           </div>
         )}
@@ -2119,4 +2815,228 @@ const MessageItem = React.memo(function MessageItem({
     </div>
   );
 });
+
+interface GroupDetailPanelProps {
+  group: any;
+  members: any[];
+  messages: any[];
+  meId: string | null;
+  onClose: () => void;
+  onLeave: () => void;
+  onUpdateName: (name: string) => void;
+  onUpdateAvatar: (url: string) => void;
+  onAddMembers: () => void;
+  onRemoveMember: (id: string, username: string) => void;
+  onPromoteMember: (id: string, username: string) => void;
+}
+
+export function GroupDetailPanel({
+  group,
+  members,
+  messages,
+  meId,
+  onClose,
+  onLeave,
+  onUpdateName,
+  onUpdateAvatar,
+  onAddMembers,
+  onRemoveMember,
+  onPromoteMember
+}: GroupDetailPanelProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [nameInput, setNameInput] = useState(group?.name || "");
+  const [avatarInput, setAvatarInput] = useState(group?.avatar_url || "");
+  const { role } = useRole();
+
+  const myMemberInfo = members.find(m => m.profiles?.id === meId);
+  const isGroupAdmin = myMemberInfo?.role === "admin" || role === "super_admin";
+
+  const groupInitials = (group?.name || "GP")
+    .split(" ")
+    .map((n: string) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <div className="h-full flex flex-col bg-card text-foreground">
+      {/* Header */}
+      <div className="p-4 border-b border-border flex items-center justify-between shrink-0">
+        <h3 className="font-bold text-base">Group Details</h3>
+        <button
+          onClick={onClose}
+          className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* Group Info Cards */}
+        <div className="flex flex-col items-center text-center gap-3">
+          <div className="relative">
+            {group?.avatar_url ? (
+              <img
+                src={toCDNUrl(group.avatar_url)}
+                alt={group.name}
+                className="h-20 w-20 rounded-full object-cover ring-2 ring-primary/20 shadow-lg"
+              />
+            ) : (
+              <div className="h-20 w-20 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-2xl shadow-inner">
+                {groupInitials}
+              </div>
+            )}
+          </div>
+
+          {!isEditing ? (
+            <div className="space-y-1">
+              <h4 className="font-bold text-lg">{group?.name}</h4>
+              <p className="text-xs text-muted-foreground">{members.length} members</p>
+              {isGroupAdmin && (
+                <button
+                  onClick={() => {
+                    setNameInput(group?.name || "");
+                    setAvatarInput(group?.avatar_url || "");
+                    setIsEditing(true);
+                  }}
+                  className="text-xs text-primary font-semibold hover:underline mt-1"
+                >
+                  Edit name & photo
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="w-full space-y-3 bg-secondary/20 p-3 rounded-2xl border border-border/40">
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground uppercase text-left block mb-1 pl-1">Name</label>
+                <Input
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  className="h-9 rounded-xl bg-background text-sm"
+                  placeholder="Group name"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground uppercase text-left block mb-1 pl-1">Photo URL</label>
+                <Input
+                  value={avatarInput}
+                  onChange={(e) => setAvatarInput(e.target.value)}
+                  className="h-9 rounded-xl bg-background text-sm"
+                  placeholder="https://example.com/photo.png"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="flex-1 py-1.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-lg text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    onUpdateName(nameInput);
+                    onUpdateAvatar(avatarInput);
+                    setIsEditing(false);
+                  }}
+                  className="flex-1 py-1.5 bg-primary text-primary-foreground font-semibold rounded-lg text-xs transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="space-y-2">
+          <button
+            onClick={onAddMembers}
+            className="w-full py-2.5 bg-primary/10 hover:bg-primary/15 text-primary border border-primary/20 font-semibold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <Users className="h-4 w-4" />
+            <span>Add Members</span>
+          </button>
+        </div>
+
+        {/* Members List */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between border-b border-border pb-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Members</span>
+            <span className="text-[10px] text-muted-foreground/60">{members.length} total</span>
+          </div>
+
+          <div className="space-y-2 divide-y divide-border/20 animate-in fade-in duration-200">
+            {members.map((m) => {
+              if (!m.profiles) return null;
+              const p = m.profiles;
+              const isSelf = p.id === meId;
+              const dispName = p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username;
+              const isAdmin = m.role === "admin";
+              
+              return (
+                <div key={p.id} className="flex items-center justify-between py-2.5 first:pt-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar name={dispName} url={p.avatar_url} size={32} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <span className="truncate">{dispName}</span>
+                        {isSelf && <span className="text-[9px] bg-secondary px-1.5 py-0.5 rounded-full font-normal text-muted-foreground">You</span>}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate">@{p.username}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isAdmin ? (
+                      <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold border border-primary/20">Admin</span>
+                    ) : (
+                      <span className="text-[9px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full font-semibold">Member</span>
+                    )}
+
+                    {isGroupAdmin && !isSelf && (
+                      <div className="relative group/opt">
+                        <button className="h-6 w-6 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground">
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </button>
+                        <div className="absolute right-0 top-full mt-1 bg-background border border-border shadow-lg rounded-xl py-1 hidden group-hover/opt:block min-w-[120px] z-50 overflow-hidden">
+                          {!isAdmin && (
+                            <button
+                              onClick={() => onPromoteMember(p.id, p.username)}
+                              className="w-full px-3 py-1.5 text-left text-[10px] font-semibold text-foreground hover:bg-secondary flex items-center gap-1.5"
+                            >
+                              <ShieldAlert className="h-3 w-3 text-primary" />
+                              <span>Make Admin</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => onRemoveMember(p.id, p.username)}
+                            className="w-full px-3 py-1.5 text-left text-[10px] font-semibold text-destructive hover:bg-secondary flex items-center gap-1.5 border-t border-border/20"
+                          >
+                            <UserMinus className="h-3 w-3 text-destructive" />
+                            <span>Remove</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="p-4 border-t border-border shrink-0 bg-secondary/5">
+        <button
+          onClick={onLeave}
+          className="w-full py-2.5 bg-destructive/10 hover:bg-destructive/15 text-destructive border border-destructive/20 font-semibold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Leave Group</span>
+        </button>
+      </div>
+    </div>
+  );
+}
 

@@ -3,7 +3,7 @@ import { createFileRoute, Link, Outlet, useParams, useLocation } from "@tanstack
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
-import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus, Pin, Loader2, Check, X, BookOpen, Megaphone } from "lucide-react";
+import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus, Pin, Loader2, Check, X, BookOpen, Megaphone, Users } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar } from "@/components/messenger/Avatar";
 import { useRole } from "@/hooks/useRole";
@@ -64,6 +64,7 @@ function ChatLayout() {
   const activeId = params.friendId;
   const isPageActive = location.pathname.endsWith("/chat/page");
   const { isAdmin } = useRole();
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const hasActive = !!activeId || isPageActive;
   const [isMobile, setIsMobile] = useState(false);
 
@@ -166,24 +167,56 @@ function ChatLayout() {
 
   async function load(myId: string) {
     try {
-      const { data: friends } = await supabase
-        .from("friendships")
-        .select("user_a, user_b");
-      if (!friends) return;
-      const friendIds = friends.map((f) => (f.user_a === myId ? f.user_b : f.user_a));
-      if (friendIds.length === 0) { setConversations([]); return; }
+      const [friendsRes, membershipsRes] = await Promise.all([
+        supabase.from("friendships").select("user_a, user_b"),
+        supabase.from("group_members").select("group_id, role, groups(id, name, avatar_url, created_at, created_by)").eq("user_id", myId)
+      ]);
 
-      const [{ data: profiles }, { data: msgs }, { data: friendCalls }] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url, online")
-          .in("id", friendIds),
-        supabase
-          .from("messages")
-          .select("id, sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
-          .or(friendIds.map((id) => `and(sender_id.eq.${id},receiver_id.eq.${myId}),and(sender_id.eq.${myId},receiver_id.eq.${id})`).join(","))
-          .order("created_at", { ascending: false })
-          .limit(500),
+      const friends = friendsRes.data ?? [];
+      const memberships = membershipsRes.data ?? [];
+
+      const friendIds = friends.map((f) => (f.user_a === myId ? f.user_b : f.user_a));
+      const groupIds = memberships.map((m: any) => m.group_id).filter(Boolean);
+
+      if (friendIds.length === 0 && groupIds.length === 0) {
+        setConversations([]);
+        return;
+      }
+
+      const queries = [];
+      if (friendIds.length > 0) {
+        queries.push(
+          supabase
+            .from("profiles")
+            .select("id, username, first_name, last_name, avatar_url, online")
+            .in("id", friendIds)
+        );
+      } else {
+        queries.push(Promise.resolve({ data: [] }));
+      }
+
+      let orFilterParts = [];
+      if (friendIds.length > 0) {
+        orFilterParts.push(...friendIds.map((id) => `and(sender_id.eq.${id},receiver_id.eq.${myId}),and(sender_id.eq.${myId},receiver_id.eq.${id})`));
+      }
+      if (groupIds.length > 0) {
+        orFilterParts.push(`group_id.in.(${groupIds.join(",")})`);
+      }
+
+      if (orFilterParts.length > 0) {
+        queries.push(
+          supabase
+            .from("messages")
+            .select("id, sender_id, receiver_id, group_id, content, image_url, audio_url, created_at, seen")
+            .or(orFilterParts.join(","))
+            .order("created_at", { ascending: false })
+            .limit(500)
+        );
+      } else {
+        queries.push(Promise.resolve({ data: [] }));
+      }
+
+      queries.push(
         supabase
           .from("calls")
           .select("id, caller_id, callee_id, call_type, status, created_at")
@@ -191,7 +224,12 @@ function ChatLayout() {
           .or(`caller_id.eq.${myId},callee_id.eq.${myId}`)
           .order("created_at", { ascending: false })
           .limit(200)
-      ]);
+      );
+
+      const [profilesRes, msgsRes, callsRes] = await Promise.all(queries);
+      const profiles = profilesRes.data ?? [];
+      const msgs = msgsRes.data ?? [];
+      const friendCalls = callsRes.data ?? [];
 
       let deletedIds: string[] = [];
       try {
@@ -200,10 +238,10 @@ function ChatLayout() {
       } catch {}
       const deletedSet = new Set<string>(deletedIds);
 
-      const byFriend: Record<string, Conversation> = {};
-      (profiles ?? []).forEach((p) => {
+      const byConvo: Record<string, Conversation> = {};
+      profiles.forEach((p) => {
         const displayName = p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username;
-        byFriend[p.id] = { 
+        byConvo[p.id] = { 
           friendId: p.id, 
           username: p.username, 
           displayName,
@@ -215,11 +253,31 @@ function ChatLayout() {
           allText: "" 
         };
       });
-      const filteredMsgs = (msgs ?? []).filter((m) => !deletedSet.has(m.id));
+
+      memberships.forEach((m: any) => {
+        if (!m.groups) return;
+        const g = m.groups;
+        byConvo[`group-${g.id}`] = {
+          friendId: `group-${g.id}`,
+          isGroup: true,
+          groupId: g.id,
+          username: g.name,
+          displayName: g.name,
+          avatar_url: g.avatar_url,
+          online: false,
+          lastMessage: null,
+          lastAt: null,
+          unread: 0,
+          allText: ""
+        };
+      });
+
+      const filteredMsgs = msgs.filter((m) => !deletedSet.has(m.id));
       filteredMsgs.forEach((m: any) => {
-        const fid = m.sender_id === myId ? m.receiver_id : m.sender_id;
-        const c = byFriend[fid];
+        const convoId = m.group_id ? `group-${m.group_id}` : (m.sender_id === myId ? m.receiver_id : m.sender_id);
+        const c = byConvo[convoId];
         if (!c) return;
+
         let preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
         if (preview?.startsWith("[system:reaction:")) {
           preview = "Reacted to a message";
@@ -239,16 +297,24 @@ function ChatLayout() {
           const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
           if (match) preview = match[1];
         }
-        if (!c.lastAt) { c.lastMessage = preview; c.lastAt = m.created_at; }
+
+        if (!c.lastAt) { 
+          c.lastMessage = preview; 
+          c.lastAt = m.created_at; 
+        }
         if (m.content) c.allText += " " + m.content.toLowerCase();
-        if (m.receiver_id === myId && !m.seen) c.unread++;
+        
+        if (m.group_id) {
+          if (m.sender_id !== myId && !m.seen) c.unread++;
+        } else {
+          if (m.receiver_id === myId && !m.seen) c.unread++;
+        }
       });
 
-      // Merge recent calls into friendship items
-      (friendCalls ?? []).forEach((call: any) => {
+      friendCalls.forEach((call: any) => {
         const fid = call.caller_id === myId ? call.callee_id : call.caller_id;
         if (!fid) return;
-        const c = byFriend[fid];
+        const c = byConvo[fid];
         if (!c) return;
 
         const callPreview = call.call_type === "video" ? "📹 Video call" : "📞 Voice call";
@@ -258,11 +324,13 @@ function ChatLayout() {
         }
       });
 
-      const sortedList = Object.values(byFriend).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+      const sortedList = Object.values(byConvo).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
       setConversations(sortedList);
       try {
         localStorage.setItem("jj_cached_conversations", JSON.stringify(sortedList));
       } catch {}
+    } catch (err) {
+      console.error("Error loading conversations:", err);
     } finally {
       setLoadingConvs(false);
     }
@@ -402,15 +470,16 @@ function ChatLayout() {
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
         if (!mounted) return;
         const m = payload.new as any;
-        if (!m || !m.sender_id || !m.receiver_id) return;
+        if (!m || !m.sender_id || (!m.receiver_id && !m.group_id)) return;
+        const isGroup = !!m.group_id;
         const isMine = m.sender_id === meId;
-        const friendId = isMine ? m.receiver_id : m.sender_id;
+        const convoKey = isGroup ? `group-${m.group_id}` : (isMine ? m.receiver_id : m.sender_id);
 
         if (payload.eventType === "INSERT") {
           setConversations((prev) => {
-            const idx = prev.findIndex((c) => c.friendId === friendId);
+            const idx = prev.findIndex((c) => c.friendId === convoKey);
             if (idx === -1) {
-              // New chat/relationship, load from DB to fetch profile and metadata
+              // New chat/relationship/group, load from DB to fetch profile and metadata
               load(meId);
               return prev;
             }
@@ -439,7 +508,9 @@ function ChatLayout() {
             updated.lastMessage = preview;
             updated.lastAt = m.created_at;
             if (m.content) updated.allText += " " + m.content.toLowerCase();
-            if (m.receiver_id === meId && !m.seen) {
+            
+            const isUnread = isGroup ? (!isMine && !m.seen) : (m.receiver_id === meId && !m.seen);
+            if (isUnread) {
               updated.unread += 1;
             }
 
@@ -448,14 +519,21 @@ function ChatLayout() {
             return next.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
           });
         } else if (payload.eventType === "UPDATE") {
-          if (m.receiver_id === meId && m.seen) {
+          const isRead = isGroup ? (isMine || m.seen) : (m.receiver_id === meId && m.seen);
+          if (isRead) {
             setConversations((prev) =>
-              prev.map((c) => (c.friendId === friendId ? { ...c, unread: 0 } : c))
+              prev.map((c) => (c.friendId === convoKey ? { ...c, unread: 0 } : c))
             );
           }
         }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => {
+        if (mounted) load(meId);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "groups" }, () => {
+        if (mounted) load(meId);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => {
         if (mounted) load(meId);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, (payload) => {
@@ -700,9 +778,18 @@ function ChatLayout() {
         {/* Sidebar Panel — hidden on mobile when a chat is open */}
         <div className={`${hasActive ? "hidden md:flex flex-col" : "flex flex-col"} w-full md:max-w-sm md:border-r md:border-border min-h-0 shrink-0`}>
           <div className="p-4 border-b border-border">
-            <div className="flex items-center gap-2 mb-3">
-              <HamburgerButton />
-              <h2 className="text-xl font-bold">Chats</h2>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <HamburgerButton />
+                <h2 className="text-xl font-bold">Chats</h2>
+              </div>
+              <button
+                onClick={() => setCreateGroupOpen(true)}
+                className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary text-primary transition-colors"
+                title="New Group Chat"
+              >
+                <Users className="h-5 w-5" />
+              </button>
             </div>
             <div className="relative">
               <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -951,7 +1038,268 @@ function ChatLayout() {
           </div>
         )}
       </AnimatePresence>
+
+      <CreateGroupModal
+        open={createGroupOpen}
+        onClose={() => setCreateGroupOpen(false)}
+        meId={meId}
+        onGroupCreated={(groupId) => {
+          load(meId!);
+        }}
+      />
     </AppShell>
+  );
+}
+
+interface CreateGroupModalProps {
+  open: boolean;
+  onClose: () => void;
+  meId: string | null;
+  onGroupCreated: (groupId: string) => void;
+}
+
+function CreateGroupModal({ open, onClose, meId, onGroupCreated }: CreateGroupModalProps) {
+  const [groupName, setGroupName] = useState("");
+  const [groupAvatar, setGroupAvatar] = useState("");
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [allProfiles, setAllProfiles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const { role } = useRole();
+  const isAdminOrSuper = role === "admin" || role === "super_admin";
+
+  useEffect(() => {
+    if (!open || !meId) return;
+
+    async function fetchFriends() {
+      setLoading(true);
+      try {
+        const { data: friendships } = await supabase
+          .from("friendships")
+          .select("user_a, user_b");
+        if (!friendships) return;
+        const friendIds = friendships.map(f => f.user_a === meId ? f.user_b : f.user_a);
+        if (friendIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, username, first_name, last_name, avatar_url")
+            .in("id", friendIds);
+          setFriends(profiles ?? []);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (!isAdminOrSuper) {
+      fetchFriends();
+    }
+  }, [open, meId, isAdminOrSuper]);
+
+  useEffect(() => {
+    if (!open || !isAdminOrSuper || !searchQuery.trim()) {
+      setAllProfiles([]);
+      return;
+    }
+
+    const delay = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, username, first_name, last_name, avatar_url")
+          .neq("id", meId)
+          .ilike("username", `%${searchQuery.trim()}%`)
+          .limit(30);
+        setAllProfiles(profiles ?? []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delay);
+  }, [searchQuery, open, isAdminOrSuper, meId]);
+
+  async function handleCreate() {
+    if (!groupName.trim() || !meId) {
+      toast.error("Please enter a group name");
+      return;
+    }
+    if (selectedMembers.length === 0) {
+      toast.error("Please select at least one member to add");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const { data: newGroup, error: groupErr } = await supabase
+        .from("groups")
+        .insert({
+          name: groupName.trim(),
+          avatar_url: groupAvatar.trim() || null,
+          created_by: meId
+        })
+        .select()
+        .single();
+
+      if (groupErr) throw groupErr;
+
+      const membersToInsert = [
+        { group_id: newGroup.id, user_id: meId, role: "admin" },
+        ...selectedMembers.map(uid => ({ group_id: newGroup.id, user_id: uid, role: "member" }))
+      ];
+
+      const { error: membersErr } = await supabase
+        .from("group_members")
+        .insert(membersToInsert);
+
+      if (membersErr) throw membersErr;
+
+      await supabase
+        .from("messages")
+        .insert({
+          sender_id: meId,
+          group_id: newGroup.id,
+          content: `[system:group_created]`
+        } as any);
+
+      toast.success("Group created successfully!");
+      onGroupCreated(newGroup.id);
+      onClose();
+      setGroupName("");
+      setGroupAvatar("");
+      setSelectedMembers([]);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create group");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  if (!open) return null;
+
+  const displayList = isAdminOrSuper 
+    ? (searchQuery.trim() ? allProfiles : []) 
+    : friends;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] text-foreground overflow-y-auto z-50">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <h3 className="font-bold text-lg">New Group Chat</h3>
+          <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground block mb-1">Group Name</label>
+            <Input
+              placeholder="e.g. Jackpot Masters"
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              disabled={creating}
+              className="rounded-xl bg-background/50 border-border/80"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground block mb-1">Group Photo URL (Optional)</label>
+            <Input
+              placeholder="https://example.com/avatar.png"
+              value={groupAvatar}
+              onChange={(e) => setGroupAvatar(e.target.value)}
+              disabled={creating}
+              className="rounded-xl bg-background/50 border-border/80"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground block mb-2">
+              {isAdminOrSuper ? "Search and Add Members" : "Select Friends"}
+            </label>
+            {isAdminOrSuper && (
+              <div className="relative mb-3">
+                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search user profiles..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 rounded-xl bg-background/50 border-border/80"
+                />
+              </div>
+            )}
+
+            <div className="max-h-48 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 bg-background/30">
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : displayList.length === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  {isAdminOrSuper 
+                    ? (searchQuery.trim() ? "No users found" : "Type to search users") 
+                    : "No friends available to add"}
+                </div>
+              ) : (
+                displayList.map((item) => {
+                  const isChecked = selectedMembers.includes(item.id);
+                  const dispName = item.first_name && item.last_name ? `${item.first_name} ${item.last_name}` : item.username;
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => {
+                        setSelectedMembers(prev =>
+                          isChecked ? prev.filter(uid => uid !== item.id) : [...prev, item.id]
+                        );
+                      }}
+                      className="flex items-center justify-between p-3 hover:bg-secondary/40 cursor-pointer select-none"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Avatar name={dispName} url={item.avatar_url} size={36} />
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{dispName}</p>
+                          <p className="text-[10px] text-muted-foreground">@{item.username}</p>
+                        </div>
+                      </div>
+                      <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
+                        {isChecked && <Check className="h-3 w-3" />}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-3 border-t border-border mt-2">
+          <button
+            onClick={onClose}
+            disabled={creating}
+            className="flex-1 h-11 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={creating || !groupName.trim() || selectedMembers.length === 0}
+            className="flex-1 h-11 bg-primary hover:opacity-90 disabled:opacity-50 text-primary-foreground font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+          >
+            {creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <span>Create Group</span>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
