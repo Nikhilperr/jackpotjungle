@@ -64,7 +64,7 @@ CREATE POLICY "view_groups" ON public.groups FOR SELECT TO authenticated
 
 DROP POLICY IF EXISTS "create_groups" ON public.groups;
 CREATE POLICY "create_groups" ON public.groups FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = created_by);
+  WITH CHECK (true);
 
 DROP POLICY IF EXISTS "update_groups" ON public.groups;
 CREATE POLICY "update_groups" ON public.groups FOR UPDATE TO authenticated
@@ -83,7 +83,11 @@ DROP POLICY IF EXISTS "insert_group_members" ON public.group_members;
 CREATE POLICY "insert_group_members" ON public.group_members FOR INSERT TO authenticated
   WITH CHECK (
     auth.uid() = user_id OR
-    public.is_group_admin(group_id, auth.uid())
+    public.is_group_admin(group_id, auth.uid()) OR
+    EXISTS (
+      SELECT 1 FROM public.groups
+      WHERE id = group_id AND created_by = auth.uid()
+    )
   );
 
 DROP POLICY IF EXISTS "update_group_members" ON public.group_members;
