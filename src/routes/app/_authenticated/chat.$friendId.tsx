@@ -35,6 +35,235 @@ type CallRow = {
   created_at: string;
 };
 
+
+interface GroupAddMembersModalProps {
+  open: boolean;
+  onClose: () => void;
+  groupId: string;
+  meId: string;
+  onMembersAdded: () => void;
+}
+
+export function GroupAddMembersModal({
+  open,
+  onClose,
+  groupId,
+  meId,
+  onMembersAdded
+}: GroupAddMembersModalProps) {
+  const [friendsList, setFriendsList] = useState<any[]>([]);
+  const [potentialMembers, setPotentialMembers] = useState<any[]>([]);
+  const [loadingPotential, setLoadingPotential] = useState(false);
+  const [newMembersSelected, setNewMembersSelected] = useState<string[]>([]);
+  const [potentialSearchQuery, setPotentialSearchQuery] = useState("");
+  const [myUsername, setMyUsername] = useState("Someone");
+
+  useEffect(() => {
+    if (meId) {
+      supabase.from("profiles").select("username").eq("id", meId).single().then(({ data }) => {
+        if (data?.username) setMyUsername(data.username);
+      });
+    }
+  }, [meId]);
+
+  const loadPotential = useCallback(async () => {
+    if (!groupId || !meId) return;
+    setLoadingPotential(true);
+    try {
+      const { data: currentMembers } = await supabase
+        .from("group_members")
+        .select("user_id")
+        .eq("group_id", groupId);
+
+      const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
+
+      const { data: friendships } = await supabase
+        .from("friendships")
+        .select("user_a, user_b");
+      
+      let initialFriends: any[] = [];
+      if (friendships) {
+        const friendIds = friendships
+          .map(f => f.user_a === meId ? f.user_b : f.user_a)
+          .filter(id => !existingUserIds.has(id));
+          
+        if (friendIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, username, first_name, last_name, avatar_url")
+            .in("id", friendIds);
+          initialFriends = profiles ?? [];
+        }
+      }
+      setFriendsList(initialFriends);
+      setPotentialMembers(initialFriends);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingPotential(false);
+    }
+  }, [groupId, meId]);
+
+  useEffect(() => {
+    if (open) {
+      setNewMembersSelected([]);
+      setPotentialSearchQuery("");
+      setPotentialMembers([]);
+      setFriendsList([]);
+      loadPotential();
+    }
+  }, [open, loadPotential]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const trimmed = potentialSearchQuery.trim();
+    if (!trimmed) {
+      setPotentialMembers(friendsList);
+      return;
+    }
+
+    const delay = setTimeout(async () => {
+      setLoadingPotential(true);
+      try {
+        const { data: currentMembers } = await supabase
+          .from("group_members")
+          .select("user_id")
+          .eq("group_id", groupId);
+        const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
+
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, username, first_name, last_name, avatar_url")
+          .neq("id", meId)
+          .or(`username.ilike.%${trimmed}%,first_name.ilike.%${trimmed}%,last_name.ilike.%${trimmed}%`)
+          .limit(30);
+          
+        const filtered = (profiles ?? []).filter(p => !existingUserIds.has(p.id));
+        setPotentialMembers(filtered);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingPotential(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delay);
+  }, [potentialSearchQuery, open, groupId, meId, friendsList]);
+
+  async function handleAddSubmit() {
+    if (!groupId || !meId || newMembersSelected.length === 0) return;
+    try {
+      const inserts = newMembersSelected.map(uid => ({
+        group_id: groupId,
+        user_id: uid,
+        role: "member"
+      }));
+
+      const { error } = await supabase.from("group_members").insert(inserts);
+      if (error) throw error;
+
+      for (const uid of newMembersSelected) {
+        const profile = potentialMembers.find(p => p.id === uid) || friendsList.find(p => p.id === uid);
+        const targetUsername = profile?.username || "Someone";
+        await supabase
+          .from("messages")
+          .insert({
+            sender_id: meId,
+            group_id: groupId,
+            content: `[system:user_added:${targetUsername}:${myUsername}]`
+          } as any);
+      }
+
+      toast.success("Members added to group");
+      onMembersAdded();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add members");
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
+      <DialogContent className="w-full max-w-sm p-6 bg-card border border-border rounded-3xl shadow-2xl flex flex-col gap-4 max-h-[80vh] overflow-y-auto text-foreground [&>button]:hidden">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <h3 className="font-bold text-lg">Add Members</h3>
+          <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="relative">
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search users to add..."
+            value={potentialSearchQuery}
+            onChange={(e) => setPotentialSearchQuery(e.target.value)}
+            className="pl-9 rounded-xl bg-background/50 border-border/80"
+          />
+        </div>
+
+        <div className="max-h-48 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 bg-background/30 animate-in fade-in duration-200">
+          {loadingPotential ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : potentialMembers.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              {potentialSearchQuery.trim() ? "No users found" : "No friends available to add"}
+            </div>
+          ) : (
+            potentialMembers.map((item) => {
+              const isChecked = newMembersSelected.includes(item.id);
+              const dispName = item.first_name && item.last_name ? `${item.first_name} ${item.last_name}` : item.username;
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    setNewMembersSelected(prev =>
+                      isChecked ? prev.filter(uid => uid !== item.id) : [...prev, item.id]
+                    );
+                  }}
+                  className="flex items-center justify-between p-3 hover:bg-secondary/40 cursor-pointer select-none"
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar name={dispName} url={item.avatar_url} size={36} />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{dispName}</p>
+                      <p className="text-[10px] text-muted-foreground">@{item.username}</p>
+                    </div>
+                  </div>
+                  <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
+                    {isChecked && <Check className="h-3 w-3" />}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="flex gap-3 pt-3 border-t border-border mt-2">
+          <button
+            onClick={onClose}
+            className="flex-1 h-11 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleAddSubmit}
+            disabled={newMembersSelected.length === 0}
+            className="flex-1 h-11 bg-primary hover:opacity-90 disabled:opacity-50 text-primary-foreground font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+          >
+            Add
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export const Route = createFileRoute("/app/_authenticated/chat/$friendId")({
   component: ChatView,
 });
@@ -2933,232 +3162,3 @@ export function GroupDetailPanel({
     </div>
   );
 }
-
-interface GroupAddMembersModalProps {
-  open: boolean;
-  onClose: () => void;
-  groupId: string;
-  meId: string;
-  onMembersAdded: () => void;
-}
-
-export function GroupAddMembersModal({
-  open,
-  onClose,
-  groupId,
-  meId,
-  onMembersAdded
-}: GroupAddMembersModalProps) {
-  const [friendsList, setFriendsList] = useState<any[]>([]);
-  const [potentialMembers, setPotentialMembers] = useState<any[]>([]);
-  const [loadingPotential, setLoadingPotential] = useState(false);
-  const [newMembersSelected, setNewMembersSelected] = useState<string[]>([]);
-  const [potentialSearchQuery, setPotentialSearchQuery] = useState("");
-  const [myUsername, setMyUsername] = useState("Someone");
-
-  useEffect(() => {
-    if (meId) {
-      supabase.from("profiles").select("username").eq("id", meId).single().then(({ data }) => {
-        if (data?.username) setMyUsername(data.username);
-      });
-    }
-  }, [meId]);
-
-  const loadPotential = useCallback(async () => {
-    if (!groupId || !meId) return;
-    setLoadingPotential(true);
-    try {
-      const { data: currentMembers } = await supabase
-        .from("group_members")
-        .select("user_id")
-        .eq("group_id", groupId);
-
-      const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
-
-      const { data: friendships } = await supabase
-        .from("friendships")
-        .select("user_a, user_b");
-      
-      let initialFriends: any[] = [];
-      if (friendships) {
-        const friendIds = friendships
-          .map(f => f.user_a === meId ? f.user_b : f.user_a)
-          .filter(id => !existingUserIds.has(id));
-          
-        if (friendIds.length > 0) {
-          const { data: profiles } = await supabase
-            .from("profiles")
-            .select("id, username, first_name, last_name, avatar_url")
-            .in("id", friendIds);
-          initialFriends = profiles ?? [];
-        }
-      }
-      setFriendsList(initialFriends);
-      setPotentialMembers(initialFriends);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingPotential(false);
-    }
-  }, [groupId, meId]);
-
-  useEffect(() => {
-    if (open) {
-      setNewMembersSelected([]);
-      setPotentialSearchQuery("");
-      setPotentialMembers([]);
-      setFriendsList([]);
-      loadPotential();
-    }
-  }, [open, loadPotential]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const trimmed = potentialSearchQuery.trim();
-    if (!trimmed) {
-      setPotentialMembers(friendsList);
-      return;
-    }
-
-    const delay = setTimeout(async () => {
-      setLoadingPotential(true);
-      try {
-        const { data: currentMembers } = await supabase
-          .from("group_members")
-          .select("user_id")
-          .eq("group_id", groupId);
-        const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
-
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url")
-          .neq("id", meId)
-          .or(`username.ilike.%${trimmed}%,first_name.ilike.%${trimmed}%,last_name.ilike.%${trimmed}%`)
-          .limit(30);
-          
-        const filtered = (profiles ?? []).filter(p => !existingUserIds.has(p.id));
-        setPotentialMembers(filtered);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoadingPotential(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(delay);
-  }, [potentialSearchQuery, open, groupId, meId, friendsList]);
-
-  async function handleAddSubmit() {
-    if (!groupId || !meId || newMembersSelected.length === 0) return;
-    try {
-      const inserts = newMembersSelected.map(uid => ({
-        group_id: groupId,
-        user_id: uid,
-        role: "member"
-      }));
-
-      const { error } = await supabase.from("group_members").insert(inserts);
-      if (error) throw error;
-
-      for (const uid of newMembersSelected) {
-        const profile = potentialMembers.find(p => p.id === uid) || friendsList.find(p => p.id === uid);
-        const targetUsername = profile?.username || "Someone";
-        await supabase
-          .from("messages")
-          .insert({
-            sender_id: meId,
-            group_id: groupId,
-            content: `[system:user_added:${targetUsername}:${myUsername}]`
-          } as any);
-      }
-
-      toast.success("Members added to group");
-      onMembersAdded();
-      onClose();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to add members");
-    }
-  }
-
-  if (!open) return null;
-
-  return (
-    <Dialog open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
-      <DialogContent className="w-full max-w-sm p-6 bg-card border border-border rounded-3xl shadow-2xl flex flex-col gap-4 max-h-[80vh] overflow-y-auto text-foreground [&>button]:hidden">
-        <div className="flex items-center justify-between border-b border-border pb-3">
-          <h3 className="font-bold text-lg">Add Members</h3>
-          <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="relative">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search users to add..."
-            value={potentialSearchQuery}
-            onChange={(e) => setPotentialSearchQuery(e.target.value)}
-            className="pl-9 rounded-xl bg-background/50 border-border/80"
-          />
-        </div>
-
-        <div className="max-h-48 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 bg-background/30 animate-in fade-in duration-200">
-          {loadingPotential ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
-          ) : potentialMembers.length === 0 ? (
-            <div className="text-center py-8 text-sm text-muted-foreground">
-              {potentialSearchQuery.trim() ? "No users found" : "No friends available to add"}
-            </div>
-          ) : (
-            potentialMembers.map((item) => {
-              const isChecked = newMembersSelected.includes(item.id);
-              const dispName = item.first_name && item.last_name ? `${item.first_name} ${item.last_name}` : item.username;
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    setNewMembersSelected(prev =>
-                      isChecked ? prev.filter(uid => uid !== item.id) : [...prev, item.id]
-                    );
-                  }}
-                  className="flex items-center justify-between p-3 hover:bg-secondary/40 cursor-pointer select-none"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar name={dispName} url={item.avatar_url} size={36} />
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{dispName}</p>
-                      <p className="text-[10px] text-muted-foreground">@{item.username}</p>
-                    </div>
-                  </div>
-                  <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
-                    {isChecked && <Check className="h-3 w-3" />}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        <div className="flex gap-3 pt-3 border-t border-border mt-2">
-          <button
-            onClick={onClose}
-            className="flex-1 h-11 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors border border-border"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleAddSubmit}
-            disabled={newMembersSelected.length === 0}
-            className="flex-1 h-11 bg-primary hover:opacity-90 disabled:opacity-50 text-primary-foreground font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
-          >
-            Add
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
