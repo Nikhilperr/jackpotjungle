@@ -47,6 +47,17 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   });
 }
 
+function isFrameworkOrAssetPath(pathname: string): boolean {
+  return (
+    pathname.startsWith("/_server") ||
+    pathname.startsWith("/_build") ||
+    pathname.startsWith("/_nitro") ||
+    pathname.startsWith("/_telemetry") ||
+    pathname === "/favicon.ico" ||
+    pathname.includes(".")
+  );
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
@@ -57,7 +68,7 @@ export default {
 
       // Subdomain routing rules
       if (host.startsWith("admin.")) {
-        if (pathname === "/" || (!pathname.startsWith("/app/") && pathname !== "/favicon.ico" && !pathname.startsWith("/_telemetry"))) {
+        if (pathname === "/" || (!pathname.startsWith("/app/") && !isFrameworkOrAssetPath(pathname))) {
           return Response.redirect(`https://admin.playjackpotjungle.com/app/admin${url.search}`, 302);
         }
         if (pathname.startsWith("/app/chat") || pathname.startsWith("/app/friends") || pathname.startsWith("/app/profile") || pathname.startsWith("/app/onboarding")) {
@@ -67,7 +78,7 @@ export default {
           return Response.redirect(`https://playjackpotjungle.com${pathname}${url.search}`, 302);
         }
       } else if (host.startsWith("chat.")) {
-        if (pathname === "/" || (!pathname.startsWith("/app/") && pathname !== "/favicon.ico" && !pathname.startsWith("/_telemetry"))) {
+        if (pathname === "/" || (!pathname.startsWith("/app/") && !isFrameworkOrAssetPath(pathname))) {
           return Response.redirect(`https://chat.playjackpotjungle.com/app/chat${url.search}`, 302);
         }
         if (pathname.startsWith("/app/admin")) {

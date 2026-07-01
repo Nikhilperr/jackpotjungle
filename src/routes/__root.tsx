@@ -74,6 +74,17 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
+function isFrameworkOrAssetPath(pathname: string): boolean {
+  return (
+    pathname.startsWith("/_server") ||
+    pathname.startsWith("/_build") ||
+    pathname.startsWith("/_nitro") ||
+    pathname.startsWith("/_telemetry") ||
+    pathname === "/favicon.ico" ||
+    pathname.includes(".")
+  );
+}
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   beforeLoad: async ({ location }) => {
     if (typeof window === "undefined") return;
@@ -84,7 +95,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     // Subdomain routing rules
     if (host.startsWith("admin.")) {
       // Admin subdomain
-      if (pathname === "/" || (!pathname.startsWith("/app/") && pathname !== "/favicon.ico")) {
+      if (pathname === "/" || (!pathname.startsWith("/app/") && !isFrameworkOrAssetPath(pathname))) {
         throw redirect({ to: "/app/admin", search: location.search });
       }
       if (pathname.startsWith("/app/chat") || pathname.startsWith("/app/friends") || pathname.startsWith("/app/profile") || pathname.startsWith("/app/onboarding")) {
@@ -95,7 +106,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       }
     } else if (host.startsWith("chat.")) {
       // Chat subdomain
-      if (pathname === "/" || (!pathname.startsWith("/app/") && pathname !== "/favicon.ico")) {
+      if (pathname === "/" || (!pathname.startsWith("/app/") && !isFrameworkOrAssetPath(pathname))) {
         throw redirect({ to: "/app/chat", search: location.search });
       }
       if (pathname.startsWith("/app/admin")) {
