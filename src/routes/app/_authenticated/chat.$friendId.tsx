@@ -106,7 +106,7 @@ function ChatView() {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isNearBottomRef = useRef(true);
   const friendDisplayName = friend
-    ? (friend.first_name && friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.username)
+    ? (friend.first_name ? (friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.first_name) : friend.username)
     : "Friend";
 
   const { startCall } = useCalls();
@@ -141,7 +141,7 @@ function ChatView() {
       const virtualFriend = {
         id: friendId,
         username: isRules ? "system_rules" : "system_updates",
-        first_name: isRules ? "All Rules" : "Updates",
+        first_name: isRules ? "Rules" : "Updates",
         last_name: "",
         avatar_url: null,
         online: true,
@@ -1766,7 +1766,7 @@ export function ConversationDetailPanel({
     );
   }
 
-  const displayName = friend.first_name && friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.username;
+  const displayName = friend.first_name ? (friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.first_name) : friend.username;
 
   function handleCopy(text: string, label: string) {
     navigator.clipboard.writeText(text);

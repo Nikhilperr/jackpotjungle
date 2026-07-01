@@ -652,7 +652,7 @@ function ChatLayout() {
 
   const virtualRules = {
     friendId: "system-rules-chat",
-    displayName: "All Rules",
+    displayName: "Rules",
     username: "system_rules",
     avatar_url: null,
     online: true,

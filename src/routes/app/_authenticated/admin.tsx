@@ -278,11 +278,11 @@ function AdminPage() {
         <SideBtn active={tab === "autoresp"} onClick={() => selectTab("autoresp")} icon={Bot} label="Auto-response" />
         <SideBtn active={tab === "referrals"} onClick={() => selectTab("referrals")} icon={Gift} label="Referrals" />
         <SideBtn active={tab === "logs"} onClick={() => selectTab("logs")} icon={Activity} label="Logs" />
-        <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Pinned Chats</p>
-        <SideBtn active={tab === "rules"} onClick={() => selectTab("rules")} icon={BookOpen} label="All Rules" />
-        <SideBtn active={tab === "updates"} onClick={() => selectTab("updates")} icon={Megaphone} label="Updates" />
         {isSuperAdmin && (
           <>
+            <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Pinned Chats</p>
+            <SideBtn active={tab === "rules"} onClick={() => selectTab("rules")} icon={BookOpen} label="Rules" />
+            <SideBtn active={tab === "updates"} onClick={() => selectTab("updates")} icon={Megaphone} label="Updates" />
             <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Super admin</p>
             <SideBtn active={tab === "admins"} onClick={() => selectTab("admins")} icon={UsersIcon} label="Admin team" />
             <SideBtn active={tab === "super"} onClick={() => selectTab("super")} icon={SettingsIcon} label="System settings" />
@@ -340,7 +340,7 @@ function AdminPage() {
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Logs"><LogsView /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "rules" ? "" : "hidden"}`}>
-          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="All Rules"><SystemAnnouncementsAdminView channelType="rules" meId={user.id} /></ScrollWrap>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Rules"><SystemAnnouncementsAdminView channelType="rules" meId={user.id} /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "updates" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Updates"><SystemAnnouncementsAdminView channelType="updates" meId={user.id} /></ScrollWrap>
