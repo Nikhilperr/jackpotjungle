@@ -461,6 +461,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [activeGroupMembers, setActiveGroupMembers] = useState<any[]>([]);
   const [addMembersOpen, setAddMembersOpen] = useState(false);
 
+  const [messages, setMessages] = useState<any[]>([]);
+
+  useEffect(() => {
+    setMessages([]);
+  }, [activeId]);
+
   useEffect(() => {
     if (!activeId || !activeId.startsWith("group-")) {
       setActiveGroup(null);
@@ -1041,6 +1047,8 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             meId={meId} 
             conv={active} 
             convs={convs} 
+            messages={messages}
+            setMessages={setMessages}
             onBack={() => setActiveId(null)} 
             onOpenDetail={() => setDetailOpen(true)} 
             onToggleSpam={() => setConvSpam(active, !active.isSpam)} 
@@ -1204,6 +1212,8 @@ function Conversation({
   meId, 
   conv, 
   convs = [], 
+  messages,
+  setMessages,
   onBack, 
   onOpenDetail, 
   onToggleSpam,
@@ -1212,13 +1222,14 @@ function Conversation({
   meId: string; 
   conv: ConvRow; 
   convs?: ConvRow[]; 
+  messages: any[];
+  setMessages: React.Dispatch<React.SetStateAction<any[]>>;
   onBack: () => void; 
   onOpenDetail: () => void; 
   onToggleSpam: () => void;
   onLastMessageUpdate: (content: string | null, image_url: string | null, audio_url: string | null, created_at: string) => void;
 }) {
   const { startCall } = useCalls();
-  const [messages, setMessages] = useState<PageMsg[]>([]);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const isGroup = conv.isGroup || conv.conversationId.startsWith("group-");
