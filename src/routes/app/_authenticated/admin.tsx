@@ -462,9 +462,11 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [addMembersOpen, setAddMembersOpen] = useState(false);
 
   const [messages, setMessages] = useState<any[]>([]);
+  const [selectedMemberProfile, setSelectedMemberProfile] = useState<{ id: string; username: string; avatar_url: string | null } | null>(null);
 
   useEffect(() => {
     setMessages([]);
+    setSelectedMemberProfile(null);
   }, [activeId]);
 
   useEffect(() => {
@@ -1077,8 +1079,16 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         )}
       </div>
 
-      {active && (
-        active.isGroup ? (
+      {detailOpen && active && (
+        selectedMemberProfile ? (
+          <UserDetailPanel
+            userId={selectedMemberProfile.id}
+            username={selectedMemberProfile.username}
+            avatar={selectedMemberProfile.avatar_url}
+            variant="embedded"
+            onClose={() => setSelectedMemberProfile(null)}
+          />
+        ) : active.isGroup ? (
           <GroupDetailPanel
             group={activeGroup}
             members={activeGroupMembers}
@@ -1091,9 +1101,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             onAddMembers={() => setAddMembersOpen(true)}
             onRemoveMember={handleRemoveMember}
             onPromoteMember={handlePromoteMember}
+            onMemberClick={(userId, username, avatarUrl) => {
+              setSelectedMemberProfile({ id: userId, username, avatar_url: avatarUrl });
+            }}
           />
         ) : (
-          <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} />
+          <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" onClose={() => setDetailOpen(false)} />
         )
       )}
 
@@ -1101,7 +1114,15 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       <Sheet open={detailOpen && !!active} onOpenChange={setDetailOpen}>
         <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden flex flex-col h-full bg-card">
           {active && (
-            active.isGroup ? (
+            selectedMemberProfile ? (
+              <UserDetailPanel
+                userId={selectedMemberProfile.id}
+                username={selectedMemberProfile.username}
+                avatar={selectedMemberProfile.avatar_url}
+                variant="embedded"
+                onClose={() => setSelectedMemberProfile(null)}
+              />
+            ) : active.isGroup ? (
               <div className="flex-1 overflow-y-auto min-h-0">
                 <GroupDetailPanel
                   group={activeGroup}
@@ -1115,6 +1136,9 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   onAddMembers={() => setAddMembersOpen(true)}
                   onRemoveMember={handleRemoveMember}
                   onPromoteMember={handlePromoteMember}
+                  onMemberClick={(userId, username, avatarUrl) => {
+                    setSelectedMemberProfile({ id: userId, username, avatar_url: avatarUrl });
+                  }}
                 />
               </div>
             ) : (
@@ -1809,6 +1833,70 @@ function Conversation({
 
       if (m.content?.startsWith("[system:reaction:")) continue;
 
+      if (m.content?.startsWith("[system:group_created]")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemGroupCreated: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:user_left:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUserLeft: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:group_name_changed:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemGroupNameChanged: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:group_avatar_changed:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemGroupAvatarChanged: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:user_removed:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUserRemoved: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:user_promoted:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUserPromoted: true,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:user_added:")) {
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUserAdded: true,
+        } as any);
+        continue;
+      }
+
       if (m.content?.startsWith("[system:pin:")) {
         visible.push({
           ...m,
@@ -2153,7 +2241,7 @@ function Conversation({
           </button>
           <button
             onClick={onOpenDetail}
-            className="flex-1 min-w-0 flex items-center gap-3 -mx-1 px-1 py-1 rounded-lg lg:cursor-default lg:hover:bg-transparent hover:bg-secondary text-left"
+            className="flex-1 min-w-0 flex items-center gap-3 -mx-1 px-1 py-1 rounded-lg hover:bg-secondary text-left cursor-pointer transition-colors"
             aria-label="Open user details"
           >
             <Avatar name={conv.username} url={conv.avatar_url} size={36} />
@@ -3034,6 +3122,69 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
       pressTimerRef.current = null;
     }
   };
+
+  const senderUsername = m.sender?.username || "Someone";
+  const senderDispName = m.sender 
+    ? (m.sender.first_name && m.sender.last_name ? `${m.sender.first_name} ${m.sender.last_name}` : `@${m.sender.username}`)
+    : (mine ? "You" : "Someone");
+
+  if (m.isSystemGroupCreated) {
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        A group was created by {senderDispName}
+      </div>
+    );
+  }
+  if (m.isSystemUserLeft) {
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        {senderDispName} left the group
+      </div>
+    );
+  }
+  if (m.isSystemGroupNameChanged) {
+    const parts = m.content?.split(":") || [];
+    const newName = parts[2] || "";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        {senderDispName} renamed the group to "{newName}"
+      </div>
+    );
+  }
+  if (m.isSystemGroupAvatarChanged) {
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        {senderDispName} updated the group photo
+      </div>
+    );
+  }
+  if (m.isSystemUserRemoved) {
+    const parts = m.content?.split(":") || [];
+    const targetUser = parts[2] || "";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        {senderDispName} removed @{targetUser} from the group
+      </div>
+    );
+  }
+  if (m.isSystemUserPromoted) {
+    const parts = m.content?.split(":") || [];
+    const targetUser = parts[2] || "";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        {senderDispName} promoted @{targetUser} to admin
+      </div>
+    );
+  }
+  if (m.isSystemUserAdded) {
+    const parts = m.content?.split(":") || [];
+    const targetUser = parts[2] || "";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        {senderDispName} added @{targetUser} to the group
+      </div>
+    );
+  }
 
   if (m.isSystemPin) {
     return (

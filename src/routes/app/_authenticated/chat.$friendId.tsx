@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { createFileRoute, useParams, Link } from "@tanstack/react-router";
+import { createFileRoute, useParams, Link, useNavigate } from "@tanstack/react-router";
 import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -68,6 +68,7 @@ type Profile = {
 function ChatView() {
   const { friendId } = useParams({ from: "/app/_authenticated/chat/$friendId" });
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [meId, setMeId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("jj_me_id");
@@ -1568,7 +1569,16 @@ function ChatView() {
           <Link to="/app/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <div className="flex-1 min-w-0 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (!friendId.startsWith("system-")) {
+                if (isGroup) setShowGroupInfo((v) => !v);
+                else setShowDetail((v) => !v);
+              }
+            }}
+            className="flex-1 min-w-0 flex items-center gap-3 text-left hover:opacity-85 transition-opacity"
+          >
             <div className="relative">
               {friendId === "system-rules-chat" ? (
                 <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-amber-500 to-red-600 flex items-center justify-center text-white shadow-md">
@@ -1603,7 +1613,7 @@ function ChatView() {
                   (friend?.last_seen && !isNaN(new Date(friend.last_seen).getTime())) ? `Active ${formatDistanceToNow(new Date(friend.last_seen), { addSuffix: true })}` : "Offline"}
               </p>
             </div>
-          </div>
+          </button>
           {!friendId.startsWith("system-") && !isGroup && (
             <>
               <button
@@ -2172,6 +2182,9 @@ function ChatView() {
             onAddMembers={handleOpenAddMembers}
             onRemoveMember={handleRemoveMember}
             onPromoteMember={handlePromoteMember}
+            onMemberClick={(userId) => {
+              navigate({ to: `/app/chat/${userId}` });
+            }}
           />
         </aside>
       )}
@@ -2197,6 +2210,9 @@ function ChatView() {
             onAddMembers={handleOpenAddMembers}
             onRemoveMember={handleRemoveMember}
             onPromoteMember={handlePromoteMember}
+            onMemberClick={(userId) => {
+              navigate({ to: `/app/chat/${userId}` });
+            }}
           />
         </SheetContent>
       </Sheet>
@@ -2569,68 +2585,64 @@ const MessageItem = React.memo(function MessageItem({
     }
   };
 
+  const senderDispName = m.sender 
+    ? (m.sender.first_name && m.sender.last_name ? `${m.sender.first_name} ${m.sender.last_name}` : `@${m.sender.username}`)
+    : (mine ? "You" : "Someone");
+
   if ((m as any).isSystemGroupCreated) {
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
-        Group chat created
+        A group was created by {senderDispName}
       </div>
     );
   }
   if ((m as any).isSystemUserLeft) {
-    const parts = m.content?.split(":") || [];
-    const username = parts[2]?.replace("]", "") || "Someone";
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
-        @{username} left the group
+        {senderDispName} left the group
       </div>
     );
   }
   if ((m as any).isSystemGroupNameChanged) {
     const parts = m.content?.split(":") || [];
     const newName = parts[2] || "";
-    const username = parts[3]?.replace("]", "") || "Someone";
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
-        @{username} renamed the group to "{newName}"
+        {senderDispName} renamed the group to "{newName}"
       </div>
     );
   }
   if ((m as any).isSystemGroupAvatarChanged) {
-    const parts = m.content?.split(":") || [];
-    const username = parts[2]?.replace("]", "") || "Someone";
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
-        @{username} updated the group photo
+        {senderDispName} updated the group photo
       </div>
     );
   }
   if ((m as any).isSystemUserRemoved) {
     const parts = m.content?.split(":") || [];
     const targetUser = parts[2] || "";
-    const adminUser = parts[3]?.replace("]", "") || "Someone";
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
-        @{adminUser} removed @{targetUser} from the group
+        {senderDispName} removed @{targetUser} from the group
       </div>
     );
   }
   if ((m as any).isSystemUserPromoted) {
     const parts = m.content?.split(":") || [];
     const targetUser = parts[2] || "";
-    const adminUser = parts[3]?.replace("]", "") || "Someone";
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
-        @{adminUser} promoted @{targetUser} to admin
+        {senderDispName} promoted @{targetUser} to admin
       </div>
     );
   }
   if ((m as any).isSystemUserAdded) {
     const parts = m.content?.split(":") || [];
     const targetUser = parts[2] || "";
-    const adminUser = parts[3]?.replace("]", "") || "Someone";
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
-        @{adminUser} added @{targetUser} to the group
+        {senderDispName} added @{targetUser} to the group
       </div>
     );
   }
@@ -2828,6 +2840,7 @@ export interface GroupDetailPanelProps {
   onAddMembers: () => void;
   onRemoveMember: (id: string, username: string) => void;
   onPromoteMember: (id: string, username: string) => void;
+  onMemberClick?: (id: string, username: string, avatarUrl: string | null) => void;
 }
 
 export function GroupDetailPanel({
@@ -2841,11 +2854,13 @@ export function GroupDetailPanel({
   onUpdateAvatar,
   onAddMembers,
   onRemoveMember,
-  onPromoteMember
+  onPromoteMember,
+  onMemberClick
 }: GroupDetailPanelProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [nameInput, setNameInput] = useState(group?.name || "");
   const [avatarInput, setAvatarInput] = useState(group?.avatar_url || "");
+  const [activeMemberMenu, setActiveMemberMenu] = useState<string | null>(null);
   const { role } = useRole();
 
   const myMemberInfo = members.find(m => m.profiles?.id === meId);
@@ -2975,16 +2990,20 @@ export function GroupDetailPanel({
               
               return (
                 <div key={p.id} className="flex items-center justify-between py-2.5 first:pt-0">
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => onMemberClick?.(p.id, p.username, p.avatar_url)}
+                    className="flex items-center gap-2.5 min-w-0 text-left hover:opacity-85 transition-opacity cursor-pointer flex-1"
+                  >
                     <Avatar name={dispName} url={p.avatar_url} size={32} />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                         <span className="truncate">{dispName}</span>
                         {isSelf && <span className="text-[9px] bg-secondary px-1.5 py-0.5 rounded-full font-normal text-muted-foreground">You</span>}
                       </p>
                       <p className="text-[10px] text-muted-foreground truncate">@{p.username}</p>
                     </div>
-                  </div>
+                  </button>
 
                   <div className="flex items-center gap-2 shrink-0">
                     {isAdmin ? (
@@ -2994,28 +3013,47 @@ export function GroupDetailPanel({
                     )}
 
                     {isGroupAdmin && !isSelf && (
-                      <div className="relative group/opt">
-                        <button className="h-6 w-6 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground">
+                      <div className="relative">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveMemberMenu(prev => prev === p.id ? null : p.id);
+                          }}
+                          className="h-6 w-6 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground"
+                        >
                           <MoreHorizontal className="h-3.5 w-3.5" />
                         </button>
-                        <div className="absolute right-0 top-full mt-1 bg-background border border-border shadow-lg rounded-xl py-1 hidden group-hover/opt:block min-w-[120px] z-50 overflow-hidden">
-                          {!isAdmin && (
-                            <button
-                              onClick={() => onPromoteMember(p.id, p.username)}
-                              className="w-full px-3 py-1.5 text-left text-[10px] font-semibold text-foreground hover:bg-secondary flex items-center gap-1.5"
-                            >
-                              <ShieldAlert className="h-3 w-3 text-primary" />
-                              <span>Make Admin</span>
-                            </button>
-                          )}
-                          <button
-                            onClick={() => onRemoveMember(p.id, p.username)}
-                            className="w-full px-3 py-1.5 text-left text-[10px] font-semibold text-destructive hover:bg-secondary flex items-center gap-1.5 border-t border-border/20"
-                          >
-                            <UserMinus className="h-3 w-3 text-destructive" />
-                            <span>Remove</span>
-                          </button>
-                        </div>
+                        {activeMemberMenu === p.id && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setActiveMemberMenu(null)} />
+                            <div className="absolute right-0 top-full mt-1 bg-background border border-border shadow-lg rounded-xl py-1 min-w-[120px] z-50 overflow-hidden animate-in zoom-in-95 duration-100">
+                              {!isAdmin && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onPromoteMember(p.id, p.username);
+                                    setActiveMemberMenu(null);
+                                  }}
+                                  className="w-full px-3 py-1.5 text-left text-[10px] font-semibold text-foreground hover:bg-secondary flex items-center gap-1.5"
+                                >
+                                  <ShieldAlert className="h-3 w-3 text-primary" />
+                                  <span>Make Admin</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onRemoveMember(p.id, p.username);
+                                  setActiveMemberMenu(null);
+                                }}
+                                className="w-full px-3 py-1.5 text-left text-[10px] font-semibold text-destructive hover:bg-secondary flex items-center gap-1.5 border-t border-border/20"
+                              >
+                                <UserMinus className="h-3 w-3 text-destructive" />
+                                <span>Remove</span>
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3029,13 +3067,40 @@ export function GroupDetailPanel({
       {/* Footer */}
       <div className="p-4 border-t border-border shrink-0 bg-secondary/5">
         <button
-          onClick={onLeave}
+          onClick={() => setShowLeaveConfirm(true)}
           className="w-full py-2.5 bg-destructive/10 hover:bg-destructive/15 text-destructive border border-destructive/20 font-semibold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm"
         >
           <LogOut className="h-4 w-4" />
           <span>Leave Group</span>
         </button>
       </div>
+
+      {/* Leave Group Confirmation Modal */}
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
+            <h3 className="font-bold text-lg text-foreground">Leave Group?</h3>
+            <p className="text-sm text-muted-foreground">Are you sure you want to leave this group chat? You will no longer receive or send messages here.</p>
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                onClick={() => setShowLeaveConfirm(false)}
+                className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-xs transition-colors"
+              >
+                No, Stay
+              </button>
+              <button
+                onClick={() => {
+                  setShowLeaveConfirm(false);
+                  onLeave();
+                }}
+                className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-semibold rounded-xl text-xs transition-colors"
+              >
+                Yes, Leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
