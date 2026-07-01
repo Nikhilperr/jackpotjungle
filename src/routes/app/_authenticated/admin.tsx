@@ -197,10 +197,14 @@ function AdminPage() {
   useEffect(() => {
     if (isSuperAdmin) {
       import("@/lib/admin-super.functions").then(({ runDatabaseMigration }) => {
-        runDatabaseMigration().then((r) => {
-          console.log("[Migration AutoRun Result]:", r);
+        runDatabaseMigration().then((r: any) => {
+          if (r && !r.success) {
+            console.warn("[Migration AutoRun Warning]:", r.error);
+          } else {
+            console.log("[Migration AutoRun Result]:", r);
+          }
         }).catch((e) => {
-          console.error("[Migration AutoRun Error]:", e.message);
+          console.error("[Migration AutoRun Error]:", e.message || e);
         });
       });
     }

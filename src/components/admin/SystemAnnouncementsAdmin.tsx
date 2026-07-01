@@ -141,17 +141,21 @@ export function SystemAnnouncementsAdminView({ channelType, meId }: { channelTyp
     if (!content.trim() && !imageUrl) return;
     setBusy(true);
     try {
-      await publishFn({
+      const res = await publishFn({
         data: {
           channelType,
           content: content.trim(),
           imageUrl
         }
-      });
-      toast.success("Announcement published successfully!");
-      setContent("");
-      setImageUrl(null);
-      loadHistory();
+      }) as any;
+      if (res && !res.success) {
+        toast.error(res.error || "Failed to publish announcement");
+      } else {
+        toast.success("Announcement published successfully!");
+        setContent("");
+        setImageUrl(null);
+        loadHistory();
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to publish announcement");
     } finally {
@@ -169,9 +173,13 @@ export function SystemAnnouncementsAdminView({ channelType, meId }: { channelTyp
     if (!ok) return;
 
     try {
-      await deleteFn({ data: { id } });
-      toast.success("Announcement deleted successfully");
-      loadHistory();
+      const res = await deleteFn({ data: { id } }) as any;
+      if (res && !res.success) {
+        toast.error(res.error || "Failed to delete announcement");
+      } else {
+        toast.success("Announcement deleted successfully");
+        loadHistory();
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to delete announcement");
     }

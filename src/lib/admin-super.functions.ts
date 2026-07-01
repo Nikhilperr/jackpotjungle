@@ -169,105 +169,109 @@ export const sendBroadcast = createServerFn({ method: "POST" })
 export const runDatabaseMigration = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    // Verify user role
-    const { data: roleRows, error: rolesErr } = await context.supabase
-      .from("user_roles").select("role").eq("user_id", context.userId);
-    if (rolesErr) throw new Error(rolesErr.message);
-    const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin");
-    if (!isSuperAdmin) throw new Error("Super admins only");
+    try {
+      // Verify user role
+      const { data: roleRows, error: rolesErr } = await context.supabase
+        .from("user_roles").select("role").eq("user_id", context.userId);
+      if (rolesErr) return { success: false, error: rolesErr.message };
+      const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin");
+      if (!isSuperAdmin) return { success: false, error: "Super admins only" };
 
-    const sql = `
-      CREATE TABLE IF NOT EXISTS public.system_announcements (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        channel_type TEXT NOT NULL CHECK (channel_type IN ('rules', 'updates')),
-        sender_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-        content TEXT,
-        image_url TEXT,
-        audio_url TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      );
+      const sql = `
+        CREATE TABLE IF NOT EXISTS public.system_announcements (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          channel_type TEXT NOT NULL CHECK (channel_type IN ('rules', 'updates')),
+          sender_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+          content TEXT,
+          image_url TEXT,
+          audio_url TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
 
-      ALTER TABLE public.system_announcements ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE public.system_announcements ENABLE ROW LEVEL SECURITY;
 
-      DROP POLICY IF EXISTS "authenticated_select_announcements" ON public.system_announcements;
-      CREATE POLICY "authenticated_select_announcements" 
-      ON public.system_announcements FOR SELECT TO authenticated USING (true);
+        DROP POLICY IF EXISTS "authenticated_select_announcements" ON public.system_announcements;
+        CREATE POLICY "authenticated_select_announcements" 
+        ON public.system_announcements FOR SELECT TO authenticated USING (true);
 
-      DROP POLICY IF EXISTS "admin_manage_announcements" ON public.system_announcements;
-      CREATE POLICY "admin_manage_announcements" 
-      ON public.system_announcements FOR ALL TO authenticated 
-      USING (public.has_role(auth.uid(), 'admin'::app_role) OR public.has_role(auth.uid(), 'super_admin'::app_role))
-      WITH CHECK (public.has_role(auth.uid(), 'admin'::app_role) OR public.has_role(auth.uid(), 'super_admin'::app_role));
+        DROP POLICY IF EXISTS "admin_manage_announcements" ON public.system_announcements;
+        CREATE POLICY "admin_manage_announcements" 
+        ON public.system_announcements FOR ALL TO authenticated 
+        USING (public.has_role(auth.uid(), 'admin'::app_role) OR public.has_role(auth.uid(), 'super_admin'::app_role))
+        WITH CHECK (public.has_role(auth.uid(), 'admin'::app_role) OR public.has_role(auth.uid(), 'super_admin'::app_role));
 
-      GRANT SELECT, INSERT, UPDATE, DELETE ON public.system_announcements TO authenticated;
-      GRANT ALL ON public.system_announcements TO service_role;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON public.system_announcements TO authenticated;
+        GRANT ALL ON public.system_announcements TO service_role;
 
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_publication_tables 
-          WHERE pubname = 'supabase_realtime' AND tablename = 'system_announcements'
-        ) THEN
-          ALTER PUBLICATION supabase_realtime ADD TABLE public.system_announcements;
-        END IF;
-      END $$;
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_publication_tables 
+            WHERE pubname = 'supabase_realtime' AND tablename = 'system_announcements'
+          ) THEN
+            ALTER PUBLICATION supabase_realtime ADD TABLE public.system_announcements;
+          END IF;
+        END $$;
 
-      ALTER TABLE public.system_announcements REPLICA IDENTITY FULL;
-    `;
+        ALTER TABLE public.system_announcements REPLICA IDENTITY FULL;
+      `;
 
-    const pg = (await import("pg")).default;
-    
-    // Try process.env.DATABASE_URL first
-    if (process.env.DATABASE_URL) {
-      console.log("[Migration] Found DATABASE_URL, attempting connection...");
-      const client = new pg.Client({
-        connectionString: process.env.DATABASE_URL,
-        ssl: process.env.DATABASE_URL.includes("supabase.co") || process.env.DATABASE_URL.includes("chancerealm.casino")
-          ? { rejectUnauthorized: false }
-          : undefined
-      });
-      try {
-        await client.connect();
-        console.log("[Migration] Connected using DATABASE_URL! Executing SQL...");
-        await client.query(sql);
-        await client.end();
-        console.log("[Migration] SQL executed successfully using DATABASE_URL!");
-        return { success: true, message: "Executed successfully using DATABASE_URL" };
-      } catch (e: any) {
-        console.warn("[Migration] Connection using DATABASE_URL failed:", e.message);
-        try { await client.end(); } catch {}
-      }
-    }
-
-    const dbPassword = "grootMahakal7X";
-    const host = "db.chancerealm.casino";
-    const dbName = "postgres";
-    const username = "postgres";
-
-    const hosts = ["localhost", "127.0.0.1", "db.chancerealm.casino", "db"];
-    const ports = [5432, 6543];
-
-    for (const h of hosts) {
-      for (const p of ports) {
-        console.log(`[Migration] Trying connection to ${h}:${p}...`);
+      const pg = (await import("pg")).default;
+      
+      // Try process.env.DATABASE_URL first
+      if (process.env.DATABASE_URL) {
+        console.log("[Migration] Found DATABASE_URL, attempting connection...");
         const client = new pg.Client({
-          connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
-          ssl: h === "db.chancerealm.casino" ? { rejectUnauthorized: false } : undefined
+          connectionString: process.env.DATABASE_URL,
+          ssl: process.env.DATABASE_URL.includes("supabase.co") || process.env.DATABASE_URL.includes("chancerealm.casino")
+            ? { rejectUnauthorized: false }
+            : undefined
         });
         try {
           await client.connect();
-          console.log(`[Migration] Connected to ${h}:${p}! Executing SQL...`);
+          console.log("[Migration] Connected using DATABASE_URL! Executing SQL...");
           await client.query(sql);
           await client.end();
-          console.log(`[Migration] SQL executed successfully on ${h}:${p}!`);
-          return { success: true, message: `Executed successfully on ${h}:${p}` };
+          console.log("[Migration] SQL executed successfully using DATABASE_URL!");
+          return { success: true, message: "Executed successfully using DATABASE_URL" };
         } catch (e: any) {
-          console.warn(`[Migration] Failed on ${h}:${p}:`, e.message);
+          console.warn("[Migration] Connection using DATABASE_URL failed:", e.message);
           try { await client.end(); } catch {}
         }
       }
+
+      const dbPassword = "grootMahakal7X";
+      const host = "db.chancerealm.casino";
+      const dbName = "postgres";
+      const username = "postgres";
+
+      const hosts = ["localhost", "127.0.0.1", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
+      const ports = [5432, 6543];
+
+      for (const h of hosts) {
+        for (const p of ports) {
+          console.log(`[Migration] Trying connection to ${h}:${p}...`);
+          const client = new pg.Client({
+            connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
+            ssl: h === "db.chancerealm.casino" || h === "db.gsnhqzsgptqxtlhggzkz.supabase.co" ? { rejectUnauthorized: false } : undefined
+          });
+          try {
+            await client.connect();
+            console.log(`[Migration] Connected to ${h}:${p}! Executing SQL...`);
+            await client.query(sql);
+            await client.end();
+            console.log(`[Migration] SQL executed successfully on ${h}:${p}!`);
+            return { success: true, message: `Executed successfully on ${h}:${p}` };
+          } catch (e: any) {
+            console.warn(`[Migration] Failed on ${h}:${p}:`, e.message);
+            try { await client.end(); } catch {}
+          }
+        }
+      }
+      return { success: false, error: "Could not connect to database on any host/port configuration" };
+    } catch (e: any) {
+      return { success: false, error: e.message };
     }
-    throw new Error("Could not connect to database on any host/port configuration");
   });
 
 export const publishSystemAnnouncement = createServerFn({ method: "POST" })
@@ -277,63 +281,75 @@ export const publishSystemAnnouncement = createServerFn({ method: "POST" })
     return d;
   })
   .handler(async ({ data, context }) => {
-    const { data: roleRows, error: rolesErr } = await context.supabase
-      .from("user_roles").select("role").eq("user_id", context.userId);
-    if (rolesErr) throw new Error(rolesErr.message);
-    const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
-    if (!isAdmin) throw new Error("Admins only");
-
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: insRow, error } = await supabaseAdmin
-      .from("system_announcements")
-      .insert({
-        channel_type: data.channelType,
-        sender_id: context.userId,
-        content: data.content,
-        image_url: data.imageUrl ?? null,
-        audio_url: data.audioUrl ?? null,
-      })
-      .select("*")
-      .single();
-
-    if (error) throw new Error(error.message);
-
-    // Trigger FCM push notification to all users
     try {
-      const { sendPushNotification } = await import("@/lib/fcm.server");
-      const { data: tokenRows } = await supabaseAdmin.from("push_tokens").select("token");
-      const tokens = (tokenRows ?? []).map((t: any) => t.token);
-      if (tokens.length > 0) {
-        const title = data.channelType === "rules" ? "Jackpot Jungle Rules Update" : "Jackpot Jungle Announcement";
-        const body = data.content ? (data.content.length > 80 ? data.content.substring(0, 80) + "..." : data.content) : "New media published";
-        await sendPushNotification(tokens, title, body, {
-          type: "announcement",
-          channelType: data.channelType,
-        });
-      }
-    } catch (pushErr: any) {
-      console.error("[FCM Announcement Push Error]:", pushErr.message);
-    }
+      const { data: roleRows, error: rolesErr } = await context.supabase
+        .from("user_roles").select("role").eq("user_id", context.userId);
+      if (rolesErr) return { success: false, error: rolesErr.message };
+      const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
+      if (!isAdmin) return { success: false, error: "Admins only" };
 
-    return insRow;
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: insRow, error } = await supabaseAdmin
+        .from("system_announcements")
+        .insert({
+          channel_type: data.channelType,
+          sender_id: context.userId,
+          content: data.content,
+          image_url: data.imageUrl ?? null,
+          audio_url: data.audioUrl ?? null,
+        })
+        .select("*")
+        .single();
+
+      if (error) {
+        console.error("[publishSystemAnnouncement Error]:", error);
+        return { success: false, error: error.message };
+      }
+
+      // Trigger FCM push notification to all users
+      try {
+        const { sendPushNotification } = await import("@/lib/fcm.server");
+        const { data: tokenRows } = await supabaseAdmin.from("push_tokens").select("token");
+        const tokens = (tokenRows ?? []).map((t: any) => t.token);
+        if (tokens.length > 0) {
+          const title = data.channelType === "rules" ? "Jackpot Jungle Rules Update" : "Jackpot Jungle Announcement";
+          const body = data.content ? (data.content.length > 80 ? data.content.substring(0, 80) + "..." : data.content) : "New media published";
+          await sendPushNotification(tokens, title, body, {
+            type: "announcement",
+            channelType: data.channelType,
+          });
+        }
+      } catch (pushErr: any) {
+        console.error("[FCM Announcement Push Error]:", pushErr.message);
+      }
+
+      return { success: true, data: insRow };
+    } catch (e: any) {
+      console.error("[publishSystemAnnouncement Catch Error]:", e);
+      return { success: false, error: e.message };
+    }
   });
 
 export const deleteSystemAnnouncement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { id: string }) => d)
   .handler(async ({ data, context }) => {
-    const { data: roleRows, error: rolesErr } = await context.supabase
-      .from("user_roles").select("role").eq("user_id", context.userId);
-    if (rolesErr) throw new Error(rolesErr.message);
-    const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
-    if (!isAdmin) throw new Error("Admins only");
+    try {
+      const { data: roleRows, error: rolesErr } = await context.supabase
+        .from("user_roles").select("role").eq("user_id", context.userId);
+      if (rolesErr) return { success: false, error: rolesErr.message };
+      const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
+      if (!isAdmin) return { success: false, error: "Admins only" };
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin
-      .from("system_announcements")
-      .delete()
-      .eq("id", data.id);
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { error } = await supabaseAdmin
+        .from("system_announcements")
+        .delete()
+        .eq("id", data.id);
 
-    if (error) throw new Error(error.message);
-    return { ok: true };
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   });
