@@ -337,12 +337,12 @@ function ChatView() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isNearBottomRef = useRef(true);
+  const isGroup = friendId.startsWith("group-");
+  const groupId = isGroup ? friendId.substring(6) : null;
+
   const friendDisplayName = friend
     ? (friend.first_name ? (friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.first_name) : friend.username)
     : (isGroup ? (group?.name || "Group") : "Friend");
-
-  const isGroup = friendId.startsWith("group-");
-  const groupId = isGroup ? friendId.substring(6) : null;
   const [group, setGroup] = useState<any>(null);
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
