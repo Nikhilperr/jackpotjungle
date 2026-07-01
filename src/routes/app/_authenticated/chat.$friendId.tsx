@@ -2191,13 +2191,13 @@ function ChatView() {
 
       {/* Mobile/Tablet Detail Sheet */}
       <Sheet open={showDetail && !isGroup && isMobile} onOpenChange={setShowDetail}>
-        <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden bg-card border-l border-border text-foreground">
+        <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden bg-card border-l border-border text-foreground">
           <ConversationDetailPanel friend={friend} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
         </SheetContent>
       </Sheet>
 
       <Sheet open={showGroupInfo && isGroup && isMobile} onOpenChange={setShowGroupInfo}>
-        <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden bg-card border-l border-border text-foreground">
+        <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden bg-card border-l border-border text-foreground">
           <GroupDetailPanel 
             group={group} 
             members={groupMembers} 
@@ -3065,10 +3065,10 @@ export function GroupDetailPanel({
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-border shrink-0 bg-secondary/5">
+      <div className="p-4 border-t border-border shrink-0 bg-background/50 backdrop-blur-md">
         <button
           onClick={() => setShowLeaveConfirm(true)}
-          className="w-full py-2.5 bg-destructive/10 hover:bg-destructive/15 text-destructive border border-destructive/20 font-semibold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm"
+          className="w-full py-2.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg transform active:scale-[0.98] duration-150 border border-red-500/20"
         >
           <LogOut className="h-4 w-4" />
           <span>Leave Group</span>

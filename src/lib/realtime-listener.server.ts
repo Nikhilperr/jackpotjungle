@@ -15,65 +15,167 @@ export async function initRealtimeListeners() {
           const m = payload.new as {
             id: string;
             sender_id: string;
-            receiver_id: string;
+            receiver_id: string | null;
+            group_id: string | null;
             content: string | null;
             image_url: string | null;
             audio_url: string | null;
           };
 
-          if (!m.receiver_id || !m.sender_id) return;
-
-          // Prevent sending a notification to yourself
-          if (m.sender_id === m.receiver_id) {
-            console.log("[Realtime Listener] Sender and receiver are the same. Skipping notification.");
-            return;
-          }
+          if (!m.sender_id) return;
 
           console.log(`[Realtime Listener] New message insert detected. ID: ${m.id}`);
 
           try {
-            // Check if recipient has notifications enabled
-            const { data: receiverProfile } = await supabaseAdmin
-              .from("profiles")
-              .select("notif_enabled" as any)
-              .eq("id", m.receiver_id)
-              .maybeSingle();
-
-            const enabled = (receiverProfile as any)?.notif_enabled ?? true;
-            if (!enabled) {
-              console.log(`[Realtime Listener] Recipient ${m.receiver_id} has disabled notifications. Skipping.`);
-              return;
-            }
-
-            // Fetch sender username
+            // Fetch sender username & details
             const { data: senderProfile } = await supabaseAdmin
               .from("profiles")
-              .select("username")
+              .select("username, first_name, last_name")
               .eq("id", m.sender_id)
               .maybeSingle();
 
-            const senderName = senderProfile?.username || "New message";
+            const senderDispName = senderProfile
+              ? (senderProfile.first_name && senderProfile.last_name
+                  ? `${senderProfile.first_name} ${senderProfile.last_name}`
+                  : `@${senderProfile.username}`)
+              : "Someone";
 
-            // Fetch recipient push tokens
-            const { data: tokensRows } = await supabaseAdmin
-              .from("push_tokens" as any)
-              .select("token")
-              .eq("user_id", m.receiver_id);
+            // Parse body text if it's a system message
+            let bodyText = m.content || (m.image_url ? "📷 Sent a photo" : "🎤 Sent a voice message");
+            let isSystem = false;
 
-            const tokens = (tokensRows ?? []).map((r: any) => r.token);
-
-            if (tokens.length === 0) {
-              console.log(`[Realtime Listener] No push tokens found for recipient ${m.receiver_id}.`);
-              return;
+            if (bodyText.startsWith("[system:")) {
+              isSystem = true;
+              if (bodyText.startsWith("[system:group_created]")) {
+                bodyText = `A group was created by ${senderDispName}`;
+              } else if (bodyText.startsWith("[system:user_left:")) {
+                const parts = bodyText.split(":");
+                const leftUser = parts[2]?.replace("]", "") || senderDispName;
+                bodyText = `${leftUser} left the group`;
+              } else if (bodyText.startsWith("[system:group_name_changed:")) {
+                const parts = bodyText.split(":");
+                const newName = parts[2] || "";
+                bodyText = `${senderDispName} renamed the group to "${newName}"`;
+              } else if (bodyText.startsWith("[system:group_avatar_changed]")) {
+                bodyText = `${senderDispName} updated the group photo`;
+              } else if (bodyText.startsWith("[system:user_removed:")) {
+                const parts = bodyText.split(":");
+                const target = parts[2] || "someone";
+                bodyText = `${senderDispName} removed @${target} from the group`;
+              } else if (bodyText.startsWith("[system:user_promoted:")) {
+                const parts = bodyText.split(":");
+                const target = parts[2] || "someone";
+                bodyText = `${senderDispName} promoted @${target} to admin`;
+              } else if (bodyText.startsWith("[system:user_added:")) {
+                const parts = bodyText.split(":");
+                const target = parts[2] || "someone";
+                bodyText = `${senderDispName} added @${target} to the group`;
+              } else if (bodyText.startsWith("[system:pin:")) {
+                bodyText = `${senderDispName} pinned a message`;
+              } else if (bodyText.startsWith("[system:unpin:")) {
+                bodyText = `${senderDispName} unpinned a message`;
+              } else {
+                bodyText = "System message";
+              }
             }
 
-            const bodyText = m.content || (m.image_url ? "📷 Sent a photo" : "🎤 Sent a voice message");
+            if (m.group_id) {
+              // 1. GROUP MESSAGE NOTIFICATION
+              const { data: group } = await supabaseAdmin
+                .from("groups")
+                .select("name")
+                .eq("id", m.group_id)
+                .maybeSingle();
 
-            await sendPushNotification(tokens, senderName, bodyText, {
-              type: "chat",
-              sender_id: m.sender_id,
-              url: `/chat/${m.sender_id}`,
-            });
+              const groupName = group?.name || "Group Chat";
+
+              // Fetch other group members
+              const { data: members } = await supabaseAdmin
+                .from("group_members")
+                .select("user_id")
+                .eq("group_id", m.group_id)
+                .neq("user_id", m.sender_id);
+
+              const recipientIds = (members ?? []).map((row: any) => row.user_id);
+              if (recipientIds.length === 0) return;
+
+              // Check notification settings for group members
+              const { data: recipientProfiles } = await supabaseAdmin
+                .from("profiles")
+                .select("id, notif_enabled")
+                .in("id", recipientIds);
+
+              const activeRecipientIds = (recipientProfiles ?? [])
+                .filter((p: any) => p.notif_enabled ?? true)
+                .map((p: any) => p.id);
+
+              if (activeRecipientIds.length === 0) {
+                console.log(`[Realtime Listener] No recipients have notifications enabled for group ${m.group_id}.`);
+                return;
+              }
+
+              // Fetch tokens
+              const { data: tokensRows } = await supabaseAdmin
+                .from("push_tokens" as any)
+                .select("token")
+                .in("user_id", activeRecipientIds);
+
+              const tokens = (tokensRows ?? []).map((r: any) => r.token);
+              if (tokens.length === 0) {
+                console.log(`[Realtime Listener] No push tokens found for group recipients.`);
+                return;
+              }
+
+              const notificationTitle = groupName;
+              const notificationBody = isSystem ? bodyText : `${senderDispName}: ${bodyText}`;
+
+              await sendPushNotification(tokens, notificationTitle, notificationBody, {
+                type: "group_chat",
+                group_id: m.group_id,
+                url: `/chat/${m.group_id}`,
+              });
+
+            } else if (m.receiver_id) {
+              // 2. DIRECT MESSAGE NOTIFICATION
+              if (m.sender_id === m.receiver_id) {
+                console.log("[Realtime Listener] Sender and receiver are the same. Skipping notification.");
+                return;
+              }
+
+              // Check if recipient has notifications enabled
+              const { data: receiverProfile } = await supabaseAdmin
+                .from("profiles")
+                .select("notif_enabled" as any)
+                .eq("id", m.receiver_id)
+                .maybeSingle();
+
+              const enabled = (receiverProfile as any)?.notif_enabled ?? true;
+              if (!enabled) {
+                console.log(`[Realtime Listener] Recipient ${m.receiver_id} has disabled notifications. Skipping.`);
+                return;
+              }
+
+              // Fetch recipient push tokens
+              const { data: tokensRows } = await supabaseAdmin
+                .from("push_tokens" as any)
+                .select("token")
+                .eq("user_id", m.receiver_id);
+
+              const tokens = (tokensRows ?? []).map((r: any) => r.token);
+
+              if (tokens.length === 0) {
+                console.log(`[Realtime Listener] No push tokens found for recipient ${m.receiver_id}.`);
+                return;
+              }
+
+              const senderName = senderProfile?.username || "New message";
+
+              await sendPushNotification(tokens, senderName, bodyText, {
+                type: "chat",
+                sender_id: m.sender_id,
+                url: `/chat/${m.sender_id}`,
+              });
+            }
           } catch (err) {
             console.error("[Realtime Listener] Error processing message push:", err);
           }

@@ -463,6 +463,14 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 
   const [messages, setMessages] = useState<any[]>([]);
   const [selectedMemberProfile, setSelectedMemberProfile] = useState<{ id: string; username: string; avatar_url: string | null } | null>(null);
+  const [myUsername, setMyUsername] = useState("Admin");
+
+  useEffect(() => {
+    if (!meId) return;
+    supabase.from("profiles").select("username").eq("id", meId).single().then(({ data }) => {
+      if (data?.username) setMyUsername(data.username);
+    });
+  }, [meId]);
 
   useEffect(() => {
     setMessages([]);
@@ -494,7 +502,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     await supabase.from("messages").insert({
       group_id: activeGroup.id,
       sender_id: meId,
-      content: `[system:user_left]`
+      content: `[system:user_left:${myUsername}]`
     } as any);
     toast.success("You left the group");
     setActiveId(null);
@@ -508,7 +516,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     await supabase.from("messages").insert({
       group_id: activeGroup.id,
       sender_id: meId,
-      content: `[system:group_name_changed:${newName}]`
+      content: `[system:group_name_changed:${newName}:${myUsername}]`
     } as any);
     setActiveGroup(prev => prev ? { ...prev, name: newName } : null);
     setGroupRows(prev => prev.map(c => c.conversationId === `group-${activeGroup.id}` ? { ...c, username: newName } : c));
@@ -521,7 +529,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     await supabase.from("messages").insert({
       group_id: activeGroup.id,
       sender_id: meId,
-      content: `[system:group_avatar_changed]`
+      content: `[system:group_avatar_changed:${myUsername}]`
     } as any);
     setActiveGroup(prev => prev ? { ...prev, avatar_url: newUrl } : null);
     setGroupRows(prev => prev.map(c => c.conversationId === `group-${activeGroup.id}` ? { ...c, avatar_url: newUrl } : c));
@@ -534,7 +542,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     await supabase.from("messages").insert({
       group_id: activeGroup.id,
       sender_id: meId,
-      content: `[system:user_removed:${username}]`
+      content: `[system:user_removed:${username}:${myUsername}]`
     } as any);
     setActiveGroupMembers(prev => prev.filter(m => m.user_id !== userId));
   }
@@ -546,7 +554,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     await supabase.from("messages").insert({
       group_id: activeGroup.id,
       sender_id: meId,
-      content: `[system:user_promoted:${username}]`
+      content: `[system:user_promoted:${username}:${myUsername}]`
     } as any);
     setActiveGroupMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role: "admin" } : m));
   }
@@ -1080,39 +1088,41 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       </div>
 
       {detailOpen && active && (
-        selectedMemberProfile ? (
-          <UserDetailPanel
-            userId={selectedMemberProfile.id}
-            username={selectedMemberProfile.username}
-            avatar={selectedMemberProfile.avatar_url}
-            variant="embedded"
-            onClose={() => setSelectedMemberProfile(null)}
-          />
-        ) : active.isGroup ? (
-          <GroupDetailPanel
-            group={activeGroup}
-            members={activeGroupMembers}
-            messages={messages}
-            meId={meId}
-            onClose={() => setDetailOpen(false)}
-            onLeave={handleLeaveGroup}
-            onUpdateName={handleUpdateGroupName}
-            onUpdateAvatar={handleUpdateGroupAvatar}
-            onAddMembers={() => setAddMembersOpen(true)}
-            onRemoveMember={handleRemoveMember}
-            onPromoteMember={handlePromoteMember}
-            onMemberClick={(userId, username, avatarUrl) => {
-              setSelectedMemberProfile({ id: userId, username, avatar_url: avatarUrl });
-            }}
-          />
-        ) : (
-          <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" onClose={() => setDetailOpen(false)} />
-        )
+        <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto shrink-0 animate-in slide-in-from-right duration-200">
+          {selectedMemberProfile ? (
+            <UserDetailPanel
+              userId={selectedMemberProfile.id}
+              username={selectedMemberProfile.username}
+              avatar={selectedMemberProfile.avatar_url}
+              variant="embedded"
+              onClose={() => setSelectedMemberProfile(null)}
+            />
+          ) : active.isGroup ? (
+            <GroupDetailPanel
+              group={activeGroup}
+              members={activeGroupMembers}
+              messages={messages}
+              meId={meId}
+              onClose={() => setDetailOpen(false)}
+              onLeave={handleLeaveGroup}
+              onUpdateName={handleUpdateGroupName}
+              onUpdateAvatar={handleUpdateGroupAvatar}
+              onAddMembers={() => setAddMembersOpen(true)}
+              onRemoveMember={handleRemoveMember}
+              onPromoteMember={handlePromoteMember}
+              onMemberClick={(userId, username, avatarUrl) => {
+                setSelectedMemberProfile({ id: userId, username, avatar_url: avatarUrl });
+              }}
+            />
+          ) : (
+            <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" onClose={() => setDetailOpen(false)} />
+          )}
+        </aside>
       )}
 
       {/* Mobile/tablet: detail sheet (panel is hidden lg:flex by default) */}
       <Sheet open={detailOpen && !!active} onOpenChange={setDetailOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden flex flex-col h-full bg-card">
+        <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden flex flex-col h-full bg-card">
           {active && (
             selectedMemberProfile ? (
               <UserDetailPanel
