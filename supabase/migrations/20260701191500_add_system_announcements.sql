@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS public.system_announcements (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   channel_type TEXT NOT NULL CHECK (channel_type IN ('rules', 'updates')),
-  sender_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  sender_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   content TEXT,
   image_url TEXT,
   audio_url TEXT,
