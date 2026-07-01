@@ -12,7 +12,12 @@ export const Route = createFileRoute("/app/_authenticated")({
     }
 
     // Check cached status to avoid blocking network queries on every transition
-    const isCachedComplete = typeof window !== "undefined" && localStorage.getItem("profile_complete") === "true";
+    let isCachedComplete = false;
+    try {
+      isCachedComplete = typeof window !== "undefined" && localStorage.getItem("profile_complete") === "true";
+    } catch (e) {
+      console.warn("localStorage item check failed:", e);
+    }
     let isProfileComplete = isCachedComplete;
     let profile = null;
 
@@ -26,7 +31,11 @@ export const Route = createFileRoute("/app/_authenticated")({
       profile = data;
       isProfileComplete = !!(profile?.first_name?.trim() && profile?.last_name?.trim());
       if (isProfileComplete && typeof window !== "undefined") {
-        localStorage.setItem("profile_complete", "true");
+        try {
+          localStorage.setItem("profile_complete", "true");
+        } catch (e) {
+          console.warn("localStorage item write failed:", e);
+        }
       }
     }
     const isOnOnboarding = location.pathname.endsWith("/onboarding");
