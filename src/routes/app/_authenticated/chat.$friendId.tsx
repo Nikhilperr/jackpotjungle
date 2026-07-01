@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { unsendMessagesServer } from "@/lib/messages.functions";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   getCachedProfile,
   getCachedMessages,
@@ -3078,9 +3079,8 @@ export function GroupAddMembersModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-card border border-border rounded-3xl shadow-2xl p-6 flex flex-col gap-4 max-h-[80vh] overflow-y-auto z-50 text-foreground">
+    <Dialog open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
+      <DialogContent className="w-full max-w-sm p-6 bg-card border border-border rounded-3xl shadow-2xl flex flex-col gap-4 max-h-[80vh] overflow-y-auto text-foreground [&>button]:hidden">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <h3 className="font-bold text-lg">Add Members</h3>
           <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
@@ -3156,8 +3156,8 @@ export function GroupAddMembersModal({
             Add
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
