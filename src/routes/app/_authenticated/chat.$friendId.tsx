@@ -12,7 +12,6 @@ import { CallMessage } from "@/components/messenger/CallMessage";
 import { useCalls } from "@/components/messenger/CallProvider";
 import { uploadAndSign } from "@/lib/chat-media";
 import { format, formatDistanceToNow } from "date-fns";
-import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { unsendMessagesServer } from "@/lib/messages.functions";
