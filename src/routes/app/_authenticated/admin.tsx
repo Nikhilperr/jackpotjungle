@@ -85,6 +85,8 @@ import {
 } from "@/components/admin/AdminViews";
 import { SystemAnnouncementsAdminView } from "@/components/admin/SystemAnnouncementsAdmin";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
+import { CreateGroupModal } from "./chat";
+import { GroupDetailPanel } from "./chat.$friendId";
 
 type Tab =
   | "inbox"
@@ -454,6 +456,95 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     });
   };
 
+  const [viewGroups, setViewGroups] = useState(false);
+  const [groupRows, setGroupRows] = useState<ConvRow[]>([]);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [activeGroup, setActiveGroup] = useState<any>(null);
+  const [activeGroupMembers, setActiveGroupMembers] = useState<any[]>([]);
+  const [addMembersOpen, setAddMembersOpen] = useState(false);
+
+  useEffect(() => {
+    if (!activeId || !activeId.startsWith("group-")) {
+      setActiveGroup(null);
+      setActiveGroupMembers([]);
+      return;
+    }
+    const groupId = activeId.replace("group-", "");
+    async function loadGroupDetails() {
+      const [{ data: g }, { data: m }] = await Promise.all([
+        supabase.from("groups").select("*").eq("id", groupId).maybeSingle(),
+        supabase.from("group_members").select("*, profiles:user_id(id, username, first_name, last_name, avatar_url)").eq("group_id", groupId)
+      ]);
+      if (g) setActiveGroup(g);
+      if (m) setActiveGroupMembers(m);
+    }
+    loadGroupDetails();
+  }, [activeId]);
+
+  async function handleLeaveGroup() {
+    if (!meId || !activeGroup) return;
+    const { error } = await supabase.from("group_members").delete().eq("group_id", activeGroup.id).eq("user_id", meId);
+    if (error) { toast.error(error.message); return; }
+    await supabase.from("messages").insert({
+      group_id: activeGroup.id,
+      sender_id: meId,
+      content: `[system:user_left]`
+    } as any);
+    toast.success("You left the group");
+    setActiveId(null);
+    load();
+  }
+
+  async function handleUpdateGroupName(newName: string) {
+    if (!activeGroup || !meId) return;
+    const { error } = await supabase.from("groups").update({ name: newName }).eq("id", activeGroup.id);
+    if (error) { toast.error(error.message); return; }
+    await supabase.from("messages").insert({
+      group_id: activeGroup.id,
+      sender_id: meId,
+      content: `[system:group_name_changed:${newName}]`
+    } as any);
+    setActiveGroup(prev => prev ? { ...prev, name: newName } : null);
+    setGroupRows(prev => prev.map(c => c.conversationId === `group-${activeGroup.id}` ? { ...c, username: newName } : c));
+  }
+
+  async function handleUpdateGroupAvatar(newUrl: string) {
+    if (!activeGroup || !meId) return;
+    const { error } = await supabase.from("groups").update({ avatar_url: newUrl }).eq("id", activeGroup.id);
+    if (error) { toast.error(error.message); return; }
+    await supabase.from("messages").insert({
+      group_id: activeGroup.id,
+      sender_id: meId,
+      content: `[system:group_avatar_changed]`
+    } as any);
+    setActiveGroup(prev => prev ? { ...prev, avatar_url: newUrl } : null);
+    setGroupRows(prev => prev.map(c => c.conversationId === `group-${activeGroup.id}` ? { ...c, avatar_url: newUrl } : c));
+  }
+
+  async function handleRemoveMember(userId: string, username: string) {
+    if (!activeGroup || !meId) return;
+    const { error } = await supabase.from("group_members").delete().eq("group_id", activeGroup.id).eq("user_id", userId);
+    if (error) { toast.error(error.message); return; }
+    await supabase.from("messages").insert({
+      group_id: activeGroup.id,
+      sender_id: meId,
+      content: `[system:user_removed:${username}]`
+    } as any);
+    setActiveGroupMembers(prev => prev.filter(m => m.user_id !== userId));
+  }
+
+  async function handlePromoteMember(userId: string, username: string) {
+    if (!activeGroup || !meId) return;
+    const { error } = await supabase.from("group_members").update({ role: "admin" } as any).eq("group_id", activeGroup.id).eq("user_id", userId);
+    if (error) { toast.error(error.message); return; }
+    await supabase.from("messages").insert({
+      group_id: activeGroup.id,
+      sender_id: meId,
+      content: `[system:user_promoted:${username}]`
+    } as any);
+    setActiveGroupMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role: "admin" } : m));
+  }
+
   const [allTags, setAllTags] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [userTagMap, setUserTagMap] = useState<Record<string, string[]>>({});
   const [tagFilter, setTagFilter] = useState<string | null>(null);
@@ -490,47 +581,57 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         .select("id, user_id, last_message_at, is_spam")
         .order("last_message_at", { ascending: false })
         .limit(200);
-      if (!convList) return;
-      const userIds = convList.map((c) => c.user_id);
-      const convIds = convList.map((c) => c.id);
-      if (userIds.length === 0) { setConvs([]); return; }
 
-      const [{ data: profiles }, { data: msgs }, { data: tagsData }, { data: utRows }, { data: credRows }, { data: supportCalls }] = await Promise.all([
-        supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds),
-        supabase
-          .from("page_messages")
-          .select("conversation_id, content, created_at, seen, from_page, image_url, audio_url")
-          .in("conversation_id", convIds)
-          .order("created_at", { ascending: false })
-          .limit(500),
+      const { data: memberships } = await supabase
+        .from("group_members")
+        .select("group_id, role, groups(id, name, avatar_url, created_at, created_by)")
+        .eq("user_id", meId);
+
+      const userIds = convList ? convList.map((c) => c.user_id) : [];
+      const convIds = convList ? convList.map((c) => c.id) : [];
+
+      const queries: Promise<any>[] = [
+        userIds.length > 0 ? supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds) : Promise.resolve({ data: [] }),
+        convIds.length > 0 ? supabase.from("page_messages").select("conversation_id, content, created_at, seen, from_page, image_url, audio_url").in("conversation_id", convIds).order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [] }),
         supabase.from("tags").select("id, name, color").order("name"),
-        supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds),
-        supabase.from("user_credits").select("user_id, balance").in("user_id", userIds),
-        supabase
-          .from("calls")
-          .select("id, caller_id, callee_id, call_type, status, created_at")
-          .in("context", ["page", "page_broadcast"])
-          .order("created_at", { ascending: false })
-          .limit(300)
-      ]);
+        userIds.length > 0 ? supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds) : Promise.resolve({ data: [] }),
+        userIds.length > 0 ? supabase.from("user_credits").select("user_id, balance").in("user_id", userIds) : Promise.resolve({ data: [] }),
+        supabase.from("calls").select("id, caller_id, callee_id, call_type, status, created_at").in("context", ["page", "page_broadcast"]).order("created_at", { ascending: false }).limit(300)
+      ];
 
-      setAllTags(tagsData ?? []);
+      const groupIds = (memberships ?? []).map((m: any) => m.group_id).filter(Boolean);
+      if (groupIds.length > 0) {
+        queries.push(
+          supabase
+            .from("messages")
+            .select("group_id, content, created_at, sender_id, seen, image_url, audio_url")
+            .in("group_id", groupIds)
+            .order("created_at", { ascending: false })
+            .limit(500)
+        );
+      } else {
+        queries.push(Promise.resolve({ data: [] }));
+      }
+
+      const [profiles, msgs, tagsData, utRows, credRows, supportCalls, groupMsgsRes] = await Promise.all(queries);
+
+      setAllTags(tagsData?.data ?? tagsData ?? []);
       const map: Record<string, string[]> = {};
-      (utRows ?? []).forEach((r: any) => {
+      (utRows?.data ?? utRows ?? []).forEach((r: any) => {
         (map[r.user_id] = map[r.user_id] || []).push(r.tag_id);
       });
       setUserTagMap(map);
 
-      const creditMap = new Map<string, number>((credRows ?? []).map((c: any) => [c.user_id, Number(c.balance) || 0]));
-      const byUser = new Map((profiles ?? []).map((p) => [p.id, p]));
-      const rows: ConvRow[] = convList.map((c) => {
+      const creditMap = new Map<string, number>((credRows?.data ?? credRows ?? []).map((c: any) => [c.user_id, Number(c.balance) || 0]));
+      const byUser = new Map((profiles?.data ?? profiles ?? []).map((p: any) => [p.id, p]));
+      const rows: ConvRow[] = (convList ?? []).map((c) => {
         const p = byUser.get(c.user_id);
-        const convMsgs = (msgs ?? []).filter((m) => m.conversation_id === c.id);
+        const convMsgs = (msgs?.data ?? msgs ?? []).filter((m: any) => m.conversation_id === c.id);
         const lastMsg = convMsgs[0];
-        const unread = convMsgs.filter((m) => !m.from_page && !m.seen).length;
+        const unread = convMsgs.filter((m: any) => !m.from_page && !m.seen).length;
 
         // Find most recent call associated with this user
-        const userCalls = (supportCalls ?? []).filter((call) => call.caller_id === c.user_id || call.callee_id === c.user_id);
+        const userCalls = (supportCalls?.data ?? supportCalls ?? []).filter((call: any) => call.caller_id === c.user_id || call.callee_id === c.user_id);
         const lastCall = userCalls[0];
 
         let lastMessage = lastMsg?.content ?? null;
@@ -576,8 +677,56 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 
       // Sort conversations strictly by most recent activity
       rows.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
-
       setConvs(rows);
+
+      // Parse groups
+      const groupMessages = groupMsgsRes?.data ?? groupMsgsRes ?? [];
+      const gRows: ConvRow[] = (memberships ?? []).map((m: any) => {
+        const g = m.groups;
+        if (!g) return null;
+        const gMsgs = (groupMessages ?? []).filter((msg: any) => msg.group_id === g.id);
+        const lastMsg = gMsgs[0];
+        const unread = gMsgs.filter((msg: any) => msg.sender_id !== meId && !msg.seen).length;
+
+        let lastMessage = lastMsg?.content ?? null;
+        if (lastMessage?.startsWith("[system:reaction:")) {
+          lastMessage = "Reacted to a message";
+        } else if (lastMessage?.startsWith("[system:pin:")) {
+          lastMessage = "Pinned a message";
+        } else if (lastMessage?.startsWith("[system:unpin:")) {
+          lastMessage = "Unpinned a message";
+        } else if (lastMessage?.startsWith("[system:unsent]")) {
+          lastMessage = "Unsent a message";
+        } else if (lastMessage?.startsWith("[system:forwarded] ")) {
+          lastMessage = lastMessage.slice("[system:forwarded] ".length);
+        } else if (lastMessage?.startsWith("[system:forwarded]")) {
+          lastMessage = lastMessage.slice("[system:forwarded]".length).trim() || (lastMsg?.image_url ? "📷 Photo" : lastMsg?.audio_url ? "🎤 Voice message" : "Forwarded message");
+        } else if (lastMessage === "[system:forwarded]") {
+          lastMessage = lastMsg?.image_url ? "📷 Photo" : lastMsg?.audio_url ? "🎤 Voice message" : "Forwarded message";
+        } else if (lastMessage?.startsWith("[reply:")) {
+          const match = lastMessage.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+          if (match) lastMessage = match[1];
+        }
+
+        return {
+          conversationId: `group-${g.id}`,
+          userId: g.created_by,
+          username: g.name,
+          avatar_url: g.avatar_url,
+          online: false,
+          last_seen: g.created_at,
+          lastMessage: lastMessage ?? "Group created",
+          lastAt: lastMsg?.created_at ?? g.created_at,
+          unread,
+          credit: 0,
+          isSpam: false,
+          isGroup: true,
+        };
+      }).filter(Boolean) as ConvRow[];
+
+      gRows.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+      setGroupRows(gRows);
+
       try {
         localStorage.setItem("jj_cached_admin_conversations", JSON.stringify(rows));
       } catch {}
@@ -658,6 +807,15 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, () => {
         if (mounted) load();
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "groups" }, () => {
+        if (mounted) load();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => {
+        if (mounted) load();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
+        if (mounted) load();
+      })
       .subscribe();
     return () => {
       mounted = false;
@@ -672,15 +830,21 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       setConvs((prev) =>
         prev.map((c) => (c.conversationId === activeId ? { ...c, unread: 0 } : c))
       );
+      setGroupRows((prev) =>
+        prev.map((c) => (c.conversationId === activeId ? { ...c, unread: 0 } : c))
+      );
     }
   }, [activeId]);
 
-  const filtered = convs.filter((u) => {
-    if (viewSpam ? !u.isSpam : u.isSpam) return false;
-    if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
-    if (tagFilter && !(userTagMap[u.userId] ?? []).includes(tagFilter)) return false;
-    return true;
-  });
+  const filtered = viewGroups
+    ? groupRows.filter((u) => !search || u.username.toLowerCase().includes(search.toLowerCase()))
+    : convs.filter((u) => {
+        if (viewSpam ? !u.isSpam : u.isSpam) return false;
+        if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
+        if (tagFilter && !(userTagMap[u.userId] ?? []).includes(tagFilter)) return false;
+        return true;
+      });
+
   const sorted = [...filtered].sort((a, b) => {
     const aPinned = pinnedConvs.includes(a.conversationId);
     const bPinned = pinnedConvs.includes(b.conversationId);
@@ -689,7 +853,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     return 0;
   });
   const spamCount = convs.filter((u) => u.isSpam).length;
-  const active = convs.find((u) => u.conversationId === activeId) ?? null;
+  const active = (convs.find((u) => u.conversationId === activeId) || groupRows.find((u) => u.conversationId === activeId)) ?? null;
 
   async function setConvSpam(conv: ConvRow, next: boolean) {
     const { error } = await supabase
@@ -751,12 +915,18 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             )}
             <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
             <button
-              onClick={() => { setViewSpam(false); setTagFilter(null); }}
-              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${!viewSpam && tagFilter === null ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
+              onClick={() => { setViewSpam(false); setViewGroups(false); setTagFilter(null); }}
+              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${!viewSpam && !viewGroups && tagFilter === null ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
             >
               All
             </button>
-            {allTags.map((t) => {
+            <button
+              onClick={() => { setViewSpam(false); setViewGroups(true); setTagFilter(null); }}
+              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border inline-flex items-center gap-1 ${!viewSpam && viewGroups ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
+            >
+              Groups
+            </button>
+            {!viewGroups && allTags.map((t) => {
               const on = !viewSpam && tagFilter === t.id;
               return (
                 <button
@@ -769,22 +939,38 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 </button>
               );
             })}
-            <button
-              onClick={() => { setViewSpam(true); setTagFilter(null); }}
-              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border inline-flex items-center gap-1 ${viewSpam ? "bg-destructive text-destructive-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
-            >
-              <Ban className="h-3 w-3" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
-            </button>
+            {!viewGroups && (
+              <button
+                onClick={() => { setViewSpam(true); setTagFilter(null); }}
+                className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border inline-flex items-center gap-1 ${viewSpam ? "bg-destructive text-destructive-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
+              >
+                <Ban className="h-3 w-3" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
+              </button>
+            )}
           </div>
         </div>
         <PullToRefresh onRefresh={load}>
-            {loadingConvs && convs.length === 0 ? (
+            {viewGroups && (
+              <button
+                onClick={() => setCreateGroupOpen(true)}
+                className="flex items-center gap-3 px-4 py-3 mx-2 my-1 rounded-2xl text-left bg-primary/10 hover:bg-primary/15 text-primary border border-primary/15 transition-all font-semibold w-[calc(100%-1rem)]"
+              >
+                <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary shrink-0">
+                  <Plus className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold leading-tight">Create Group Chat</p>
+                  <p className="text-[10px] text-muted-foreground/90 truncate leading-snug">Start a group chat with players</p>
+                </div>
+              </button>
+            )}
+            {loadingConvs && (viewGroups ? groupRows.length === 0 : convs.length === 0) ? (
               <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
                 <span>Loading chats…</span>
               </div>
             ) : sorted.length === 0 ? (
-              <p className="p-6 text-center text-sm text-muted-foreground">{viewSpam ? "No spam conversations." : "No conversations."}</p>
+              <p className="p-6 text-center text-sm text-muted-foreground">{viewGroups ? "No groups yet." : viewSpam ? "No spam conversations." : "No conversations."}</p>
             ) : sorted.map((u) => {
             const startPress = () => {
               if (pressTimer.current) clearTimeout(pressTimer.current);
@@ -824,7 +1010,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                       Credit ${u.credit.toFixed(2)}
                     </span>
                   )}
-                  {(userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
+                  {!u.isGroup && (userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
                     const t = allTags.find((x) => x.id === tid);
                     if (!t) return null;
                     return <span key={tid} className="text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>;
@@ -833,15 +1019,17 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               </div>
               {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
             </button>
-            <button
-              type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvSpam(u, !u.isSpam); }}
-              title={u.isSpam ? "Remove from spam" : "Move to spam"}
-              aria-label={u.isSpam ? "Remove from spam" : "Move to spam"}
-              className={`absolute right-4 top-3 h-7 w-7 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-opacity flex ${u.isSpam ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
-            >
-              {u.isSpam ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
-            </button>
+            {!u.isGroup && (
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvSpam(u, !u.isSpam); }}
+                title={u.isSpam ? "Remove from spam" : "Move to spam"}
+                aria-label={u.isSpam ? "Remove from spam" : "Move to spam"}
+                className={`absolute right-4 top-3 h-7 w-7 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-opacity flex ${u.isSpam ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
+              >
+                {u.isSpam ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+              </button>
+            )}
             </div>
             );
           })}
@@ -883,17 +1071,82 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         )}
       </div>
 
-      {active && <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} />}
+      {active && (
+        active.isGroup ? (
+          <GroupDetailPanel
+            group={activeGroup}
+            members={activeGroupMembers}
+            messages={messages}
+            meId={meId}
+            onClose={() => setDetailOpen(false)}
+            onLeave={handleLeaveGroup}
+            onUpdateName={handleUpdateGroupName}
+            onUpdateAvatar={handleUpdateGroupAvatar}
+            onAddMembers={() => setAddMembersOpen(true)}
+            onRemoveMember={handleRemoveMember}
+            onPromoteMember={handlePromoteMember}
+          />
+        ) : (
+          <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} />
+        )
+      )}
 
       {/* Mobile/tablet: detail sheet (panel is hidden lg:flex by default) */}
       <Sheet open={detailOpen && !!active} onOpenChange={setDetailOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden">
-          {active && <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" onClose={() => setDetailOpen(false)} />}
+        <SheetContent side="right" className="w-full sm:max-w-sm p-0 lg:hidden flex flex-col h-full bg-card">
+          {active && (
+            active.isGroup ? (
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <GroupDetailPanel
+                  group={activeGroup}
+                  members={activeGroupMembers}
+                  messages={messages}
+                  meId={meId}
+                  onClose={() => setDetailOpen(false)}
+                  onLeave={handleLeaveGroup}
+                  onUpdateName={handleUpdateGroupName}
+                  onUpdateAvatar={handleUpdateGroupAvatar}
+                  onAddMembers={() => setAddMembersOpen(true)}
+                  onRemoveMember={handleRemoveMember}
+                  onPromoteMember={handlePromoteMember}
+                />
+              </div>
+            ) : (
+              <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" onClose={() => setDetailOpen(false)} />
+            )
+          )}
         </SheetContent>
       </Sheet>
 
+      <CreateGroupModal
+        open={createGroupOpen}
+        onClose={() => setCreateGroupOpen(false)}
+        meId={meId}
+        onGroupCreated={(groupId) => {
+          load();
+          setActiveId(`group-${groupId}`);
+        }}
+      />
+
+      {/* Group Add Members Modal */}
+      {addMembersOpen && activeGroup && (
+        <GroupAddMembersModal
+          open={addMembersOpen}
+          onClose={() => setAddMembersOpen(false)}
+          groupId={activeGroup.id}
+          meId={meId}
+          onMembersAdded={() => {
+            // reload group members
+            supabase.from("group_members").select("*, profiles:user_id(id, username, first_name, last_name, avatar_url)").eq("group_id", activeGroup.id).then(({ data }) => {
+              if (data) setActiveGroupMembers(data);
+            });
+            load();
+          }}
+        />
+      )}
+
       {contextMenuTarget && (() => {
-        const targetConv = convs.find(c => c.conversationId === contextMenuTarget);
+        const targetConv = convs.find(c => c.conversationId === contextMenuTarget) || groupRows.find(c => c.conversationId === contextMenuTarget);
         if (!targetConv) return null;
         const isPinned = pinnedConvs.includes(contextMenuTarget);
         const isSpam = targetConv.isSpam;
@@ -918,16 +1171,18 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   <Pin className="h-4 w-4 shrink-0 text-primary rotate-45 fill-primary" />
                   <span>{isPinned ? "Unpin conversation" : "Pin conversation"}</span>
                 </button>
-                <button
-                  onClick={async () => {
-                    await setConvSpam(targetConv, !isSpam);
-                    setContextMenuTarget(null);
-                  }}
-                  className="w-full h-11 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-destructive transition-colors"
-                >
-                  <Ban className="h-4 w-4 shrink-0 text-destructive" />
-                  <span>{isSpam ? "Remove from spam" : "Move to spam"}</span>
-                </button>
+                {!targetConv.isGroup && (
+                  <button
+                    onClick={async () => {
+                      await setConvSpam(targetConv, !isSpam);
+                      setContextMenuTarget(null);
+                    }}
+                    className="w-full h-11 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-destructive transition-colors"
+                  >
+                    <Ban className="h-4 w-4 shrink-0 text-destructive" />
+                    <span>{isSpam ? "Remove from spam" : "Move to spam"}</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setContextMenuTarget(null)}
                   className="w-full h-11 px-3 rounded-lg flex items-center justify-center text-sm font-semibold hover:bg-secondary text-muted-foreground transition-colors"
@@ -966,6 +1221,56 @@ function Conversation({
   const { startCall } = useCalls();
   const [messages, setMessages] = useState<PageMsg[]>([]);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+
+  const isGroup = conv.isGroup || conv.conversationId.startsWith("group-");
+  const groupId = isGroup ? conv.conversationId.replace("group-", "") : null;
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    if (meId) {
+      supabase.from("profiles").select("*").eq("id", meId).maybeSingle().then(({ data }) => {
+        if (data) setCurrentUser(data);
+      });
+    }
+  }, [meId]);
+
+  useEffect(() => {
+    if (!isGroup || !meId || !groupId) return;
+    const typingChannel = supabase.channel(`typing-${groupId}`);
+    typingChannel
+      .on("presence", { event: "sync" }, () => {
+        const state = typingChannel.presenceState();
+        const users = new Set<string>();
+        for (const key of Object.keys(state)) {
+          const presences = state[key] as any[];
+          presences.forEach(p => {
+            if (p.isTyping && p.userId !== meId) {
+              users.add(p.username);
+            }
+          });
+        }
+        setTypingUsers(users);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(typingChannel); };
+  }, [isGroup, meId, groupId]);
+
+  const lastTypingTimeRef = useRef(0);
+  const handleTextChange = (val: string) => {
+    setText(val);
+    if (!isGroup || !meId || !groupId) return;
+    const now = Date.now();
+    if (now - lastTypingTimeRef.current > 2000) {
+      lastTypingTimeRef.current = now;
+      const channel = supabase.channel(`typing-${groupId}`);
+      channel.track({
+        userId: meId,
+        username: currentUser?.username || "Someone",
+        isTyping: val.trim().length > 0
+      }).then();
+    }
+  };
 
   const [forwardTargetMsg, setForwardTargetMsg] = useState<PageMsg | null>(null);
   const [forwardingTargetId, setForwardingTargetId] = useState<string | null>(null);
@@ -1107,6 +1412,24 @@ function Conversation({
   }
 
   async function load() {
+    if (isGroup) {
+      const { data } = await supabase
+        .from("messages")
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+        .eq("group_id", groupId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      const reversed = ((data as any[]) ?? []).slice().reverse();
+      const mapped = reversed.map((m: any) => ({
+        ...m,
+        from_page: m.sender_id === meId,
+      }));
+      setMessages(mapped);
+      await supabase.from("messages").update({ seen: true } as any)
+        .eq("group_id", groupId).neq("sender_id", meId).eq("seen", false);
+      return;
+    }
+
     const cacheKey = `admin-page-${conv.conversationId}`;
     const cached = getCachedPageMessages(cacheKey);
     if (cached && messages.length === 0) {
@@ -1171,9 +1494,13 @@ function Conversation({
   const activeIdRef = useRef(conv.conversationId);
   useEffect(() => {
     activeIdRef.current = conv.conversationId;
-    const cacheKey = `admin-page-${conv.conversationId}`;
-    const cached = getCachedPageMessages(cacheKey);
-    setMessages(cached || []);
+    if (!isGroup) {
+      const cacheKey = `admin-page-${conv.conversationId}`;
+      const cached = getCachedPageMessages(cacheKey);
+      setMessages(cached || []);
+    } else {
+      setMessages([]);
+    }
     
     load();
   }, [conv.conversationId]);
@@ -1182,6 +1509,46 @@ function Conversation({
     if (!meId) return;
 
     const rand = Math.random().toString(36).slice(2, 9);
+
+    if (isGroup) {
+      const groupChannel = supabase
+        .channel(`admin-active-group-chat-${groupId}-${rand}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `group_id=eq.${groupId}` }, (payload) => {
+          const m = payload.new as any;
+          if (m) {
+            supabase.from("profiles").select("id, username, first_name, last_name, avatar_url")
+              .eq("id", m.sender_id).maybeSingle().then(({ data: sender }) => {
+                const mappedMsg = {
+                  ...m,
+                  from_page: m.sender_id === meId,
+                  sender: sender || null,
+                };
+                setMessages((prev) => {
+                  if (prev.some((x) => x.id === m.id)) return prev;
+                  return [...prev, mappedMsg];
+                });
+                if (m.sender_id !== meId) {
+                  supabase.from("messages").update({ seen: true } as any).eq("id", m.id).then();
+                }
+              });
+          }
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `group_id=eq.${groupId}` }, (payload) => {
+          const m = payload.new as any;
+          if (m) {
+            setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, ...m } : x));
+          }
+        })
+        .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages", filter: `group_id=eq.${groupId}` }, (payload) => {
+          const m = payload.old as any;
+          if (m) {
+            setMessages((prev) => prev.filter((x) => x.id !== m.id));
+          }
+        })
+        .subscribe();
+      return () => { supabase.removeChannel(groupChannel); };
+    }
+
     const msgChannel = supabase
       .channel(`admin-active-page-chat-global-${rand}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "page_messages" }, (payload) => {
@@ -1507,6 +1874,20 @@ function Conversation({
   async function reactToMessage(msgId: string, emoji: string) {
     if (!meId) return;
     const reactionContent = `[system:reaction:${msgId}:${emoji}:${meId}]`;
+    if (isGroup) {
+      const { data, error } = await supabase.from("messages").insert({
+        group_id: groupId,
+        sender_id: meId,
+        content: reactionContent,
+        seen: true,
+      } as any).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)").single();
+      if (error) {
+        toast.error("Failed to update reaction");
+      } else if (data) {
+        setMessages(prev => [...prev, { ...data, from_page: true } as any]);
+      }
+      return;
+    }
     const { data, error } = await supabase.from("page_messages").insert({
       conversation_id: conv.conversationId,
       sender_id: meId,
@@ -1524,6 +1905,21 @@ function Conversation({
   async function pinMessage(msgId: string) {
     if (!meId) return;
     const pinContent = `[system:pin:${msgId}]`;
+    if (isGroup) {
+      const { data, error } = await supabase.from("messages").insert({
+        group_id: groupId,
+        sender_id: meId,
+        content: pinContent,
+        seen: true,
+      } as any).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)").single();
+      if (error) {
+        toast.error("Failed to pin message");
+      } else if (data) {
+        setMessages(prev => [...prev, { ...data, from_page: true } as any]);
+        toast.success("Message pinned");
+      }
+      return;
+    }
     const { data, error } = await supabase.from("page_messages").insert({
       conversation_id: conv.conversationId,
       sender_id: meId,
@@ -1542,6 +1938,21 @@ function Conversation({
   async function unpinMessage(msgId: string) {
     if (!meId) return;
     const unpinContent = `[system:unpin:${msgId}]`;
+    if (isGroup) {
+      const { data, error } = await supabase.from("messages").insert({
+        group_id: groupId,
+        sender_id: meId,
+        content: unpinContent,
+        seen: true,
+      } as any).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)").single();
+      if (error) {
+        toast.error("Failed to unpin message");
+      } else if (data) {
+        setMessages(prev => [...prev, { ...data, from_page: true } as any]);
+        toast.success("Message unpinned");
+      }
+      return;
+    }
     const { data, error } = await supabase.from("page_messages").insert({
       conversation_id: conv.conversationId,
       sender_id: meId,
@@ -1588,6 +1999,28 @@ function Conversation({
 
     const tempId = addOptimistic({ content });
     onLastMessageUpdate(content, null, null, new Date().toISOString());
+
+    if (isGroup) {
+      const { data, error } = await supabase
+        .from("messages")
+        .insert({
+          group_id: groupId,
+          sender_id: meId,
+          content: finalContent
+        })
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+        .single();
+      if (error) {
+        setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
+        toast.error(error.message);
+        return;
+      }
+      if (data) {
+        setMessages((prev) => prev.map((x) => (x.id === tempId ? ({ ...data, from_page: true } as any) : x)));
+      }
+      return;
+    }
+
     const { data, error } = await supabase
       .from("page_messages")
       .insert({ conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: finalContent })
@@ -1628,6 +2061,17 @@ function Conversation({
     try {
       const { uploadAndSign } = await import("@/lib/chat-media");
       const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
+      if (isGroup) {
+        const { data, error } = await supabase
+          .from("messages")
+          .insert({ group_id: groupId, sender_id: meId, content: null, image_url: url } as any)
+          .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+          .single();
+        if (error) throw error;
+        if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? ({ ...data, from_page: true } as any) : x)));
+        setUploading(false);
+        return;
+      }
       const { data, error } = await supabase
         .from("page_messages")
         .insert({ conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: null, image_url: url } as any)
@@ -1650,6 +2094,17 @@ function Conversation({
     try {
       const { uploadAndSign } = await import("@/lib/chat-media");
       const url = await uploadAndSign("chat-audio", meId, blob, ext, mime);
+      if (isGroup) {
+        const { data, error } = await supabase
+          .from("messages")
+          .insert({ group_id: groupId, sender_id: meId, content: null, audio_url: url } as any)
+          .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+          .single();
+        if (error) throw error;
+        if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? ({ ...data, from_page: true } as any) : x)));
+        setRecUploading(false);
+        return;
+      }
       const { data, error } = await supabase
         .from("page_messages")
         .insert({ conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: null, audio_url: url } as any)
@@ -1701,28 +2156,44 @@ function Conversation({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground truncate">{conv.online ? "Active now" : `Last seen ${formatDistanceToNow(new Date(conv.last_seen), { addSuffix: true })}`}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {isGroup ? (
+                  typingUsers.size > 0 ? (
+                    <span className="text-primary font-medium animate-pulse">
+                      {Array.from(typingUsers).join(", ")} {typingUsers.size === 1 ? "is" : "are"} typing...
+                    </span>
+                  ) : (
+                    "Group Chat"
+                  )
+                ) : (
+                  conv.online ? "Active now" : `Last seen ${formatDistanceToNow(new Date(conv.last_seen), { addSuffix: true })}`
+                )}
+              </p>
             </div>
           </button>
-          <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>
-          <button
-            type="button"
-            onClick={() => startCall({ calleeId: conv.userId, kind: "voice", peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
-            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
-            aria-label="Voice call"
-            title="Voice call"
-          >
-            <Phone className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => startCall({ calleeId: conv.userId, kind: "video", peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
-            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
-            aria-label="Video call"
-            title="Video call"
-          >
-            <Video className="h-5 w-5" />
-          </button>
+          {!isGroup && <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>}
+          {!isGroup && (
+            <>
+              <button
+                type="button"
+                onClick={() => startCall({ calleeId: conv.userId, kind: "voice", peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
+                className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
+                aria-label="Voice call"
+                title="Voice call"
+              >
+                <Phone className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => startCall({ calleeId: conv.userId, kind: "video", peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
+                className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
+                aria-label="Video call"
+                title="Video call"
+              >
+                <Video className="h-5 w-5" />
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
@@ -2613,6 +3084,16 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
           </div>
         )}
         
+        {/* Sender Header for Group Chats */}
+        {!mine && m.sender && (
+          <div className="flex items-center gap-1.5 ml-2 mb-1 select-none">
+            <Avatar name={m.sender.first_name && m.sender.last_name ? `${m.sender.first_name} ${m.sender.last_name}` : m.sender.username} url={m.sender.avatar_url} size={20} />
+            <span className="text-[10px] font-bold text-muted-foreground">
+              {m.sender.first_name && m.sender.last_name ? `${m.sender.first_name} ${m.sender.last_name}` : `@${m.sender.username}`}
+            </span>
+          </div>
+        )}
+
         {/* Reply To Preview */}
         {m.replyTo && (
           <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
@@ -2692,8 +3173,14 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
               <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
             ) : m.seen ? (
               <span className="inline-flex items-center gap-1">
-                {conv.avatar_url ? <img src={conv.avatar_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border" /> : <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />}
-                Seen
+                {conv.isGroup ? (
+                  <span className="text-[9px] text-muted-foreground/60 italic">Read by group</span>
+                ) : (
+                  <>
+                    {conv.avatar_url ? <img src={conv.avatar_url} alt="" className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border" /> : <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />}
+                    Seen
+                  </>
+                )}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 shrink-0" />Delivered</span>

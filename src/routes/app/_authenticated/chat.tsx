@@ -1075,14 +1075,14 @@ function ChatLayout() {
   );
 }
 
-interface CreateGroupModalProps {
+export interface CreateGroupModalProps {
   open: boolean;
   onClose: () => void;
   meId: string | null;
   onGroupCreated: (groupId: string) => void;
 }
 
-function CreateGroupModal({ open, onClose, meId, onGroupCreated }: CreateGroupModalProps) {
+export function CreateGroupModal({ open, onClose, meId, onGroupCreated }: CreateGroupModalProps) {
   const [groupName, setGroupName] = useState("");
   const [groupAvatar, setGroupAvatar] = useState("");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);

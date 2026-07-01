@@ -2816,7 +2816,7 @@ const MessageItem = React.memo(function MessageItem({
   );
 });
 
-interface GroupDetailPanelProps {
+export interface GroupDetailPanelProps {
   group: any;
   members: any[];
   messages: any[];
