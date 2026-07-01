@@ -2861,6 +2861,7 @@ export function GroupDetailPanel({
   const [nameInput, setNameInput] = useState(group?.name || "");
   const [avatarInput, setAvatarInput] = useState(group?.avatar_url || "");
   const [activeMemberMenu, setActiveMemberMenu] = useState<string | null>(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const { role } = useRole();
 
   const myMemberInfo = members.find(m => m.profiles?.id === meId);
