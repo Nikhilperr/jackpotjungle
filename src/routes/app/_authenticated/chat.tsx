@@ -42,7 +42,7 @@ function ChatLayout() {
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [spamIds, setSpamIds] = useState<Set<string>>(new Set());
   const [spammedByIds, setSpammedByIds] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<"all" | "spam">("all");
+  const [tab, setTab] = useState<"all" | "groups" | "spam">("all");
   const [pageUnread, setPageUnread] = useState(0);
   const [pageLast, setPageLast] = useState<{ content: string | null; at: string | null }>({ content: null, at: null });
   const [pageConvId, setPageConvId] = useState<string | null>(null);
@@ -708,7 +708,11 @@ function ChatLayout() {
   };
 
   const q = search.trim().toLowerCase();
-  const visible = conversations.filter((c) => (tab === "spam" ? spamIds.has(c.friendId) : !spamIds.has(c.friendId)));
+  const visible = conversations.filter((c) => {
+    if (tab === "spam") return spamIds.has(c.friendId);
+    if (tab === "groups") return c.friendId.startsWith("group-");
+    return !spamIds.has(c.friendId);
+  });
   const filtered = visible.filter((c) =>
     !q || c.displayName.toLowerCase().includes(q) || c.username.toLowerCase().includes(q) || c.allText.includes(q)
   );
@@ -833,19 +837,39 @@ function ChatLayout() {
             <div className="flex gap-2 mt-3">
               <button
                 onClick={() => setTab("all")}
-                className={`flex-1 text-sm font-semibold py-1.5 rounded-full transition-colors ${tab === "all" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
+                className={`flex-1 text-[11px] sm:text-xs font-bold py-1.5 rounded-full transition-colors ${tab === "all" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
               >
                 All
               </button>
               <button
-                onClick={() => setTab("spam")}
-                className={`flex-1 text-sm font-semibold py-1.5 rounded-full transition-colors flex items-center justify-center gap-1.5 ${tab === "spam" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
+                onClick={() => setTab("groups")}
+                className={`flex-1 text-[11px] sm:text-xs font-bold py-1.5 rounded-full transition-colors ${tab === "groups" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
               >
-                <Ban className="h-3.5 w-3.5" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
+                Groups
+              </button>
+              <button
+                onClick={() => setTab("spam")}
+                className={`flex-1 text-[11px] sm:text-xs font-bold py-1.5 rounded-full transition-colors flex items-center justify-center gap-1 ${tab === "spam" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
+              >
+                <Ban className="h-3 w-3" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
               </button>
             </div>
           </div>
           <PullToRefresh onRefresh={async () => { if (meId) { await Promise.all([load(meId), loadPage(meId), loadSpam(meId)]); } }}>
+            {tab === "groups" && (
+              <button
+                onClick={() => setCreateGroupOpen(true)}
+                className="flex items-center gap-3 px-4 py-3 mx-2 my-1 rounded-2xl text-left bg-primary/10 hover:bg-primary/15 text-primary border border-primary/15 transition-all font-semibold"
+              >
+                <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center text-primary shrink-0">
+                  <Plus className="h-4.5 w-4.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold leading-tight">Create Group Chat</p>
+                  <p className="text-[10px] text-muted-foreground/90 truncate leading-snug">Start a group chat with friends or players</p>
+                </div>
+              </button>
+            )}
             {!isAdmin && tab === "all" && (
               <Link
                 to="/app/chat/page"

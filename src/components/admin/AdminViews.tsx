@@ -413,6 +413,7 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
   const [referrer, setReferrer] = useState<{ id: string; username: string } | null>(null);
   const [pickRef, setPickRef] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
+  const [profileData, setProfileData] = useState<any>(null);
 
   async function loadAll() {
     const [t, all, n, c, tx, ref, prof] = await Promise.all([
@@ -422,7 +423,7 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
       sb.from("user_credits").select("balance").eq("user_id", userId).maybeSingle(),
       sb.from("credit_transactions").select("amount, type").eq("user_id", userId),
       sb.from("referrals").select("referrer_id").eq("referred_id", userId).maybeSingle(),
-      sb.from("profiles").select("is_blocked").eq("id", userId).maybeSingle(),
+      sb.from("profiles").select("is_blocked, first_name, last_name, phone, address, friend_code, created_at").eq("id", userId).maybeSingle(),
     ]);
     setTags((t.data ?? []).map((r: any) => r.tags));
     setAllTags(all.data ?? []);
@@ -432,6 +433,7 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
     const paidTx = (tx.data ?? []).filter((r: any) => r.type === "paid" || Number(r.amount) < 0).reduce((s: number, r: any) => s + Math.abs(Number(r.amount)), 0);
     setTotals({ loaded, paid: paidTx });
     setIsBlocked(!!prof.data?.is_blocked);
+    setProfileData(prof.data || null);
     if (ref.data?.referrer_id) {
       const { data: p2 } = await sb.from("profiles").select("id, username").eq("id", ref.data.referrer_id).maybeSingle();
       setReferrer(p2 ?? null);
@@ -508,6 +510,39 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
           {isBlocked ? <><ShieldOff className="h-3 w-3 mr-1" />Unblock user</> : <><Ban className="h-3 w-3 mr-1" />Block user</>}
         </Button>
       </div>
+
+      {/* User Profile Details */}
+      <section className="p-4 border-b border-border">
+        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">User Profile</p>
+        <div className="bg-secondary/40 border border-border/50 rounded-2xl p-4 space-y-3">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase text-muted-foreground font-semibold">Full Name</span>
+            <p className="text-sm font-semibold text-foreground">
+              {profileData?.first_name || profileData?.last_name 
+                ? `${profileData?.first_name ?? ""} ${profileData?.last_name ?? ""}`.trim() 
+                : "Not specified"}
+            </p>
+          </div>
+          <div className="space-y-1 pt-1.5 border-t border-border/40">
+            <span className="text-[10px] uppercase text-muted-foreground font-semibold">Phone</span>
+            <p className="text-sm font-semibold text-foreground break-words">{profileData?.phone || "Not specified"}</p>
+          </div>
+          <div className="space-y-1 pt-1.5 border-t border-border/40">
+            <span className="text-[10px] uppercase text-muted-foreground font-semibold">Address</span>
+            <p className="text-sm font-semibold text-foreground break-words">{profileData?.address || "Not specified"}</p>
+          </div>
+          <div className="flex justify-between items-center text-sm pt-2 border-t border-border/40">
+            <span className="text-muted-foreground text-xs font-semibold">Friend Code</span>
+            <span className="font-mono text-xs font-bold text-foreground">{profileData?.friend_code || "—"}</span>
+          </div>
+          {profileData?.created_at && (
+            <div className="flex justify-between items-center text-sm pt-2 border-t border-border/40">
+              <span className="text-muted-foreground text-xs font-semibold">Member Since</span>
+              <span className="text-xs font-medium text-foreground">{new Date(profileData.created_at).toLocaleDateString()}</span>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Credits — editable load / paid */}
       <section className="p-4 border-b border-border">
