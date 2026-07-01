@@ -1080,9 +1080,10 @@ export interface CreateGroupModalProps {
   onClose: () => void;
   meId: string | null;
   onGroupCreated: (groupId: string) => void;
+  isAdminOrSuper?: boolean;
 }
 
-export function CreateGroupModal({ open, onClose, meId, onGroupCreated }: CreateGroupModalProps) {
+export function CreateGroupModal({ open, onClose, meId, onGroupCreated, isAdminOrSuper: forceAdminOrSuper }: CreateGroupModalProps) {
   const [groupName, setGroupName] = useState("");
   const [groupAvatar, setGroupAvatar] = useState("");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
@@ -1092,7 +1093,7 @@ export function CreateGroupModal({ open, onClose, meId, onGroupCreated }: Create
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const { role } = useRole();
-  const isAdminOrSuper = role === "admin" || role === "super_admin";
+  const isAdminOrSuper = forceAdminOrSuper !== undefined ? forceAdminOrSuper : (role === "admin" || role === "super_admin");
 
   useEffect(() => {
     if (!open || !meId) return;
@@ -1210,7 +1211,15 @@ export function CreateGroupModal({ open, onClose, meId, onGroupCreated }: Create
 
   const displayList = isAdminOrSuper 
     ? (searchQuery.trim() ? allProfiles : []) 
-    : friends;
+    : (searchQuery.trim()
+        ? friends.filter((item) => {
+            const dispName = item.first_name && item.last_name ? `${item.first_name} ${item.last_name}` : item.username;
+            return (
+              dispName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              item.username.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+          })
+        : friends);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1250,17 +1259,15 @@ export function CreateGroupModal({ open, onClose, meId, onGroupCreated }: Create
             <label className="text-xs font-semibold text-muted-foreground block mb-2">
               {isAdminOrSuper ? "Search and Add Members" : "Select Friends"}
             </label>
-            {isAdminOrSuper && (
-              <div className="relative mb-3">
-                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search user profiles..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 rounded-xl bg-background/50 border-border/80"
-                />
-              </div>
-            )}
+            <div className="relative mb-3">
+              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder={isAdminOrSuper ? "Search user profiles..." : "Search friends..."}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 rounded-xl bg-background/50 border-border/80"
+              />
+            </div>
 
             <div className="max-h-48 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 bg-background/30">
               {loading ? (
@@ -1271,7 +1278,7 @@ export function CreateGroupModal({ open, onClose, meId, onGroupCreated }: Create
                 <div className="text-center py-8 text-sm text-muted-foreground">
                   {isAdminOrSuper 
                     ? (searchQuery.trim() ? "No users found" : "Type to search users") 
-                    : "No friends available to add"}
+                    : (searchQuery.trim() ? "No matching friends found" : "No friends available to add")}
                 </div>
               ) : (
                 displayList.map((item) => {

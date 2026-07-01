@@ -300,8 +300,6 @@ function AdminPage() {
         )}
         <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
         <SideBtn active={tab === "profile"} onClick={() => selectTab("profile")} icon={UserIcon} label="My profile" />
-        <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">App Messaging</p>
-        <NavLink to="/app/chat" icon={MessageSquare} label="Group Chats & Users" onClick={() => setNavOpen(false)} />
       </nav>
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
@@ -1122,6 +1120,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         open={createGroupOpen}
         onClose={() => setCreateGroupOpen(false)}
         meId={meId}
+        isAdminOrSuper={true}
         onGroupCreated={(groupId) => {
           load();
           setActiveId(`group-${groupId}`);
