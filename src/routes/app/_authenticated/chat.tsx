@@ -1375,33 +1375,24 @@ export function CreateGroupModal({
                 displayList.map((item) => {
                   const isChecked = selectedMembers.includes(item.id);
                   const dispName = item.first_name && item.last_name ? `${item.first_name} ${item.last_name}` : item.username;
-                  const isPreselected = item.id === preselectedMemberId;
                   return (
                     <div
                       key={item.id}
                       onClick={() => {
-                        if (isPreselected) return; // Prevent deselecting the preselected friend
                         setSelectedMembers(prev =>
                           isChecked ? prev.filter(uid => uid !== item.id) : [...prev, item.id]
                         );
                       }}
-                      className={`flex items-center justify-between p-3 hover:bg-secondary/40 select-none ${isPreselected ? "cursor-not-allowed opacity-90" : "cursor-pointer"}`}
+                      className="flex items-center justify-between p-3 hover:bg-secondary/40 cursor-pointer select-none"
                     >
                       <div className="flex items-center gap-3">
                         <Avatar name={dispName} url={item.avatar_url} size={36} />
                         <div>
-                          <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                            <span>{dispName}</span>
-                            {isPreselected && (
-                              <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                                Required
-                              </span>
-                            )}
-                          </p>
+                          <p className="text-sm font-semibold text-foreground">{dispName}</p>
                           <p className="text-[10px] text-muted-foreground">@{item.username}</p>
                         </div>
                       </div>
-                      <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"} ${isPreselected ? "opacity-60 cursor-not-allowed" : ""}`}>
+                      <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
                         {isChecked && <Check className="h-3 w-3" />}
                       </div>
                     </div>

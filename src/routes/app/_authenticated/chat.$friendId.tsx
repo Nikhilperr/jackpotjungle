@@ -2984,7 +2984,7 @@ const MessageItem = React.memo(function MessageItem({
   if ((m as any).isSystemGroupCreated) {
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
-        A group was created by {senderDispName}
+        {mine ? "You created the group." : `${senderDispName} created the group.`}
       </div>
     );
   }
