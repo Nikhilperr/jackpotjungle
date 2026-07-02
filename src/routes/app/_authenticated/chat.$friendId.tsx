@@ -41,9 +41,10 @@ type CallRow = {
 interface GroupAddMembersModalProps {
   open: boolean;
   onClose: () => void;
-  groupId: string;
+  groupId: string | null;
   meId: string;
   onMembersAdded: () => void;
+  isAdminOrSuper?: boolean;
 }
 
 export function GroupAddMembersModal({
@@ -51,7 +52,8 @@ export function GroupAddMembersModal({
   onClose,
   groupId,
   meId,
-  onMembersAdded
+  onMembersAdded,
+  isAdminOrSuper: forceAdminOrSuper
 }: GroupAddMembersModalProps) {
   const [friendsList, setFriendsList] = useState<any[]>([]);
   const [potentialMembers, setPotentialMembers] = useState<any[]>([]);
@@ -60,7 +62,7 @@ export function GroupAddMembersModal({
   const [potentialSearchQuery, setPotentialSearchQuery] = useState("");
   const [myUsername, setMyUsername] = useState("Someone");
   const { role } = useRole();
-  const isAdminOrSuper = role === "admin" || role === "super_admin";
+  const isAdminOrSuper = forceAdminOrSuper !== undefined ? forceAdminOrSuper : (role === "admin" || role === "super_admin");
 
   useEffect(() => {
     if (meId) {
@@ -176,6 +178,7 @@ export function GroupAddMembersModal({
           .from("profiles")
           .select("id, username, first_name, last_name, avatar_url")
           .neq("id", meId)
+          .neq("username", "jackpotjungle")
           .or(`username.ilike.%${trimmed}%,first_name.ilike.%${trimmed}%,last_name.ilike.%${trimmed}%`)
           .limit(30);
           

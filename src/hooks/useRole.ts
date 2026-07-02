@@ -32,5 +32,5 @@ export function useRole() {
   const isAdmin = roles.includes("admin") || isSuperAdmin;
   const topRole: AppRole = isSuperAdmin ? "super_admin" : isAdmin ? "admin" : "user";
 
-  return { roles, isAdmin, isSuperAdmin, topRole, loading };
+  return { roles, isAdmin, isSuperAdmin, topRole, role: topRole, loading };
 }

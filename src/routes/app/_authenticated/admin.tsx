@@ -87,7 +87,7 @@ import {
 import { SystemAnnouncementsAdminView } from "@/components/admin/SystemAnnouncementsAdmin";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 import { CreateGroupModal } from "./chat";
-import { GroupDetailPanel, GroupAddMembersModal } from "./chat.$friendId";
+import { GroupDetailPanel, GroupAddMembersModal, GroupShareModal } from "./chat.$friendId";
 
 type Tab =
   | "inbox"
@@ -468,6 +468,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [activeGroup, setActiveGroup] = useState<any>(null);
   const [activeGroupMembers, setActiveGroupMembers] = useState<any[]>([]);
   const [addMembersOpen, setAddMembersOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const [messages, setMessages] = useState<any[]>([]);
   const [selectedMemberProfile, setSelectedMemberProfile] = useState<{ id: string; username: string; avatar_url: string | null } | null>(null);
@@ -1260,6 +1261,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               onUpdateName={handleUpdateGroupName}
               onUpdateAvatar={handleUpdateGroupAvatar}
               onAddMembers={() => setAddMembersOpen(true)}
+              onShare={() => setShareOpen(true)}
               onRemoveMember={handleRemoveMember}
               onPromoteMember={handlePromoteMember}
               onMemberClick={(userId, username, avatarUrl) => {
@@ -1304,6 +1306,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   onUpdateName={handleUpdateGroupName}
                   onUpdateAvatar={handleUpdateGroupAvatar}
                   onAddMembers={() => setAddMembersOpen(true)}
+                  onShare={() => setShareOpen(true)}
                   onRemoveMember={handleRemoveMember}
                   onPromoteMember={handlePromoteMember}
                   onMemberClick={(userId, username, avatarUrl) => {
@@ -1347,6 +1350,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           onClose={() => setAddMembersOpen(false)}
           groupId={activeGroup.id}
           meId={meId}
+          isAdminOrSuper={true}
           onMembersAdded={() => {
             // reload group members
             supabase.from("group_members").select("*, profiles:user_id(id, username, first_name, last_name, avatar_url)").eq("group_id", activeGroup.id).then(({ data }) => {
@@ -1354,6 +1358,17 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             });
             load();
           }}
+        />
+      )}
+
+      {/* Group Share Modal */}
+      {shareOpen && activeGroup && (
+        <GroupShareModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          groupId={activeGroup.id}
+          groupName={activeGroup.name || "Group"}
+          meId={meId}
         />
       )}
 
