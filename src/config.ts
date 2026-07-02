@@ -20,14 +20,27 @@ export function toCDNUrl(publicUrl: string | null | undefined): string {
     return publicUrl;
   }
   
+  let url = publicUrl;
+
   const supabaseUrl = "https://db.chancerealm.casino";
   const storagePrefix = `${supabaseUrl}/storage/v1/object/public`;
   
-  if (publicUrl.startsWith(storagePrefix)) {
+  if (url.startsWith(storagePrefix)) {
     // e.g. https://db.chancerealm.casino/storage/v1/object/public/avatars/abc.png
     // becomes https://cdn.playjackpotjungle.com/avatars/abc.png
-    return publicUrl.replace(storagePrefix, SERVICES_CONFIG.CDN);
+    url = url.replace(storagePrefix, SERVICES_CONFIG.CDN);
+  }
+
+  // Failsafe: Clean up any double-bucket paths that were previously saved in the database
+  if (url.includes("/avatars/avatars/")) {
+    url = url.replace("/avatars/avatars/", "/avatars/");
+  }
+  if (url.includes("/chat-images/chat-images/")) {
+    url = url.replace("/chat-images/chat-images/", "/chat-images/");
+  }
+  if (url.includes("/chat-audio/chat-audio/")) {
+    url = url.replace("/chat-audio/chat-audio/", "/chat-audio/");
   }
   
-  return publicUrl;
+  return url;
 }

@@ -41,7 +41,7 @@ function createSupabaseAdminClient() {
         const cdnUrl = "https://cdn.playjackpotjungle.com";
         const storagePrefix = `${SUPABASE_URL}/storage/v1/object/public`;
         if (res.data.publicUrl.startsWith(storagePrefix)) {
-          res.data.publicUrl = res.data.publicUrl.replace(storagePrefix, `${cdnUrl}/${id}`);
+          res.data.publicUrl = res.data.publicUrl.replace(storagePrefix, cdnUrl);
         }
       }
       return res;
