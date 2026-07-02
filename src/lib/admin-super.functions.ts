@@ -401,8 +401,11 @@ export const MIGRATIONS_SQL = `
             )
             OR public.has_role(auth.uid(), 'super_admin')
             OR public.has_role(auth.uid(), 'admin')
-          )
         );
+
+        -- Add is_edited column if not exists to messages and page_messages
+        ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS is_edited BOOLEAN DEFAULT false;
+        ALTER TABLE public.page_messages ADD COLUMN IF NOT EXISTS is_edited BOOLEAN DEFAULT false;
       `;
 
 export const runDatabaseMigration = createServerFn({ method: "POST" })

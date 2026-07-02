@@ -53,6 +53,7 @@ import {
   Settings as SettingsIcon,
   Pin,
   BookOpen,
+  Edit,
 } from "lucide-react";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -1959,6 +1960,7 @@ function Conversation({
   }, []);
 
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [confirmPinTarget, setConfirmPinTarget] = useState<string | null>(null);
   const [activeMsgMenu, setActiveMsgMenu] = useState<string | null>(null);
   const [showAllPins, setShowAllPins] = useState(false);
@@ -2308,6 +2310,47 @@ function Conversation({
     if (!text.trim()) return;
     const content = text.trim();
     setText("");
+
+    if (editingMessageId) {
+      const msgId = editingMessageId;
+      setEditingMessageId(null);
+      if (isGroup) {
+        const { data, error } = await supabase
+          .from("messages")
+          .update({ content, is_edited: true })
+          .eq("id", msgId)
+          .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+          .single();
+        if (error) {
+          toast.error("Failed to edit message");
+          console.error(error);
+          return;
+        }
+        if (data) {
+          setMessages((prev) => prev.map((x) => (x.id === msgId ? ({ ...data, from_page: true } as any) : x)));
+        }
+      } else {
+        const { data, error } = await supabase
+          .from("page_messages")
+          .update({ content, is_edited: true })
+          .eq("id", msgId)
+          .select()
+          .single();
+        if (error) {
+          toast.error("Failed to edit message");
+          console.error(error);
+          return;
+        }
+        if (data) {
+          setMessages((prev) => {
+            const next = prev.map((x) => (x.id === msgId ? (data as PageMsg) : x));
+            setCachedPageMessages(`admin-page-${conv.conversationId}`, next);
+            return next;
+          });
+        }
+      }
+      return;
+    }
 
     const replyPrefix = replyingTo
       ? `[reply:${replyingTo.id}:${replyingTo.from_page ? "You" : (conv?.username || "User")}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] `
@@ -2676,6 +2719,28 @@ function Conversation({
         </div>
       )}
 
+      {editingMessageId && (() => {
+        const editingMsg = messages.find(x => x.id === editingMessageId);
+        return (
+          <div className="px-4 py-2 border-t border-border bg-secondary/30 flex items-center justify-between text-xs text-muted-foreground reply-preview-enter animate-in slide-in-from-bottom-2 duration-200">
+            <div className="truncate flex-1">
+              <span className="font-bold text-primary block text-[10px] uppercase">Editing Message</span>
+              <span className="truncate block italic">{editingMsg?.content || ""}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingMessageId(null);
+                setText("");
+              }}
+              className="h-6 w-6 rounded-full hover:bg-secondary flex items-center justify-center ml-2 shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        );
+      })()}
+
       {selectionMode ? (
         <div className="p-3 border-t border-border flex items-center justify-center bg-card">
           <button
@@ -2799,6 +2864,21 @@ function Conversation({
                   <Reply className="h-4 w-4 text-primary" />
                   <span>Reply</span>
                 </button>
+                {mine && !m.image_url && !m.audio_url && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setText(m.content || "");
+                      setEditingMessageId(m.id);
+                      setReplyingTo(null);
+                      setActiveMsgMenu(null);
+                    }}
+                    className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                  >
+                    <Edit className="h-4 w-4 text-primary" />
+                    <span>Edit</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -3533,6 +3613,11 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
               <div className={`max-w-[240px] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
                 <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
                   {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                  {m.is_edited && (
+                    <span className="text-[10px] opacity-60 ml-1.5 select-none font-medium text-inherit italic">
+                      (edited)
+                    </span>
+                  )}
                 </p>
               </div>
             )}

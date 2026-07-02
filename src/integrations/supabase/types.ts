@@ -299,6 +299,7 @@ export type Database = {
           delivered: boolean
           id: string
           image_url: string | null
+          is_edited: boolean
           receiver_id: string
           seen: boolean
           sender_id: string
@@ -310,6 +311,7 @@ export type Database = {
           delivered?: boolean
           id?: string
           image_url?: string | null
+          is_edited?: boolean
           receiver_id: string
           seen?: boolean
           sender_id: string
@@ -321,6 +323,7 @@ export type Database = {
           delivered?: boolean
           id?: string
           image_url?: string | null
+          is_edited?: boolean
           receiver_id?: string
           seen?: boolean
           sender_id?: string
@@ -360,6 +363,7 @@ export type Database = {
           from_page: boolean
           id: string
           image_url: string | null
+          is_edited: boolean
           seen: boolean
           sender_id: string
         }
@@ -371,6 +375,7 @@ export type Database = {
           from_page?: boolean
           id?: string
           image_url?: string | null
+          is_edited?: boolean
           seen?: boolean
           sender_id: string
         }
@@ -382,6 +387,7 @@ export type Database = {
           from_page?: boolean
           id?: string
           image_url?: string | null
+          is_edited?: boolean
           seen?: boolean
           sender_id?: string
         }

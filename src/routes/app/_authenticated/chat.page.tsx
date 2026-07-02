@@ -4,7 +4,7 @@ import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X, Phone, Video, Pin, Reply, Info, Bell, Search, ChevronUp, ChevronDown, Trash2, Forward, Copy, MoreHorizontal } from "lucide-react";
+import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X, Phone, Video, Pin, Reply, Info, Bell, Search, ChevronUp, ChevronDown, Trash2, Forward, Copy, MoreHorizontal, Edit } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -172,6 +172,7 @@ function PageChatView() {
   }
 
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [confirmPinTarget, setConfirmPinTarget] = useState<string | null>(null);
   const [activeMsgMenu, setActiveMsgMenu] = useState<string | null>(null);
   const [showAllPins, setShowAllPins] = useState(false);
@@ -645,15 +646,37 @@ function PageChatView() {
   async function send(e: React.FormEvent) {
     e.preventDefault();
     if (!draft.trim() || !meId || !convId) return;
-    const content = replyingTo
-      ? `[reply:${replyingTo.id}:${replyingTo.from_page ? "Jackpot Jungle" : "You"}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] ${draft.trim()}`
-      : draft.trim();
+    const content = draft.trim();
     setDraft("");
+
+    if (editingMessageId) {
+      const msgId = editingMessageId;
+      setEditingMessageId(null);
+      const { data, error } = await supabase
+        .from("page_messages")
+        .update({ content, is_edited: true })
+        .eq("id", msgId)
+        .select()
+        .single();
+      if (error) {
+        toast.error("Failed to edit message");
+        console.error(error);
+        return;
+      }
+      if (data) {
+        setMessages((prev) => prev.map((x) => (x.id === msgId ? (data as Msg) : x)));
+      }
+      return;
+    }
+
+    const finalContent = replyingTo
+      ? `[reply:${replyingTo.id}:${replyingTo.from_page ? "Jackpot Jungle" : "You"}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] ${content}`
+      : content;
     setReplyingTo(null);
-    const tempId = addOptimistic({ content });
+    const tempId = addOptimistic({ content: finalContent });
     const { data, error } = await supabase
       .from("page_messages")
-      .insert({ conversation_id: convId, sender_id: meId, from_page: false, content })
+      .insert({ conversation_id: convId, sender_id: meId, from_page: false, content: finalContent })
       .select()
       .single();
     if (error) {
@@ -902,6 +925,28 @@ function PageChatView() {
           </div>
         )}
 
+        {editingMessageId && (() => {
+          const editingMsg = messages.find(x => x.id === editingMessageId);
+          return (
+            <div className="px-4 py-2 bg-secondary/80 border-t border-border flex items-center justify-between text-xs z-10 reply-preview-enter animate-in slide-in-from-bottom-2 duration-150 select-none">
+              <div className="truncate flex-1">
+                <span className="font-bold text-primary block text-[10px] uppercase">Editing Message</span>
+                <span className="truncate block italic">{editingMsg?.content || ""}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingMessageId(null);
+                  setDraft("");
+                }}
+                className="h-6 w-6 rounded-full hover:bg-secondary/80 flex items-center justify-center ml-2 shrink-0"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          );
+        })()}
+
         {selectionMode ? (
           <div className="p-3 border-t border-border flex items-center justify-center bg-card">
             <button
@@ -1064,6 +1109,21 @@ function PageChatView() {
                   <Reply className="h-4 w-4 text-primary" />
                   <span>Reply</span>
                 </button>
+                {mine && !m.image_url && !m.audio_url && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraft(m.content || "");
+                      setEditingMessageId(m.id);
+                      setReplyingTo(null);
+                      setActiveMsgMenu(null);
+                    }}
+                    className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                  >
+                    <Edit className="h-4 w-4 text-primary" />
+                    <span>Edit</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -1506,7 +1566,14 @@ const PageMessageItem = React.memo(function PageMessageItem({
               </div>
             ) : (
               <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>
+                <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
+                  {m.content}
+                  {m.is_edited && (
+                    <span className="text-[10px] opacity-60 ml-1.5 select-none font-medium text-inherit italic">
+                      (edited)
+                    </span>
+                  )}
+                </p>
               </div>
             )}
           </div>

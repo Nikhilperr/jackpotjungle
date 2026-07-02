@@ -4,7 +4,7 @@ import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download, MessageCircle } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download, MessageCircle, Edit } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -924,6 +924,7 @@ function ChatView() {
   }, [friendId, friend]);
 
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [confirmPinTarget, setConfirmPinTarget] = useState<string | null>(null);
   const [activeMsgMenu, setActiveMsgMenu] = useState<string | null>(null);
   const [showAllPins, setShowAllPins] = useState(false);
@@ -1702,6 +1703,26 @@ function ChatView() {
     const content = draft.trim();
     setDraft("");
     setShowEmoji(false);
+
+    if (editingMessageId) {
+      const msgId = editingMessageId;
+      setEditingMessageId(null);
+      const { data, error } = await supabase
+        .from("messages")
+        .update({ content, is_edited: true })
+        .eq("id", msgId)
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+        .single();
+      if (error) {
+        toast.error("Failed to edit message");
+        console.error(error);
+        return;
+      }
+      if (data) {
+        setMessages((prev) => prev.map((x) => (x.id === msgId ? (data as any) : x)));
+      }
+      return;
+    }
     
     const replyPrefix = replyingTo
       ? `[reply:${replyingTo.id}:${replyingTo.sender_id === meId ? "You" : (replyingTo.sender?.username || friendDisplayName)}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] `
@@ -2209,6 +2230,28 @@ function ChatView() {
         </div>
       )}
 
+      {editingMessageId && (() => {
+        const editingMsg = messages.find(x => x.id === editingMessageId);
+        return (
+          <div className="px-4 py-2 border-t border-border bg-secondary/30 flex items-center justify-between text-xs text-muted-foreground reply-preview-enter animate-in slide-in-from-bottom-2 duration-200">
+            <div className="truncate flex-1">
+              <span className="font-bold text-primary block text-[10px] uppercase">Editing Message</span>
+              <span className="truncate block italic">{editingMsg?.content || ""}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingMessageId(null);
+                setDraft("");
+              }}
+              className="h-6 w-6 rounded-full hover:bg-secondary flex items-center justify-center ml-2 shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        );
+      })()}
+
       {friendId.startsWith("system-") ? (
         <div className="relative px-4 py-4 border-t border-border flex flex-col gap-2 bg-card shrink-0 text-center items-center" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
           <div className="bg-secondary/40 border border-border/60 rounded-xl p-4 w-full max-w-lg text-xs text-muted-foreground flex flex-col items-center gap-2 shadow-xs">
@@ -2312,6 +2355,21 @@ function ChatView() {
                   <Reply className="h-4 w-4 text-primary" />
                   <span>Reply</span>
                 </button>
+                {mine && !m.image_url && !m.audio_url && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraft(m.content || "");
+                      setEditingMessageId(m.id);
+                      setReplyingTo(null);
+                      setActiveMsgMenu(null);
+                    }}
+                    className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                  >
+                    <Edit className="h-4 w-4 text-primary" />
+                    <span>Edit</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -3171,6 +3229,11 @@ const MessageItem = React.memo(function MessageItem({
               <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
                 <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
                   {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                  {m.is_edited && (
+                    <span className="text-[10px] opacity-60 ml-1.5 select-none font-medium text-inherit italic">
+                      (edited)
+                    </span>
+                  )}
                 </p>
               </div>
             )}
