@@ -214,6 +214,130 @@ export const runDatabaseMigration = createServerFn({ method: "POST" })
         END $$;
 
         ALTER TABLE public.system_announcements REPLICA IDENTITY FULL;
+
+        -- Create public.group_invites table for secure invite links
+        CREATE TABLE IF NOT EXISTS public.group_invites (
+          token TEXT PRIMARY KEY,
+          group_id UUID NOT NULL REFERENCES public.groups(id) ON DELETE CASCADE,
+          created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          expires_at TIMESTAMPTZ NOT NULL
+        );
+
+        ALTER TABLE public.group_invites ENABLE ROW LEVEL SECURITY;
+
+        GRANT SELECT, INSERT, UPDATE, DELETE ON public.group_invites TO authenticated;
+        GRANT ALL ON public.group_invites TO service_role;
+
+        DROP POLICY IF EXISTS "anyone can read active invites" ON public.group_invites;
+        CREATE POLICY "anyone can read active invites" ON public.group_invites FOR SELECT TO authenticated
+          USING (expires_at > now());
+
+        DROP POLICY IF EXISTS "members can create invites" ON public.group_invites;
+        CREATE POLICY "members can create invites" ON public.group_invites FOR INSERT TO authenticated
+          WITH CHECK (
+            public.is_group_member(group_id, auth.uid()) OR
+            public.has_role(auth.uid(), 'super_admin') OR
+            public.has_role(auth.uid(), 'admin')
+          );
+
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_publication_tables 
+            WHERE pubname = 'supabase_realtime' AND tablename = 'group_invites'
+          ) THEN
+            ALTER PUBLICATION supabase_realtime ADD TABLE public.group_invites;
+          END IF;
+        END $$;
+
+        ALTER TABLE public.group_invites REPLICA IDENTITY FULL;
+
+        -- Fix and strengthen RLS policies for groups, group_members, and messages to support app-level admins/super_admins
+        DROP POLICY IF EXISTS "view_groups" ON public.groups;
+        CREATE POLICY "view_groups" ON public.groups FOR SELECT TO authenticated
+          USING (
+            created_by = auth.uid() OR
+            public.is_group_member(id, auth.uid()) OR
+            public.has_role(auth.uid(), 'super_admin') OR
+            public.has_role(auth.uid(), 'admin')
+          );
+
+        DROP POLICY IF EXISTS "update_groups" ON public.groups;
+        CREATE POLICY "update_groups" ON public.groups FOR UPDATE TO authenticated
+          USING (
+            auth.uid() = created_by OR
+            public.is_group_admin(id, auth.uid()) OR
+            public.has_role(auth.uid(), 'super_admin') OR
+            public.has_role(auth.uid(), 'admin')
+          );
+
+        DROP POLICY IF EXISTS "view_group_members" ON public.group_members;
+        CREATE POLICY "view_group_members" ON public.group_members FOR SELECT TO authenticated
+          USING (
+            public.is_group_member(group_id, auth.uid()) OR
+            EXISTS (
+              SELECT 1 FROM public.groups
+              WHERE id = group_id AND created_by = auth.uid()
+            ) OR
+            public.has_role(auth.uid(), 'super_admin') OR
+            public.has_role(auth.uid(), 'admin')
+          );
+
+        DROP POLICY IF EXISTS "insert_group_members" ON public.group_members;
+        CREATE POLICY "insert_group_members" ON public.group_members FOR INSERT TO authenticated
+          WITH CHECK (
+            auth.uid() = user_id OR
+            public.is_group_admin(group_id, auth.uid()) OR
+            EXISTS (
+              SELECT 1 FROM public.groups
+              WHERE id = group_id AND created_by = auth.uid()
+            ) OR
+            public.has_role(auth.uid(), 'super_admin') OR
+            public.has_role(auth.uid(), 'admin')
+          );
+
+        DROP POLICY IF EXISTS "update_group_members" ON public.group_members;
+        CREATE POLICY "update_group_members" ON public.group_members FOR UPDATE TO authenticated
+          USING (
+            public.is_group_admin(group_id, auth.uid()) OR
+            public.has_role(auth.uid(), 'super_admin') OR
+            public.has_role(auth.uid(), 'admin')
+          );
+
+        DROP POLICY IF EXISTS "delete_group_members" ON public.group_members;
+        CREATE POLICY "delete_group_members" ON public.group_members FOR DELETE TO authenticated
+          USING (
+            auth.uid() = user_id OR
+            public.is_group_admin(group_id, auth.uid()) OR
+            public.has_role(auth.uid(), 'super_admin') OR
+            public.has_role(auth.uid(), 'admin')
+          );
+
+        DROP POLICY IF EXISTS "view own messages" ON public.messages;
+        CREATE POLICY "view own messages" ON public.messages FOR SELECT TO authenticated
+          USING (
+            auth.uid() = sender_id OR 
+            auth.uid() = receiver_id OR
+            (group_id IS NOT NULL AND (
+              public.is_group_member(group_id, auth.uid()) OR
+              public.has_role(auth.uid(), 'super_admin') OR
+              public.has_role(auth.uid(), 'admin')
+            ))
+          );
+
+        DROP POLICY IF EXISTS "send messages" ON public.messages;
+        CREATE POLICY "send messages" ON public.messages FOR INSERT TO authenticated
+          WITH CHECK (
+            auth.uid() = sender_id 
+            AND NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.is_blocked = true)
+            AND (
+              group_id IS NULL OR 
+              public.is_group_member(group_id, auth.uid()) OR
+              public.has_role(auth.uid(), 'super_admin') OR
+              public.has_role(auth.uid(), 'admin')
+            )
+          );
       `;
 
       const pg = (await import("pg")).default;
