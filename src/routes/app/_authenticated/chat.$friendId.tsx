@@ -4,7 +4,7 @@ import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -18,6 +18,7 @@ import { useRole } from "@/hooks/useRole";
 import { unsendMessagesServer } from "@/lib/messages.functions";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { downloadQRCode } from "@/lib/chat-helpers";
 import {
   getCachedProfile,
   getCachedMessages,
@@ -57,6 +58,8 @@ export function GroupAddMembersModal({
   const [newMembersSelected, setNewMembersSelected] = useState<string[]>([]);
   const [potentialSearchQuery, setPotentialSearchQuery] = useState("");
   const [myUsername, setMyUsername] = useState("Someone");
+  const { role } = useRole();
+  const isAdminOrSuper = role === "admin" || role === "super_admin";
 
   useEffect(() => {
     if (meId) {
@@ -146,6 +149,19 @@ export function GroupAddMembersModal({
       return;
     }
 
+    if (!isAdminOrSuper) {
+      const qLower = trimmed.toLowerCase();
+      const filtered = friendsList.filter((item) => {
+        const dispName = item.first_name && item.last_name ? `${item.first_name} ${item.last_name}` : item.username;
+        return (
+          dispName.toLowerCase().includes(qLower) ||
+          item.username.toLowerCase().includes(qLower)
+        );
+      });
+      setPotentialMembers(filtered);
+      return;
+    }
+
     const delay = setTimeout(async () => {
       setLoadingPotential(true);
       try {
@@ -155,15 +171,6 @@ export function GroupAddMembersModal({
           .eq("group_id", groupId);
         const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
 
-        const currentMembersUserIds = (currentMembers ?? []).map(m => m.user_id);
-        const { data: currentAdminRoles } = await supabase
-          .from("user_roles")
-          .select("user_id")
-          .in("user_id", currentMembersUserIds)
-          .in("role", ["admin", "super_admin"]);
-
-        const hasAdminInGroup = currentAdminRoles && currentAdminRoles.length > 0;
-
         const { data: profiles } = await supabase
           .from("profiles")
           .select("id, username, first_name, last_name, avatar_url")
@@ -172,22 +179,6 @@ export function GroupAddMembersModal({
           .limit(30);
           
         let filtered = (profiles ?? []).filter(p => !existingUserIds.has(p.id));
-        if (!hasAdminInGroup) {
-          const qLower = trimmed.toLowerCase();
-          const matchesQuery = "jackpot jungle".includes(qLower) || "jackpotjungle".includes(qLower);
-          if (matchesQuery) {
-            filtered = [
-              {
-                id: "support-page-temp",
-                username: "jackpotjungle",
-                first_name: "Jackpot",
-                last_name: "Jungle",
-                avatar_url: "/icons/icon-256.webp"
-              },
-              ...filtered
-            ];
-          }
-        }
         setPotentialMembers(filtered);
       } catch (err) {
         console.error(err);
@@ -197,7 +188,7 @@ export function GroupAddMembersModal({
     }, 300);
 
     return () => clearTimeout(delay);
-  }, [potentialSearchQuery, open, groupId, meId, friendsList]);
+  }, [potentialSearchQuery, open, groupId, meId, friendsList, isAdminOrSuper]);
 
   async function handleAddSubmit() {
     if (!groupId || !meId || newMembersSelected.length === 0) return;
@@ -426,6 +417,7 @@ function ChatView() {
   const [editingGroupName, setEditingGroupName] = useState("");
   const [editingGroupAvatar, setEditingGroupAvatar] = useState("");
   const [addMembersOpen, setAddMembersOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const { isAdmin, isSuperAdmin } = useRole();
 
   const myMemberInfo = groupMembers.find(m => m.profiles?.id === meId);
@@ -1141,6 +1133,17 @@ function ChatView() {
           isPinned: false,
           isSystemUserLeft: true,
           systemLeftName: leftName,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:user_joined:")) {
+        const joinedName = m.content.slice(20, -1);
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUserJoined: true,
+          systemJoinedName: joinedName,
         } as any);
         continue;
       }
@@ -2523,6 +2526,7 @@ function ChatView() {
             onUpdateName={handleUpdateGroupName}
             onUpdateAvatar={handleUpdateGroupAvatar}
             onAddMembers={handleOpenAddMembers}
+            onShare={() => setShareOpen(true)}
             onRemoveMember={handleRemoveMember}
             onPromoteMember={handlePromoteMember}
             onMemberClick={(userId) => {
@@ -2551,6 +2555,7 @@ function ChatView() {
             onUpdateName={handleUpdateGroupName}
             onUpdateAvatar={handleUpdateGroupAvatar}
             onAddMembers={handleOpenAddMembers}
+            onShare={() => setShareOpen(true)}
             onRemoveMember={handleRemoveMember}
             onPromoteMember={handlePromoteMember}
             onMemberClick={(userId) => {
@@ -2632,6 +2637,15 @@ function ChatView() {
         groupId={groupId!}
         meId={meId!}
         onMembersAdded={load}
+      />
+
+      {/* Group Share Modal */}
+      <GroupShareModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        groupId={groupId!}
+        groupName={group?.name || "Group"}
+        meId={meId!}
       />
     </div>
   );
@@ -2869,6 +2883,14 @@ const MessageItem = React.memo(function MessageItem({
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
         {leftName} left the group
+      </div>
+    );
+  }
+  if ((m as any).isSystemUserJoined) {
+    const joinedName = (m as any).systemJoinedName || senderDispName;
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        {joinedName} joined the group
       </div>
     );
   }
@@ -3115,6 +3137,7 @@ export interface GroupDetailPanelProps {
   onUpdateName: (name: string) => void;
   onUpdateAvatar: (url: string) => void;
   onAddMembers: () => void;
+  onShare: () => void;
   onRemoveMember: (id: string, username: string) => void;
   onPromoteMember: (id: string, username: string) => void;
   onMemberClick?: (id: string, username: string, avatarUrl: string | null) => void;
@@ -3130,6 +3153,7 @@ export function GroupDetailPanel({
   onUpdateName,
   onUpdateAvatar,
   onAddMembers,
+  onShare,
   onRemoveMember,
   onPromoteMember,
   onMemberClick
@@ -3342,6 +3366,14 @@ export function GroupDetailPanel({
             <Users className="h-4 w-4" />
             <span>Add Members</span>
           </button>
+
+          <button
+            onClick={onShare}
+            className="w-full py-2.5 bg-secondary hover:bg-secondary/80 border border-border text-foreground font-semibold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <Share2 className="h-4 w-4" />
+            <span>Share Group</span>
+          </button>
         </div>
 
         {/* Members List */}
@@ -3484,5 +3516,223 @@ export function GroupDetailPanel({
         </div>
       )}
     </div>
+  );
+}
+
+interface GroupShareModalProps {
+  open: boolean;
+  onClose: () => void;
+  groupId: string;
+  groupName: string;
+  meId: string;
+}
+
+export function GroupShareModal({ open, onClose, groupId, groupName, meId }: GroupShareModalProps) {
+  const [token, setToken] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [copied, setCopied] = useState(false);
+
+  const fetchOrCreateInvite = useCallback(async (forceRegenerate = false) => {
+    if (!groupId || !meId) return;
+    setLoading(true);
+    try {
+      if (!forceRegenerate) {
+        const { data } = await supabase
+          .from("group_invites")
+          .select("token, expires_at")
+          .eq("group_id", groupId)
+          .gt("expires_at", new Date().toISOString())
+          .order("expires_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (data) {
+          setToken(data.token);
+          setExpiresAt(data.expires_at);
+          setLoading(false);
+          return;
+        }
+      }
+
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+      let randomToken = "";
+      for (let i = 0; i < 16; i++) {
+        randomToken += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      
+      const newExpiry = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+      const { error } = await supabase.from("group_invites").insert({
+        token: randomToken,
+        group_id: groupId,
+        created_by: meId,
+        expires_at: newExpiry
+      });
+
+      if (error) throw error;
+
+      setToken(randomToken);
+      setExpiresAt(newExpiry);
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to generate invite link");
+    } finally {
+      setLoading(false);
+    }
+  }, [groupId, meId]);
+
+  useEffect(() => {
+    if (open) {
+      setToken(null);
+      setExpiresAt(null);
+      setTimeLeft(0);
+      setCopied(false);
+      fetchOrCreateInvite();
+    }
+  }, [open, fetchOrCreateInvite]);
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const calculateTimeLeft = () => {
+      const difference = new Date(expiresAt).getTime() - Date.now();
+      return Math.max(0, Math.floor(difference / 1000));
+    };
+
+    setTimeLeft(calculateTimeLeft());
+
+    const interval = setInterval(() => {
+      const rem = calculateTimeLeft();
+      setTimeLeft(rem);
+      if (rem <= 0) {
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  if (!open) return null;
+
+  const inviteLink = token ? `${window.location.origin}/app/chat/invite/${token}` : "";
+  const qrCodeUrl = token ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(inviteLink)}` : "";
+
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, "0");
+    const s = (secs % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
+  const handleCopy = () => {
+    if (!inviteLink || timeLeft <= 0) return;
+    navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    toast.success("Invite link copied to clipboard!");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownloadQR = () => {
+    if (!inviteLink || timeLeft <= 0) return;
+    downloadQRCode(inviteLink, `qr-invite-${groupName.replace(/\s+/g, "-").toLowerCase()}.png`);
+    toast.success("Downloading QR Code...");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
+      <DialogContent className="w-full max-w-sm p-6 bg-card/85 backdrop-blur-xl border border-border/80 rounded-3xl shadow-2xl flex flex-col gap-4 text-foreground [&>button]:hidden select-none animate-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between border-b border-border/60 pb-3">
+          <h3 className="font-bold text-lg flex items-center gap-2">
+            <Share2 className="h-5 w-5 text-primary" />
+            <span>Share Group</span>
+          </h3>
+          <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-secondary/50 flex items-center justify-center transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-xs text-muted-foreground">Generating secure token...</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {timeLeft > 0 ? (
+              <>
+                {/* QR Code Container */}
+                <div className="flex flex-col items-center justify-center p-4 bg-secondary/20 border border-border/40 rounded-2xl">
+                  {qrCodeUrl && (
+                    <img 
+                      src={qrCodeUrl} 
+                      alt="QR Code" 
+                      className="w-44 h-44 object-contain rounded-lg border border-border/60 bg-white p-2 shadow-sm"
+                    />
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-3 font-semibold">Scan QR Code to join directly</p>
+                </div>
+
+                {/* Expiration Timer */}
+                <div className="flex items-center justify-between px-2 text-xs">
+                  <span className="text-muted-foreground">Expires in:</span>
+                  <span className={`font-bold ${timeLeft < 30 ? "text-destructive animate-pulse" : "text-primary"}`}>
+                    {formatCountdown(timeLeft)} (Valid for 5 minutes)
+                  </span>
+                </div>
+
+                {/* Link Sharing Copy Box */}
+                <div className="flex gap-2">
+                  <input
+                    readOnly
+                    value={inviteLink}
+                    className="flex-1 bg-secondary/50 border border-border/60 rounded-xl px-3 py-2 text-xs focus:outline-none select-all truncate text-muted-foreground"
+                  />
+                  <Button 
+                    onClick={handleCopy}
+                    size="sm"
+                    className="rounded-xl px-4 font-semibold text-xs transition-all shadow-sm"
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={handleDownloadQR}
+                    className="flex-1 py-2.5 bg-secondary hover:bg-secondary/80 border border-border/60 text-foreground font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>Download QR</span>
+                  </button>
+                  <button
+                    onClick={() => fetchOrCreateInvite(true)}
+                    className="flex-1 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span>Regenerate</span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-center space-y-4">
+                <div className="text-4xl">⚠️</div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm">Invite Expired</h4>
+                  <p className="text-[11px] text-muted-foreground max-w-[240px]">This invite token has expired. Please regenerate a new secure token.</p>
+                </div>
+                <button
+                  onClick={() => fetchOrCreateInvite(true)}
+                  className="w-full py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl text-xs hover:opacity-95 transition-all shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  <span>Generate New Invite</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

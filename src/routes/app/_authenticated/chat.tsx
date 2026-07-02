@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { createFileRoute, Link, Outlet, useParams, useLocation } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
+import { formatSystemMessage, isSystemMessage } from "@/lib/chat-helpers";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
 import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus, Pin, Loader2, Check, X, BookOpen, Megaphone, Users } from "lucide-react";
@@ -298,6 +299,10 @@ function ChatLayout() {
           if (match) preview = match[1];
         }
 
+        if (preview && isSystemMessage(preview)) {
+          preview = formatSystemMessage(preview);
+        }
+
         if (!c.lastAt) { 
           c.lastMessage = preview; 
           c.lastAt = m.created_at; 
@@ -502,6 +507,10 @@ function ChatLayout() {
             } else if (preview?.startsWith("[reply:")) {
               const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
               if (match) preview = match[1];
+            }
+
+            if (preview && isSystemMessage(preview)) {
+              preview = formatSystemMessage(preview);
             }
 
             const updated = { ...prev[idx] };

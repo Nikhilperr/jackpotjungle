@@ -99,6 +99,13 @@ function AuthPage() {
           }
         }
 
+        const savedRedirect = typeof window !== "undefined" ? sessionStorage.getItem("jj_invite_redirect") : null;
+        if (savedRedirect) {
+          sessionStorage.removeItem("jj_invite_redirect");
+          window.location.href = savedRedirect;
+          return;
+        }
+
         navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
       }, 100);
       return () => clearTimeout(timer);

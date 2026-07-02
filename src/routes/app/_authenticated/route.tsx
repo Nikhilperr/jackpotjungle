@@ -8,6 +8,9 @@ export const Route = createFileRoute("/app/_authenticated")({
   beforeLoad: async ({ location }) => {
     const session = await waitInitialSession();
     if (!session?.user) {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("jj_invite_redirect", window.location.href);
+      }
       throw redirect({ to: "/app/auth" });
     }
 
@@ -50,7 +53,32 @@ export const Route = createFileRoute("/app/_authenticated")({
         .select("role")
         .eq("user_id", session.user.id);
       const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+      const savedRedirect = typeof window !== "undefined" ? sessionStorage.getItem("jj_invite_redirect") : null;
+      if (savedRedirect) {
+        sessionStorage.removeItem("jj_invite_redirect");
+        try {
+          const urlObj = new URL(savedRedirect);
+          throw redirect({ to: urlObj.pathname + urlObj.search });
+        } catch (e) {
+          if (e && typeof e === "object" && "to" in e) {
+            throw e;
+          }
+        }
+      }
       throw redirect({ to: isAdmin ? "/app/admin" : "/app/chat" });
+    }
+
+    const savedRedirect = typeof window !== "undefined" ? sessionStorage.getItem("jj_invite_redirect") : null;
+    if (savedRedirect) {
+      sessionStorage.removeItem("jj_invite_redirect");
+      try {
+        const urlObj = new URL(savedRedirect);
+        throw redirect({ to: urlObj.pathname + urlObj.search });
+      } catch (e) {
+        if (e && typeof e === "object" && "to" in e) {
+          throw e;
+        }
+      }
     }
 
     return { user: session.user, profile };

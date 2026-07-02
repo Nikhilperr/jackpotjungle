@@ -53,6 +53,7 @@ import { Route as AuthenticatedChatFriendIdRouteImport } from './routes/_authent
 import { Route as AppAuthenticatedChatIndexRouteImport } from './routes/app/_authenticated/chat.index'
 import { Route as AppAuthenticatedChatPageRouteImport } from './routes/app/_authenticated/chat.page'
 import { Route as AppAuthenticatedChatFriendIdRouteImport } from './routes/app/_authenticated/chat.$friendId'
+import { Route as AppAuthenticatedChatInviteTokenRouteImport } from './routes/app/_authenticated/chat.invite.$token'
 
 const VipClubRoute = VipClubRouteImport.update({
   id: '/vip-club',
@@ -277,6 +278,12 @@ const AppAuthenticatedChatFriendIdRoute =
     path: '/$friendId',
     getParentRoute: () => AppAuthenticatedChatRoute,
   } as any)
+const AppAuthenticatedChatInviteTokenRoute =
+  AppAuthenticatedChatInviteTokenRouteImport.update({
+    id: '/invite/$token',
+    path: '/invite/$token',
+    getParentRoute: () => AppAuthenticatedChatRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -321,6 +328,7 @@ export interface FileRoutesByFullPath {
   '/app/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
   '/app/chat/page': typeof AppAuthenticatedChatPageRoute
   '/app/chat/': typeof AppAuthenticatedChatIndexRoute
+  '/app/chat/invite/$token': typeof AppAuthenticatedChatInviteTokenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -362,6 +370,7 @@ export interface FileRoutesByTo {
   '/app/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
   '/app/chat/page': typeof AppAuthenticatedChatPageRoute
   '/app/chat': typeof AppAuthenticatedChatIndexRoute
+  '/app/chat/invite/$token': typeof AppAuthenticatedChatInviteTokenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -409,6 +418,7 @@ export interface FileRoutesById {
   '/app/_authenticated/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
   '/app/_authenticated/chat/page': typeof AppAuthenticatedChatPageRoute
   '/app/_authenticated/chat/': typeof AppAuthenticatedChatIndexRoute
+  '/app/_authenticated/chat/invite/$token': typeof AppAuthenticatedChatInviteTokenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -455,6 +465,7 @@ export interface FileRouteTypes {
     | '/app/chat/$friendId'
     | '/app/chat/page'
     | '/app/chat/'
+    | '/app/chat/invite/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -496,6 +507,7 @@ export interface FileRouteTypes {
     | '/app/chat/$friendId'
     | '/app/chat/page'
     | '/app/chat'
+    | '/app/chat/invite/$token'
   id:
     | '__root__'
     | '/'
@@ -542,6 +554,7 @@ export interface FileRouteTypes {
     | '/app/_authenticated/chat/$friendId'
     | '/app/_authenticated/chat/page'
     | '/app/_authenticated/chat/'
+    | '/app/_authenticated/chat/invite/$token'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -878,6 +891,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthenticatedChatFriendIdRouteImport
       parentRoute: typeof AppAuthenticatedChatRoute
     }
+    '/app/_authenticated/chat/invite/$token': {
+      id: '/app/_authenticated/chat/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/app/chat/invite/$token'
+      preLoaderRoute: typeof AppAuthenticatedChatInviteTokenRouteImport
+      parentRoute: typeof AppAuthenticatedChatRoute
+    }
   }
 }
 
@@ -919,12 +939,14 @@ interface AppAuthenticatedChatRouteChildren {
   AppAuthenticatedChatFriendIdRoute: typeof AppAuthenticatedChatFriendIdRoute
   AppAuthenticatedChatPageRoute: typeof AppAuthenticatedChatPageRoute
   AppAuthenticatedChatIndexRoute: typeof AppAuthenticatedChatIndexRoute
+  AppAuthenticatedChatInviteTokenRoute: typeof AppAuthenticatedChatInviteTokenRoute
 }
 
 const AppAuthenticatedChatRouteChildren: AppAuthenticatedChatRouteChildren = {
   AppAuthenticatedChatFriendIdRoute: AppAuthenticatedChatFriendIdRoute,
   AppAuthenticatedChatPageRoute: AppAuthenticatedChatPageRoute,
   AppAuthenticatedChatIndexRoute: AppAuthenticatedChatIndexRoute,
+  AppAuthenticatedChatInviteTokenRoute: AppAuthenticatedChatInviteTokenRoute,
 }
 
 const AppAuthenticatedChatRouteWithChildren =

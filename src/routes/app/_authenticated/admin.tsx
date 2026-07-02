@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toCDNUrl } from "@/config";
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { formatSystemMessage, isSystemMessage } from "@/lib/chat-helpers";
 import { useRole, type AppRole } from "@/hooks/useRole";
 import { useAuth } from "@/hooks/useAuth";
 import { Capacitor } from "@capacitor/core";
@@ -783,6 +784,10 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           const match = lastMessage.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
           if (match) lastMessage = match[1];
         }
+
+        if (lastMessage && isSystemMessage(lastMessage)) {
+          lastMessage = formatSystemMessage(lastMessage);
+        }
         let lastAt = lastMsg?.created_at ?? null;
 
         if (lastCall && (!lastAt || new Date(lastCall.created_at) > new Date(lastAt))) {
@@ -836,6 +841,10 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         } else if (lastMessage?.startsWith("[reply:")) {
           const match = lastMessage.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
           if (match) lastMessage = match[1];
+        }
+
+        if (lastMessage && isSystemMessage(lastMessage)) {
+          lastMessage = formatSystemMessage(lastMessage);
         }
 
         return {
@@ -902,6 +911,10 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               if (match) preview = match[1];
             } else if (!preview) {
               preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Message";
+            }
+
+            if (preview && isSystemMessage(preview)) {
+              preview = formatSystemMessage(preview);
             }
             
             const copy = [...prev];
@@ -1193,6 +1206,9 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 let preview = content;
                 if (!preview) {
                   preview = image_url ? "📷 Photo" : audio_url ? "🎤 Voice message" : "Message";
+                }
+                if (preview && isSystemMessage(preview)) {
+                  preview = formatSystemMessage(preview);
                 }
                 const copy = [...prev];
                 const updated = { ...copy[idx] };
@@ -1989,6 +2005,17 @@ function Conversation({
           isPinned: false,
           isSystemUserLeft: true,
           systemLeftName: leftName,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:user_joined:")) {
+        const joinedName = m.content.slice(20, -1);
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemUserJoined: true,
+          systemJoinedName: joinedName,
         } as any);
         continue;
       }
@@ -3292,6 +3319,14 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
         {leftName} left the group
+      </div>
+    );
+  }
+  if (m.isSystemUserJoined) {
+    const joinedName = m.systemJoinedName || senderDispName;
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        {joinedName} joined the group
       </div>
     );
   }
