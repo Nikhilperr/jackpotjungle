@@ -142,6 +142,7 @@ type ConvRow = {
   unread: number;
   credit: number;
   isSpam: boolean;
+  isGroup?: boolean;
 };
 
 function AdminPage() {
@@ -862,19 +863,27 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 
   const filtered = viewGroups
     ? groupRows.filter((u) => !search || u.username.toLowerCase().includes(search.toLowerCase()))
-    : convs.filter((u) => {
-        if (viewSpam ? !u.isSpam : u.isSpam) return false;
-        if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
-        if (tagFilter && !(userTagMap[u.userId] ?? []).includes(tagFilter)) return false;
-        return true;
-      });
+    : (() => {
+        const showBoth = !viewSpam && tagFilter === null;
+        const baseConvs = showBoth ? [...convs, ...groupRows] : convs;
+        return baseConvs.filter((u) => {
+          if (u.isGroup) {
+            if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
+            return true;
+          }
+          if (viewSpam ? !u.isSpam : u.isSpam) return false;
+          if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
+          if (tagFilter && !(userTagMap[u.userId] ?? []).includes(tagFilter)) return false;
+          return true;
+        });
+      })();
 
   const sorted = [...filtered].sort((a, b) => {
     const aPinned = pinnedConvs.includes(a.conversationId);
     const bPinned = pinnedConvs.includes(b.conversationId);
     if (aPinned && !bPinned) return -1;
     if (!aPinned && bPinned) return 1;
-    return 0;
+    return (b.lastAt ?? "").localeCompare(a.lastAt ?? "");
   });
   const spamCount = convs.filter((u) => u.isSpam).length;
   const active = (convs.find((u) => u.conversationId === activeId) || groupRows.find((u) => u.conversationId === activeId)) ?? null;
@@ -1073,7 +1082,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             onOpenDetail={() => setDetailOpen(true)} 
             onToggleSpam={() => setConvSpam(active, !active.isSpam)} 
             onLastMessageUpdate={(content, image_url, audio_url, created_at) => {
-              setConvs((prev) => {
+              const updater = (prev: ConvRow[]) => {
                 const idx = prev.findIndex((c) => c.conversationId === active.conversationId);
                 if (idx === -1) return prev;
                 let preview = content;
@@ -1086,7 +1095,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 updated.lastAt = created_at;
                 copy[idx] = updated;
                 return copy.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
-              });
+              };
+              if (active.isGroup || active.conversationId.startsWith("group-")) {
+                setGroupRows(updater);
+              } else {
+                setConvs(updater);
+              }
             }}
           />
         ) : (
