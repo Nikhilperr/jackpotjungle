@@ -2517,7 +2517,10 @@ function ChatView() {
             meId={meId}
             pinnedMessages={pinnedMessages} 
             onClose={() => setShowDetail(false)} 
-            onCreateGroupClick={() => setCreateGroupOpen(true)}
+            onCreateGroupClick={() => {
+              setShowDetail(false);
+              setCreateGroupOpen(true);
+            }}
           />
         </aside>
       )}
@@ -2552,7 +2555,10 @@ function ChatView() {
             meId={meId}
             pinnedMessages={pinnedMessages} 
             onClose={() => setShowDetail(false)} 
-            onCreateGroupClick={() => setCreateGroupOpen(true)}
+            onCreateGroupClick={() => {
+              setShowDetail(false);
+              setCreateGroupOpen(true);
+            }}
           />
         </SheetContent>
       </Sheet>
@@ -2810,7 +2816,7 @@ export function ConversationDetailPanel({
               <div className="h-10 w-10 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary transition-colors shadow-sm">
                 <Users className="h-5 w-5" />
               </div>
-              <span className="text-[10px] font-bold text-primary">Group</span>
+              <span className="text-[10px] font-bold text-primary">Create Group</span>
             </button>
           )}
         </div>

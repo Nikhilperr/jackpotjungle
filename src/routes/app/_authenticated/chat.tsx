@@ -1313,9 +1313,9 @@ export function CreateGroupModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] text-foreground overflow-y-auto z-50">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ zIndex: 100 }}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} style={{ zIndex: 100 }} />
+      <div className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] text-foreground overflow-y-auto z-[100]" style={{ zIndex: 100 }}>
         <div className="flex items-center justify-between border-b border-border pb-3">
           <h3 className="font-bold text-lg">New Group Chat</h3>
           <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
