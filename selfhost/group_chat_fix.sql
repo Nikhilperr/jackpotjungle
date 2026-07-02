@@ -111,14 +111,29 @@ CREATE POLICY "view_group_members" ON public.group_members FOR SELECT TO authent
 DROP POLICY IF EXISTS "insert_group_members" ON public.group_members;
 CREATE POLICY "insert_group_members" ON public.group_members FOR INSERT TO authenticated
   WITH CHECK (
-    auth.uid() = user_id OR
+    -- Creator/Admin insert check
+    (auth.uid() = user_id OR
     public.is_group_admin(group_id, auth.uid()) OR
     EXISTS (
       SELECT 1 FROM public.groups
       WHERE id = group_id AND created_by = auth.uid()
     ) OR
-    public.has_role(auth.uid(), 'super_admin') OR
-    public.has_role(auth.uid(), 'admin')
+    public.has_role(auth.uid(), 'super_admin'::app_role) OR
+    public.has_role(auth.uid(), 'admin'::app_role))
+    
+    -- Friendship constraint check
+    AND (
+      auth.uid() = user_id OR
+      public.has_role(auth.uid(), 'super_admin'::app_role) OR
+      public.has_role(auth.uid(), 'admin'::app_role) OR
+      EXISTS (
+        SELECT 1 FROM public.friendships
+        WHERE (user_a = auth.uid() AND user_b = user_id)
+           OR (user_a = user_id AND user_b = auth.uid())
+      ) OR
+      public.has_role(user_id, 'admin'::app_role) OR
+      public.has_role(user_id, 'super_admin'::app_role)
+    )
   );
 
 DROP POLICY IF EXISTS "update_group_members" ON public.group_members;

@@ -4,7 +4,7 @@ import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download, MessageCircle } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -19,6 +19,7 @@ import { unsendMessagesServer } from "@/lib/messages.functions";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { downloadQRCode } from "@/lib/chat-helpers";
+import { CreateGroupModal } from "./chat";
 import {
   getCachedProfile,
   getCachedMessages,
@@ -418,6 +419,7 @@ function ChatView() {
   const [editingGroupAvatar, setEditingGroupAvatar] = useState("");
   const [addMembersOpen, setAddMembersOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const { isAdmin, isSuperAdmin } = useRole();
 
   const myMemberInfo = groupMembers.find(m => m.profiles?.id === meId);
@@ -2510,7 +2512,13 @@ function ChatView() {
       {/* Desktop Detail Sidebar */}
       {showDetail && !isGroup && (
         <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto animate-in slide-in-from-right duration-200 shrink-0">
-          <ConversationDetailPanel friend={friend} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
+          <ConversationDetailPanel 
+            friend={friend} 
+            meId={meId}
+            pinnedMessages={pinnedMessages} 
+            onClose={() => setShowDetail(false)} 
+            onCreateGroupClick={() => setCreateGroupOpen(true)}
+          />
         </aside>
       )}
 
@@ -2539,7 +2547,13 @@ function ChatView() {
       {/* Mobile/Tablet Detail Sheet */}
       <Sheet open={showDetail && !isGroup && isMobile} onOpenChange={setShowDetail}>
         <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden bg-card border-l border-border text-foreground [&>button]:hidden">
-          <ConversationDetailPanel friend={friend} pinnedMessages={pinnedMessages} onClose={() => setShowDetail(false)} />
+          <ConversationDetailPanel 
+            friend={friend} 
+            meId={meId}
+            pinnedMessages={pinnedMessages} 
+            onClose={() => setShowDetail(false)} 
+            onCreateGroupClick={() => setCreateGroupOpen(true)}
+          />
         </SheetContent>
       </Sheet>
 
@@ -2647,21 +2661,39 @@ function ChatView() {
         groupName={group?.name || "Group"}
         meId={meId!}
       />
+
+      <CreateGroupModal
+        open={createGroupOpen}
+        onClose={() => setCreateGroupOpen(false)}
+        meId={meId}
+        preselectedMemberId={friend?.id}
+        onGroupCreated={(newGroupId) => {
+          navigate({ to: "/app/chat/$friendId", params: { friendId: `group-${newGroupId}` } });
+        }}
+      />
     </div>
   );
 }
 
 export function ConversationDetailPanel({ 
   friend, 
+  meId,
   pinnedMessages = [], 
-  onClose 
+  onClose,
+  onCreateGroupClick
 }: { 
   friend: Profile | null; 
+  meId: string | null;
   pinnedMessages?: any[]; 
-  onClose?: () => void 
+  onClose?: () => void;
+  onCreateGroupClick?: () => void;
 }) {
   const [notif, setNotif] = useState(true);
   const [totalFriends, setTotalFriends] = useState<number | null>(null);
+  const [isFriend, setIsFriend] = useState(false);
+  const { startCall } = useCalls();
+  const { role } = useRole();
+  const isAdminOrSuper = role === "admin" || role === "super_admin";
 
   useEffect(() => {
     if (!friend?.id) return;
@@ -2673,6 +2705,23 @@ export function ConversationDetailPanel({
         setTotalFriends(count ?? 0);
       });
   }, [friend?.id]);
+
+  useEffect(() => {
+    if (!meId || !friend?.id) {
+      setIsFriend(false);
+      return;
+    }
+    const [a, b] = meId < friend.id ? [meId, friend.id] : [friend.id, meId];
+    supabase
+      .from("friendships")
+      .select("user_a")
+      .eq("user_a", a)
+      .eq("user_b", b)
+      .maybeSingle()
+      .then(({ data }) => {
+        setIsFriend(!!data);
+      });
+  }, [meId, friend?.id]);
 
   if (!friend) {
     return (
@@ -2688,6 +2737,8 @@ export function ConversationDetailPanel({
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied!`);
   }
+
+  const showCreateGroupButton = isAdminOrSuper || isFriend || friend.username === "jackpotjungle";
 
   return (
     <div className="h-full flex flex-col bg-card select-none">
@@ -2709,6 +2760,59 @@ export function ConversationDetailPanel({
           <p className="text-xs text-muted-foreground mt-1">
             {friend.online ? "Active now" : "Offline"}
           </p>
+        </div>
+
+        {/* Action Shortcuts */}
+        <div className="flex justify-center items-center gap-6 py-2 border-b border-border/40 pb-4">
+          {/* Message Button */}
+          <button 
+            onClick={onClose}
+            className="flex flex-col items-center gap-1.5 hover:opacity-80 transition-opacity"
+            title="Message"
+          >
+            <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center text-foreground shadow-sm">
+              <MessageCircle className="h-5 w-5" />
+            </div>
+            <span className="text-[10px] font-semibold text-muted-foreground">Message</span>
+          </button>
+
+          {/* Audio Call Button */}
+          <button 
+            onClick={() => startCall({ calleeId: friend.id, kind: "voice", peer: { name: displayName, avatar: friend.avatar_url }, context: "friend" })}
+            className="flex flex-col items-center gap-1.5 hover:opacity-80 transition-opacity"
+            title="Audio Call"
+          >
+            <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center text-foreground shadow-sm">
+              <Phone className="h-5 w-5" />
+            </div>
+            <span className="text-[10px] font-semibold text-muted-foreground">Audio</span>
+          </button>
+
+          {/* Video Call Button */}
+          <button 
+            onClick={() => startCall({ calleeId: friend.id, kind: "video", peer: { name: displayName, avatar: friend.avatar_url }, context: "friend" })}
+            className="flex flex-col items-center gap-1.5 hover:opacity-80 transition-opacity"
+            title="Video Call"
+          >
+            <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center text-foreground shadow-sm">
+              <Video className="h-5 w-5" />
+            </div>
+            <span className="text-[10px] font-semibold text-muted-foreground">Video</span>
+          </button>
+
+          {/* Create Group Button */}
+          {showCreateGroupButton && (
+            <button 
+              onClick={onCreateGroupClick}
+              className="flex flex-col items-center gap-1.5 hover:opacity-80 transition-opacity animate-in fade-in duration-200"
+              title="Create Group"
+            >
+              <div className="h-10 w-10 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary transition-colors shadow-sm">
+                <Users className="h-5 w-5" />
+              </div>
+              <span className="text-[10px] font-bold text-primary">Group</span>
+            </button>
+          )}
         </div>
 
         {/* Contact Info */}

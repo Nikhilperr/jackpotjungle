@@ -1077,7 +1077,9 @@ function ChatLayout() {
         onClose={() => setCreateGroupOpen(false)}
         meId={meId}
         onGroupCreated={(groupId) => {
-          load(meId!);
+          load(meId!).then(() => {
+            navigate({ to: "/app/chat/$friendId", params: { friendId: `group-${groupId}` } });
+          });
         }}
       />
     </AppShell>
@@ -1090,9 +1092,17 @@ export interface CreateGroupModalProps {
   meId: string | null;
   onGroupCreated: (groupId: string) => void;
   isAdminOrSuper?: boolean;
+  preselectedMemberId?: string | null;
 }
 
-export function CreateGroupModal({ open, onClose, meId, onGroupCreated, isAdminOrSuper: forceAdminOrSuper }: CreateGroupModalProps) {
+export function CreateGroupModal({ 
+  open, 
+  onClose, 
+  meId, 
+  onGroupCreated, 
+  isAdminOrSuper: forceAdminOrSuper,
+  preselectedMemberId
+}: CreateGroupModalProps) {
   const [groupName, setGroupName] = useState("");
   const [groupAvatar, setGroupAvatar] = useState("");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
@@ -1101,8 +1111,36 @@ export function CreateGroupModal({ open, onClose, meId, onGroupCreated, isAdminO
   const [allProfiles, setAllProfiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [preselectedProfile, setPreselectedProfile] = useState<any | null>(null);
   const { role } = useRole();
   const isAdminOrSuper = forceAdminOrSuper !== undefined ? forceAdminOrSuper : (role === "admin" || role === "super_admin");
+
+  useEffect(() => {
+    if (open && preselectedMemberId) {
+      setSelectedMembers([preselectedMemberId]);
+      if (preselectedMemberId === "support-page-temp") {
+        setPreselectedProfile({
+          id: "support-page-temp",
+          username: "jackpotjungle",
+          first_name: "Jackpot",
+          last_name: "Jungle",
+          avatar_url: "/icons/icon-256.webp"
+        });
+      } else {
+        supabase
+          .from("profiles")
+          .select("id, username, first_name, last_name, avatar_url")
+          .eq("id", preselectedMemberId)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (data) setPreselectedProfile(data);
+          });
+      }
+    } else if (open) {
+      setSelectedMembers([]);
+      setPreselectedProfile(null);
+    }
+  }, [open, preselectedMemberId]);
 
   useEffect(() => {
     if (!open || !meId) return;
@@ -1266,6 +1304,14 @@ export function CreateGroupModal({ open, onClose, meId, onGroupCreated, isAdminO
     }
   }
 
+  // Prepend preselected profile to make sure they are at the top and visible
+  if (preselectedProfile) {
+    displayList = [
+      preselectedProfile,
+      ...displayList.filter(item => item.id !== preselectedProfile.id)
+    ];
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -1329,24 +1375,33 @@ export function CreateGroupModal({ open, onClose, meId, onGroupCreated, isAdminO
                 displayList.map((item) => {
                   const isChecked = selectedMembers.includes(item.id);
                   const dispName = item.first_name && item.last_name ? `${item.first_name} ${item.last_name}` : item.username;
+                  const isPreselected = item.id === preselectedMemberId;
                   return (
                     <div
                       key={item.id}
                       onClick={() => {
+                        if (isPreselected) return; // Prevent deselecting the preselected friend
                         setSelectedMembers(prev =>
                           isChecked ? prev.filter(uid => uid !== item.id) : [...prev, item.id]
                         );
                       }}
-                      className="flex items-center justify-between p-3 hover:bg-secondary/40 cursor-pointer select-none"
+                      className={`flex items-center justify-between p-3 hover:bg-secondary/40 select-none ${isPreselected ? "cursor-not-allowed opacity-90" : "cursor-pointer"}`}
                     >
                       <div className="flex items-center gap-3">
                         <Avatar name={dispName} url={item.avatar_url} size={36} />
                         <div>
-                          <p className="text-sm font-semibold text-foreground">{dispName}</p>
+                          <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                            <span>{dispName}</span>
+                            {isPreselected && (
+                              <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                                Required
+                              </span>
+                            )}
+                          </p>
                           <p className="text-[10px] text-muted-foreground">@{item.username}</p>
                         </div>
                       </div>
-                      <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"}`}>
+                      <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-all ${isChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-transparent"} ${isPreselected ? "opacity-60 cursor-not-allowed" : ""}`}>
                         {isChecked && <Check className="h-3 w-3" />}
                       </div>
                     </div>
