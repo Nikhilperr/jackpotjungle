@@ -3,24 +3,23 @@ import fs from "fs";
 import path from "path";
 
 const dbPassword = "grootMahakal7X";
-const host = "db.chancerealm.casino";
 const dbName = "postgres";
 const username = "postgres";
 
 const migrationsDir = path.resolve("supabase/migrations");
 
-async function runMigrationsForPort(port: number, useSSL: boolean): Promise<boolean> {
-  const connectionString = `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
-  console.log(`Attempting migration on port ${port} (SSL: ${useSSL})...`);
+async function runMigrationsForHostPort(host: string, port: number, useSSL: boolean): Promise<boolean> {
+  const connectionString = process.env.DATABASE_URL || `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
+  console.log(`Attempting migration on ${host}:${port} (SSL: ${useSSL})...`);
   
   const client = new pg.Client({
     connectionString,
-    ssl: useSSL ? { rejectUnauthorized: false } : undefined
+    ssl: useSSL ? { rejectUnauthorized: false, servername: "db.gsnhqzsgptqxtlhggzkz.supabase.co" } : undefined
   });
 
   try {
     await client.connect();
-    console.log(`Connected to database on port ${port}!`);
+    console.log(`Connected to database on ${host}:${port}!`);
     
     const files = fs.readdirSync(migrationsDir)
       .filter(f => f.endsWith(".sql"))
@@ -41,26 +40,34 @@ async function runMigrationsForPort(port: number, useSSL: boolean): Promise<bool
     console.log("All migrations applied successfully!");
     return true;
   } catch (err: any) {
-    console.warn(`Connection failed on port ${port} (SSL: ${useSSL}):`, err.message);
+    console.warn(`Connection failed on ${host}:${port} (SSL: ${useSSL}):`, err.message);
     try { await client.end(); } catch {}
     return false;
   }
 }
 
 async function main() {
-  // Try port 5432 without SSL first, then with SSL
-  let success = await runMigrationsForPort(5432, false);
-  if (!success) {
-    success = await runMigrationsForPort(5432, true);
-  }
-  
-  // Try port 6543 without SSL, then with SSL
-  if (!success) {
-    console.log("Retrying on port 6543...");
-    success = await runMigrationsForPort(6543, false);
-    if (!success) {
-      success = await runMigrationsForPort(6543, true);
+  if (process.env.DATABASE_URL) {
+    console.log("DATABASE_URL env variable detected. Running migrations using connection string...");
+    const success = await runMigrationsForHostPort("env-url", 0, false);
+    if (success) {
+      console.log("Migration complete!");
+      process.exit(0);
     }
+  }
+
+  const hosts = ["127.0.0.1", "localhost", "db.chancerealm.casino", "db"];
+  let success = false;
+  
+  for (const h of hosts) {
+    for (const p of [5432, 6543]) {
+      for (const useSSL of [false, true]) {
+        success = await runMigrationsForHostPort(h, p, useSSL);
+        if (success) break;
+      }
+      if (success) break;
+    }
+    if (success) break;
   }
 
   if (success) {
