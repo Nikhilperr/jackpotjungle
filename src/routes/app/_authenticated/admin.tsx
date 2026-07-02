@@ -459,6 +459,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [viewGroups, setViewGroups] = useState(false);
   const [groupRows, setGroupRows] = useState<ConvRow[]>([]);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [preselectedFriendId, setPreselectedFriendId] = useState<string | undefined>(undefined);
+
+  const handleOpenCreateGroupForUser = (userId: string) => {
+    setPreselectedFriendId(userId);
+    setCreateGroupOpen(true);
+  };
   const [activeGroup, setActiveGroup] = useState<any>(null);
   const [activeGroupMembers, setActiveGroupMembers] = useState<any[]>([]);
   const [addMembersOpen, setAddMembersOpen] = useState(false);
@@ -1241,6 +1247,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               avatar={selectedMemberProfile.avatar_url}
               variant="embedded"
               onClose={() => setSelectedMemberProfile(null)}
+              onCreateGroupClick={() => handleOpenCreateGroupForUser(selectedMemberProfile.id)}
             />
           ) : active.isGroup ? (
             <GroupDetailPanel
@@ -1260,7 +1267,14 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               }}
             />
           ) : (
-            <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" onClose={() => setDetailOpen(false)} />
+            <UserDetailPanel
+              userId={active.userId}
+              username={active.username}
+              avatar={active.avatar_url}
+              variant="embedded"
+              onClose={() => setDetailOpen(false)}
+              onCreateGroupClick={() => handleOpenCreateGroupForUser(active.userId)}
+            />
           )}
         </aside>
       )}
@@ -1276,6 +1290,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 avatar={selectedMemberProfile.avatar_url}
                 variant="embedded"
                 onClose={() => setSelectedMemberProfile(null)}
+                onCreateGroupClick={() => handleOpenCreateGroupForUser(selectedMemberProfile.id)}
               />
             ) : active.isGroup ? (
               <div className="flex-1 overflow-y-auto min-h-0">
@@ -1297,7 +1312,14 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 />
               </div>
             ) : (
-              <UserDetailPanel userId={active.userId} username={active.username} avatar={active.avatar_url} variant="embedded" onClose={() => setDetailOpen(false)} />
+              <UserDetailPanel
+                userId={active.userId}
+                username={active.username}
+                avatar={active.avatar_url}
+                variant="embedded"
+                onClose={() => setDetailOpen(false)}
+                onCreateGroupClick={() => handleOpenCreateGroupForUser(active.userId)}
+              />
             )
           )}
         </SheetContent>
@@ -1305,9 +1327,13 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 
       <CreateGroupModal
         open={createGroupOpen}
-        onClose={() => setCreateGroupOpen(false)}
+        onClose={() => {
+          setCreateGroupOpen(false);
+          setPreselectedFriendId(undefined);
+        }}
         meId={meId}
         isAdminOrSuper={true}
+        preselectedMemberId={preselectedFriendId}
         onGroupCreated={(groupId) => {
           load();
           setActiveId(`group-${groupId}`);

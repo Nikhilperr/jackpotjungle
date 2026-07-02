@@ -1185,6 +1185,7 @@ export function CreateGroupModal({
           .from("profiles")
           .select("id, username, first_name, last_name, avatar_url")
           .neq("id", meId)
+          .neq("username", "jackpotjungle")
           .ilike("username", `%${searchQuery.trim()}%`)
           .limit(30);
         setAllProfiles(profiles ?? []);
