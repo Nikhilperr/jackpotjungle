@@ -500,7 +500,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         supabase.from("groups").select("*").eq("id", groupId).maybeSingle(),
         supabase.from("group_members").select("*, profiles:user_id(id, username, first_name, last_name, avatar_url)").eq("group_id", groupId)
       ]);
-      if (g) setActiveGroup(g);
+      if (!g) {
+        setActiveId(null);
+        toast.error("This group has been dismissed.");
+        return;
+      }
+      setActiveGroup(g);
       if (m) setActiveGroupMembers(m);
     }
     loadGroupDetails();
@@ -508,16 +513,116 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 
   async function handleLeaveGroup() {
     if (!meId || !activeGroup) return;
-    const { error } = await supabase.from("group_members").delete().eq("group_id", activeGroup.id).eq("user_id", meId);
-    if (error) { toast.error(error.message); return; }
-    await supabase.from("messages").insert({
-      group_id: activeGroup.id,
-      sender_id: meId,
-      content: `[system:user_left:${myUsername}]`
-    } as any);
-    toast.success("You left the group");
-    setActiveId(null);
-    load();
+
+    try {
+      const groupId = activeGroup.id;
+      // 1. Fetch current members of the group to ensure the latest status from DB
+      const { data: membersRes } = await supabase
+        .from("group_members")
+        .select("user_id, role, joined_at")
+        .eq("group_id", groupId);
+
+      const membersList = membersRes ?? [];
+      const remaining = membersList.filter(m => m.user_id !== meId);
+
+      // 2. If no remaining members, dismiss the group entirely!
+      if (remaining.length === 0) {
+        await supabase.from("group_members").delete().eq("group_id", groupId);
+        await supabase.from("messages").delete().eq("group_id", groupId);
+        await supabase.from("groups").delete().eq("id", groupId);
+
+        toast.success("You left. Group has been dismissed.");
+        setActiveId(null);
+        load();
+        return;
+      }
+
+      // 3. Check if the leaving user is the group administrator
+      const leavingMember = membersList.find(m => m.user_id === meId);
+      const wasAdmin = leavingMember?.role === "admin";
+
+      if (wasAdmin) {
+        // If there's no other group administrator left among the remaining members
+        const hasOtherAdmin = remaining.some(m => m.role === "admin");
+        if (!hasOtherAdmin) {
+          // Priority 1: Find earliest joined app-level administrator/super administrator
+          const remainingUserIds = remaining.map(m => m.user_id);
+          const { data: appRoles } = await supabase
+            .from("user_roles")
+            .select("user_id, role")
+            .in("user_id", remainingUserIds);
+
+          const eligibleAdminIds = new Set(
+            (appRoles ?? [])
+              .filter(r => r.role === "admin" || r.role === "super_admin")
+              .map(r => r.user_id)
+          );
+
+          const sortedRemaining = [...remaining].sort((a, b) =>
+            new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime()
+          );
+
+          const eligibleAdmins = sortedRemaining.filter(m => eligibleAdminIds.has(m.user_id));
+
+          let newAdminId = "";
+          if (eligibleAdmins.length > 0) {
+            newAdminId = eligibleAdmins[0].user_id;
+          } else {
+            // Priority 2: Automatically promote the earliest remaining group member
+            newAdminId = sortedRemaining[0].user_id;
+          }
+
+          if (newAdminId) {
+            // Update role to admin
+            await supabase
+              .from("group_members")
+              .update({ role: "admin" } as any)
+              .eq("group_id", groupId)
+              .eq("user_id", newAdminId);
+
+            // Get profile's display name
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("username, first_name, last_name")
+              .eq("id", newAdminId)
+              .single();
+
+            const targetDisplayName = profile
+              ? (profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : profile.username)
+              : "Someone";
+
+            // Insert ownership transferred message
+            await supabase.from("messages").insert({
+              group_id: groupId,
+              sender_id: meId,
+              content: `[system:ownership_transferred:${targetDisplayName}]`
+            } as any);
+          }
+        }
+      }
+
+      // 4. Create the system user_left message BEFORE deleting the membership
+      await supabase.from("messages").insert({
+        sender_id: meId,
+        group_id: groupId,
+        content: `[system:user_left:Jackpot Jungle]`
+      } as any);
+
+      // 5. Delete leaving member's entry
+      const { error: deleteErr } = await supabase
+        .from("group_members")
+        .delete()
+        .eq("group_id", groupId)
+        .eq("user_id", meId);
+
+      if (deleteErr) throw deleteErr;
+
+      toast.success("You left the group");
+      setActiveId(null);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to leave group");
+    }
   }
 
   async function handleUpdateGroupName(newName: string) {
@@ -1877,11 +1982,24 @@ function Conversation({
         continue;
       }
       if (m.content?.startsWith("[system:user_left:")) {
+        const leftName = m.content.slice(18, -1);
         visible.push({
           ...m,
           reactions: {},
           isPinned: false,
           isSystemUserLeft: true,
+          systemLeftName: leftName,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:ownership_transferred:")) {
+        const targetName = m.content.slice(30, -1);
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemOwnershipTransferred: true,
+          systemOwnershipTarget: targetName,
         } as any);
         continue;
       }
@@ -3170,9 +3288,18 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
     );
   }
   if (m.isSystemUserLeft) {
+    const leftName = m.systemLeftName || senderDispName;
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
-        {senderDispName} left the group
+        {leftName} left the group
+      </div>
+    );
+  }
+  if (m.isSystemOwnershipTransferred) {
+    const targetName = m.systemOwnershipTarget || "Someone";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        {targetName} became the group administrator
       </div>
     );
   }

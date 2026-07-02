@@ -4,7 +4,7 @@ import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -346,10 +346,10 @@ function ChatView() {
   const [editingGroupName, setEditingGroupName] = useState("");
   const [editingGroupAvatar, setEditingGroupAvatar] = useState("");
   const [addMembersOpen, setAddMembersOpen] = useState(false);
-  const { role } = useRole();
+  const { isAdmin, isSuperAdmin } = useRole();
 
   const myMemberInfo = groupMembers.find(m => m.profiles?.id === meId);
-  const isGroupAdmin = myMemberInfo?.role === "admin" || role === "super_admin";
+  const isGroupAdmin = myMemberInfo?.role === "admin" || isSuperAdmin;
   const myUsername = user?.user_metadata?.username || user?.email?.split("@")[0] || "Someone";
 
   const { startCall } = useCalls();
@@ -397,11 +397,15 @@ function ChatView() {
 
         if (!isMountedRef.current) return;
 
-        if (groupData) {
-          setGroup(groupData);
-          setEditingGroupName(groupData.name);
-          setEditingGroupAvatar(groupData.avatar_url || "");
+        if (!groupData) {
+          toast.error("This group has been dismissed.");
+          window.location.href = "/app/chat";
+          return;
         }
+
+        setGroup(groupData);
+        setEditingGroupName(groupData.name);
+        setEditingGroupAvatar(groupData.avatar_url || "");
         if (membersData) {
           setGroupMembers(membersData);
         }
@@ -1050,11 +1054,24 @@ function ChatView() {
         continue;
       }
       if (m.content?.startsWith("[system:user_left:")) {
+        const leftName = m.content.slice(18, -1);
         visible.push({
           ...m,
           reactions: {},
           isPinned: false,
           isSystemUserLeft: true,
+          systemLeftName: leftName,
+        } as any);
+        continue;
+      }
+      if (m.content?.startsWith("[system:ownership_transferred:")) {
+        const targetName = m.content.slice(30, -1);
+        visible.push({
+          ...m,
+          reactions: {},
+          isPinned: false,
+          isSystemOwnershipTransferred: true,
+          systemOwnershipTarget: targetName,
         } as any);
         continue;
       }
@@ -1296,25 +1313,114 @@ function ChatView() {
 
   async function handleLeaveGroup() {
     if (!meId || !groupId) return;
-    const confirmLeave = window.confirm("Are you sure you want to leave this group?");
-    if (!confirmLeave) return;
+
+    // Redundant window.confirm bypass for regular users (if !isAdmin && !isSuperAdmin).
+    // Admins/Super Admins on the chat page still use the browser confirm.
+    if (isAdmin || isSuperAdmin) {
+      const confirmLeave = window.confirm("Are you sure you want to leave this group?");
+      if (!confirmLeave) return;
+    }
 
     try {
-      const { error } = await supabase
+      // 1. Fetch current members of the group to check counts and roles
+      const { data: membersRes } = await supabase
+        .from("group_members")
+        .select("user_id, role, joined_at")
+        .eq("group_id", groupId);
+
+      const membersList = membersRes ?? [];
+      const remaining = membersList.filter(m => m.user_id !== meId);
+
+      // 2. If no remaining members, dismiss the group entirely!
+      if (remaining.length === 0) {
+        await supabase.from("group_members").delete().eq("group_id", groupId);
+        await supabase.from("messages").delete().eq("group_id", groupId);
+        await supabase.from("groups").delete().eq("id", groupId);
+
+        toast.success("You left. Group has been dismissed.");
+        window.location.href = "/app/chat";
+        return;
+      }
+
+      // 3. Check if the leaving user is the group administrator
+      const leavingMember = membersList.find(m => m.user_id === meId);
+      const wasAdmin = leavingMember?.role === "admin";
+
+      if (wasAdmin) {
+        // If there's no other group administrator left among the remaining members
+        const hasOtherAdmin = remaining.some(m => m.role === "admin");
+        if (!hasOtherAdmin) {
+          // Priority 1: Find earliest joined app-level administrator/super administrator
+          const remainingUserIds = remaining.map(m => m.user_id);
+          const { data: appRoles } = await supabase
+            .from("user_roles")
+            .select("user_id, role")
+            .in("user_id", remainingUserIds);
+
+          const eligibleAdminIds = new Set(
+            (appRoles ?? [])
+              .filter(r => r.role === "admin" || r.role === "super_admin")
+              .map(r => r.user_id)
+          );
+
+          const sortedRemaining = [...remaining].sort((a, b) =>
+            new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime()
+          );
+
+          const eligibleAdmins = sortedRemaining.filter(m => eligibleAdminIds.has(m.user_id));
+
+          let newAdminId = "";
+          if (eligibleAdmins.length > 0) {
+            newAdminId = eligibleAdmins[0].user_id;
+          } else {
+            // Priority 2: Automatically promote the earliest remaining group member
+            newAdminId = sortedRemaining[0].user_id;
+          }
+
+          if (newAdminId) {
+            // Update role to admin
+            await supabase
+              .from("group_members")
+              .update({ role: "admin" } as any)
+              .eq("group_id", groupId)
+              .eq("user_id", newAdminId);
+
+            // Get profile's display name
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("username, first_name, last_name")
+              .eq("id", newAdminId)
+              .single();
+
+            const targetDisplayName = profile
+              ? (profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : profile.username)
+              : "Someone";
+
+            // Insert ownership transferred message
+            await supabase.from("messages").insert({
+              group_id: groupId,
+              sender_id: meId,
+              content: `[system:ownership_transferred:${targetDisplayName}]`
+            } as any);
+          }
+        }
+      }
+
+      // 4. Create the system user_left message BEFORE deleting the membership
+      await supabase.from("messages").insert({
+        sender_id: meId,
+        group_id: groupId,
+        content: `[system:user_left:${myUsername}]`
+      } as any);
+
+      // 5. Delete leaving member's entry
+      const { error: deleteErr } = await supabase
         .from("group_members")
         .delete()
         .eq("group_id", groupId)
         .eq("user_id", meId);
 
-      if (error) throw error;
-
-      await supabase
-        .from("messages")
-        .insert({
-          sender_id: meId,
-          group_id: groupId,
-          content: `[system:user_left:${myUsername}]`
-        } as any);
+      if (deleteErr) throw deleteErr;
 
       toast.success("You left the group");
       window.location.href = "/app/chat";
@@ -2654,9 +2760,18 @@ const MessageItem = React.memo(function MessageItem({
     );
   }
   if ((m as any).isSystemUserLeft) {
+    const leftName = (m as any).systemLeftName || senderDispName;
     return (
       <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
-        {senderDispName} left the group
+        {leftName} left the group
+      </div>
+    );
+  }
+  if ((m as any).isSystemOwnershipTransferred) {
+    const targetName = (m as any).systemOwnershipTarget || "Someone";
+    return (
+      <div key={m.id} className="text-center text-[10px] text-muted-foreground/60 py-1.5 select-none italic">
+        {targetName} became the group administrator
       </div>
     );
   }
@@ -2919,10 +3034,45 @@ export function GroupDetailPanel({
   const [avatarInput, setAvatarInput] = useState(group?.avatar_url || "");
   const [activeMemberMenu, setActiveMemberMenu] = useState<string | null>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const { role } = useRole();
+  const { isSuperAdmin } = useRole();
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setNameInput(group?.name || "");
+    setAvatarInput(group?.avatar_url || "");
+  }, [group, isEditing]);
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    const fileMime = file.type.toLowerCase();
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    if (fileMime === "image/gif" || ext === "gif") {
+      return toast.error("GIF files are not supported. Please choose a static image.");
+    }
+    const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
+    const allowedExts = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+    if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
+      return toast.error("Unsupported format. Please choose a JPEG, PNG, WEBP, or HEIC image.");
+    }
+
+    if (file.size > 5 * 1024 * 1024) return toast.error("Max 5MB.");
+    setUploading(true);
+    try {
+      const url = await uploadAndSign("avatars", group?.id || meId || "group", file, ext, file.type);
+      setAvatarInput(url);
+      toast.success("Image uploaded. Click Save to apply changes.");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Upload failed");
+    }
+    setUploading(false);
+  }
 
   const myMemberInfo = members.find(m => m.profiles?.id === meId);
-  const isGroupAdmin = myMemberInfo?.role === "admin" || role === "super_admin";
+  const isGroupAdmin = myMemberInfo?.role === "admin" || isSuperAdmin;
 
   const groupInitials = (group?.name || "GP")
     .split(" ")
@@ -2948,10 +3098,10 @@ export function GroupDetailPanel({
         {/* Group Info Cards */}
         <div className="flex flex-col items-center text-center gap-3">
           <div className="relative">
-            {group?.avatar_url ? (
+            {avatarInput ? (
               <img
-                src={toCDNUrl(group.avatar_url)}
-                alt={group.name}
+                src={toCDNUrl(avatarInput)}
+                alt={nameInput || "Group Preview"}
                 className="h-20 w-20 rounded-full object-cover ring-2 ring-primary/20 shadow-lg"
               />
             ) : (
@@ -2959,7 +3109,36 @@ export function GroupDetailPanel({
                 {groupInitials}
               </div>
             )}
+            {isEditing && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:opacity-90 disabled:opacity-50"
+                  aria-label="Upload group picture"
+                >
+                  {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={onPickFile}
+                  className="hidden"
+                />
+              </>
+            )}
           </div>
+          {isEditing && avatarInput && (
+            <button
+              type="button"
+              onClick={() => setAvatarInput("")}
+              className="text-[11px] text-destructive font-semibold hover:underline"
+            >
+              Remove Photo
+            </button>
+          )}
 
           {!isEditing ? (
             <div className="space-y-1">
@@ -2987,15 +3166,6 @@ export function GroupDetailPanel({
                   onChange={(e) => setNameInput(e.target.value)}
                   className="h-9 rounded-xl bg-background text-sm"
                   placeholder="Group name"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-muted-foreground uppercase text-left block mb-1 pl-1">Photo URL</label>
-                <Input
-                  value={avatarInput}
-                  onChange={(e) => setAvatarInput(e.target.value)}
-                  className="h-9 rounded-xl bg-background text-sm"
-                  placeholder="https://example.com/photo.png"
                 />
               </div>
               <div className="flex gap-2">
