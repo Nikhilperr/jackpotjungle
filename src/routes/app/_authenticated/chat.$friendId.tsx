@@ -77,6 +77,15 @@ export function GroupAddMembersModal({
 
       const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
 
+      const currentMembersUserIds = (currentMembers ?? []).map(m => m.user_id);
+      const { data: currentAdminRoles } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .in("user_id", currentMembersUserIds)
+        .in("role", ["admin", "super_admin"]);
+
+      const hasAdminInGroup = currentAdminRoles && currentAdminRoles.length > 0;
+
       const { data: friendships } = await supabase
         .from("friendships")
         .select("user_a, user_b");
@@ -95,6 +104,20 @@ export function GroupAddMembersModal({
           initialFriends = profiles ?? [];
         }
       }
+
+      if (!hasAdminInGroup) {
+        initialFriends = [
+          {
+            id: "support-page-temp",
+            username: "jackpotjungle",
+            first_name: "Jackpot",
+            last_name: "Jungle",
+            avatar_url: "/icons/icon-256.webp"
+          },
+          ...initialFriends
+        ];
+      }
+
       setFriendsList(initialFriends);
       setPotentialMembers(initialFriends);
     } catch (err) {
@@ -132,6 +155,15 @@ export function GroupAddMembersModal({
           .eq("group_id", groupId);
         const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
 
+        const currentMembersUserIds = (currentMembers ?? []).map(m => m.user_id);
+        const { data: currentAdminRoles } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .in("user_id", currentMembersUserIds)
+          .in("role", ["admin", "super_admin"]);
+
+        const hasAdminInGroup = currentAdminRoles && currentAdminRoles.length > 0;
+
         const { data: profiles } = await supabase
           .from("profiles")
           .select("id, username, first_name, last_name, avatar_url")
@@ -139,7 +171,23 @@ export function GroupAddMembersModal({
           .or(`username.ilike.%${trimmed}%,first_name.ilike.%${trimmed}%,last_name.ilike.%${trimmed}%`)
           .limit(30);
           
-        const filtered = (profiles ?? []).filter(p => !existingUserIds.has(p.id));
+        let filtered = (profiles ?? []).filter(p => !existingUserIds.has(p.id));
+        if (!hasAdminInGroup) {
+          const qLower = trimmed.toLowerCase();
+          const matchesQuery = "jackpot jungle".includes(qLower) || "jackpotjungle".includes(qLower);
+          if (matchesQuery) {
+            filtered = [
+              {
+                id: "support-page-temp",
+                username: "jackpotjungle",
+                first_name: "Jackpot",
+                last_name: "Jungle",
+                avatar_url: "/icons/icon-256.webp"
+              },
+              ...filtered
+            ];
+          }
+        }
         setPotentialMembers(filtered);
       } catch (err) {
         console.error(err);
@@ -154,7 +202,28 @@ export function GroupAddMembersModal({
   async function handleAddSubmit() {
     if (!groupId || !meId || newMembersSelected.length === 0) return;
     try {
-      const inserts = newMembersSelected.map(uid => ({
+      let finalSelected = [...newMembersSelected];
+      let addedJackpotJungle = false;
+      if (newMembersSelected.includes("support-page-temp")) {
+        finalSelected = finalSelected.filter(id => id !== "support-page-temp");
+        addedJackpotJungle = true;
+        
+        const { data: adminRows } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .in("role", ["admin", "super_admin"]);
+        
+        if (adminRows && adminRows.length > 0) {
+          const adminUserIds = adminRows.map(r => r.user_id);
+          adminUserIds.forEach(uid => {
+            if (uid !== meId && !finalSelected.includes(uid)) {
+              finalSelected.push(uid);
+            }
+          });
+        }
+      }
+
+      const inserts = finalSelected.map(uid => ({
         group_id: groupId,
         user_id: uid,
         role: "member"
@@ -163,7 +232,18 @@ export function GroupAddMembersModal({
       const { error } = await supabase.from("group_members").insert(inserts);
       if (error) throw error;
 
+      if (addedJackpotJungle) {
+        await supabase
+          .from("messages")
+          .insert({
+            sender_id: meId,
+            group_id: groupId,
+            content: `[system:user_added:Jackpot Jungle:${myUsername}]`
+          } as any);
+      }
+
       for (const uid of newMembersSelected) {
+        if (uid === "support-page-temp") continue;
         const profile = potentialMembers.find(p => p.id === uid) || friendsList.find(p => p.id === uid);
         const targetUsername = profile?.username || "Someone";
         await supabase
@@ -1481,25 +1561,50 @@ function ChatView() {
 
   async function handleRemoveMember(memberId: string, memberUsername: string) {
     if (!groupId || !meId) return;
-    const confirmRemove = window.confirm(`Remove @${memberUsername} from group?`);
+    const confirmRemove = window.confirm(`Remove ${memberUsername} from group?`);
     if (!confirmRemove) return;
 
     try {
-      const { error } = await supabase
-        .from("group_members")
-        .delete()
-        .eq("group_id", groupId)
-        .eq("user_id", memberId);
+      if (memberId === "support-page-temp") {
+        const { data: adminRows } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .in("role", ["admin", "super_admin"]);
+        
+        const adminIds = (adminRows ?? []).map(r => r.user_id);
+        
+        const { error } = await supabase
+          .from("group_members")
+          .delete()
+          .eq("group_id", groupId)
+          .in("user_id", adminIds);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      await supabase
-        .from("messages")
-        .insert({
-          sender_id: meId,
-          group_id: groupId,
-          content: `[system:user_removed:${memberUsername}:${myUsername}]`
-        } as any);
+        await supabase
+          .from("messages")
+          .insert({
+            sender_id: meId,
+            group_id: groupId,
+            content: `[system:user_removed:Jackpot Jungle:${myUsername}]`
+          } as any);
+      } else {
+        const { error } = await supabase
+          .from("group_members")
+          .delete()
+          .eq("group_id", groupId)
+          .eq("user_id", memberId);
+
+        if (error) throw error;
+
+        await supabase
+          .from("messages")
+          .insert({
+            sender_id: meId,
+            group_id: groupId,
+            content: `[system:user_removed:${memberUsername}:${myUsername}]`
+          } as any);
+      }
 
       toast.success("Member removed");
       load();
@@ -3037,6 +3142,22 @@ export function GroupDetailPanel({
   const { isSuperAdmin } = useRole();
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [adminUserIds, setAdminUserIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (members.length === 0) return;
+    const userIds = members.map(m => m.profiles?.id).filter(Boolean);
+    supabase
+      .from("user_roles")
+      .select("user_id")
+      .in("user_id", userIds)
+      .in("role", ["admin", "super_admin"])
+      .then(({ data }) => {
+        if (data) {
+          setAdminUserIds(new Set(data.map(r => r.user_id)));
+        }
+      });
+  }, [members]);
 
   useEffect(() => {
     setNameInput(group?.name || "");
@@ -3073,6 +3194,26 @@ export function GroupDetailPanel({
 
   const myMemberInfo = members.find(m => m.profiles?.id === meId);
   const isGroupAdmin = myMemberInfo?.role === "admin" || isSuperAdmin;
+
+  const adminsInGroup = members.filter(m => adminUserIds.has(m.profiles?.id));
+  const hasSupportPage = adminsInGroup.length > 0;
+  
+  let renderedMembers = members.filter(m => !adminUserIds.has(m.profiles?.id));
+  if (hasSupportPage) {
+    renderedMembers = [
+      {
+        role: "member",
+        profiles: {
+          id: "support-page-temp",
+          username: "jackpotjungle",
+          first_name: "Jackpot",
+          last_name: "Jungle",
+          avatar_url: "/icons/icon-256.webp"
+        }
+      } as any,
+      ...renderedMembers
+    ];
+  }
 
   const groupInitials = (group?.name || "GP")
     .split(" ")
@@ -3143,7 +3284,9 @@ export function GroupDetailPanel({
           {!isEditing ? (
             <div className="space-y-1">
               <h4 className="font-bold text-lg">{group?.name}</h4>
-              <p className="text-xs text-muted-foreground">{members.length} members</p>
+              <p className="text-xs text-muted-foreground">
+                {hasSupportPage ? (members.length - adminsInGroup.length + 1) : members.length} members
+              </p>
               {isGroupAdmin && (
                 <button
                   onClick={() => {
@@ -3205,14 +3348,17 @@ export function GroupDetailPanel({
         <div className="space-y-3">
           <div className="flex items-center justify-between border-b border-border pb-1">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Members</span>
-            <span className="text-[10px] text-muted-foreground/60">{members.length} total</span>
+            <span className="text-[10px] text-muted-foreground/60">
+              {hasSupportPage ? (members.length - adminsInGroup.length + 1) : members.length} total
+            </span>
           </div>
 
           <div className="space-y-2 divide-y divide-border/20 animate-in fade-in duration-200">
-            {members.map((m) => {
+            {renderedMembers.map((m) => {
               if (!m.profiles) return null;
               const p = m.profiles;
               const isSelf = p.id === meId;
+              const isSupportPage = p.id === "support-page-temp";
               const dispName = p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username;
               const isAdmin = m.role === "admin";
               
@@ -3220,7 +3366,13 @@ export function GroupDetailPanel({
                 <div key={p.id} className="flex items-center justify-between py-2.5 first:pt-0">
                   <button
                     type="button"
-                    onClick={() => onMemberClick?.(p.id, p.username, p.avatar_url)}
+                    onClick={() => {
+                      if (isSupportPage) {
+                        onMemberClick?.("page", "jackpotjungle", "/icons/icon-256.webp");
+                      } else {
+                        onMemberClick?.(p.id, p.username, p.avatar_url);
+                      }
+                    }}
                     className="flex items-center gap-2.5 min-w-0 text-left hover:opacity-85 transition-opacity cursor-pointer flex-1"
                   >
                     <Avatar name={dispName} url={p.avatar_url} size={32} />
@@ -3234,7 +3386,9 @@ export function GroupDetailPanel({
                   </button>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    {isAdmin ? (
+                    {isSupportPage ? (
+                      <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold border border-primary/20">Official Page</span>
+                    ) : isAdmin ? (
                       <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold border border-primary/20">Admin</span>
                     ) : (
                       <span className="text-[9px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full font-semibold">Member</span>
@@ -3255,7 +3409,7 @@ export function GroupDetailPanel({
                           <>
                             <div className="fixed inset-0 z-40" onClick={() => setActiveMemberMenu(null)} />
                             <div className="absolute right-0 top-full mt-1 bg-background border border-border shadow-lg rounded-xl py-1 min-w-[120px] z-50 overflow-hidden animate-in zoom-in-95 duration-100">
-                              {!isAdmin && (
+                              {!isAdmin && !isSupportPage && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -3271,10 +3425,10 @@ export function GroupDetailPanel({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onRemoveMember(p.id, p.username);
+                                  onRemoveMember(p.id, isSupportPage ? "Jackpot Jungle" : p.username);
                                   setActiveMemberMenu(null);
                                 }}
-                                className="w-full px-3 py-1.5 text-left text-[10px] font-semibold text-destructive hover:bg-secondary flex items-center gap-1.5 border-t border-border/20"
+                                className={`w-full px-3 py-1.5 text-left text-[10px] font-semibold text-destructive hover:bg-secondary flex items-center gap-1.5 ${(!isAdmin && !isSupportPage) ? "border-t border-border/20" : ""}`}
                               >
                                 <UserMinus className="h-3 w-3 text-destructive" />
                                 <span>Remove</span>

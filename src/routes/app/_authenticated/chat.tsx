@@ -1175,9 +1175,27 @@ export function CreateGroupModal({ open, onClose, meId, onGroupCreated, isAdminO
 
       if (groupErr) throw groupErr;
 
+      let finalMembersToInsert = [...selectedMembers];
+      if (selectedMembers.includes("support-page-temp")) {
+        finalMembersToInsert = finalMembersToInsert.filter(id => id !== "support-page-temp");
+        const { data: adminRows } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .in("role", ["admin", "super_admin"]);
+        
+        if (adminRows && adminRows.length > 0) {
+          const adminUserIds = adminRows.map(r => r.user_id);
+          adminUserIds.forEach(uid => {
+            if (uid !== meId && !finalMembersToInsert.includes(uid)) {
+              finalMembersToInsert.push(uid);
+            }
+          });
+        }
+      }
+
       const membersToInsert = [
         { group_id: newGroup.id, user_id: meId, role: "admin" },
-        ...selectedMembers.map(uid => ({ group_id: newGroup.id, user_id: uid, role: "member" }))
+        ...finalMembersToInsert.map(uid => ({ group_id: newGroup.id, user_id: uid, role: "member" }))
       ];
 
       const { error: membersErr } = await supabase
@@ -1209,7 +1227,15 @@ export function CreateGroupModal({ open, onClose, meId, onGroupCreated, isAdminO
 
   if (!open) return null;
 
-  const displayList = isAdminOrSuper 
+  const jackpotJungleVirtual = {
+    id: "support-page-temp",
+    username: "jackpotjungle",
+    first_name: "Jackpot",
+    last_name: "Jungle",
+    avatar_url: "/icons/icon-256.webp"
+  };
+
+  let displayList = isAdminOrSuper 
     ? (searchQuery.trim() ? allProfiles : []) 
     : (searchQuery.trim()
         ? friends.filter((item) => {
@@ -1220,6 +1246,16 @@ export function CreateGroupModal({ open, onClose, meId, onGroupCreated, isAdminO
             );
           })
         : friends);
+
+  if (!isAdminOrSuper) {
+    const qLower = searchQuery.toLowerCase().trim();
+    const matchesQuery = !qLower || 
+      "jackpot jungle".includes(qLower) || 
+      "jackpotjungle".includes(qLower);
+    if (matchesQuery) {
+      displayList = [jackpotJungleVirtual, ...displayList];
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
