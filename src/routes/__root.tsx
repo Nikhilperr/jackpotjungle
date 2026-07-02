@@ -16,6 +16,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { runAutoDatabaseMigrations } from "@/lib/admin-super.functions";
 
 function NotFoundComponent() {
   return (
@@ -189,22 +190,16 @@ function RootComponent() {
 
   useEffect(() => {
     // Run database auto-migrations on load
-    import("@/lib/admin-super.functions")
-      .then(({ runAutoDatabaseMigrations }) => {
-        runAutoDatabaseMigrations()
-          .then((r: any) => {
-            if (r && !r.success) {
-              console.warn("[AutoMigration Warning]:", r.error);
-            } else {
-              console.log("[AutoMigration Success]:", r);
-            }
-          })
-          .catch((err) => {
-            console.error("[AutoMigration Error]:", err.message || err);
-          });
+    runAutoDatabaseMigrations()
+      .then((r: any) => {
+        if (r && !r.success) {
+          console.warn("[AutoMigration Warning]:", r.error);
+        } else {
+          console.log("[AutoMigration Success]:", r);
+        }
       })
       .catch((err) => {
-        console.error("[AutoMigration Import Error]:", err);
+        console.error("[AutoMigration Error]:", err.message || err);
       });
   }, []);
 

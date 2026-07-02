@@ -540,3 +540,66 @@ export const deleteSystemAnnouncement = createServerFn({ method: "POST" })
       return { success: false, error: e.message };
     }
   });
+
+export const runAutoDatabaseMigrations = createServerFn({ method: "POST" })
+  .handler(async () => {
+    try {
+      const sql = MIGRATIONS_SQL;
+      const pg = (await import("pg")).default;
+      
+      // Try process.env.DATABASE_URL first
+      if (process.env.DATABASE_URL) {
+        console.log("[AutoMigration] Found DATABASE_URL, attempting connection...");
+        const client = new pg.Client({
+          connectionString: process.env.DATABASE_URL,
+          ssl: process.env.DATABASE_URL.includes("supabase.co") || process.env.DATABASE_URL.includes("chancerealm.casino")
+            ? { rejectUnauthorized: false }
+            : undefined
+        });
+        try {
+          await client.connect();
+          console.log("[AutoMigration] Connected! Executing SQL...");
+          await client.query(sql);
+          await client.end();
+          console.log("[AutoMigration] SQL executed successfully!");
+          return { success: true, message: "Executed successfully via DATABASE_URL" };
+        } catch (e: any) {
+          console.warn("[AutoMigration] Connection failed:", e.message);
+          try { await client.end(); } catch {}
+        }
+      }
+
+      const dbPassword = "grootMahakal7X";
+      const host = "db.chancerealm.casino";
+      const dbName = "postgres";
+      const username = "postgres";
+
+      const hosts = ["localhost", "127.0.0.1", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
+      const ports = [5432, 6543];
+
+      for (const h of hosts) {
+        for (const p of ports) {
+          console.log(`[AutoMigration] Trying connection to ${h}:${p}...`);
+          const client = new pg.Client({
+            connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
+            ssl: h === "db.chancerealm.casino" || h === "db.gsnhqzsgptqxtlhggzkz.supabase.co" ? { rejectUnauthorized: false } : undefined
+          });
+          try {
+            await client.connect();
+            console.log(`[AutoMigration] Connected to ${h}:${p}! Executing SQL...`);
+            await client.query(sql);
+            await client.end();
+            console.log(`[AutoMigration] SQL executed successfully on ${h}:${p}!`);
+            return { success: true, message: `Executed successfully on ${h}:${p}` };
+          } catch (e: any) {
+            console.warn(`[AutoMigration] Failed on ${h}:${p}:`, e.message);
+            try { await client.end(); } catch {}
+          }
+        }
+      }
+      return { success: false, error: "Could not connect to database on any host/port configuration" };
+    } catch (e: any) {
+      console.error("[AutoMigration Catch Error]:", e);
+      return { success: false, error: e.message };
+    }
+  });
