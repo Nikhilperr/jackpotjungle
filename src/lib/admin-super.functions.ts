@@ -166,18 +166,7 @@ export const sendBroadcast = createServerFn({ method: "POST" })
     return { ok: true, sent };
   });
 
-export const runDatabaseMigration = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    try {
-      // Verify user role
-      const { data: roleRows, error: rolesErr } = await context.supabase
-        .from("user_roles").select("role").eq("user_id", context.userId);
-      if (rolesErr) return { success: false, error: rolesErr.message };
-      const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin");
-      if (!isSuperAdmin) return { success: false, error: "Super admins only" };
-
-      const sql = `
+export const MIGRATIONS_SQL = `
         CREATE TABLE IF NOT EXISTS public.system_announcements (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           channel_type TEXT NOT NULL CHECK (channel_type IN ('rules', 'updates')),
@@ -400,6 +389,19 @@ export const runDatabaseMigration = createServerFn({ method: "POST" })
           )
         );
       `;
+
+export const runDatabaseMigration = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    try {
+      // Verify user role
+      const { data: roleRows, error: rolesErr } = await context.supabase
+        .from("user_roles").select("role").eq("user_id", context.userId);
+      if (rolesErr) return { success: false, error: rolesErr.message };
+      const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin");
+      if (!isSuperAdmin) return { success: false, error: "Super admins only" };
+
+      const sql = MIGRATIONS_SQL;
 
       const pg = (await import("pg")).default;
       

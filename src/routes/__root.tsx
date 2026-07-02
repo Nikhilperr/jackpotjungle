@@ -188,6 +188,27 @@ function RootComponent() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Run database auto-migrations on load
+    import("@/lib/admin-super.functions")
+      .then(({ runAutoDatabaseMigrations }) => {
+        runAutoDatabaseMigrations()
+          .then((r: any) => {
+            if (r && !r.success) {
+              console.warn("[AutoMigration Warning]:", r.error);
+            } else {
+              console.log("[AutoMigration Success]:", r);
+            }
+          })
+          .catch((err) => {
+            console.error("[AutoMigration Error]:", err.message || err);
+          });
+      })
+      .catch((err) => {
+        console.error("[AutoMigration Import Error]:", err);
+      });
+  }, []);
+
+  useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
         toast.info("Password recovery link detected. Set your new password.");
