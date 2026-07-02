@@ -23,7 +23,7 @@ export function useRole() {
     }
     load(true);
     const { data: sub } = supabase.auth.onAuthStateChange((e) => {
-      if (e === "SIGNED_IN" || e === "SIGNED_OUT") load(false);
+      if (e === "SIGNED_IN" || e === "SIGNED_OUT") load(true);
     });
     return () => { mounted = false; sub.subscription.unsubscribe(); };
   }, []);

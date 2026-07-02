@@ -45,7 +45,12 @@ export const Route = createFileRoute("/app/_authenticated")({
     }
 
     if (isProfileComplete && isOnOnboarding) {
-      throw redirect({ to: "/app/chat" });
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id);
+      const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+      throw redirect({ to: isAdmin ? "/app/admin" : "/app/chat" });
     }
 
     return { user: session.user, profile };

@@ -132,7 +132,9 @@ function OnboardingPage() {
           localStorage.setItem("profile_complete", "true");
         }
         toast.success("Profile completed on another device! Redirecting...");
-        navigate({ to: "/app/chat", replace: true });
+        const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", meId);
+        const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+        navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
       }
     }, 3000);
 
@@ -274,7 +276,9 @@ function OnboardingPage() {
         localStorage.setItem("profile_complete", "true");
       }
       toast.success("Profile completed! Welcome to Jackpot Jungle.");
-      navigate({ to: "/app/chat", replace: true });
+      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", meId);
+      const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+      navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
     } catch (err: any) {
       toast.error(err.message ?? "Could not save profile details.");
     } finally {

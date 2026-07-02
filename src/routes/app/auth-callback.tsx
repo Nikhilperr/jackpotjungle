@@ -49,7 +49,7 @@ function AuthCallbackPage() {
           } else {
             if (session?.user) {
               toast.success("Account verified successfully!");
-              navigate({ to: "/app/chat" }); // Authenticated layout will auto-intercept and show Onboarding if incomplete
+              navigate({ to: "/app/" }); // Authenticated layout will auto-intercept and show Onboarding if incomplete
             } else {
               navigate({ to: "/app/auth", search: { mode: "login" } });
             }

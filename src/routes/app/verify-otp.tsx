@@ -89,7 +89,7 @@ function VerifyOtpPage() {
           navigate({ to: "/app/reset-password" });
         } else {
           toast.success("Account verified and logged in successfully!");
-          navigate({ to: "/app/chat" });
+          navigate({ to: "/app/" });
         }
       }, 1500);
     } catch (err: any) {
