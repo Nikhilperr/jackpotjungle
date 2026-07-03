@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { 
@@ -106,6 +106,20 @@ export function UsersManagementView({ meId }: { meId: string }) {
         setIsSuperAdmin(!!data);
       });
   }, [meId]);
+
+  const canEditSelectedUser = useMemo(() => {
+    if (!selectedUser) return false;
+    
+    // Rule 1: "you must not show efit things for super admin ok only others"
+    if (selectedUser.role === "super_admin") return false;
+    
+    // Rule 2: "admins cannot edit each other things but super admin can edit anyone"
+    if (selectedUser.role === "admin") {
+      return isSuperAdmin;
+    }
+    
+    return true;
+  }, [selectedUser, isSuperAdmin]);
 
   // Load user records
   const loadUsers = async () => {
@@ -341,7 +355,6 @@ export function UsersManagementView({ meId }: { meId: string }) {
               <option value="created_at">Joined Date</option>
               <option value="username">Username</option>
               <option value="last_seen">Last Active</option>
-              <option value="verified">Verified Status</option>
             </select>
             <Button
               variant="outline"
@@ -360,8 +373,6 @@ export function UsersManagementView({ meId }: { meId: string }) {
             { id: "all", label: "All Users" },
             { id: "online", label: "Online" },
             { id: "offline", label: "Offline" },
-            { id: "verified", label: "Verified" },
-            { id: "unverified", label: "Unverified" },
             { id: "admins", label: "Admins" },
             { id: "super_admins", label: "Super Admins" },
             { id: "normal_users", label: "Normal Users" },
@@ -404,7 +415,6 @@ export function UsersManagementView({ meId }: { meId: string }) {
                   <th className="p-4 pl-6">Player profile</th>
                   <th className="p-4">User ID</th>
                   <th className="p-4">Permissions</th>
-                  <th className="p-4">Verification</th>
                   <th className="p-4">Coins / Balance</th>
                   <th className="p-4">Activity Log</th>
                   <th className="p-4 pr-6"></th>
@@ -456,17 +466,6 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         )}
                       </td>
 
-                      {/* Verified */}
-                      <td className="p-4">
-                        {u.verified ? (
-                          <Badge variant="secondary" className="bg-green-500/10 text-green-600 hover:bg-green-500/15 gap-1 font-bold">
-                            <Check className="h-3 w-3" /> Verified
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground font-medium">Unverified</span>
-                        )}
-                      </td>
-
                       {/* Coins & Balance */}
                       <td className="p-4">
                         <div className="text-xs space-y-0.5">
@@ -494,7 +493,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="h-8 w-8 rounded-full border border-border bg-card shadow-sm hover:bg-secondary transition-colors"
                         >
                           <Settings className="h-4 w-4 text-muted-foreground" />
                         </Button>
@@ -551,14 +550,16 @@ export function UsersManagementView({ meId }: { meId: string }) {
                 )}
                 
                 {/* Upload cover button */}
-                <button 
-                  onClick={() => coverFileRef.current?.click()}
-                  disabled={uploadingCover}
-                  className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 text-xs flex items-center gap-1.5 transition-all shadow-md font-sans"
-                >
-                  {uploadingCover ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
-                  <span>Change Banner</span>
-                </button>
+                {canEditSelectedUser && (
+                  <button 
+                    onClick={() => coverFileRef.current?.click()}
+                    disabled={uploadingCover}
+                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 text-xs flex items-center gap-1.5 transition-all shadow-md font-sans"
+                  >
+                    {uploadingCover ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
+                    <span>Change Banner</span>
+                  </button>
+                )}
                 <input
                   ref={coverFileRef}
                   type="file"
@@ -575,13 +576,15 @@ export function UsersManagementView({ meId }: { meId: string }) {
                   <div className="rounded-full ring-4 ring-card overflow-hidden bg-card">
                     <Avatar name={editUsername} url={editAvatarUrl} size={92} />
                   </div>
-                  <button 
-                    onClick={() => avatarFileRef.current?.click()}
-                    disabled={uploadingAvatar}
-                    className="absolute bottom-0 right-0 h-8 w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center shadow-lg transition-all"
-                  >
-                    {uploadingAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-                  </button>
+                  {canEditSelectedUser && (
+                    <button 
+                      onClick={() => avatarFileRef.current?.click()}
+                      disabled={uploadingAvatar}
+                      className="absolute bottom-0 right-0 h-8 w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center shadow-lg transition-all"
+                    >
+                      {uploadingAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
                   <input
                     ref={avatarFileRef}
                     type="file"
@@ -619,6 +622,16 @@ export function UsersManagementView({ meId }: { meId: string }) {
                 </TabsList>
 
                 <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0 space-y-4">
+                  {!canEditSelectedUser && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 select-none">
+                      <p className="text-xs text-amber-500 font-semibold flex items-center gap-1.5 leading-relaxed">
+                        <ShieldAlert className="h-4 w-4 shrink-0" />
+                        {selectedUser?.role === "super_admin" 
+                          ? "Super Administrator accounts are read-only and cannot be modified."
+                          : "Administrator accounts are read-only and can only be modified by Super Admins."}
+                      </p>
+                    </div>
+                  )}
                   {/* General Tab */}
                   <TabsContent value="general" className="space-y-4 m-0 focus:outline-none">
                     {/* Username */}
@@ -628,6 +641,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         value={editUsername}
                         onChange={(e) => setEditUsername(e.target.value)}
                         className="bg-secondary/40 border-border/80"
+                        disabled={!canEditSelectedUser}
                       />
                     </div>
 
@@ -639,6 +653,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                           value={editFirstName}
                           onChange={(e) => setEditFirstName(e.target.value)}
                           className="bg-secondary/40 border-border/80"
+                          disabled={!canEditSelectedUser}
                         />
                       </div>
                       <div className="space-y-1">
@@ -647,6 +662,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                           value={editLastName}
                           onChange={(e) => setEditLastName(e.target.value)}
                           className="bg-secondary/40 border-border/80"
+                          disabled={!canEditSelectedUser}
                         />
                       </div>
                     </div>
@@ -659,6 +675,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         onChange={(e) => setEditPhone(e.target.value)}
                         className="bg-secondary/40 border-border/80"
                         placeholder="Not specified"
+                        disabled={!canEditSelectedUser}
                       />
                     </div>
 
@@ -669,6 +686,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         onChange={(e) => setEditAddress(e.target.value)}
                         className="bg-secondary/40 border-border/80"
                         placeholder="Not specified"
+                        disabled={!canEditSelectedUser}
                       />
                     </div>
 
@@ -680,6 +698,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         onChange={(e) => setEditBio(e.target.value)}
                         className="w-full rounded-lg border border-border/80 bg-secondary/40 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary min-h-[80px]"
                         placeholder="Casinò bio..."
+                        disabled={!canEditSelectedUser}
                       />
                     </div>
 
@@ -691,6 +710,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                           value={editTheme}
                           onChange={(e) => setEditTheme(e.target.value)}
                           className="w-full h-10 rounded-lg border border-border/80 bg-secondary/40 px-3 text-sm"
+                          disabled={!canEditSelectedUser}
                         >
                           <option value="dark">Dark Theme</option>
                           <option value="light">Light Theme</option>
@@ -702,6 +722,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                           value={editLanguage}
                           onChange={(e) => setEditLanguage(e.target.value)}
                           className="w-full h-10 rounded-lg border border-border/80 bg-secondary/40 px-3 text-sm"
+                          disabled={!canEditSelectedUser}
                         >
                           <option value="en">English (US)</option>
                           <option value="de">German</option>
@@ -728,6 +749,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                           value={editRole}
                           onChange={(e) => setEditRole(e.target.value)}
                           className="w-full h-10 rounded-lg border border-border bg-card px-3 text-sm"
+                          disabled={!canEditSelectedUser}
                         >
                           <option value="user">Regular User</option>
                           <option value="admin">Administrator</option>
@@ -749,10 +771,11 @@ export function UsersManagementView({ meId }: { meId: string }) {
                             key={st}
                             type="button"
                             onClick={() => setEditStatus(st)}
+                            disabled={!canEditSelectedUser}
                             className={`flex-1 h-9 rounded-lg text-xs font-semibold uppercase transition-colors ${
                               editStatus === st 
                                 ? st === "active" ? "bg-green-500 text-white" : st === "suspended" ? "bg-amber-500 text-white" : "bg-destructive text-white"
-                                : "bg-card border border-border hover:bg-secondary"
+                                : "bg-card border border-border hover:bg-secondary disabled:opacity-50"
                             }`}
                           >
                             {st}
@@ -769,6 +792,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                           type="button" 
                           variant="outline" 
                           onClick={() => setPwResetOpen(true)}
+                          disabled={!canEditSelectedUser}
                           className="w-full justify-start h-10 gap-2 border-border"
                         >
                           <KeyRound className="h-4 w-4 text-primary shrink-0" />
@@ -781,6 +805,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                             setNewEmail(selectedUser.email || "");
                             setEmailChangeOpen(true);
                           }}
+                          disabled={!canEditSelectedUser}
                           className="w-full justify-start h-10 gap-2 border-border"
                         >
                           <Mail className="h-4 w-4 text-primary shrink-0" />
@@ -802,6 +827,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         type="button" 
                         variant="destructive"
                         onClick={() => setConfirmDeleteOpen(true)}
+                        disabled={!canEditSelectedUser}
                         className="w-full h-9 rounded-lg"
                       >
                         Delete Player Account
@@ -822,6 +848,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         value={editCoins}
                         onChange={(e) => setEditCoins(Number(e.target.value))}
                         className="bg-secondary/40 border-border/80 font-bold"
+                        disabled={!canEditSelectedUser}
                       />
                     </div>
 
@@ -837,6 +864,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         value={editWalletBalance}
                         onChange={(e) => setEditWalletBalance(Number(e.target.value))}
                         className="bg-secondary/40 border-border/80 font-bold"
+                        disabled={!canEditSelectedUser}
                       />
                     </div>
 
@@ -851,6 +879,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         value={editXp}
                         onChange={(e) => setEditXp(Number(e.target.value))}
                         className="bg-secondary/40 border-border/80 font-bold"
+                        disabled={!canEditSelectedUser}
                       />
                     </div>
 
@@ -864,6 +893,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         value={editVipStatus}
                         onChange={(e) => setEditVipStatus(e.target.value)}
                         className="w-full h-10 rounded-lg border border-border/80 bg-secondary/40 px-3 text-sm font-semibold"
+                        disabled={!canEditSelectedUser}
                       >
                         <option value="none">No VIP Level</option>
                         <option value="bronze">Bronze Membership</option>
@@ -873,40 +903,39 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         <option value="diamond">Diamond VIP Membership</option>
                       </select>
                     </div>
-
-                    {/* Verification Toggle */}
-                    <div className="flex items-center justify-between p-4 bg-secondary/30 border border-border/60 rounded-xl mt-3 select-none">
-                      <div className="space-y-0.5">
-                        <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                          <Check className="h-4 w-4 text-green-500" />
-                          Account Verification
-                        </p>
-                        <p className="text-xs text-muted-foreground">Force-verify this player's identity documents.</p>
-                      </div>
-                      <Switch checked={editVerified} onCheckedChange={setEditVerified} />
-                    </div>
                   </TabsContent>
                 </div>
               </Tabs>
 
               {/* Fixed drawer footer controls */}
               <div className="p-4 border-t border-border bg-card flex gap-2 shrink-0 select-none">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setDrawerOpen(false)}
-                  className="flex-1 h-11 rounded-xl"
-                  disabled={savingChanges}
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={handleSaveChanges}
-                  className="flex-1 h-11 rounded-xl"
-                  disabled={savingChanges}
-                >
-                  {savingChanges ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Save Changes
-                </Button>
+                {!canEditSelectedUser ? (
+                  <Button 
+                    onClick={() => setDrawerOpen(false)}
+                    className="w-full h-11 rounded-xl"
+                  >
+                    Close View
+                  </Button>
+                ) : (
+                  <>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setDrawerOpen(false)}
+                      className="flex-1 h-11 rounded-xl"
+                      disabled={savingChanges}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={handleSaveChanges}
+                      className="flex-1 h-11 rounded-xl"
+                      disabled={savingChanges}
+                    >
+                      {savingChanges ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      Save Changes
+                    </Button>
+                  </>
+                )}
               </div>
             </>
           )}

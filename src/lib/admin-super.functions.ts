@@ -736,10 +736,13 @@ export const getUsersListAdmin = createServerFn({ method: "POST" })
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // 2. Fetch admin user IDs to help with admin filters
     const { data: allAdminRoles } = await supabaseAdmin.from("user_roles").select("user_id, role");
-    const adminIds = (allAdminRoles ?? []).map((r: any) => r.user_id);
-    const superAdminIds = (allAdminRoles ?? []).filter((r: any) => r.role === "super_admin").map((r: any) => r.user_id);
+    const adminIds = (allAdminRoles ?? [])
+      .filter((r: any) => r.role === "admin" || r.role === "super_admin")
+      .map((r: any) => r.user_id);
+    const superAdminIds = (allAdminRoles ?? [])
+      .filter((r: any) => r.role === "super_admin")
+      .map((r: any) => r.user_id);
 
     // 3. Build query
     let query = supabaseAdmin.from("profiles").select("*", { count: "exact" });
@@ -896,6 +899,10 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
     const targetRole = isTargetSuperAdmin ? "super_admin" : isTargetAdmin ? "admin" : "user";
 
     // 3. Security Boundary checks
+    if (isTargetSuperAdmin) {
+      throw new Error("Super admin accounts are read-only and cannot be modified.");
+    }
+
     if (isTargetAdmin && !isCallerSuperAdmin) {
       throw new Error("Only super admins can modify administrator accounts.");
     }
@@ -985,7 +992,12 @@ export const changeUserPasswordAdmin = createServerFn({ method: "POST" })
 
     const { data: targetRoles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.targetUserId);
     const targetRolesList = (targetRoles ?? []).map((r: any) => r.role);
-    const isTargetAdmin = targetRolesList.includes("admin") || targetRolesList.includes("super_admin");
+    const isTargetSuperAdmin = targetRolesList.includes("super_admin");
+    const isTargetAdmin = targetRolesList.includes("admin") || isTargetSuperAdmin;
+
+    if (isTargetSuperAdmin) {
+      throw new Error("Super admin accounts are read-only and cannot be modified.");
+    }
 
     if (isTargetAdmin && !isCallerSuperAdmin) {
       throw new Error("Only super admins can reset passwords for other administrator accounts.");
@@ -1039,7 +1051,12 @@ export const changeUserEmailAdmin = createServerFn({ method: "POST" })
 
     const { data: targetRoles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.targetUserId);
     const targetRolesList = (targetRoles ?? []).map((r: any) => r.role);
-    const isTargetAdmin = targetRolesList.includes("admin") || targetRolesList.includes("super_admin");
+    const isTargetSuperAdmin = targetRolesList.includes("super_admin");
+    const isTargetAdmin = targetRolesList.includes("admin") || isTargetSuperAdmin;
+
+    if (isTargetSuperAdmin) {
+      throw new Error("Super admin accounts are read-only and cannot be modified.");
+    }
 
     if (isTargetAdmin && !isCallerSuperAdmin) {
       throw new Error("Only super admins can change emails for other administrator accounts.");
@@ -1096,7 +1113,12 @@ export const deleteUserAccountAdmin = createServerFn({ method: "POST" })
 
     const { data: targetRoles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.targetUserId);
     const targetRolesList = (targetRoles ?? []).map((r: any) => r.role);
-    const isTargetAdmin = targetRolesList.includes("admin") || targetRolesList.includes("super_admin");
+    const isTargetSuperAdmin = targetRolesList.includes("super_admin");
+    const isTargetAdmin = targetRolesList.includes("admin") || isTargetSuperAdmin;
+
+    if (isTargetSuperAdmin) {
+      throw new Error("Super admin accounts are read-only and cannot be modified.");
+    }
 
     if (isTargetAdmin && !isCallerSuperAdmin) {
       throw new Error("Only super admins can delete administrator accounts.");
