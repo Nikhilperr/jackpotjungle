@@ -2828,7 +2828,7 @@ export function ConversationDetailPanel({
         </div>
 
         {/* Action Shortcuts */}
-        <div className="flex justify-center items-center gap-6 py-2 border-b border-border/40 pb-4">
+        <div className="grid grid-cols-3 gap-y-4 gap-x-2 py-2 border-b border-border/40 pb-4 justify-items-center">
           {/* Message Button */}
           <button 
             onClick={onClose}
@@ -2872,10 +2872,10 @@ export function ConversationDetailPanel({
               className="flex flex-col items-center gap-1.5 hover:opacity-80 transition-opacity animate-in fade-in duration-200"
               title="Create Group"
             >
-              <div className="h-10 w-10 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary transition-colors shadow-sm">
+              <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center text-foreground shadow-sm">
                 <Users className="h-5 w-5" />
               </div>
-              <span className="text-[10px] font-bold text-primary">Create Group</span>
+              <span className="text-[10px] font-semibold text-muted-foreground">Create Group</span>
             </button>
           )}
 

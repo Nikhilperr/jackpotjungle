@@ -506,7 +506,7 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
             <span key={t.id} className="text-[11px] px-2 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>
           ))}
         </div>
-        <div className="flex gap-2 mt-3 w-full">
+        <div className="grid grid-cols-2 gap-2 mt-3 w-full">
           <Button size="sm" variant={isBlocked ? "outline" : "destructive"} onClick={toggleBlock} className="flex-1">
             {isBlocked ? <><ShieldOff className="h-3.5 w-3.5 mr-1.5" />Unblock</> : <><Ban className="h-3.5 w-3.5 mr-1.5" />Block</>}
           </Button>
