@@ -1044,15 +1044,6 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Page Inbox</p>
               </div>
             </div>
-            <div className="relative mt-3">
-              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search users"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 rounded-full bg-secondary border-transparent"
-              />
-            </div>
             {onlineUsers.length > 0 && (
               <div className="flex items-center gap-4 py-2 mt-3 overflow-x-auto no-scrollbar">
                 {onlineUsers.map((f) => (
@@ -1106,8 +1097,17 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 <Ban className="h-3 w-3" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
               </button>
             )}
+            </div>
+            <div className="relative mt-3">
+              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search users"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 rounded-full bg-secondary border-transparent"
+              />
+            </div>
           </div>
-        </div>
         <PullToRefresh onRefresh={load}>
             {viewGroups && (
               <button
@@ -1250,6 +1250,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               variant="embedded"
               onClose={() => setSelectedMemberProfile(null)}
               onCreateGroupClick={() => handleOpenCreateGroupForUser(selectedMemberProfile.id)}
+              onSearchClick={() => {
+                setDetailOpen(false);
+                setSearchOpen(true);
+                setSearchQuery("");
+                setActiveMatch(0);
+              }}
             />
           ) : active.isGroup ? (
             <GroupDetailPanel
@@ -1277,6 +1283,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
               variant="embedded"
               onClose={() => setDetailOpen(false)}
               onCreateGroupClick={() => handleOpenCreateGroupForUser(active.userId)}
+              onSearchClick={() => {
+                setDetailOpen(false);
+                setSearchOpen(true);
+                setSearchQuery("");
+                setActiveMatch(0);
+              }}
             />
           )}
         </aside>
@@ -1294,6 +1306,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 variant="embedded"
                 onClose={() => setSelectedMemberProfile(null)}
                 onCreateGroupClick={() => handleOpenCreateGroupForUser(selectedMemberProfile.id)}
+                onSearchClick={() => {
+                  setDetailOpen(false);
+                  setSearchOpen(true);
+                  setSearchQuery("");
+                  setActiveMatch(0);
+                }}
               />
             ) : active.isGroup ? (
               <div className="flex-1 overflow-y-auto min-h-0">
@@ -1323,6 +1341,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 variant="embedded"
                 onClose={() => setDetailOpen(false)}
                 onCreateGroupClick={() => handleOpenCreateGroupForUser(active.userId)}
+                onSearchClick={() => {
+                  setDetailOpen(false);
+                  setSearchOpen(true);
+                  setSearchQuery("");
+                  setActiveMatch(0);
+                }}
               />
             )
           )}
@@ -2555,14 +2579,6 @@ function Conversation({
               </button>
             </>
           )}
-          <button
-            type="button"
-            onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
-            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
-            aria-label="Search in conversation"
-          >
-            <Search className="h-5 w-5" />
-          </button>
         </div>
       )}
       {searchOpen && (

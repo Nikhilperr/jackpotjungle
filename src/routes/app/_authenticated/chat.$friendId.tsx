@@ -2006,24 +2006,6 @@ function ChatView() {
               </button>
             </>
           )}
-          <button
-            type="button"
-            onClick={() => { setSearchOpen((v) => !v); setSearchQuery(""); setActiveMatch(0); }}
-            className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
-            aria-label="Search in conversation"
-          >
-            <Search className="h-5 w-5" />
-          </button>
-          {!friendId.startsWith("system-") && (
-            <button
-              type="button"
-              onClick={() => isGroup ? setShowGroupInfo((v) => !v) : setShowDetail((v) => !v)}
-              className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
-              aria-label="Toggle details sidebar"
-            >
-              <Info className="h-5 w-5" />
-            </button>
-          )}
         </header>
       )}
 
@@ -2582,6 +2564,12 @@ function ChatView() {
               setShowDetail(false);
               setCreateGroupOpen(true);
             }}
+            onSearchClick={() => {
+              setShowDetail(false);
+              setSearchOpen(true);
+              setSearchQuery("");
+              setActiveMatch(0);
+            }}
           />
         </aside>
       )}
@@ -2619,6 +2607,12 @@ function ChatView() {
             onCreateGroupClick={() => {
               setShowDetail(false);
               setCreateGroupOpen(true);
+            }}
+            onSearchClick={() => {
+              setShowDetail(false);
+              setSearchOpen(true);
+              setSearchQuery("");
+              setActiveMatch(0);
             }}
           />
         </SheetContent>
@@ -2747,13 +2741,15 @@ export function ConversationDetailPanel({
   meId,
   pinnedMessages = [], 
   onClose,
-  onCreateGroupClick
+  onCreateGroupClick,
+  onSearchClick
 }: { 
   friend: Profile | null; 
   meId: string | null;
   pinnedMessages?: any[]; 
   onClose?: () => void;
   onCreateGroupClick?: () => void;
+  onSearchClick?: () => void;
 }) {
   const [notif, setNotif] = useState(true);
   const [totalFriends, setTotalFriends] = useState<number | null>(null);
@@ -2878,6 +2874,20 @@ export function ConversationDetailPanel({
                 <Users className="h-5 w-5" />
               </div>
               <span className="text-[10px] font-bold text-primary">Create Group</span>
+            </button>
+          )}
+
+          {/* Search Conversation Button */}
+          {onSearchClick && (
+            <button 
+              onClick={onSearchClick}
+              className="flex flex-col items-center gap-1.5 hover:opacity-80 transition-opacity animate-in fade-in duration-200"
+              title="Search Conversation"
+            >
+              <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center text-foreground shadow-sm">
+                <Search className="h-5 w-5" />
+              </div>
+              <span className="text-[10px] font-semibold text-muted-foreground">Search</span>
             </button>
           )}
         </div>

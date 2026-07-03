@@ -801,14 +801,6 @@ function PageChatView() {
             >
               <Video className="h-5 w-5" />
             </button>
-            <button
-              type="button"
-              onClick={() => setShowDetail((v) => !v)}
-              className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
-              aria-label="Toggle details sidebar"
-            >
-              <Info className="h-5 w-5" />
-            </button>
           </header>
         )}
 

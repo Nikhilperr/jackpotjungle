@@ -804,15 +804,6 @@ function ChatLayout() {
                 <Users className="h-5 w-5" />
               </button>
             </div>
-            <div className="relative">
-              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search Messenger"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 rounded-full bg-secondary border-transparent"
-              />
-            </div>
             {tab === "all" && (
               <div className="flex items-center gap-4 py-2 mt-3 overflow-x-auto no-scrollbar">
                 {/* Create story / Self placeholder */}
@@ -862,6 +853,15 @@ function ChatLayout() {
               >
                 <Ban className="h-3 w-3" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
               </button>
+            </div>
+            <div className="relative mt-3">
+              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search Messenger"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 rounded-full bg-secondary border-transparent"
+              />
             </div>
           </div>
           <PullToRefresh onRefresh={async () => { if (meId) { await Promise.all([load(meId), loadPage(meId), loadSpam(meId)]); } }}>
