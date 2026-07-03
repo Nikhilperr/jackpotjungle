@@ -738,7 +738,8 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         supabase.from("tags").select("id, name, color").order("name"),
         userIds.length > 0 ? supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds) : Promise.resolve({ data: [] }),
         userIds.length > 0 ? supabase.from("user_credits").select("user_id, balance").in("user_id", userIds) : Promise.resolve({ data: [] }),
-        supabase.from("calls").select("id, caller_id, callee_id, call_type, status, created_at").in("context", ["page", "page_broadcast"]).order("created_at", { ascending: false }).limit(300)
+        supabase.from("calls").select("id, caller_id, callee_id, call_type, status, created_at").in("context", ["page", "page_broadcast"]).order("created_at", { ascending: false }).limit(300),
+        userIds.length > 0 ? supabase.from("user_roles").select("user_id, role").in("user_id", userIds) : Promise.resolve({ data: [] })
       ];
 
       const groupIds = (memberships ?? []).map((m: any) => m.group_id).filter(Boolean);
@@ -755,7 +756,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         queries.push(Promise.resolve({ data: [] }));
       }
 
-      const [profiles, msgs, tagsData, utRows, credRows, supportCalls, groupMsgsRes] = await Promise.all(queries);
+      const [profiles, msgs, tagsData, utRows, credRows, supportCalls, userRolesRes, groupMsgsRes] = await Promise.all(queries);
 
       setAllTags(tagsData?.data ?? tagsData ?? []);
       const map: Record<string, string[]> = {};
@@ -763,6 +764,13 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
         (map[r.user_id] = map[r.user_id] || []).push(r.tag_id);
       });
       setUserTagMap(map);
+
+      const adminUsers = new Set<string>();
+      (userRolesRes?.data ?? userRolesRes ?? []).forEach((r: any) => {
+        if (r.role === "admin" || r.role === "super_admin") {
+          adminUsers.add(r.user_id);
+        }
+      });
 
       const creditMap = new Map<string, number>((credRows?.data ?? credRows ?? []).map((c: any) => [c.user_id, Number(c.balance) || 0]));
       const byUser = new Map((profiles?.data ?? profiles ?? []).map((p: any) => [p.id, p]));
@@ -818,6 +826,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           unread,
           credit: creditMap.get(c.user_id) ?? 0,
           isSpam: (c as any).is_spam ?? false,
+          isAdmin: adminUsers.has(c.user_id),
         };
       });
 
@@ -1159,6 +1168,9 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 <div className="flex items-baseline justify-between gap-2">
                   <p className={`truncate text-sm flex items-center gap-1.5 ${u.unread ? "font-bold" : "font-semibold"}`}>
                     {u.username}
+                    {u.isAdmin && (
+                      <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+                    )}
                     {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
                   </p>
                   {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
@@ -2557,7 +2569,12 @@ function Conversation({
             <Avatar name={conv.username} url={conv.avatar_url} size={36} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <p className="font-semibold text-sm truncate">{conv.username}</p>
+                <p className="font-semibold text-sm truncate flex items-center gap-1.5">
+                  {conv.username}
+                  {conv.isAdmin && (
+                    <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+                  )}
+                </p>
                 {conv.credit > 0 && (
                   <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
                     Credit ${conv.credit.toFixed(2)}
