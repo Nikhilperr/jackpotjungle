@@ -1340,6 +1340,14 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 setActiveMatch(0);
               }}
               onShareClick={() => handleShareProfile(selectedMemberProfile.id, selectedMemberProfile.username, selectedMemberProfile.avatar_url)}
+              onWalletClick={() => {
+                loadWalletDetails(selectedMemberProfile.id);
+                setWalletPopupOpen(true);
+              }}
+              onHistoryClick={() => {
+                loadWalletHistory("all", selectedMemberProfile.id);
+                setWalletHistoryPopupOpen(true);
+              }}
             />
           ) : active.isGroup ? (
             <GroupDetailPanel
@@ -1374,6 +1382,14 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 setActiveMatch(0);
               }}
               onShareClick={() => handleShareProfile(active.userId, active.username, active.avatar_url)}
+              onWalletClick={() => {
+                loadWalletDetails(active.userId);
+                setWalletPopupOpen(true);
+              }}
+              onHistoryClick={() => {
+                loadWalletHistory("all", active.userId);
+                setWalletHistoryPopupOpen(true);
+              }}
             />
           )}
         </aside>
@@ -1398,6 +1414,14 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   setActiveMatch(0);
                 }}
                 onShareClick={() => handleShareProfile(selectedMemberProfile.id, selectedMemberProfile.username, selectedMemberProfile.avatar_url)}
+                onWalletClick={() => {
+                  loadWalletDetails(selectedMemberProfile.id);
+                  setWalletPopupOpen(true);
+                }}
+                onHistoryClick={() => {
+                  loadWalletHistory("all", selectedMemberProfile.id);
+                  setWalletHistoryPopupOpen(true);
+                }}
               />
             ) : active.isGroup ? (
               <div className="flex-1 overflow-y-auto min-h-0">
@@ -1434,6 +1458,14 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   setActiveMatch(0);
                 }}
                 onShareClick={() => handleShareProfile(active.userId, active.username, active.avatar_url)}
+                onWalletClick={() => {
+                  loadWalletDetails(active.userId);
+                  setWalletPopupOpen(true);
+                }}
+                onHistoryClick={() => {
+                  loadWalletHistory("all", active.userId);
+                  setWalletHistoryPopupOpen(true);
+                }}
               />
             )
           )}
@@ -2246,6 +2278,14 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                 setActiveMatch(0);
               }}
               onShareClick={() => handleShareProfile(selectedMemberProfile.id, selectedMemberProfile.username, selectedMemberProfile.avatar_url)}
+              onWalletClick={() => {
+                loadWalletDetails(selectedMemberProfile.id);
+                setWalletPopupOpen(true);
+              }}
+              onHistoryClick={() => {
+                loadWalletHistory("all", selectedMemberProfile.id);
+                setWalletHistoryPopupOpen(true);
+              }}
             />
           ) : active.isGroup ? (
             <GroupDetailPanel
@@ -2280,6 +2320,14 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                 setActiveMatch(0);
               }}
               onShareClick={() => handleShareProfile(active.userId, active.username, active.avatar_url)}
+              onWalletClick={() => {
+                loadWalletDetails(active.userId);
+                setWalletPopupOpen(true);
+              }}
+              onHistoryClick={() => {
+                loadWalletHistory("all", active.userId);
+                setWalletHistoryPopupOpen(true);
+              }}
             />
           )}
         </aside>
@@ -2303,6 +2351,14 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                   setActiveMatch(0);
                 }}
                 onShareClick={() => handleShareProfile(selectedMemberProfile.id, selectedMemberProfile.username, selectedMemberProfile.avatar_url)}
+                onWalletClick={() => {
+                  loadWalletDetails(selectedMemberProfile.id);
+                  setWalletPopupOpen(true);
+                }}
+                onHistoryClick={() => {
+                  loadWalletHistory("all", selectedMemberProfile.id);
+                  setWalletHistoryPopupOpen(true);
+                }}
               />
             ) : active.isGroup ? (
               <div className="flex-1 overflow-y-auto min-h-0">
@@ -2339,6 +2395,14 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                   setActiveMatch(0);
                 }}
                 onShareClick={() => handleShareProfile(active.userId, active.username, active.avatar_url)}
+                onWalletClick={() => {
+                  loadWalletDetails(active.userId);
+                  setWalletPopupOpen(true);
+                }}
+                onHistoryClick={() => {
+                  loadWalletHistory("all", active.userId);
+                  setWalletHistoryPopupOpen(true);
+                }}
               />
             )
           )}

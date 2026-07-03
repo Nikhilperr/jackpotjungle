@@ -400,15 +400,34 @@ export function LogsView() {
 }
 
 /* ============ USER DETAIL PANEL (notes/tags/credits/payments/referrer) ============ */
-export function UserDetailPanel({ userId, username, avatar, variant = "desktop", onClose, onCreateGroupClick, onSearchClick, onShareClick }: { userId: string; username: string; avatar: string | null; variant?: "desktop" | "embedded"; onClose?: () => void; onCreateGroupClick?: () => void; onSearchClick?: () => void; onShareClick?: () => void }) {
+export function UserDetailPanel({ 
+  userId, 
+  username, 
+  avatar, 
+  variant = "desktop", 
+  onClose, 
+  onCreateGroupClick, 
+  onSearchClick, 
+  onShareClick,
+  onWalletClick,
+  onHistoryClick
+}: { 
+  userId: string; 
+  username: string; 
+  avatar: string | null; 
+  variant?: "desktop" | "embedded"; 
+  onClose?: () => void; 
+  onCreateGroupClick?: () => void; 
+  onSearchClick?: () => void; 
+  onShareClick?: () => void;
+  onWalletClick?: () => void;
+  onHistoryClick?: () => void;
+}) {
   const blockFn = useServerFn(setUserBlocked);
   const [tags, setTags] = useState<any[]>([]);
   const [allTags, setAllTags] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
   const [noteText, setNoteText] = useState("");
-  const [credit, setCredit] = useState(0);
-  const [creditAmt, setCreditAmt] = useState("");
-  const [creditNote, setCreditNote] = useState("");
   const [totals, setTotals] = useState({ loaded: 0, paid: 0 });
   const [referrer, setReferrer] = useState<{ id: string; username: string } | null>(null);
   const [pickRef, setPickRef] = useState(false);
@@ -417,25 +436,25 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
   const [role, setRole] = useState<"admin" | "super_admin" | "user">("user");
 
   async function loadAll() {
-    const [t, all, n, c, tx, ref, prof, r] = await Promise.all([
+    const [t, all, n, ref, prof, r] = await Promise.all([
       sb.from("user_tags").select("tag_id, tags(id,name,color)").eq("user_id", userId),
       sb.from("tags").select("*"),
       sb.from("user_notes").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
-      sb.from("user_credits").select("balance").eq("user_id", userId).maybeSingle(),
-      sb.from("credit_transactions").select("amount, type").eq("user_id", userId),
       sb.from("referrals").select("referrer_id").eq("referred_id", userId).maybeSingle(),
-      sb.from("profiles").select("is_blocked, first_name, last_name, phone, address, friend_code, created_at").eq("id", userId).maybeSingle(),
+      sb.from("profiles").select("is_blocked, first_name, last_name, phone, address, friend_code, created_at, wallet_balance, credit_balance, wallet_deposits, wallet_released, wallet_used").eq("id", userId).maybeSingle(),
       sb.from("user_roles").select("role").eq("user_id", userId),
     ]);
     setTags((t.data ?? []).map((r: any) => r.tags));
     setAllTags(all.data ?? []);
     setNotes(n.data ?? []);
-    setCredit(Number(c.data?.balance ?? 0));
-    const loaded = (tx.data ?? []).filter((r: any) => Number(r.amount) > 0).reduce((s: number, r: any) => s + Number(r.amount), 0);
-    const paidTx = (tx.data ?? []).filter((r: any) => r.type === "paid" || Number(r.amount) < 0).reduce((s: number, r: any) => s + Math.abs(Number(r.amount)), 0);
-    setTotals({ loaded, paid: paidTx });
     setIsBlocked(!!prof.data?.is_blocked);
     setProfileData(prof.data || null);
+    
+    // Map stats for display in details card
+    setTotals({
+      loaded: Number(prof.data?.wallet_deposits ?? 0),
+      paid: Number(prof.data?.wallet_used ?? 0)
+    });
     
     const rolesList = (r.data ?? []).map((x: any) => x.role);
     if (rolesList.includes("super_admin")) setRole("super_admin");
@@ -451,8 +470,7 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
     loadAll();
     const ch = sb
       .channel(`user-detail-${userId}-${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "user_credits", filter: `user_id=eq.${userId}` }, () => loadAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "credit_transactions", filter: `user_id=eq.${userId}` }, () => loadAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "wallet_transactions", filter: `user_id=eq.${userId}` }, () => loadAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` }, () => loadAll())
       .subscribe();
     return () => { sb.removeChannel(ch); };
@@ -515,8 +533,19 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
             <Shield className="h-4 w-4 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
           )}
         </p>
-        <div className="flex justify-center gap-1 mt-2 flex-wrap">
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary font-semibold">Credits {credit}</span>
+        <div className="flex justify-center gap-1.5 mt-2 flex-wrap">
+          <button
+            onClick={onWalletClick}
+            className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold hover:bg-emerald-500/20 transition-colors"
+          >
+            Wallet: ${(profileData?.wallet_balance ?? 0).toFixed(2)}
+          </button>
+          <button
+            onClick={onWalletClick}
+            className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold hover:bg-amber-500/20 transition-colors"
+          >
+            Credit: ${(profileData?.credit_balance ?? 0).toFixed(2)}
+          </button>
           {isBlocked && <span className="text-[11px] px-2 py-0.5 rounded-full bg-destructive/15 text-destructive font-semibold">Blocked</span>}
           {tags.map((t: any) => t && (
             <span key={t.id} className="text-[11px] px-2 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>
@@ -580,19 +609,44 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
         </div>
       </section>
 
-      {/* Credits — editable load / paid */}
+      {/* Premium Wallet & Credit System */}
       <section className="p-4 border-b border-border">
-        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2 flex items-center gap-1"><Wallet className="h-3 w-3" /> Credit</p>
-        <p className="text-3xl font-bold">{credit}</p>
-        <div className="grid grid-cols-2 gap-2 text-[11px] my-3">
-          <div className="bg-secondary rounded-lg p-2"><p className="text-muted-foreground">Total loaded</p><p className="font-bold text-sm">{totals.loaded.toFixed(2)}</p></div>
-          <div className="bg-secondary rounded-lg p-2"><p className="text-muted-foreground">Total paid</p><p className="font-bold text-sm">{totals.paid.toFixed(2)}</p></div>
+        <p className="text-xs uppercase text-muted-foreground font-semibold mb-3 flex items-center gap-1">
+          <Wallet className="h-3.5 w-3.5 text-primary" /> Wallet balances
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <button 
+            onClick={onWalletClick}
+            className="bg-secondary/40 border border-border/60 hover:bg-secondary/80 transition-colors rounded-xl p-3 text-left w-full"
+          >
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Available</p>
+            <p className="text-lg font-black text-emerald-500 mt-1">${(profileData?.wallet_balance ?? 0).toFixed(2)}</p>
+          </button>
+          <button 
+            onClick={onWalletClick}
+            className="bg-secondary/40 border border-border/60 hover:bg-secondary/80 transition-colors rounded-xl p-3 text-left w-full"
+          >
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Credit</p>
+            <p className="text-lg font-black text-amber-500 mt-1">${(profileData?.credit_balance ?? 0).toFixed(2)}</p>
+          </button>
         </div>
-        <Input value={creditAmt} onChange={(e) => setCreditAmt(e.target.value)} placeholder="Amount" type="number" inputMode="decimal" className="h-10 mb-2" />
-        <Input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="Note (optional)" className="h-10 mb-2" />
+        <div className="grid grid-cols-2 gap-2 text-[10px] my-3 text-muted-foreground font-semibold">
+          <div className="bg-secondary/60 rounded-lg p-2 flex flex-col justify-between">
+            <span>Total Loaded:</span>
+            <span className="font-bold text-xs text-foreground mt-0.5">${totals.loaded.toFixed(2)}</span>
+          </div>
+          <div className="bg-secondary/60 rounded-lg p-2 flex flex-col justify-between">
+            <span>Total Played:</span>
+            <span className="font-bold text-xs text-destructive mt-0.5">${totals.paid.toFixed(2)}</span>
+          </div>
+        </div>
         <div className="flex gap-2">
-          <Button size="sm" onClick={() => adjust(1)} className="flex-1">Load</Button>
-          <Button size="sm" variant="outline" onClick={() => adjust(-1)} className="flex-1">Paid</Button>
+          <Button size="sm" onClick={onWalletClick} className="flex-1 rounded-xl h-9 text-xs font-bold gap-1 bg-primary text-primary-foreground hover:opacity-90">
+            <Plus className="h-3.5 w-3.5" /> Adjust Balance
+          </Button>
+          <Button size="sm" variant="outline" onClick={onHistoryClick} className="flex-1 rounded-xl h-9 text-xs font-bold gap-1">
+            <History className="h-3.5 w-3.5" /> Ledger History
+          </Button>
         </div>
       </section>
 

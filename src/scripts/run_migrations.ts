@@ -56,7 +56,7 @@ async function main() {
     }
   }
 
-  const hosts = ["127.0.0.1", "localhost", "db.chancerealm.casino", "db"];
+  const hosts = ["127.0.0.1", "localhost", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
   let success = false;
   
   for (const h of hosts) {

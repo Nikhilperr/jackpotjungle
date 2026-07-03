@@ -80,12 +80,11 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
     targetUserId: string;
     action: "deposit" | "credit_added" | "credit_released" | "deduction" | "deduct_credit" | "correction" | "refund" | "bonus" | "transfer" | "reset";
     amount: number;
-    reason: string;
+    reason?: string;
     notes?: string;
     ipAddress?: string;
   }) => {
     if (d.amount < 0 && d.action !== "reset") throw new Error("Amount must be non-negative.");
-    if (!d.reason && d.action !== "reset") throw new Error("Transaction reason is required.");
     return d;
   })
   .handler(async ({ data, context }) => {
@@ -135,17 +134,18 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
 
     const amt = Number(data.amount);
     let notificationText = "";
+    const activeReason = data.reason || "Manual adjustment";
 
     switch (data.action) {
       case "deposit":
         nextAvail = prevAvail + amt;
         nextDeposits = prevDeposits + amt;
-        notificationText = `You received $${amt.toFixed(2)} into your Available Balance.`;
+        notificationText = `You received $${amt.toFixed(2)} into your Available Balance (via ${activeReason}).`;
         break;
 
       case "credit_added":
         nextCredit = prevCredit + amt;
-        notificationText = `$${amt.toFixed(2)} was added into your Credit Balance.`;
+        notificationText = `$${amt.toFixed(2)} was added into your Credit Balance (via ${activeReason}).`;
         break;
 
       case "credit_released":
@@ -160,13 +160,17 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
         if (prevAvail < amt) throw new Error("Insufficient available balance for deduction.");
         nextAvail = prevAvail - amt;
         nextUsed = prevUsed + amt;
-        notificationText = `$${amt.toFixed(2)} was deducted by an administrator.`;
+        notificationText = activeReason === "Played Funds"
+          ? `You played $${amt.toFixed(2)} from your Available Balance.`
+          : `$${amt.toFixed(2)} was deducted by an administrator.`;
         break;
 
       case "deduct_credit":
         if (prevCredit < amt) throw new Error("Insufficient credit balance for deduction.");
         nextCredit = prevCredit - amt;
-        notificationText = `$${amt.toFixed(2)} was deducted from your Credit Balance.`;
+        notificationText = activeReason === "Played Funds"
+          ? `You played $${amt.toFixed(2)} from your Credit Balance.`
+          : `$${amt.toFixed(2)} was deducted from your Credit Balance.`;
         break;
 
       case "correction":
