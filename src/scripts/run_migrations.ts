@@ -1,6 +1,12 @@
 import pg from "pg";
 import fs from "fs";
 import path from "path";
+import dns from "dns";
+
+// Force IPv4 resolution to prevent ECONNREFUSED on VPS hosts with misconfigured IPv6
+if (typeof dns.setDefaultResultOrder === "function") {
+  dns.setDefaultResultOrder("ipv4first");
+}
 
 // Load local .env if exists
 try {
