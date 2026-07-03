@@ -63,7 +63,7 @@ async function runMigrationsForHostPort(host: string, port: number, useSSL: bool
     try {
       const parsed = new URL(connectionString);
       originalHost = parsed.hostname;
-      if (!/^[0-9.]+$/.test(originalHost) && originalHost !== "localhost") {
+      if (!/^[0-9.]+$/.test(originalHost) && originalHost !== "localhost" && !originalHost.includes("pooler.supabase.com")) {
         const ipv4 = await resolveHostToIPv4(originalHost);
         parsed.hostname = ipv4;
         connectionString = parsed.toString();
