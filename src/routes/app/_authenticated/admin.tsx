@@ -2469,9 +2469,11 @@ function Conversation({
     if (!isGroup || !meId || !groupId) return;
     
     // Clean up any existing channel with the same name to prevent callbacks error
-    const existing = supabase.getChannels().find(c => c.topic === `realtime:typing-${groupId}`);
-    if (existing) {
-      supabase.removeChannel(existing);
+    if (supabase.realtime?.channels) {
+      supabase.realtime.channels = supabase.realtime.channels.filter(c => 
+        c.topic !== `realtime:typing-${groupId}` && 
+        c.topic !== `typing-${groupId}`
+      );
     }
 
     const typingChannel = supabase.channel(`typing-${groupId}`);
