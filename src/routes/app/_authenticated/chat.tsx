@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 import { motion, AnimatePresence } from "framer-motion";
 import { prefetchConversation } from "@/lib/chat-cache";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/app/_authenticated/chat")({
   head: () => ({ meta: [{ title: "Chats — JJ Messenger" }] }),
@@ -1355,9 +1356,8 @@ export function CreateGroupModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ zIndex: 100 }}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} style={{ zIndex: 100 }} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] text-foreground overflow-y-auto z-[100]" style={{ zIndex: 100 }}>
+    <Dialog open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
+      <DialogContent className="w-full max-w-md bg-card border border-border rounded-3xl shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] text-foreground overflow-y-auto [&>button]:hidden">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <h3 className="font-bold text-lg">New Group Chat</h3>
           <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center">
@@ -1462,8 +1462,8 @@ export function CreateGroupModal({
             <span>Create Group</span>
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

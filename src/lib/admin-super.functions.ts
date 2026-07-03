@@ -632,6 +632,15 @@ export const runAutoDatabaseMigrations = createServerFn({ method: "POST" })
       const sql = MIGRATIONS_SQL;
       const pg = (await import("pg")).default;
       
+      const queryColumns = async (client: any) => {
+        const res = await client.query(`
+          SELECT column_name, data_type 
+          FROM information_schema.columns 
+          WHERE table_name = 'groups' AND table_schema = 'public';
+        `);
+        return res.rows;
+      };
+
       // Try process.env.DATABASE_URL first
       if (process.env.DATABASE_URL) {
         console.log("[AutoMigration] Found DATABASE_URL, attempting connection...");
@@ -645,9 +654,10 @@ export const runAutoDatabaseMigrations = createServerFn({ method: "POST" })
           await client.connect();
           console.log("[AutoMigration] Connected! Executing SQL...");
           await client.query(sql);
+          const columns = await queryColumns(client);
           await client.end();
-          console.log("[AutoMigration] SQL executed successfully!");
-          return { success: true, message: "Executed successfully via DATABASE_URL" };
+          console.log("[AutoMigration] SQL executed successfully! Columns:", columns);
+          return { success: true, message: "Executed successfully via DATABASE_URL", columns };
         } catch (e: any) {
           console.warn("[AutoMigration] Connection failed:", e.message);
           try { await client.end(); } catch {}
@@ -673,9 +683,10 @@ export const runAutoDatabaseMigrations = createServerFn({ method: "POST" })
             await client.connect();
             console.log(`[AutoMigration] Connected to ${h}:${p}! Executing SQL...`);
             await client.query(sql);
+            const columns = await queryColumns(client);
             await client.end();
-            console.log(`[AutoMigration] SQL executed successfully on ${h}:${p}!`);
-            return { success: true, message: `Executed successfully on ${h}:${p}` };
+            console.log(`[AutoMigration] SQL executed successfully on ${h}:${p}! Columns:`, columns);
+            return { success: true, message: `Executed successfully on ${h}:${p}`, columns };
           } catch (e: any) {
             console.warn(`[AutoMigration] Failed on ${h}:${p}:`, e.message);
             try { await client.end(); } catch {}
