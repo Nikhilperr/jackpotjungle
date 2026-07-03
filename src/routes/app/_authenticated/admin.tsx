@@ -60,7 +60,7 @@ import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { formatDistanceToNow, format } from "date-fns";
 import { toast } from "sonner";
-import { unsendPageMessagesServer } from "@/lib/messages.functions";
+import { unsendPageMessagesServer, unsendMessagesServer } from "@/lib/messages.functions";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 import { getCachedPageMessages, setCachedPageMessages } from "@/lib/chat-cache";
 import {
@@ -93,6 +93,7 @@ import { GroupDetailPanel, GroupAddMembersModal, GroupShareModal } from "./chat.
 
 type Tab =
   | "inbox"
+  | "teamchat"
   | "quickreplies"
   | "tags"
   | "broadcasts"
@@ -117,7 +118,7 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
   ssr: false,
   validateSearch: (search: Record<string, unknown>): AdminSearch => {
     const validTabs: Tab[] = [
-      "inbox", "quickreplies", "tags", "broadcasts", "followups",
+      "inbox", "teamchat", "quickreplies", "tags", "broadcasts", "followups",
       "autoresp", "referrals", "logs", "admins", "super", "profile",
       "rules", "updates"
     ];
@@ -285,6 +286,7 @@ function AdminPage() {
       <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
         <p className="px-3 pt-1 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Business</p>
         <SideBtn active={tab === "inbox"} onClick={() => selectTab("inbox")} icon={Inbox} label="Page Inbox" />
+        <SideBtn active={tab === "teamchat"} onClick={() => selectTab("teamchat")} icon={MessageSquare} label="Admin Team Chat" />
         <SideBtn active={tab === "quickreplies"} onClick={() => selectTab("quickreplies")} icon={MessageSquareQuote} label="Quick Replies" />
         <SideBtn active={tab === "tags"} onClick={() => selectTab("tags")} icon={TagIcon} label="Tags" />
         <SideBtn active={tab === "broadcasts"} onClick={() => selectTab("broadcasts")} icon={Megaphone} label="Broadcasts" />
@@ -331,6 +333,9 @@ function AdminPage() {
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "inbox" ? "" : "hidden"}`}>
           <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} />
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "teamchat" ? "" : "hidden"}`}>
+          <TeamChatView meId={user.id} onOpenNav={() => setNavOpen(true)} />
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "quickreplies" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Quick Replies"><QuickRepliesView meId={user.id} /></ScrollWrap>
@@ -1529,6 +1534,7 @@ function Conversation({
   setSearchQuery,
   activeMatch,
   setActiveMatch,
+  isTeamChat = false,
 }: { 
   meId: string; 
   conv: ConvRow; 
@@ -1545,6 +1551,7 @@ function Conversation({
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   activeMatch: number;
   setActiveMatch: React.Dispatch<React.SetStateAction<number>>;
+  isTeamChat?: boolean;
 }) {
   const { startCall } = useCalls();
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -1759,6 +1766,35 @@ function Conversation({
       return;
     }
 
+    if (isTeamChat) {
+      const [{ data: msgsData }, { data: callRows }] = await Promise.all([
+        supabase
+          .from("messages")
+          .select("*")
+          .or(`and(sender_id.eq.${meId},receiver_id.eq.${conv.userId}),and(sender_id.eq.${conv.userId},receiver_id.eq.${meId})`)
+          .is("group_id", null)
+          .order("created_at", { ascending: false })
+          .limit(100),
+        supabase
+          .from("calls")
+          .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+          .eq("context", "friend")
+          .or(`and(caller_id.eq.${meId},callee_id.eq.${conv.userId}),and(caller_id.eq.${conv.userId},callee_id.eq.${meId})`)
+          .order("created_at", { ascending: true })
+          .limit(200),
+      ]);
+      const fresh = (msgsData as any[]) ?? [];
+      const reversed = [...fresh].reverse().map((m: any) => ({
+        ...m,
+        from_page: m.sender_id === meId,
+      }));
+      setMessages(reversed);
+      setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
+      await supabase.from("messages").update({ seen: true } as any)
+        .eq("sender_id", conv.userId).eq("receiver_id", meId).eq("seen", false);
+      return;
+    }
+
     const cacheKey = `admin-page-${conv.conversationId}`;
     const cached = getCachedPageMessages(cacheKey);
     if (cached && messages.length === 0) {
@@ -1823,7 +1859,7 @@ function Conversation({
   const activeIdRef = useRef(conv.conversationId);
   useEffect(() => {
     activeIdRef.current = conv.conversationId;
-    if (!isGroup) {
+    if (!isGroup && !isTeamChat) {
       const cacheKey = `admin-page-${conv.conversationId}`;
       const cached = getCachedPageMessages(cacheKey);
       setMessages(cached || []);
@@ -1876,6 +1912,53 @@ function Conversation({
         })
         .subscribe();
       return () => { supabase.removeChannel(groupChannel); };
+    }
+
+    if (isTeamChat) {
+      const teamChannel = supabase
+        .channel(`admin-teamchat-dm-${rand}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+          const m = payload.new as any;
+          if (m && !m.group_id) {
+            const isMatch = (m.sender_id === meId && m.receiver_id === conv.userId) || 
+                            (m.sender_id === conv.userId && m.receiver_id === meId);
+            if (isMatch) {
+              setMessages((prev) => {
+                if (prev.some((x) => x.id === m.id)) return prev;
+                const idx = prev.findIndex((x) =>
+                  typeof x.id === "string" && x.id.startsWith("temp-") &&
+                  x.from_page === (m.sender_id === meId) &&
+                  (x.content ?? null) === (m.content ?? null) &&
+                  (x.image_url ?? null) === (m.image_url ?? null) &&
+                  (x.audio_url ?? null) === (m.audio_url ?? null)
+                );
+                if (idx >= 0) { const copy = prev.slice(); copy[idx] = { ...m, from_page: m.sender_id === meId }; return copy; }
+                return [...prev, { ...m, from_page: m.sender_id === meId }];
+              });
+              if (m.sender_id !== meId) {
+                supabase.from("messages").update({ seen: true } as any).eq("id", m.id).then();
+              }
+            }
+          }
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
+          const m = payload.new as any;
+          if (m && !m.group_id) {
+            const isMatch = (m.sender_id === meId && m.receiver_id === conv.userId) || 
+                            (m.sender_id === conv.userId && m.receiver_id === meId);
+            if (isMatch) {
+              setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, ...m, from_page: m.sender_id === meId } : x)));
+            }
+          }
+        })
+        .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, (payload) => {
+          const m = payload.old as any;
+          if (m) {
+            setMessages((prev) => prev.filter((x) => x.id !== m.id));
+          }
+        })
+        .subscribe();
+      return () => { supabase.removeChannel(teamChannel); };
     }
 
     const msgChannel = supabase
@@ -2428,23 +2511,40 @@ function Conversation({
           setMessages((prev) => prev.map((x) => (x.id === msgId ? ({ ...data, from_page: true } as any) : x)));
         }
       } else {
-        const { data, error } = await supabase
-          .from("page_messages")
-          .update({ content, is_edited: true })
-          .eq("id", msgId)
-          .select()
-          .single();
-        if (error) {
-          toast.error("Failed to edit message");
-          console.error(error);
-          return;
-        }
-        if (data) {
-          setMessages((prev) => {
-            const next = prev.map((x) => (x.id === msgId ? (data as PageMsg) : x));
-            setCachedPageMessages(`admin-page-${conv.conversationId}`, next);
-            return next;
-          });
+        if (isTeamChat) {
+          const { data, error } = await supabase
+            .from("messages")
+            .update({ content, is_edited: true })
+            .eq("id", msgId)
+            .select()
+            .single();
+          if (error) {
+            toast.error("Failed to edit message");
+            console.error(error);
+            return;
+          }
+          if (data) {
+            setMessages((prev) => prev.map((x) => (x.id === msgId ? ({ ...data, from_page: true } as any) : x)));
+          }
+        } else {
+          const { data, error } = await supabase
+            .from("page_messages")
+            .update({ content, is_edited: true })
+            .eq("id", msgId)
+            .select()
+            .single();
+          if (error) {
+            toast.error("Failed to edit message");
+            console.error(error);
+            return;
+          }
+          if (data) {
+            setMessages((prev) => {
+              const next = prev.map((x) => (x.id === msgId ? (data as PageMsg) : x));
+              setCachedPageMessages(`admin-page-${conv.conversationId}`, next);
+              return next;
+            });
+          }
         }
       }
       return;
@@ -2477,6 +2577,25 @@ function Conversation({
       if (data) {
         setMessages((prev) => prev.map((x) => (x.id === tempId ? ({ ...data, from_page: true } as any) : x)));
       }
+      return;
+    }
+
+    if (isTeamChat) {
+      const { data, error } = await supabase
+        .from("messages")
+        .insert({
+          sender_id: meId,
+          receiver_id: conv.userId,
+          content: finalContent
+        })
+        .select()
+        .single();
+      if (error) {
+        setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
+        toast.error(error.message);
+        return;
+      }
+      if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? ({ ...data, from_page: true } as any) : x)));
       return;
     }
 
@@ -2531,6 +2650,17 @@ function Conversation({
         setUploading(false);
         return;
       }
+      if (isTeamChat) {
+        const { data, error } = await supabase
+          .from("messages")
+          .insert({ sender_id: meId, receiver_id: conv.userId, content: null, image_url: url } as any)
+          .select()
+          .single();
+        if (error) throw error;
+        if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? ({ ...data, from_page: true } as any) : x)));
+        setUploading(false);
+        return;
+      }
       const { data, error } = await supabase
         .from("page_messages")
         .insert({ conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: null, image_url: url } as any)
@@ -2558,6 +2688,17 @@ function Conversation({
           .from("messages")
           .insert({ group_id: groupId, sender_id: meId, content: null, audio_url: url } as any)
           .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+          .single();
+        if (error) throw error;
+        if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? ({ ...data, from_page: true } as any) : x)));
+        setRecUploading(false);
+        return;
+      }
+      if (isTeamChat) {
+        const { data, error } = await supabase
+          .from("messages")
+          .insert({ sender_id: meId, receiver_id: conv.userId, content: null, audio_url: url } as any)
+          .select()
           .single();
         if (error) throw error;
         if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? ({ ...data, from_page: true } as any) : x)));
@@ -2635,12 +2776,12 @@ function Conversation({
               </p>
             </div>
           </button>
-          {!isGroup && <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>}
+          {!isGroup && !isTeamChat && <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>}
           {!isGroup && (
             <>
               <button
                 type="button"
-                onClick={() => startCall({ calleeId: conv.userId, kind: "voice", peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
+                onClick={() => startCall({ calleeId: conv.userId, kind: "voice", peer: { name: conv.username, avatar: conv.avatar_url }, context: isTeamChat ? "friend" : "page", ...(isTeamChat ? {} : { pageConversationId: conv.conversationId }) })}
                 className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
                 aria-label="Voice call"
                 title="Voice call"
@@ -2649,7 +2790,7 @@ function Conversation({
               </button>
               <button
                 type="button"
-                onClick={() => startCall({ calleeId: conv.userId, kind: "video", peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
+                onClick={() => startCall({ calleeId: conv.userId, kind: "video", peer: { name: conv.username, avatar: conv.avatar_url }, context: isTeamChat ? "friend" : "page", ...(isTeamChat ? {} : { pageConversationId: conv.conversationId }) })}
                 className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
                 aria-label="Video call"
                 title="Video call"
@@ -2761,7 +2902,7 @@ function Conversation({
                       kind={c.call_type} 
                       status={c.status} 
                       durationSeconds={c.duration_seconds} 
-                      onCallBack={() => startCall({ calleeId: conv.userId, kind: c.call_type, peer: { name: conv.username, avatar: conv.avatar_url }, context: "page", pageConversationId: conv.conversationId })}
+                      onCallBack={() => startCall({ calleeId: conv.userId, kind: c.call_type, peer: { name: conv.username, avatar: conv.avatar_url }, context: isTeamChat ? "friend" : "page", ...(isTeamChat ? {} : { pageConversationId: conv.conversationId }) })}
                     />
                   </div>
                 </div>
@@ -3134,7 +3275,11 @@ function Conversation({
                   setSelectedMsgs(new Set());
                   
                   try {
-                    await unsendPageMessagesServer({ data: { ids: targetIds } });
+                    if (isGroup || isTeamChat) {
+                      await unsendMessagesServer({ data: { ids: targetIds } });
+                    } else {
+                      await unsendPageMessagesServer({ data: { ids: targetIds } });
+                    }
                     setMessages(prev => prev.map(m => targetIds.includes(m.id) ? { ...m, content: "[system:unsent]", image_url: null, audio_url: null } : m));
                     toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for everyone`);
                   } catch (e: any) {
