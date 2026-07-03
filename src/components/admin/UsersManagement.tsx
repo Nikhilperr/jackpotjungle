@@ -112,12 +112,14 @@ export function UsersManagementView({ meId }: { meId: string }) {
     setLoading(true);
     try {
       const result = await fetchFn({
-        search: search.trim() || undefined,
-        filter,
-        sortBy,
-        sortDesc,
-        page,
-        limit: LIMIT
+        data: {
+          search: search.trim() || undefined,
+          filter,
+          sortBy,
+          sortDesc,
+          page,
+          limit: LIMIT
+        }
       });
       setUsers(result.users);
       setTotalCount(result.count);
@@ -205,26 +207,28 @@ export function UsersManagementView({ meId }: { meId: string }) {
     setSavingChanges(true);
     try {
       await updateFn({
-        targetUserId: selectedUser.id,
-        profileUpdates: {
-          username: editUsername.trim(),
-          first_name: editFirstName.trim(),
-          last_name: editLastName.trim(),
-          phone: editPhone.trim(),
-          address: editAddress.trim(),
-          bio: editBio.trim(),
-          vip_status: editVipStatus,
-          coins: Number(editCoins),
-          xp: Number(editXp),
-          wallet_balance: Number(editWalletBalance),
-          verified: editVerified,
-          status: editStatus,
-          theme: editTheme,
-          language: editLanguage,
-          avatar_url: editAvatarUrl,
-          cover_photo: editCoverPhoto
-        },
-        roleUpdate: isSuperAdmin ? (editRole as any) : undefined
+        data: {
+          targetUserId: selectedUser.id,
+          profileUpdates: {
+            username: editUsername.trim(),
+            first_name: editFirstName.trim(),
+            last_name: editLastName.trim(),
+            phone: editPhone.trim(),
+            address: editAddress.trim(),
+            bio: editBio.trim(),
+            vip_status: editVipStatus,
+            coins: Number(editCoins),
+            xp: Number(editXp),
+            wallet_balance: Number(editWalletBalance),
+            verified: editVerified,
+            status: editStatus,
+            theme: editTheme,
+            language: editLanguage,
+            avatar_url: editAvatarUrl,
+            cover_photo: editCoverPhoto
+          },
+          roleUpdate: isSuperAdmin ? (editRole as any) : undefined
+        }
       });
       toast.success("User profile successfully updated.");
       setDrawerOpen(false);
@@ -241,8 +245,10 @@ export function UsersManagementView({ meId }: { meId: string }) {
     if (!selectedUser || newPassword.length < 6) return;
     try {
       await passwordFn({
-        targetUserId: selectedUser.id,
-        newPassword
+        data: {
+          targetUserId: selectedUser.id,
+          newPassword
+        }
       });
       toast.success("Password updated successfully.");
       setPwResetOpen(false);
@@ -257,8 +263,10 @@ export function UsersManagementView({ meId }: { meId: string }) {
     if (!selectedUser || !newEmail.trim()) return;
     try {
       await emailFn({
-        targetUserId: selectedUser.id,
-        newEmail: newEmail.trim()
+        data: {
+          targetUserId: selectedUser.id,
+          newEmail: newEmail.trim()
+        }
       });
       toast.success("Email address successfully changed.");
       setEmailChangeOpen(false);
@@ -276,7 +284,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
       return toast.error("Confirm by entering correct username.");
     }
     try {
-      await deleteFn({ targetUserId: selectedUser.id });
+      await deleteFn({ data: { targetUserId: selectedUser.id } });
       toast.success("Account permanently deleted.");
       setConfirmDeleteOpen(false);
       setConfirmDeleteUsername("");
