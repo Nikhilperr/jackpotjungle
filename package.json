@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
+    "db:migrate": "npx tsx src/scripts/run_migrations.ts",
     "cap:add:android": "cap add android",
     "cap:sync": "vite build && cap sync android",
     "cap:open:android": "cap open android",

@@ -2,9 +2,34 @@ import pg from "pg";
 import fs from "fs";
 import path from "path";
 
-const dbPassword = "grootMahakal7X";
-const dbName = "postgres";
-const username = "postgres";
+// Load local .env if exists
+try {
+  const envPath = path.resolve(".env");
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, "utf-8");
+    for (const line of envContent.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const index = trimmed.indexOf("=");
+      if (index > 0) {
+        const key = trimmed.slice(0, index).trim().replace(/^export\s+/, "");
+        let value = trimmed.slice(index + 1).trim();
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    }
+  }
+} catch (e) {
+  console.warn("Failed to load .env file:", e);
+}
+
+const dbPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD || "grootMahakal7X";
+const dbName = process.env.SUPABASE_DB_NAME || process.env.DATABASE_NAME || "postgres";
+const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "postgres";
 
 const migrationsDir = path.resolve("supabase/migrations");
 
@@ -14,7 +39,7 @@ async function runMigrationsForHostPort(host: string, port: number, useSSL: bool
   
   const client = new pg.Client({
     connectionString,
-    ssl: useSSL ? { rejectUnauthorized: false, servername: "db.gsnhqzsgptqxtlhggzkz.supabase.co" } : undefined
+    ssl: useSSL ? { rejectUnauthorized: false } : undefined
   });
 
   try {
@@ -56,15 +81,19 @@ async function main() {
     }
   }
 
-  const hosts = ["127.0.0.1", "localhost", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
+  const configuredHost = process.env.SUPABASE_DB_HOST || process.env.DATABASE_HOST;
+  const hosts = configuredHost ? [configuredHost] : ["127.0.0.1", "localhost", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
+  
+  const configuredPort = process.env.SUPABASE_DB_PORT || process.env.DATABASE_PORT;
+  const ports = configuredPort ? [parseInt(configuredPort, 10)] : [5432, 6543];
+
   let success = false;
   
   for (const h of hosts) {
-    for (const p of [5432, 6543]) {
-      for (const useSSL of [false, true]) {
-        success = await runMigrationsForHostPort(h, p, useSSL);
-        if (success) break;
-      }
+    for (const p of ports) {
+      const isRemote = h.includes(".") && !h.startsWith("127.");
+      const useSSL = process.env.DATABASE_SSL === "true" || (process.env.DATABASE_SSL !== "false" && isRemote);
+      success = await runMigrationsForHostPort(h, p, useSSL);
       if (success) break;
     }
     if (success) break;
