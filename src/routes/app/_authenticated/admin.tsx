@@ -475,6 +475,9 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [selectedMemberProfile, setSelectedMemberProfile] = useState<{ id: string; username: string; avatar_url: string | null } | null>(null);
   const [myUsername, setMyUsername] = useState("Admin");
   const [isDesktop, setIsDesktop] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeMatch, setActiveMatch] = useState(0);
 
   useEffect(() => {
     const handleResize = () => {
@@ -1207,6 +1210,12 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             onBack={() => setActiveId(null)} 
             onOpenDetail={() => setDetailOpen(true)} 
             onToggleSpam={() => setConvSpam(active, !active.isSpam)} 
+            searchOpen={searchOpen}
+            setSearchOpen={setSearchOpen}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            activeMatch={activeMatch}
+            setActiveMatch={setActiveMatch}
             onLastMessageUpdate={(content, image_url, audio_url, created_at) => {
               const updater = (prev: ConvRow[]) => {
                 const idx = prev.findIndex((c) => c.conversationId === active.conversationId);
@@ -1463,6 +1472,12 @@ function Conversation({
   onOpenDetail, 
   onToggleSpam,
   onLastMessageUpdate,
+  searchOpen,
+  setSearchOpen,
+  searchQuery,
+  setSearchQuery,
+  activeMatch,
+  setActiveMatch,
 }: { 
   meId: string; 
   conv: ConvRow; 
@@ -1473,6 +1488,12 @@ function Conversation({
   onOpenDetail: () => void; 
   onToggleSpam: () => void;
   onLastMessageUpdate: (content: string | null, image_url: string | null, audio_url: string | null, created_at: string) => void;
+  searchOpen: boolean;
+  setSearchOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  searchQuery: string;
+  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
+  activeMatch: number;
+  setActiveMatch: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const { startCall } = useCalls();
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -1614,9 +1635,11 @@ function Conversation({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeMatch, setActiveMatch] = useState(0);
+  useEffect(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setActiveMatch(0);
+  }, [conv.conversationId, setSearchOpen, setSearchQuery, setActiveMatch]);
 
   useEffect(() => { inputRef.current?.focus(); }, [conv.conversationId]);
 
