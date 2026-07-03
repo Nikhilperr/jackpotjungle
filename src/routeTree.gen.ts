@@ -51,6 +51,7 @@ import { Route as AppAuthenticatedAdminRouteImport } from './routes/app/_authent
 import { Route as AuthenticatedChatPageRouteImport } from './routes/_authenticated/chat.page'
 import { Route as AuthenticatedChatFriendIdRouteImport } from './routes/_authenticated/chat.$friendId'
 import { Route as AppAuthenticatedChatIndexRouteImport } from './routes/app/_authenticated/chat.index'
+import { Route as AppAuthenticatedUUsernameRouteImport } from './routes/app/_authenticated/u.$username'
 import { Route as AppAuthenticatedChatPageRouteImport } from './routes/app/_authenticated/chat.page'
 import { Route as AppAuthenticatedChatFriendIdRouteImport } from './routes/app/_authenticated/chat.$friendId'
 import { Route as AppAuthenticatedChatInviteTokenRouteImport } from './routes/app/_authenticated/chat.invite.$token'
@@ -266,6 +267,12 @@ const AppAuthenticatedChatIndexRoute =
     path: '/',
     getParentRoute: () => AppAuthenticatedChatRoute,
   } as any)
+const AppAuthenticatedUUsernameRoute =
+  AppAuthenticatedUUsernameRouteImport.update({
+    id: '/u/$username',
+    path: '/u/$username',
+    getParentRoute: () => AppAuthenticatedRouteRoute,
+  } as any)
 const AppAuthenticatedChatPageRoute =
   AppAuthenticatedChatPageRouteImport.update({
     id: '/page',
@@ -327,6 +334,7 @@ export interface FileRoutesByFullPath {
   '/chat/': typeof AuthenticatedChatIndexRoute
   '/app/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
   '/app/chat/page': typeof AppAuthenticatedChatPageRoute
+  '/app/u/$username': typeof AppAuthenticatedUUsernameRoute
   '/app/chat/': typeof AppAuthenticatedChatIndexRoute
   '/app/chat/invite/$token': typeof AppAuthenticatedChatInviteTokenRoute
 }
@@ -369,6 +377,7 @@ export interface FileRoutesByTo {
   '/chat': typeof AuthenticatedChatIndexRoute
   '/app/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
   '/app/chat/page': typeof AppAuthenticatedChatPageRoute
+  '/app/u/$username': typeof AppAuthenticatedUUsernameRoute
   '/app/chat': typeof AppAuthenticatedChatIndexRoute
   '/app/chat/invite/$token': typeof AppAuthenticatedChatInviteTokenRoute
 }
@@ -417,6 +426,7 @@ export interface FileRoutesById {
   '/_authenticated/chat/': typeof AuthenticatedChatIndexRoute
   '/app/_authenticated/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
   '/app/_authenticated/chat/page': typeof AppAuthenticatedChatPageRoute
+  '/app/_authenticated/u/$username': typeof AppAuthenticatedUUsernameRoute
   '/app/_authenticated/chat/': typeof AppAuthenticatedChatIndexRoute
   '/app/_authenticated/chat/invite/$token': typeof AppAuthenticatedChatInviteTokenRoute
 }
@@ -464,6 +474,7 @@ export interface FileRouteTypes {
     | '/chat/'
     | '/app/chat/$friendId'
     | '/app/chat/page'
+    | '/app/u/$username'
     | '/app/chat/'
     | '/app/chat/invite/$token'
   fileRoutesByTo: FileRoutesByTo
@@ -506,6 +517,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/app/chat/$friendId'
     | '/app/chat/page'
+    | '/app/u/$username'
     | '/app/chat'
     | '/app/chat/invite/$token'
   id:
@@ -553,6 +565,7 @@ export interface FileRouteTypes {
     | '/_authenticated/chat/'
     | '/app/_authenticated/chat/$friendId'
     | '/app/_authenticated/chat/page'
+    | '/app/_authenticated/u/$username'
     | '/app/_authenticated/chat/'
     | '/app/_authenticated/chat/invite/$token'
   fileRoutesById: FileRoutesById
@@ -877,6 +890,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthenticatedChatIndexRouteImport
       parentRoute: typeof AppAuthenticatedChatRoute
     }
+    '/app/_authenticated/u/$username': {
+      id: '/app/_authenticated/u/$username'
+      path: '/u/$username'
+      fullPath: '/app/u/$username'
+      preLoaderRoute: typeof AppAuthenticatedUUsernameRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
     '/app/_authenticated/chat/page': {
       id: '/app/_authenticated/chat/page'
       path: '/page'
@@ -958,6 +978,7 @@ interface AppAuthenticatedRouteRouteChildren {
   AppAuthenticatedFriendsRoute: typeof AppAuthenticatedFriendsRoute
   AppAuthenticatedOnboardingRoute: typeof AppAuthenticatedOnboardingRoute
   AppAuthenticatedProfileRoute: typeof AppAuthenticatedProfileRoute
+  AppAuthenticatedUUsernameRoute: typeof AppAuthenticatedUUsernameRoute
 }
 
 const AppAuthenticatedRouteRouteChildren: AppAuthenticatedRouteRouteChildren = {
@@ -966,6 +987,7 @@ const AppAuthenticatedRouteRouteChildren: AppAuthenticatedRouteRouteChildren = {
   AppAuthenticatedFriendsRoute: AppAuthenticatedFriendsRoute,
   AppAuthenticatedOnboardingRoute: AppAuthenticatedOnboardingRoute,
   AppAuthenticatedProfileRoute: AppAuthenticatedProfileRoute,
+  AppAuthenticatedUUsernameRoute: AppAuthenticatedUUsernameRoute,
 }
 
 const AppAuthenticatedRouteRouteWithChildren =

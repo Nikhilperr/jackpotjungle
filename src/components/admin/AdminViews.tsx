@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar } from "@/components/messenger/Avatar";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff, ArrowLeft, Users, Search } from "lucide-react";
+import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff, ArrowLeft, Users, Search, Share } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { sendBroadcast, deleteAdminUser, setUserBlocked, resetUserPassword } from "@/lib/admin-super.functions";
 import {
@@ -400,7 +400,7 @@ export function LogsView() {
 }
 
 /* ============ USER DETAIL PANEL (notes/tags/credits/payments/referrer) ============ */
-export function UserDetailPanel({ userId, username, avatar, variant = "desktop", onClose, onCreateGroupClick, onSearchClick }: { userId: string; username: string; avatar: string | null; variant?: "desktop" | "embedded"; onClose?: () => void; onCreateGroupClick?: () => void; onSearchClick?: () => void }) {
+export function UserDetailPanel({ userId, username, avatar, variant = "desktop", onClose, onCreateGroupClick, onSearchClick, onShareClick }: { userId: string; username: string; avatar: string | null; variant?: "desktop" | "embedded"; onClose?: () => void; onCreateGroupClick?: () => void; onSearchClick?: () => void; onShareClick?: () => void }) {
   const blockFn = useServerFn(setUserBlocked);
   const [tags, setTags] = useState<any[]>([]);
   const [allTags, setAllTags] = useState<any[]>([]);
@@ -516,10 +516,16 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
               Group
             </Button>
           )}
-          {onSearchClick && (
+           {onSearchClick && (
             <Button size="sm" variant="outline" onClick={onSearchClick} className="flex-1 border-primary/20 hover:bg-primary/5 text-primary hover:text-primary transition-all">
               <Search className="h-3.5 w-3.5 mr-1.5" />
               Search
+            </Button>
+          )}
+          {onShareClick && (
+            <Button size="sm" variant="outline" onClick={onShareClick} className="flex-1 border-primary/20 hover:bg-primary/5 text-primary hover:text-primary transition-all">
+              <Share className="h-3.5 w-3.5 mr-1.5" />
+              Share
             </Button>
           )}
         </div>

@@ -88,6 +88,7 @@ import {
 import { SystemAnnouncementsAdminView } from "@/components/admin/SystemAnnouncementsAdmin";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 import { CreateGroupModal } from "./chat";
+import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 import { GroupDetailPanel, GroupAddMembersModal, GroupShareModal } from "./chat.$friendId";
 
 type Tab =
@@ -473,6 +474,30 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 
   const [messages, setMessages] = useState<any[]>([]);
   const [selectedMemberProfile, setSelectedMemberProfile] = useState<{ id: string; username: string; avatar_url: string | null } | null>(null);
+
+  const [shareProfileOpen, setShareProfileOpen] = useState(false);
+  const [shareProfileTarget, setShareProfileTarget] = useState<{ username: string; displayName: string; avatarUrl: string | null; memberSince?: string } | null>(null);
+
+  const handleShareProfile = async (userId: string, username: string, avatarUrl: string | null) => {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("first_name, last_name, created_at")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const displayName = prof?.first_name 
+      ? (prof.last_name ? `${prof.first_name} ${prof.last_name}` : prof.first_name) 
+      : username;
+
+    setShareProfileTarget({
+      username,
+      displayName,
+      avatarUrl,
+      memberSince: prof?.created_at
+    });
+    setShareProfileOpen(true);
+  };
+
   const [myUsername, setMyUsername] = useState("Admin");
   const [isDesktop, setIsDesktop] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1277,6 +1302,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 setSearchQuery("");
                 setActiveMatch(0);
               }}
+              onShareClick={() => handleShareProfile(selectedMemberProfile.id, selectedMemberProfile.username, selectedMemberProfile.avatar_url)}
             />
           ) : active.isGroup ? (
             <GroupDetailPanel
@@ -1310,6 +1336,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 setSearchQuery("");
                 setActiveMatch(0);
               }}
+              onShareClick={() => handleShareProfile(active.userId, active.username, active.avatar_url)}
             />
           )}
         </aside>
@@ -1333,6 +1360,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   setSearchQuery("");
                   setActiveMatch(0);
                 }}
+                onShareClick={() => handleShareProfile(selectedMemberProfile.id, selectedMemberProfile.username, selectedMemberProfile.avatar_url)}
               />
             ) : active.isGroup ? (
               <div className="flex-1 overflow-y-auto min-h-0">
@@ -1368,6 +1396,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   setSearchQuery("");
                   setActiveMatch(0);
                 }}
+                onShareClick={() => handleShareProfile(active.userId, active.username, active.avatar_url)}
               />
             )
           )}
@@ -1467,6 +1496,16 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           </div>
         );
       })()}
+      {shareProfileOpen && shareProfileTarget && (
+        <ShareProfileModal
+          isOpen={shareProfileOpen}
+          onOpenChange={setShareProfileOpen}
+          username={shareProfileTarget.username}
+          displayName={shareProfileTarget.displayName}
+          avatarUrl={shareProfileTarget.avatarUrl}
+          memberSince={shareProfileTarget.memberSince}
+        />
+      )}
     </div>
   );
 }

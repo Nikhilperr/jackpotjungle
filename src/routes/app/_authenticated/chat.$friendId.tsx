@@ -26,6 +26,7 @@ import {
   setCachedProfile,
   setCachedMessages,
 } from "@/lib/chat-cache";
+import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 
 type CallRow = {
   id: string;
@@ -2753,6 +2754,7 @@ export function ConversationDetailPanel({
 }) {
   const [notif, setNotif] = useState(true);
   const [totalFriends, setTotalFriends] = useState<number | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const [isFriend, setIsFriend] = useState(false);
   const { startCall } = useCalls();
   const { role } = useRole();
@@ -2890,6 +2892,18 @@ export function ConversationDetailPanel({
               <span className="text-[10px] font-semibold text-muted-foreground">Search</span>
             </button>
           )}
+
+          {/* Share Profile Button */}
+          <button 
+            onClick={() => setShareOpen(true)}
+            className="flex flex-col items-center gap-1.5 hover:opacity-80 transition-opacity animate-in fade-in duration-200"
+            title="Share Profile"
+          >
+            <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center text-foreground shadow-sm">
+              <Share2 className="h-5 w-5" />
+            </div>
+            <span className="text-[10px] font-semibold text-muted-foreground">Share</span>
+          </button>
         </div>
 
         {/* Contact Info */}
@@ -2972,6 +2986,14 @@ export function ConversationDetailPanel({
           )}
         </div>
       </div>
+      <ShareProfileModal 
+        isOpen={shareOpen}
+        onOpenChange={setShareOpen}
+        username={friend.username}
+        displayName={displayName}
+        avatarUrl={friend.avatar_url}
+        memberSince={friend.created_at}
+      />
     </div>
   );
 }
