@@ -54,8 +54,13 @@ async function resolveHostToIPv4(host: string): Promise<string> {
 }
 
 async function runMigrationsForHostPort(host: string, port: number, useSSL: boolean): Promise<boolean> {
+  const originalEnvUrl = process.env.DATABASE_URL;
+  if (host !== "env-url") {
+    delete process.env.DATABASE_URL;
+  }
+
   let connectionString = host === "env-url"
-    ? process.env.DATABASE_URL
+    ? originalEnvUrl
     : `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
   
   let originalHost = host;
@@ -104,10 +109,12 @@ async function runMigrationsForHostPort(host: string, port: number, useSSL: bool
 
     await client.end();
     console.log("All migrations applied successfully!");
+    process.env.DATABASE_URL = originalEnvUrl;
     return true;
   } catch (err: any) {
     console.warn(`Connection failed on ${host}:${port} (SSL: ${useSSL}):`, err.message);
     try { await client.end(); } catch {}
+    process.env.DATABASE_URL = originalEnvUrl;
     return false;
   }
 }
@@ -134,8 +141,14 @@ async function main() {
   for (const h of hosts) {
     for (const p of ports) {
       const isRemote = h.includes(".") && !h.startsWith("127.");
-      const useSSL = process.env.DATABASE_SSL === "true" || (process.env.DATABASE_SSL !== "false" && isRemote);
-      success = await runMigrationsForHostPort(h, p, useSSL);
+      const sslOptions = process.env.DATABASE_SSL === "true"
+        ? [true]
+        : (process.env.DATABASE_SSL === "false" ? [false] : [false, true]);
+        
+      for (const useSSL of sslOptions) {
+        success = await runMigrationsForHostPort(h, p, useSSL);
+        if (success) break;
+      }
       if (success) break;
     }
     if (success) break;
