@@ -1,0 +1,1020 @@
+import { useEffect, useRef, useState, useTransition } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
+import { 
+  getUsersListAdmin, 
+  updateUserProfileAdmin, 
+  changeUserPasswordAdmin, 
+  changeUserEmailAdmin, 
+  deleteUserAccountAdmin 
+} from "@/lib/admin-super.functions";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/messenger/Avatar";
+import { toast } from "sonner";
+import { formatDistanceToNow, format } from "date-fns";
+import { 
+  Users, Search, Filter, Shield, ShieldCheck, Check, X, 
+  KeyRound, Mail, Trash2, Camera, Loader2, Coins, 
+  Award, Wallet, ChevronLeft, ChevronRight, Ban, 
+  ShieldAlert, Settings, HelpCircle, Eye, EyeOff, Globe
+} from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const LIMIT = 15;
+
+export function UsersManagementView({ meId }: { meId: string }) {
+  const fetchFn = useServerFn(getUsersListAdmin);
+  const updateFn = useServerFn(updateUserProfileAdmin);
+  const passwordFn = useServerFn(changeUserPasswordAdmin);
+  const emailFn = useServerFn(changeUserEmailAdmin);
+  const deleteFn = useServerFn(deleteUserAccountAdmin);
+
+  const [users, setUsers] = useState<any[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
+
+  // Search & Filter state
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<any>("all");
+  const [sortBy, setSortBy] = useState<any>("created_at");
+  const [sortDesc, setSortDesc] = useState(true);
+  const [page, setPage] = useState(1);
+
+  // Selected user details for editing
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Modal actions
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmDeleteUsername, setConfirmDeleteUsername] = useState("");
+  const [pwResetOpen, setPwResetOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailChangeOpen, setEmailChangeOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+
+  // Edit details form states
+  const [editUsername, setEditUsername] = useState("");
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editAddress, setEditAddress] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [editVipStatus, setEditVipStatus] = useState("none");
+  const [editCoins, setEditCoins] = useState(0);
+  const [editWalletBalance, setEditWalletBalance] = useState(0);
+  const [editXp, setEditXp] = useState(0);
+  const [editVerified, setEditVerified] = useState(false);
+  const [editStatus, setEditStatus] = useState("active");
+  const [editRole, setEditRole] = useState("user");
+  const [editTheme, setEditTheme] = useState("dark");
+  const [editLanguage, setEditLanguage] = useState("en");
+  const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(null);
+  const [editCoverPhoto, setEditCoverPhoto] = useState<string | null>(null);
+
+  // File refs
+  const avatarFileRef = useRef<HTMLInputElement>(null);
+  const coverFileRef = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [savingChanges, setSavingChanges] = useState(false);
+
+  // Check super admin status
+  useEffect(() => {
+    supabase.from("user_roles")
+      .select("role")
+      .eq("user_id", meId)
+      .eq("role", "super_admin")
+      .maybeSingle()
+      .then(({ data }) => {
+        setIsSuperAdmin(!!data);
+      });
+  }, [meId]);
+
+  // Load user records
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const result = await fetchFn({
+        search: search.trim() || undefined,
+        filter,
+        sortBy,
+        sortDesc,
+        page,
+        limit: LIMIT
+      });
+      setUsers(result.users);
+      setTotalCount(result.count);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to fetch user profiles.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const delayDebounce = setTimeout(() => {
+      loadUsers();
+    }, 300);
+    return () => clearTimeout(delayDebounce);
+  }, [search, filter, sortBy, sortDesc, page]);
+
+  // Open drawer helper
+  const handleUserClick = (u: any) => {
+    setSelectedUser(u);
+    setEditUsername(u.username || "");
+    setEditFirstName(u.first_name || "");
+    setEditLastName(u.last_name || "");
+    setEditPhone(u.phone || "");
+    setEditAddress(u.address || "");
+    setEditBio(u.bio || "");
+    setEditVipStatus(u.vip_status || "none");
+    setEditCoins(u.coins ?? 0);
+    setEditWalletBalance(Number(u.wallet_balance ?? 0));
+    setEditXp(u.xp ?? 0);
+    setEditVerified(!!u.verified);
+    setEditStatus(u.status || (u.is_blocked ? "suspended" : "active"));
+    setEditRole(u.role || "user");
+    setEditTheme(u.theme || "dark");
+    setEditLanguage(u.language || "en");
+    setEditAvatarUrl(u.avatar_url);
+    setEditCoverPhoto(u.cover_photo);
+    setDrawerOpen(true);
+  };
+
+  // Avatar Upload handler
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedUser) return;
+    if (file.size > 5 * 1024 * 1024) return toast.error("Max file size is 5MB.");
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    if (ext === "gif") return toast.error("GIFs are not supported.");
+
+    setUploadingAvatar(true);
+    try {
+      const { uploadAndSign } = await import("@/lib/chat-media");
+      const url = await uploadAndSign("avatars", `${selectedUser.id}-${Date.now()}`, file, ext, file.type);
+      setEditAvatarUrl(url);
+      toast.success("Profile image staged! Remember to click Save Changes.");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload image.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  // Cover Image handler
+  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedUser) return;
+    if (file.size > 5 * 1024 * 1024) return toast.error("Max file size is 5MB.");
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    
+    setUploadingCover(true);
+    try {
+      const { uploadAndSign } = await import("@/lib/chat-media");
+      const url = await uploadAndSign("avatars", `${selectedUser.id}-cover-${Date.now()}`, file, ext, file.type);
+      setEditCoverPhoto(url);
+      toast.success("Cover image staged! Remember to click Save Changes.");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload cover.");
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
+  // Save changes handler
+  const handleSaveChanges = async () => {
+    if (!selectedUser) return;
+    setSavingChanges(true);
+    try {
+      await updateFn({
+        targetUserId: selectedUser.id,
+        profileUpdates: {
+          username: editUsername.trim(),
+          first_name: editFirstName.trim(),
+          last_name: editLastName.trim(),
+          phone: editPhone.trim(),
+          address: editAddress.trim(),
+          bio: editBio.trim(),
+          vip_status: editVipStatus,
+          coins: Number(editCoins),
+          xp: Number(editXp),
+          wallet_balance: Number(editWalletBalance),
+          verified: editVerified,
+          status: editStatus,
+          theme: editTheme,
+          language: editLanguage,
+          avatar_url: editAvatarUrl,
+          cover_photo: editCoverPhoto
+        },
+        roleUpdate: isSuperAdmin ? (editRole as any) : undefined
+      });
+      toast.success("User profile successfully updated.");
+      setDrawerOpen(false);
+      loadUsers();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save profile changes.");
+    } finally {
+      setSavingChanges(false);
+    }
+  };
+
+  // Reset Password direct change
+  const handleResetPassword = async () => {
+    if (!selectedUser || newPassword.length < 6) return;
+    try {
+      await passwordFn({
+        targetUserId: selectedUser.id,
+        newPassword
+      });
+      toast.success("Password updated successfully.");
+      setPwResetOpen(false);
+      setNewPassword("");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to change password.");
+    }
+  };
+
+  // Direct email updates
+  const handleEmailChange = async () => {
+    if (!selectedUser || !newEmail.trim()) return;
+    try {
+      await emailFn({
+        targetUserId: selectedUser.id,
+        newEmail: newEmail.trim()
+      });
+      toast.success("Email address successfully changed.");
+      setEmailChangeOpen(false);
+      setNewEmail("");
+      loadUsers();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update email.");
+    }
+  };
+
+  // Delete User handler
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    if (confirmDeleteUsername.trim().toLowerCase() !== selectedUser.username.toLowerCase()) {
+      return toast.error("Confirm by entering correct username.");
+    }
+    try {
+      await deleteFn({ targetUserId: selectedUser.id });
+      toast.success("Account permanently deleted.");
+      setConfirmDeleteOpen(false);
+      setConfirmDeleteUsername("");
+      setDrawerOpen(false);
+      loadUsers();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete user.");
+    }
+  };
+
+  // Pagination totals
+  const totalPages = Math.ceil(totalCount / LIMIT) || 1;
+
+  return (
+    <div className="p-4 md:p-6 max-w-[1400px] mx-auto space-y-4">
+      {/* Header section */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Users className="h-6 w-6 text-primary" />
+            Users Management
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Manage your casino players, roles, verification status, and wallet limits.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 bg-card px-3 py-1.5 rounded-lg border border-border/80 self-start sm:self-center">
+          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+          <span className="text-xs font-semibold text-muted-foreground">{totalCount} registered players</span>
+        </div>
+      </div>
+
+      {/* Control bar */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          {/* Search bar */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Search by username, email, display name, or user ID..."
+              className="pl-9 rounded-full bg-card"
+            />
+          </div>
+
+          {/* Sort selection & direction toggle */}
+          <div className="flex items-center gap-2 self-end md:self-auto">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="h-10 rounded-full border border-border bg-card px-4 py-2 text-xs font-semibold font-mono"
+            >
+              <option value="created_at">Joined Date</option>
+              <option value="username">Username</option>
+              <option value="last_seen">Last Active</option>
+              <option value="verified">Verified Status</option>
+            </select>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 rounded-full"
+              onClick={() => setSortDesc(!sortDesc)}
+            >
+              <Filter className={`h-4 w-4 transition-transform ${sortDesc ? "rotate-180" : ""}`} />
+            </Button>
+          </div>
+        </div>
+
+        {/* Filter Scroll buttons */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none">
+          {[
+            { id: "all", label: "All Users" },
+            { id: "online", label: "Online" },
+            { id: "offline", label: "Offline" },
+            { id: "verified", label: "Verified" },
+            { id: "unverified", label: "Unverified" },
+            { id: "admins", label: "Admins" },
+            { id: "super_admins", label: "Super Admins" },
+            { id: "normal_users", label: "Normal Users" },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => { setFilter(item.id); setPage(1); }}
+              className={`px-4 h-8 rounded-full text-xs font-semibold uppercase shrink-0 transition-colors ${
+                filter === item.id 
+                  ? "bg-primary text-primary-foreground" 
+                  : "bg-card border border-border hover:bg-secondary"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Main user table */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+        {loading && users.length === 0 ? (
+          <div className="p-16 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="text-sm text-muted-foreground font-semibold">Loading casino database...</span>
+          </div>
+        ) : users.length === 0 ? (
+          <div className="p-16 flex flex-col items-center justify-center text-center gap-2">
+            <Users className="h-12 w-12 text-muted-foreground/50" />
+            <p className="font-bold text-foreground">No players found</p>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              Try adjusting your query, filters, or searching for other keywords.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[1000px]">
+              <thead>
+                <tr className="border-b border-border/80 bg-secondary/35 text-[10px] uppercase tracking-wider text-muted-foreground font-bold select-none">
+                  <th className="p-4 pl-6">Player profile</th>
+                  <th className="p-4">User ID</th>
+                  <th className="p-4">Permissions</th>
+                  <th className="p-4">Verification</th>
+                  <th className="p-4">Coins / Balance</th>
+                  <th className="p-4">Activity Log</th>
+                  <th className="p-4 pr-6"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {users.map((u) => {
+                  const displayName = u.first_name && u.last_name ? `${u.first_name} ${u.last_name}` : u.username;
+                  return (
+                    <tr 
+                      key={u.id}
+                      onClick={() => handleUserClick(u)}
+                      className="hover:bg-secondary/20 cursor-pointer transition-colors group"
+                    >
+                      {/* Name / Avatar / Email */}
+                      <td className="p-4 pl-6 flex items-center gap-3">
+                        <div className="relative">
+                          <Avatar name={u.username} url={u.avatar_url} size={42} />
+                          <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full ring-2 ring-card ${u.online ? "bg-green-500" : "bg-muted"}`} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-sm text-foreground truncate group-hover:text-primary transition-colors">
+                              {displayName}
+                            </span>
+                            {u.is_blocked && (
+                              <Badge variant="destructive" className="h-4 text-[9px] px-1 font-bold">Blocked</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">@{u.username} · {u.email}</p>
+                        </div>
+                      </td>
+
+                      {/* ID */}
+                      <td className="p-4">
+                        <span className="font-mono text-xs font-semibold text-muted-foreground select-all">
+                          {u.id.substring(0, 18)}...
+                        </span>
+                      </td>
+
+                      {/* Role */}
+                      <td className="p-4">
+                        {u.role === "super_admin" ? (
+                          <Badge className="bg-amber-500 hover:bg-amber-600 gap-1"><ShieldCheck className="h-3 w-3" /> Super Admin</Badge>
+                        ) : u.role === "admin" ? (
+                          <Badge className="bg-blue-500 hover:bg-blue-600 gap-1"><Shield className="h-3 w-3" /> Admin</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground font-semibold">User</span>
+                        )}
+                      </td>
+
+                      {/* Verified */}
+                      <td className="p-4">
+                        {u.verified ? (
+                          <Badge variant="secondary" className="bg-green-500/10 text-green-600 hover:bg-green-500/15 gap-1 font-bold">
+                            <Check className="h-3 w-3" /> Verified
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground font-medium">Unverified</span>
+                        )}
+                      </td>
+
+                      {/* Coins & Balance */}
+                      <td className="p-4">
+                        <div className="text-xs space-y-0.5">
+                          <div className="flex items-center gap-1 font-semibold text-foreground">
+                            <Coins className="h-3 w-3 text-amber-500" />
+                            {u.coins ?? 0} Coins
+                          </div>
+                          <div className="flex items-center gap-1 font-medium text-muted-foreground">
+                            <Wallet className="h-3 w-3" />
+                            ${Number(u.wallet_balance ?? 0).toFixed(2)}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Join / Active details */}
+                      <td className="p-4">
+                        <div className="text-xs space-y-0.5 text-muted-foreground">
+                          <p>Join: {format(new Date(u.created_at), "MMM d, yyyy")}</p>
+                          <p>Active: {u.last_seen ? formatDistanceToNow(new Date(u.last_seen), { addSuffix: true }) : "—"}</p>
+                        </div>
+                      </td>
+
+                      {/* View Actions Trigger */}
+                      <td className="p-4 pr-6 text-right">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Settings className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-border select-none bg-secondary/15">
+            <span className="text-xs text-muted-foreground font-semibold">
+              Page {page} of {totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={page <= 1 || loading}
+                onClick={() => setPage(page - 1)}
+                className="h-8 w-8 rounded-lg"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={page >= totalPages || loading}
+                onClick={() => setPage(page + 1)}
+                className="h-8 w-8 rounded-lg"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Editor slide-out side drawer */}
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto bg-card border-l border-border p-0 flex flex-col h-full">
+          {selectedUser && (
+            <>
+              {/* Cover Photo header */}
+              <div className="relative h-32 bg-secondary shrink-0 overflow-hidden select-none">
+                {editCoverPhoto ? (
+                  <img src={editCoverPhoto} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="h-full w-full bg-gradient-to-r from-primary/10 via-accent/5 to-secondary" />
+                )}
+                
+                {/* Upload cover button */}
+                <button 
+                  onClick={() => coverFileRef.current?.click()}
+                  disabled={uploadingCover}
+                  className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 text-xs flex items-center gap-1.5 transition-all shadow-md font-sans"
+                >
+                  {uploadingCover ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
+                  <span>Change Banner</span>
+                </button>
+                <input
+                  ref={coverFileRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleCoverChange}
+                  className="hidden"
+                />
+              </div>
+
+              {/* Drawer User Title Profile details */}
+              <div className="px-6 pb-4 border-b border-border/80 shrink-0 relative flex flex-col items-center sm:items-start text-center sm:text-left">
+                {/* Profile picture */}
+                <div className="relative -mt-12 mb-3 z-10">
+                  <div className="rounded-full ring-4 ring-card overflow-hidden bg-card">
+                    <Avatar name={editUsername} url={editAvatarUrl} size={92} />
+                  </div>
+                  <button 
+                    onClick={() => avatarFileRef.current?.click()}
+                    disabled={uploadingAvatar}
+                    className="absolute bottom-0 right-0 h-8 w-8 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center shadow-lg transition-all"
+                  >
+                    {uploadingAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                  </button>
+                  <input
+                    ref={avatarFileRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    className="hidden"
+                  />
+                </div>
+
+                <div className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h3 className="text-xl font-bold tracking-tight">
+                      {editFirstName && editLastName ? `${editFirstName} ${editLastName}` : editUsername}
+                    </h3>
+                    <p className="text-xs text-muted-foreground font-semibold">@{editUsername} · {selectedUser.email}</p>
+                  </div>
+                  <div className="flex items-center justify-center gap-1.5">
+                    {editStatus === "banned" ? (
+                      <Badge variant="destructive">Banned</Badge>
+                    ) : editStatus === "suspended" ? (
+                      <Badge className="bg-amber-500/15 text-amber-600 hover:bg-amber-500/20 font-bold border-amber-500/20">Suspended</Badge>
+                    ) : (
+                      <Badge className="bg-green-500/15 text-green-600 hover:bg-green-500/20 font-bold border-green-500/20">Active</Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabs controls */}
+              <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0">
+                <TabsList className="mx-6 my-4 bg-secondary select-none">
+                  <TabsTrigger value="general" className="flex-1 text-xs">General</TabsTrigger>
+                  <TabsTrigger value="security" className="flex-1 text-xs">Security</TabsTrigger>
+                  <TabsTrigger value="wallet" className="flex-1 text-xs">Balance & VIP</TabsTrigger>
+                </TabsList>
+
+                <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0 space-y-4">
+                  {/* General Tab */}
+                  <TabsContent value="general" className="space-y-4 m-0 focus:outline-none">
+                    {/* Username */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase">Username</label>
+                      <Input
+                        value={editUsername}
+                        onChange={(e) => setEditUsername(e.target.value)}
+                        className="bg-secondary/40 border-border/80"
+                      />
+                    </div>
+
+                    {/* Display Name */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-muted-foreground uppercase">First Name</label>
+                        <Input
+                          value={editFirstName}
+                          onChange={(e) => setEditFirstName(e.target.value)}
+                          className="bg-secondary/40 border-border/80"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-muted-foreground uppercase">Last Name</label>
+                        <Input
+                          value={editLastName}
+                          onChange={(e) => setEditLastName(e.target.value)}
+                          className="bg-secondary/40 border-border/80"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Phone & Address */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase">Phone Number</label>
+                      <Input
+                        value={editPhone}
+                        onChange={(e) => setEditPhone(e.target.value)}
+                        className="bg-secondary/40 border-border/80"
+                        placeholder="Not specified"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase">Address</label>
+                      <Input
+                        value={editAddress}
+                        onChange={(e) => setEditAddress(e.target.value)}
+                        className="bg-secondary/40 border-border/80"
+                        placeholder="Not specified"
+                      />
+                    </div>
+
+                    {/* Bio */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase">Bio</label>
+                      <textarea
+                        value={editBio}
+                        onChange={(e) => setEditBio(e.target.value)}
+                        className="w-full rounded-lg border border-border/80 bg-secondary/40 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary min-h-[80px]"
+                        placeholder="Casinò bio..."
+                      />
+                    </div>
+
+                    {/* Theme & Language */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-muted-foreground uppercase">Theme</label>
+                        <select
+                          value={editTheme}
+                          onChange={(e) => setEditTheme(e.target.value)}
+                          className="w-full h-10 rounded-lg border border-border/80 bg-secondary/40 px-3 text-sm"
+                        >
+                          <option value="dark">Dark Theme</option>
+                          <option value="light">Light Theme</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-muted-foreground uppercase">Language</label>
+                        <select
+                          value={editLanguage}
+                          onChange={(e) => setEditLanguage(e.target.value)}
+                          className="w-full h-10 rounded-lg border border-border/80 bg-secondary/40 px-3 text-sm"
+                        >
+                          <option value="en">English (US)</option>
+                          <option value="de">German</option>
+                          <option value="es">Spanish</option>
+                          <option value="fr">French</option>
+                        </select>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  {/* Security Tab */}
+                  <TabsContent value="security" className="space-y-4 m-0 focus:outline-none">
+                    {/* Role update (Super admin only) */}
+                    {isSuperAdmin && (
+                      <div className="space-y-1.5 bg-secondary/30 border border-border/60 rounded-xl p-4">
+                        <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+                          <ShieldCheck className="h-4 w-4 text-amber-500" />
+                          Security Role Access
+                        </label>
+                        <p className="text-[11px] text-muted-foreground mb-2">
+                          Only super admins can modify administrative team access privileges.
+                        </p>
+                        <select
+                          value={editRole}
+                          onChange={(e) => setEditRole(e.target.value)}
+                          className="w-full h-10 rounded-lg border border-border bg-card px-3 text-sm"
+                        >
+                          <option value="user">Regular User</option>
+                          <option value="admin">Administrator</option>
+                          <option value="super_admin">Super Administrator</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Status Suspension / Block Toggles */}
+                    <div className="space-y-3 bg-secondary/30 border border-border/60 rounded-xl p-4">
+                      <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+                        <Ban className="h-4 w-4 text-destructive" />
+                        Account Status Toggles
+                      </label>
+                      
+                      <div className="flex gap-2">
+                        {(["active", "suspended", "banned"] as const).map((st) => (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() => setEditStatus(st)}
+                            className={`flex-1 h-9 rounded-lg text-xs font-semibold uppercase transition-colors ${
+                              editStatus === st 
+                                ? st === "active" ? "bg-green-500 text-white" : st === "suspended" ? "bg-amber-500 text-white" : "bg-destructive text-white"
+                                : "bg-card border border-border hover:bg-secondary"
+                            }`}
+                          >
+                            {st}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Quick administrative actions */}
+                    <div className="space-y-3 bg-secondary/30 border border-border/60 rounded-xl p-4">
+                      <label className="text-xs font-bold text-muted-foreground uppercase">Security Operations</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={() => setPwResetOpen(true)}
+                          className="w-full justify-start h-10 gap-2 border-border"
+                        >
+                          <KeyRound className="h-4 w-4 text-primary shrink-0" />
+                          <span>Reset Password</span>
+                        </Button>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={() => {
+                            setNewEmail(selectedUser.email || "");
+                            setEmailChangeOpen(true);
+                          }}
+                          className="w-full justify-start h-10 gap-2 border-border"
+                        >
+                          <Mail className="h-4 w-4 text-primary shrink-0" />
+                          <span>Change Email</span>
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Danger zone */}
+                    <div className="border border-destructive/20 bg-destructive/5 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <ShieldAlert className="h-5 w-5 text-destructive shrink-0" />
+                        <h4 className="font-bold text-sm text-destructive">Danger Zone</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Permanently deleting a user will destroy their player profile, casino ledger transactions, and auth credentials. This cannot be undone.
+                      </p>
+                      <Button 
+                        type="button" 
+                        variant="destructive"
+                        onClick={() => setConfirmDeleteOpen(true)}
+                        className="w-full h-9 rounded-lg"
+                      >
+                        Delete Player Account
+                      </Button>
+                    </div>
+                  </TabsContent>
+
+                  {/* Balance / VIP Tab */}
+                  <TabsContent value="wallet" className="space-y-4 m-0 focus:outline-none">
+                    {/* Coins */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+                        <Coins className="h-4 w-4 text-amber-500" />
+                        Coins Balance
+                      </label>
+                      <Input
+                        type="number"
+                        value={editCoins}
+                        onChange={(e) => setEditCoins(Number(e.target.value))}
+                        className="bg-secondary/40 border-border/80 font-bold"
+                      />
+                    </div>
+
+                    {/* Wallet Balance */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+                        <Wallet className="h-4 w-4 text-green-500" />
+                        Wallet Cash Balance ($)
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={editWalletBalance}
+                        onChange={(e) => setEditWalletBalance(Number(e.target.value))}
+                        className="bg-secondary/40 border-border/80 font-bold"
+                      />
+                    </div>
+
+                    {/* XP & Level */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+                        <Award className="h-4 w-4 text-blue-500" />
+                        Experience Points (XP)
+                      </label>
+                      <Input
+                        type="number"
+                        value={editXp}
+                        onChange={(e) => setEditXp(Number(e.target.value))}
+                        className="bg-secondary/40 border-border/80 font-bold"
+                      />
+                    </div>
+
+                    {/* VIP Level selection */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+                        <Award className="h-4 w-4 text-amber-500" />
+                        VIP Status Level
+                      </label>
+                      <select
+                        value={editVipStatus}
+                        onChange={(e) => setEditVipStatus(e.target.value)}
+                        className="w-full h-10 rounded-lg border border-border/80 bg-secondary/40 px-3 text-sm font-semibold"
+                      >
+                        <option value="none">No VIP Level</option>
+                        <option value="bronze">Bronze Membership</option>
+                        <option value="silver">Silver Membership</option>
+                        <option value="gold">Gold Membership</option>
+                        <option value="platinum">Platinum Membership</option>
+                        <option value="diamond">Diamond VIP Membership</option>
+                      </select>
+                    </div>
+
+                    {/* Verification Toggle */}
+                    <div className="flex items-center justify-between p-4 bg-secondary/30 border border-border/60 rounded-xl mt-3 select-none">
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                          <Check className="h-4 w-4 text-green-500" />
+                          Account Verification
+                        </p>
+                        <p className="text-xs text-muted-foreground">Force-verify this player's identity documents.</p>
+                      </div>
+                      <Switch checked={editVerified} onCheckedChange={setEditVerified} />
+                    </div>
+                  </TabsContent>
+                </div>
+              </Tabs>
+
+              {/* Fixed drawer footer controls */}
+              <div className="p-4 border-t border-border bg-card flex gap-2 shrink-0 select-none">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setDrawerOpen(false)}
+                  className="flex-1 h-11 rounded-xl"
+                  disabled={savingChanges}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleSaveChanges}
+                  className="flex-1 h-11 rounded-xl"
+                  disabled={savingChanges}
+                >
+                  {savingChanges ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Save Changes
+                </Button>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Reset Password Modal */}
+      <AlertDialog open={pwResetOpen} onOpenChange={setPwResetOpen}>
+        <AlertDialogContent className="w-full max-w-sm bg-card border border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Administrative Password Reset</AlertDialogTitle>
+            <AlertDialogDescription>
+              Instantly change the user's password. The user will be able to log in with this new password immediately without OTP validation.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-3 relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Enter new password (min 6 characters)"
+              className="pr-10 font-sans"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setPwResetOpen(false); setNewPassword(""); }} className="rounded-lg">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleResetPassword} 
+              disabled={newPassword.length < 6}
+              className="bg-primary text-primary-foreground hover:bg-primary/95 rounded-lg font-sans"
+            >
+              Change Password
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Change Email Modal */}
+      <AlertDialog open={emailChangeOpen} onOpenChange={setEmailChangeOpen}>
+        <AlertDialogContent className="w-full max-w-sm bg-card border border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Administrative Email Update</AlertDialogTitle>
+            <AlertDialogDescription>
+              Directly change the user's email address. The change is confirmed instantly. No OTP will be sent to the old or new address.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-3">
+            <Input
+              type="email"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              placeholder="Enter new email address"
+              className="font-sans"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setEmailChangeOpen(false); setNewEmail(""); }} className="rounded-lg">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleEmailChange} 
+              disabled={!newEmail.trim() || newEmail.trim() === selectedUser?.email}
+              className="bg-primary text-primary-foreground hover:bg-primary/95 rounded-lg font-sans"
+            >
+              Update Email
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete User Confirmation Modal */}
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent className="w-full max-w-md bg-card border border-border border-destructive/30">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive flex items-center gap-1.5">
+              <ShieldAlert className="h-5 w-5" />
+              Confirm Permanent Deletion
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground select-none">
+              This action is destructive and will remove player <span className="font-semibold text-foreground">@{selectedUser?.username}</span> permanently from both Auth databases and casino ledger systems.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-3 space-y-1.5">
+            <p className="text-xs text-muted-foreground font-semibold uppercase">
+              Type the username to confirm deletion:
+            </p>
+            <Input
+              value={confirmDeleteUsername}
+              onChange={(e) => setConfirmDeleteUsername(e.target.value)}
+              placeholder={selectedUser?.username}
+              className="border-destructive/30 focus-visible:ring-destructive font-sans"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setConfirmDeleteOpen(false); setConfirmDeleteUsername(""); }} className="rounded-lg">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteUser}
+              disabled={confirmDeleteUsername.trim().toLowerCase() !== selectedUser?.username.toLowerCase()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/95 rounded-lg font-sans"
+            >
+              Permanently Delete Account
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

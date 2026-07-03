@@ -471,6 +471,19 @@ export const MIGRATIONS_SQL = `
         BEFORE INSERT OR UPDATE ON public.group_members
         FOR EACH ROW EXECUTE FUNCTION public.check_admin_team_membership();
 
+        -- Add user management fields to profiles table
+        ALTER TABLE public.profiles 
+          ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT '',
+          ADD COLUMN IF NOT EXISTS cover_photo TEXT,
+          ADD COLUMN IF NOT EXISTS coins INTEGER DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS wallet_balance NUMERIC DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS vip_status TEXT DEFAULT 'none',
+          ADD COLUMN IF NOT EXISTS theme TEXT DEFAULT 'dark',
+          ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en',
+          ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT false,
+          ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+
         -- Notify PostgREST to reload its schema cache
         NOTIFY pgrst, 'reload schema';
       `;
@@ -699,3 +712,416 @@ export const runAutoDatabaseMigrations = createServerFn({ method: "POST" })
       return { success: false, error: e.message };
     }
   });
+
+// ==========================================
+// ADMIN USER MANAGEMENT SERVER FUNCTIONS
+// ==========================================
+
+export const getUsersListAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: {
+    search?: string;
+    filter?: "all" | "online" | "offline" | "verified" | "unverified" | "admins" | "super_admins" | "normal_users" | "recently_joined";
+    sortBy?: "username" | "created_at" | "last_seen" | "role" | "status";
+    sortDesc?: boolean;
+    page: number;
+    limit: number;
+  }) => d)
+  .handler(async ({ data, context }) => {
+    // 1. Verify caller is admin or super admin
+    const { data: callerRoles } = await context.supabase
+      .from("user_roles").select("role").eq("user_id", context.userId);
+    const isAdmin = (callerRoles ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
+    if (!isAdmin) throw new Error("Admins only");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 2. Fetch admin user IDs to help with admin filters
+    const { data: allAdminRoles } = await supabaseAdmin.from("user_roles").select("user_id, role");
+    const adminIds = (allAdminRoles ?? []).map((r: any) => r.user_id);
+    const superAdminIds = (allAdminRoles ?? []).filter((r: any) => r.role === "super_admin").map((r: any) => r.user_id);
+
+    // 3. Build query
+    let query = supabaseAdmin.from("profiles").select("*", { count: "exact" });
+
+    // Search
+    if (data.search?.trim()) {
+      const s = data.search.trim();
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(s);
+      if (isUuid) {
+        query = query.eq("id", s);
+      } else {
+        query = query.or(`username.ilike.%${s}%,email.ilike.%${s}%,first_name.ilike.%${s}%,last_name.ilike.%${s}%`);
+      }
+    }
+
+    // Filter
+    if (data.filter && data.filter !== "all") {
+      switch (data.filter) {
+        case "online":
+          query = query.eq("online", true);
+          break;
+        case "offline":
+          query = query.eq("online", false);
+          break;
+        case "verified":
+          query = query.eq("verified", true);
+          break;
+        case "unverified":
+          query = query.eq("verified", false);
+          break;
+        case "admins":
+          query = query.in("id", adminIds);
+          break;
+        case "super_admins":
+          query = query.in("id", superAdminIds);
+          break;
+        case "normal_users":
+          if (adminIds.length > 0) {
+            query = query.not("id", "in", `(${adminIds.join(",")})`);
+          }
+          break;
+        case "recently_joined":
+          // Handled by sorting by default, but let's filter to past 30 days if wanted, or just default sorting
+          break;
+      }
+    }
+
+    // Sorting
+    const sortField = data.sortBy || "created_at";
+    const ascending = !data.sortDesc;
+    
+    // Sort logic
+    if (sortField === "role") {
+      // In Postgres, sorting by role isn't direct since roles are in a different table.
+      // We will default to created_at sort on database and sort in memory if needed, or sorting by id.
+      query = query.order("created_at", { ascending });
+    } else {
+      query = query.order(sortField, { ascending });
+    }
+
+    // Pagination
+    const from = (data.page - 1) * data.limit;
+    const to = from + data.limit - 1;
+    query = query.range(from, to);
+
+    const { data: users, count, error } = await query;
+    if (error) throw new Error(error.message);
+
+    if (!users || users.length === 0) {
+      return { users: [], count: count ?? 0 };
+    }
+
+    const userIds = users.map((u: any) => u.id);
+
+    // Fetch referral counts in one query
+    const { data: refRows } = await supabaseAdmin
+      .from("referrals")
+      .select("referrer_id")
+      .in("referrer_id", userIds);
+    const refCountMap: Record<string, number> = {};
+    (refRows ?? []).forEach((r: any) => {
+      refCountMap[r.referrer_id] = (refCountMap[r.referrer_id] || 0) + 1;
+    });
+
+    // Map roles to each user
+    const rolesMap = new Map<string, string>();
+    (allAdminRoles ?? []).forEach((r: any) => {
+      rolesMap.set(r.user_id, r.role);
+    });
+
+    const mappedUsers = users.map((u: any) => ({
+      ...u,
+      role: rolesMap.get(u.id) || "user",
+      referral_count: refCountMap[u.id] || 0,
+    }));
+
+    return {
+      users: mappedUsers,
+      count: count ?? 0,
+    };
+  });
+
+export const updateUserProfileAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: {
+    targetUserId: string;
+    profileUpdates: {
+      username?: string;
+      first_name?: string;
+      last_name?: string;
+      phone?: string;
+      address?: string;
+      bio?: string;
+      avatar_url?: string | null;
+      cover_photo?: string | null;
+      coins?: number;
+      xp?: number;
+      wallet_balance?: number;
+      vip_status?: string;
+      theme?: string;
+      language?: string;
+      verified?: boolean;
+      status?: string;
+    };
+    roleUpdate?: "user" | "admin" | "super_admin";
+  }) => d)
+  .handler(async ({ data, context }) => {
+    // 1. Verify caller role
+    const callerId = context.userId;
+    const { data: callerRoles } = await context.supabase
+      .from("user_roles").select("role").eq("user_id", callerId);
+    const callerRolesList = (callerRoles ?? []).map((r: any) => r.role);
+    const isCallerSuperAdmin = callerRolesList.includes("super_admin");
+    const isCallerAdmin = callerRolesList.includes("admin") || isCallerSuperAdmin;
+    if (!isCallerAdmin) throw new Error("Admins only");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Fetch caller profile for audit log name
+    const { data: callerProfile } = await supabaseAdmin
+      .from("profiles").select("username").eq("id", callerId).maybeSingle();
+    const adminUsername = callerProfile?.username || "Admin";
+
+    // 2. Fetch target user's current profile and role
+    const { data: targetProfile, error: targetError } = await supabaseAdmin
+      .from("profiles").select("*").eq("id", data.targetUserId).maybeSingle();
+    if (targetError || !targetProfile) throw new Error("Target user not found");
+
+    const { data: targetRoles } = await supabaseAdmin
+      .from("user_roles").select("role").eq("user_id", data.targetUserId);
+    const targetRolesList = (targetRoles ?? []).map((r: any) => r.role);
+    const isTargetSuperAdmin = targetRolesList.includes("super_admin");
+    const isTargetAdmin = targetRolesList.includes("admin") || isTargetSuperAdmin;
+    const targetRole = isTargetSuperAdmin ? "super_admin" : isTargetAdmin ? "admin" : "user";
+
+    // 3. Security Boundary checks
+    if (isTargetAdmin && !isCallerSuperAdmin) {
+      throw new Error("Only super admins can modify administrator accounts.");
+    }
+
+    // Prepare updates
+    const updates: any = { ...data.profileUpdates };
+
+    // Synced status changes
+    if (data.profileUpdates.status) {
+      if (data.profileUpdates.status === "suspended" || data.profileUpdates.status === "banned") {
+        updates.is_blocked = true;
+      } else if (data.profileUpdates.status === "active") {
+        updates.is_blocked = false;
+      }
+    }
+
+    // Update target profile
+    const { error: updateError } = await supabaseAdmin
+      .from("profiles")
+      .update(updates)
+      .eq("id", data.targetUserId);
+    if (updateError) throw new Error(updateError.message);
+
+    // Handle role updates (only super admins can change roles)
+    if (data.roleUpdate && data.roleUpdate !== targetRole) {
+      if (!isCallerSuperAdmin) throw new Error("Only super admins can change user roles");
+      
+      // Delete existing roles
+      await supabaseAdmin.from("user_roles").delete().eq("user_id", data.targetUserId);
+      
+      // If not "user", insert new role record
+      if (data.roleUpdate !== "user") {
+        await supabaseAdmin.from("user_roles").insert({
+          user_id: data.targetUserId,
+          role: data.roleUpdate,
+        });
+      }
+    }
+
+    // Write audit log
+    await supabaseAdmin.from("activity_logs").insert({
+      user_id: callerId,
+      action: `Profile details updated for user: @${targetProfile.username} by admin @${adminUsername}`,
+      details: {
+        admin_id: callerId,
+        admin_name: adminUsername,
+        target_user_id: data.targetUserId,
+        target_username: targetProfile.username,
+        action: "update_profile",
+        previous_values: {
+          ...targetProfile,
+          role: targetRole,
+        },
+        new_values: {
+          ...updates,
+          role: data.roleUpdate || targetRole,
+        }
+      } as any
+    });
+
+    return { ok: true };
+  });
+
+export const changeUserPasswordAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { targetUserId: string; newPassword?: string }) => {
+    if (!d.newPassword || d.newPassword.length < 6) throw new Error("Password must be at least 6 characters");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const callerId = context.userId;
+    const { data: callerRoles } = await context.supabase
+      .from("user_roles").select("role").eq("user_id", callerId);
+    const callerRolesList = (callerRoles ?? []).map((r: any) => r.role);
+    const isCallerSuperAdmin = callerRolesList.includes("super_admin");
+    const isCallerAdmin = callerRolesList.includes("admin") || isCallerSuperAdmin;
+    if (!isCallerAdmin) throw new Error("Admins only");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Fetch details
+    const { data: callerProfile } = await supabaseAdmin.from("profiles").select("username").eq("id", callerId).maybeSingle();
+    const adminUsername = callerProfile?.username || "Admin";
+
+    const { data: targetProfile } = await supabaseAdmin.from("profiles").select("username").eq("id", data.targetUserId).maybeSingle();
+    if (!targetProfile) throw new Error("Target user not found");
+
+    const { data: targetRoles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.targetUserId);
+    const targetRolesList = (targetRoles ?? []).map((r: any) => r.role);
+    const isTargetAdmin = targetRolesList.includes("admin") || targetRolesList.includes("super_admin");
+
+    if (isTargetAdmin && !isCallerSuperAdmin) {
+      throw new Error("Only super admins can reset passwords for other administrator accounts.");
+    }
+
+    // Call Supabase Admin Auth API to change password directly without OTP
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.targetUserId, {
+      password: data.newPassword,
+    });
+    if (error) throw new Error(error.message);
+
+    // Audit log
+    await supabaseAdmin.from("activity_logs").insert({
+      user_id: callerId,
+      action: `Password reset for user @${targetProfile.username} by admin @${adminUsername}`,
+      details: {
+        admin_id: callerId,
+        admin_name: adminUsername,
+        target_user_id: data.targetUserId,
+        target_username: targetProfile.username,
+        action: "password_reset"
+      } as any
+    });
+
+    return { ok: true };
+  });
+
+export const changeUserEmailAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { targetUserId: string; newEmail: string }) => {
+    if (!d.newEmail?.trim()) throw new Error("Email is required");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const callerId = context.userId;
+    const { data: callerRoles } = await context.supabase
+      .from("user_roles").select("role").eq("user_id", callerId);
+    const callerRolesList = (callerRoles ?? []).map((r: any) => r.role);
+    const isCallerSuperAdmin = callerRolesList.includes("super_admin");
+    const isCallerAdmin = callerRolesList.includes("admin") || isCallerSuperAdmin;
+    if (!isCallerAdmin) throw new Error("Admins only");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Fetch details
+    const { data: callerProfile } = await supabaseAdmin.from("profiles").select("username").eq("id", callerId).maybeSingle();
+    const adminUsername = callerProfile?.username || "Admin";
+
+    const { data: targetProfile } = await supabaseAdmin.from("profiles").select("username, email").eq("id", data.targetUserId).maybeSingle();
+    if (!targetProfile) throw new Error("Target user not found");
+
+    const { data: targetRoles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.targetUserId);
+    const targetRolesList = (targetRoles ?? []).map((r: any) => r.role);
+    const isTargetAdmin = targetRolesList.includes("admin") || targetRolesList.includes("super_admin");
+
+    if (isTargetAdmin && !isCallerSuperAdmin) {
+      throw new Error("Only super admins can change emails for other administrator accounts.");
+    }
+
+    // Call Supabase Admin Auth API to change email directly without OTP
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.targetUserId, {
+      email: data.newEmail,
+      email_confirm: true
+    });
+    if (error) throw new Error(error.message);
+
+    // Update email in profiles table to maintain sync
+    await supabaseAdmin.from("profiles").update({ email: data.newEmail }).eq("id", data.targetUserId);
+
+    // Audit log
+    await supabaseAdmin.from("activity_logs").insert({
+      user_id: callerId,
+      action: `Email changed for user @${targetProfile.username} from ${targetProfile.email ?? "none"} to ${data.newEmail} by admin @${adminUsername}`,
+      details: {
+        admin_id: callerId,
+        admin_name: adminUsername,
+        target_user_id: data.targetUserId,
+        target_username: targetProfile.username,
+        action: "email_changed",
+        previous_email: targetProfile.email,
+        new_email: data.newEmail
+      } as any
+    });
+
+    return { ok: true };
+  });
+
+export const deleteUserAccountAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { targetUserId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const callerId = context.userId;
+    const { data: callerRoles } = await context.supabase
+      .from("user_roles").select("role").eq("user_id", callerId);
+    const callerRolesList = (callerRoles ?? []).map((r: any) => r.role);
+    const isCallerSuperAdmin = callerRolesList.includes("super_admin");
+    const isCallerAdmin = callerRolesList.includes("admin") || isCallerSuperAdmin;
+    if (!isCallerAdmin) throw new Error("Admins only");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Fetch details
+    const { data: callerProfile } = await supabaseAdmin.from("profiles").select("username").eq("id", callerId).maybeSingle();
+    const adminUsername = callerProfile?.username || "Admin";
+
+    const { data: targetProfile } = await supabaseAdmin.from("profiles").select("username").eq("id", data.targetUserId).maybeSingle();
+    if (!targetProfile) throw new Error("Target user not found");
+
+    const { data: targetRoles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.targetUserId);
+    const targetRolesList = (targetRoles ?? []).map((r: any) => r.role);
+    const isTargetAdmin = targetRolesList.includes("admin") || targetRolesList.includes("super_admin");
+
+    if (isTargetAdmin && !isCallerSuperAdmin) {
+      throw new Error("Only super admins can delete administrator accounts.");
+    }
+
+    // Delete user from auth and cascade delete profile
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.targetUserId);
+    if (error) throw new Error(error.message);
+
+    // Manually delete profile from profiles table just to be sure
+    await supabaseAdmin.from("profiles").delete().eq("id", data.targetUserId);
+
+    // Audit log
+    await supabaseAdmin.from("activity_logs").insert({
+      user_id: callerId,
+      action: `Account deleted for user @${targetProfile.username} by admin @${adminUsername}`,
+      details: {
+        admin_id: callerId,
+        admin_name: adminUsername,
+        target_user_id: data.targetUserId,
+        target_username: targetProfile.username,
+        action: "delete_account"
+      } as any
+    });
+
+    return { ok: true };
+  });
+

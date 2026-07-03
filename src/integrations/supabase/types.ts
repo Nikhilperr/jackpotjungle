@@ -451,6 +451,16 @@ export type Database = {
           referral_code: string
           referred_by: string | null
           username: string
+          bio: string | null
+          cover_photo: string | null
+          coins: number
+          xp: number
+          wallet_balance: number
+          vip_status: string
+          theme: string
+          language: string
+          verified: boolean
+          status: string
         }
         Insert: {
           avatar_url?: string | null
@@ -465,6 +475,16 @@ export type Database = {
           referral_code: string
           referred_by?: string | null
           username: string
+          bio?: string | null
+          cover_photo?: string | null
+          coins?: number
+          xp?: number
+          wallet_balance?: number
+          vip_status?: string
+          theme?: string
+          language?: string
+          verified?: boolean
+          status?: string
         }
         Update: {
           avatar_url?: string | null
@@ -479,6 +499,16 @@ export type Database = {
           referral_code?: string
           referred_by?: string | null
           username?: string
+          bio?: string | null
+          cover_photo?: string | null
+          coins?: number
+          xp?: number
+          wallet_balance?: number
+          vip_status?: string
+          theme?: string
+          language?: string
+          verified?: boolean
+          status?: string
         }
         Relationships: []
       }
