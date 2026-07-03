@@ -2681,12 +2681,13 @@ function Conversation({
   const [performingWalletAction, setPerformingWalletAction] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("all");
 
-  const loadWalletDetails = async () => {
-    if (!conv.userId) return;
+  const loadWalletDetails = async (customUserId?: string) => {
+    const targetUserId = customUserId || conv.userId;
+    if (!targetUserId) return;
     setLoadingWalletDetails(true);
     try {
       const { getWalletDetailsAdmin } = await import("@/lib/wallet.functions");
-      const res = await getWalletDetailsAdmin({ targetUserId: conv.userId });
+      const res = await getWalletDetailsAdmin({ data: { targetUserId } });
       setWalletDetails(res.profile);
       setWalletTransactions(res.transactions ?? []);
     } catch (err: any) {
@@ -2696,12 +2697,13 @@ function Conversation({
     }
   };
 
-  const loadWalletHistory = async (filterVal: string) => {
-    if (!conv.userId) return;
+  const loadWalletHistory = async (filterVal: string, customUserId?: string) => {
+    const targetUserId = customUserId || conv.userId;
+    if (!targetUserId) return;
     setLoadingHistory(true);
     try {
       const { getWalletHistoryAdmin } = await import("@/lib/wallet.functions");
-      const res = await getWalletHistoryAdmin({ targetUserId: conv.userId, filter: filterVal });
+      const res = await getWalletHistoryAdmin({ data: { targetUserId, filter: filterVal } });
       setWalletTransactions(res ?? []);
     } catch (err: any) {
       toast.error(err.message || "Failed to load wallet ledger history");
@@ -2726,11 +2728,13 @@ function Conversation({
     try {
       const { performWalletActionAdmin } = await import("@/lib/wallet.functions");
       const res = await performWalletActionAdmin({
-        targetUserId: conv.userId,
-        action: walletAction,
-        amount: amt,
-        reason: walletReason,
-        notes: walletNotes || undefined,
+        data: {
+          targetUserId: conv.userId,
+          action: walletAction,
+          amount: amt,
+          reason: walletReason,
+          notes: walletNotes || undefined,
+        }
       });
 
       if (res.success) {
@@ -2759,11 +2763,13 @@ function Conversation({
     try {
       const { performWalletActionAdmin } = await import("@/lib/wallet.functions");
       const res = await performWalletActionAdmin({
-        targetUserId: conv.userId,
-        action: "reset",
-        amount: 0,
-        reason: "Super Admin Wallet Reset",
-        notes: "Perform total reset of available and credit balances",
+        data: {
+          targetUserId: conv.userId,
+          action: "reset",
+          amount: 0,
+          reason: "Super Admin Wallet Reset",
+          notes: "Perform total reset of available and credit balances",
+        }
       });
 
       if (res.success) {
@@ -2886,11 +2892,13 @@ function Conversation({
     try {
       const { sendWalletStatementAdmin } = await import("@/lib/wallet.functions");
       await sendWalletStatementAdmin({
-        targetUserId: conv.userId,
-        method,
-        openingBalance: walletDetails.wallet_balance,
-        closingBalance: walletDetails.wallet_balance, // simple closing balance check
-        transactions: walletTransactions,
+        data: {
+          targetUserId: conv.userId,
+          method,
+          openingBalance: walletDetails.wallet_balance,
+          closingBalance: walletDetails.wallet_balance, // simple closing balance check
+          transactions: walletTransactions,
+        }
       });
       toast.success(`Statement sent via ${method === "chat" ? "Support Chat" : "Email"}!`);
     } catch (err: any) {
@@ -4274,7 +4282,7 @@ function Conversation({
               <DropdownMenuContent align="start" className="w-48 bg-card border-border">
                 <DropdownMenuItem
                   onClick={() => {
-                    loadWalletDetails();
+                    loadWalletDetails(conv.userId);
                     setWalletPopupOpen(true);
                   }}
                   className="cursor-pointer gap-2 py-2 font-semibold"
@@ -4284,23 +4292,13 @@ function Conversation({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => {
-                    loadWalletHistory("all");
+                    loadWalletHistory("all", conv.userId);
                     setWalletHistoryPopupOpen(true);
                   }}
                   className="cursor-pointer gap-2 py-2 font-semibold"
                 >
                   <History className="h-4 w-4 text-amber-500" />
                   <span>Wallet History</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    loadWalletDetails();
-                    setWalletPopupOpen(true);
-                  }}
-                  className="cursor-pointer gap-2 py-2 font-semibold"
-                >
-                  <Wallet className="h-4 w-4 text-blue-500" />
-                  <span>Wallet Popup</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -50,6 +50,16 @@ function ProfilePage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
+  const [ledgerFilter, setLedgerFilter] = useState<"all" | "wallet" | "credit">("all");
+
+  const filteredHistory = walletHistory.filter((tx) => {
+    if (ledgerFilter === "all") return true;
+    const isCreditAction = ["credit_added", "credit_released", "deduct_credit", "transfer", "reset"].includes(tx.action);
+    const isWalletAction = ["deposit", "deduction", "correction", "refund", "bonus", "reset"].includes(tx.action);
+    if (ledgerFilter === "credit") return isCreditAction;
+    if (ledgerFilter === "wallet") return isWalletAction;
+    return true;
+  });
 
   const fetchHistory = async () => {
     setLoadingHistory(true);
@@ -185,9 +195,9 @@ function ProfilePage() {
   }
 
   const exportUserCSV = () => {
-    if (walletHistory.length === 0) return toast.error("No transactions to export.");
+    if (filteredHistory.length === 0) return toast.error("No transactions to export.");
     const headers = ["Date & Time", "Action", "Amount", "Balance Before", "Balance After", "Reason", "Notes"];
-    const rows = walletHistory.map(tx => [
+    const rows = filteredHistory.map(tx => [
       new Date(tx.created_at).toLocaleString(),
       tx.action.toUpperCase(),
       `$${Number(tx.amount).toFixed(2)}`,
@@ -216,7 +226,7 @@ function ProfilePage() {
       ? `${profile.first_name} ${profile.last_name || ""}`.trim()
       : profile?.username || "Valued Customer";
       
-    const txRows = walletHistory.map(tx => `
+    const txRows = filteredHistory.map(tx => `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${new Date(tx.created_at).toLocaleString()}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd; text-transform: uppercase; font-weight: bold;">${tx.action}</td>
@@ -480,7 +490,16 @@ function ProfilePage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex justify-end gap-2 my-2">
+          <div className="flex justify-between items-center gap-2 my-2">
+            <select
+              value={ledgerFilter}
+              onChange={(e) => setLedgerFilter(e.target.value as any)}
+              className="bg-secondary text-foreground text-xs font-bold px-3 py-1.5 rounded-full border border-border focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Transactions</option>
+              <option value="wallet">Wallet Balance Only</option>
+              <option value="credit">Credit Balance Only</option>
+            </select>
             <Button size="sm" variant="outline" onClick={exportUserCSV} className="rounded-full text-xs font-bold gap-1.5">
               <Download className="h-3.5 w-3.5" /> Export CSV
             </Button>
@@ -491,10 +510,10 @@ function ProfilePage() {
               <div className="flex h-32 items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
               </div>
-            ) : walletHistory.length === 0 ? (
-              <div className="flex h-32 flex-col items-center justify-center text-muted-foreground">
+            ) : filteredHistory.length === 0 ? (
+              <div className="flex h-32 flex-col items-center justify-center text-muted-foreground text-center p-4">
                 <Wallet className="h-8 w-8 opacity-40 mb-2" />
-                <p className="text-sm">No transactions logged yet.</p>
+                <p className="text-sm font-semibold">No transactions found matching this filter.</p>
               </div>
             ) : (
               <div className="w-full overflow-x-auto">
@@ -510,7 +529,7 @@ function ProfilePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {walletHistory.map((tx) => (
+                    {filteredHistory.map((tx) => (
                       <tr key={tx.id} className="border-b border-border/40 hover:bg-secondary/40">
                         <td className="p-3 text-muted-foreground whitespace-nowrap">
                           {new Date(tx.created_at).toLocaleString()}
