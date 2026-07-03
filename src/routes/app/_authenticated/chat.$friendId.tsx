@@ -4,7 +4,7 @@ import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download, MessageCircle, Edit } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download, MessageCircle, Edit, Shield, ShieldCheck } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -417,6 +417,8 @@ function ChatView() {
   const groupId = isGroup ? friendId.substring(6) : null;
   const [group, setGroup] = useState<any>(null);
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
+  const [memberRoles, setMemberRoles] = useState<Map<string, "admin" | "super_admin">>(new Map());
+  const [friendRole, setFriendRole] = useState<"admin" | "super_admin" | "user">("user");
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [editingGroupName, setEditingGroupName] = useState("");
@@ -453,6 +455,49 @@ function ChatView() {
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastTypingSentRef = useRef(0);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!meId) return;
+
+    if (isGroup) {
+      if (groupMembers.length === 0) return;
+      const userIds = groupMembers.map(m => m.profiles?.id).filter(Boolean);
+      supabase
+        .from("user_roles")
+        .select("user_id, role")
+        .in("user_id", userIds)
+        .in("role", ["admin", "super_admin"])
+        .then(({ data }) => {
+          if (data) {
+            const map = new Map<string, "admin" | "super_admin">();
+            data.forEach(r => {
+              const existing = map.get(r.user_id);
+              if (!existing || r.role === "super_admin") {
+                map.set(r.user_id, r.role as "admin" | "super_admin");
+              }
+            });
+            setMemberRoles(map);
+          }
+        });
+    } else {
+      if (!friendId || friendId.startsWith("system-")) return;
+      supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", friendId)
+        .in("role", ["admin", "super_admin"])
+        .then(({ data }) => {
+          if (data && data.length > 0) {
+            const rolesList = data.map(r => r.role);
+            if (rolesList.includes("super_admin")) setFriendRole("super_admin");
+            else if (rolesList.includes("admin")) setFriendRole("admin");
+            else setFriendRole("user");
+          } else {
+            setFriendRole("user");
+          }
+        });
+    }
+  }, [isGroup, groupMembers, friendId, meId]);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isMountedRef = useRef(true);
@@ -1973,7 +2018,15 @@ function ChatView() {
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold truncate">{friendDisplayName}</p>
+              <p className="font-semibold truncate flex items-center gap-1.5">
+                <span>{friendDisplayName}</span>
+                {!isGroup && friendRole === "super_admin" && (
+                  <ShieldCheck className="h-3.5 w-3.5 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
+                )}
+                {!isGroup && friendRole === "admin" && (
+                  <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+                )}
+              </p>
               <p className="text-xs text-muted-foreground truncate">
                 {friendId.startsWith("system-") ? "Official Channel" : 
                  isGroup ? (
@@ -2142,6 +2195,13 @@ function ChatView() {
             const isMatch = matchIds.includes(m.id);
             const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
 
+            const senderRole = isGroup 
+              ? memberRoles.get(m.sender_id)
+              : (mine 
+                  ? (isSuperAdmin ? "super_admin" : (isAdmin ? "admin" : undefined))
+                  : (friendRole === "admin" || friendRole === "super_admin" ? friendRole : undefined)
+                );
+
             return (
               <MessageItem
                 key={m.id}
@@ -2170,17 +2230,27 @@ function ChatView() {
                 searchQuery={searchQuery}
                 scrollToMessage={scrollToMessage}
                 isGroup={isGroup}
+                senderRole={senderRole}
               />
             );
           });
         })()}
         {!isGroup && friendTyping && (
           <div className="flex justify-start pt-1">
-            <div className="bg-bubble-them text-bubble-them-foreground px-4 py-2 rounded-3xl">
-              <span className="inline-flex gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "300ms" }} />
+            <div className="bg-bubble-them text-bubble-them-foreground px-4 py-2 rounded-3xl flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground/85 italic font-semibold flex items-center gap-1">
+                <span>{friendDisplayName} is typing</span>
+                {friendRole === "super_admin" && (
+                  <ShieldCheck className="h-3 w-3 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
+                )}
+                {friendRole === "admin" && (
+                  <Shield className="h-3 w-3 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+                )}
+              </span>
+              <span className="inline-flex gap-0.5">
+                <span className="h-1 w-1 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-1 w-1 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="h-1 w-1 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "300ms" }} />
               </span>
             </div>
           </div>
@@ -2188,8 +2258,22 @@ function ChatView() {
         {isGroup && typingUsers.size > 0 && (
           <div className="flex justify-start pt-1">
             <div className="bg-bubble-them text-bubble-them-foreground px-4 py-2 rounded-3xl flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground/85 italic font-semibold">
-                {typingUsers.size === 1 ? `${Array.from(typingUsers)[0]} typing` : "typing"}
+              <span className="text-[10px] text-muted-foreground/85 italic font-semibold flex items-center gap-1">
+                {typingUsers.size === 1 ? (
+                  <>
+                    <span>{Array.from(typingUsers)[0]} is typing</span>
+                    {(() => {
+                      const username = Array.from(typingUsers)[0];
+                      const member = groupMembers.find(gm => gm.profiles?.username === username);
+                      const role = member ? memberRoles.get(member.profiles?.id) : undefined;
+                      if (role === "super_admin") return <ShieldCheck className="h-3 w-3 text-amber-500 fill-amber-500/10 shrink-0" />;
+                      if (role === "admin") return <Shield className="h-3 w-3 text-blue-500 fill-blue-500/10 shrink-0" />;
+                      return null;
+                    })()}
+                  </>
+                ) : (
+                  <span>typing</span>
+                )}
               </span>
               <span className="inline-flex gap-0.5">
                 <span className="h-1 w-1 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "0ms" }} />
@@ -3024,6 +3108,7 @@ interface MessageItemProps {
   searchQuery: string;
   scrollToMessage: (id: string) => void;
   isGroup?: boolean;
+  senderRole?: "admin" | "super_admin";
 }
 
 const MessageItem = React.memo(function MessageItem({
@@ -3052,6 +3137,7 @@ const MessageItem = React.memo(function MessageItem({
   searchQuery,
   scrollToMessage,
   isGroup = false,
+  senderRole,
 }: MessageItemProps) {
   const mine = m.sender_id === meId;
   const reactionKeys = Object.keys(m.reactions || {}).filter(k => m.reactions[k].length > 0);
@@ -3232,10 +3318,18 @@ const MessageItem = React.memo(function MessageItem({
 
         {isGroup && !mine && (m as any).sender && (
           <div className="flex justify-start mb-0.5 pl-2">
-            <span className="text-[10px] font-bold text-muted-foreground/80">
-              {(m as any).sender.first_name && (m as any).sender.last_name 
-                ? `${(m as any).sender.first_name} ${(m as any).sender.last_name}` 
-                : `@${(m as any).sender.username}`}
+            <span className="text-[10px] font-bold text-muted-foreground/80 flex items-center gap-1">
+              <span>
+                {(m as any).sender.first_name && (m as any).sender.last_name 
+                  ? `${(m as any).sender.first_name} ${(m as any).sender.last_name}` 
+                  : `@${(m as any).sender.username}`}
+              </span>
+              {senderRole === "super_admin" && (
+                <ShieldCheck className="h-3 w-3 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
+              )}
+              {senderRole === "admin" && (
+                <Shield className="h-3 w-3 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+              )}
             </span>
           </div>
         )}
@@ -3375,18 +3469,27 @@ export function GroupDetailPanel({
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [adminUserIds, setAdminUserIds] = useState<Set<string>>(new Set());
+  const [adminUserRoles, setAdminUserRoles] = useState<Map<string, "admin" | "super_admin">>(new Map());
 
   useEffect(() => {
     if (members.length === 0) return;
     const userIds = members.map(m => m.profiles?.id).filter(Boolean);
     supabase
       .from("user_roles")
-      .select("user_id")
+      .select("user_id, role")
       .in("user_id", userIds)
       .in("role", ["admin", "super_admin"])
       .then(({ data }) => {
         if (data) {
           setAdminUserIds(new Set(data.map(r => r.user_id)));
+          const map = new Map<string, "admin" | "super_admin">();
+          data.forEach(r => {
+            const existing = map.get(r.user_id);
+            if (!existing || r.role === "super_admin") {
+              map.set(r.user_id, r.role as "admin" | "super_admin");
+            }
+          });
+          setAdminUserRoles(map);
         }
       });
   }, [members]);
@@ -3428,9 +3531,9 @@ export function GroupDetailPanel({
   const isGroupAdmin = myMemberInfo?.role === "admin" || isSuperAdmin;
 
   const adminsInGroup = members.filter(m => adminUserIds.has(m.profiles?.id));
-  const hasSupportPage = adminsInGroup.length > 0;
+  const hasSupportPage = adminsInGroup.length > 0 && !group?.is_admin_team;
   
-  let renderedMembers = members.filter(m => !adminUserIds.has(m.profiles?.id));
+  let renderedMembers = members.filter(m => hasSupportPage ? !adminUserIds.has(m.profiles?.id) : true);
   if (hasSupportPage) {
     renderedMembers = [
       {
@@ -3619,6 +3722,12 @@ export function GroupDetailPanel({
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                         <span className="truncate">{dispName}</span>
+                        {adminUserRoles.get(p.id) === "super_admin" && (
+                          <ShieldCheck className="h-3.5 w-3.5 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
+                        )}
+                        {adminUserRoles.get(p.id) === "admin" && (
+                          <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+                        )}
                         {isSelf && <span className="text-[9px] bg-secondary px-1.5 py-0.5 rounded-full font-normal text-muted-foreground">You</span>}
                       </p>
                       <p className="text-[10px] text-muted-foreground truncate">@{p.username}</p>

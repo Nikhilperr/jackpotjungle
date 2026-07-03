@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar } from "@/components/messenger/Avatar";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff, ArrowLeft, Users, Search, Share } from "lucide-react";
+import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff, ArrowLeft, Users, Search, Share, Shield, ShieldCheck } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { sendBroadcast, deleteAdminUser, setUserBlocked, resetUserPassword } from "@/lib/admin-super.functions";
 import {
@@ -414,9 +414,10 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
   const [pickRef, setPickRef] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
+  const [role, setRole] = useState<"admin" | "super_admin" | "user">("user");
 
   async function loadAll() {
-    const [t, all, n, c, tx, ref, prof] = await Promise.all([
+    const [t, all, n, c, tx, ref, prof, r] = await Promise.all([
       sb.from("user_tags").select("tag_id, tags(id,name,color)").eq("user_id", userId),
       sb.from("tags").select("*"),
       sb.from("user_notes").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
@@ -424,6 +425,7 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
       sb.from("credit_transactions").select("amount, type").eq("user_id", userId),
       sb.from("referrals").select("referrer_id").eq("referred_id", userId).maybeSingle(),
       sb.from("profiles").select("is_blocked, first_name, last_name, phone, address, friend_code, created_at").eq("id", userId).maybeSingle(),
+      sb.from("user_roles").select("role").eq("user_id", userId),
     ]);
     setTags((t.data ?? []).map((r: any) => r.tags));
     setAllTags(all.data ?? []);
@@ -434,6 +436,12 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
     setTotals({ loaded, paid: paidTx });
     setIsBlocked(!!prof.data?.is_blocked);
     setProfileData(prof.data || null);
+    
+    const rolesList = (r.data ?? []).map((x: any) => x.role);
+    if (rolesList.includes("super_admin")) setRole("super_admin");
+    else if (rolesList.includes("admin")) setRole("admin");
+    else setRole("user");
+
     if (ref.data?.referrer_id) {
       const { data: p2 } = await sb.from("profiles").select("id, username").eq("id", ref.data.referrer_id).maybeSingle();
       setReferrer(p2 ?? null);
@@ -498,7 +506,15 @@ export function UserDetailPanel({ userId, username, avatar, variant = "desktop",
     <>
       <div className="p-5 text-center border-b border-border">
         <div className="flex justify-center mb-2"><Avatar name={username} url={avatar} size={72} /></div>
-        <p className="font-bold">{username}</p>
+        <p className="font-bold flex items-center justify-center gap-1.5">
+          <span>{username}</span>
+          {role === "super_admin" && (
+            <ShieldCheck className="h-4 w-4 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
+          )}
+          {role === "admin" && (
+            <Shield className="h-4 w-4 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+          )}
+        </p>
         <div className="flex justify-center gap-1 mt-2 flex-wrap">
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary font-semibold">Credits {credit}</span>
           {isBlocked && <span className="text-[11px] px-2 py-0.5 rounded-full bg-destructive/15 text-destructive font-semibold">Blocked</span>}
@@ -734,7 +750,15 @@ export function SuperAdminView() {
           <div key={`${a.user_id}-${a.role}`} className="p-4 flex items-center gap-3 flex-wrap">
             <Avatar name={a.profile?.username ?? "?"} url={a.profile?.avatar_url ?? null} size={40} />
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm truncate">{a.profile?.username ?? "(unknown)"}</p>
+              <p className="font-semibold text-sm truncate flex items-center gap-1.5">
+                <span>{a.profile?.username ?? "(unknown)"}</span>
+                {a.role === "super_admin" && (
+                  <ShieldCheck className="h-3.5 w-3.5 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
+                )}
+                {a.role === "admin" && (
+                  <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+                )}
+              </p>
               <p className="text-xs text-muted-foreground">{a.role} {a.profile?.is_blocked && <span className="text-destructive ml-1">· blocked</span>}</p>
             </div>
             <Button size="sm" variant="outline" onClick={() => setPwdFor(a.user_id)}><KeyRound className="h-3 w-3 mr-1" /> Reset PW</Button>
