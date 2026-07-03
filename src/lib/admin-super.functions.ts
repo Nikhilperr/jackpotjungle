@@ -470,6 +470,9 @@ export const MIGRATIONS_SQL = `
         CREATE TRIGGER trg_check_admin_team_membership
         BEFORE INSERT OR UPDATE ON public.group_members
         FOR EACH ROW EXECUTE FUNCTION public.check_admin_team_membership();
+
+        -- Notify PostgREST to reload its schema cache
+        NOTIFY pgrst, 'reload schema';
       `;
 
 export const runDatabaseMigration = createServerFn({ method: "POST" })

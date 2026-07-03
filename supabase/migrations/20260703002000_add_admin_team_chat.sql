@@ -46,3 +46,6 @@ DROP TRIGGER IF EXISTS trg_check_admin_team_membership ON public.group_members;
 CREATE TRIGGER trg_check_admin_team_membership
 BEFORE INSERT OR UPDATE ON public.group_members
 FOR EACH ROW EXECUTE FUNCTION public.check_admin_team_membership();
+
+-- Notify PostgREST to reload schema cache
+NOTIFY pgrst, 'reload schema';
