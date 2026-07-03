@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar } from "@/components/messenger/Avatar";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff, ArrowLeft, Users, Search, Share, Shield, ShieldCheck } from "lucide-react";
+import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff, ArrowLeft, Users, Search, Share, Shield, ShieldCheck, History } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { sendBroadcast, deleteAdminUser, setUserBlocked, resetUserPassword } from "@/lib/admin-super.functions";
 import {
@@ -502,14 +502,6 @@ export function UserDetailPanel({
   async function delNote(id: string) {
     await sb.from("user_notes").delete().eq("id", id); loadAll();
   }
-  async function adjust(sign: number) {
-    const amt = parseFloat(creditAmt);
-    if (!amt || amt <= 0) return toast.error("Enter amount");
-    const { error } = await sb.rpc("adjust_credits", {
-      _user_id: userId, _amount: sign * amt, _type: sign > 0 ? "add" : "paid", _note: creditNote || null,
-    });
-    if (error) toast.error(error.message); else { setCreditAmt(""); setCreditNote(""); loadAll(); toast.success(sign > 0 ? "Credit loaded" : "Marked paid"); }
-  }
   async function setRef(refId: string) {
     if (refId === userId) return toast.error("Can't refer self");
     await sb.from("referrals").delete().eq("referred_id", userId);
@@ -527,10 +519,14 @@ export function UserDetailPanel({
         <p className="font-bold flex items-center justify-center gap-1.5">
           <span>{username}</span>
           {role === "super_admin" && (
-            <ShieldCheck className="h-4 w-4 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
+            <span title="Super Admin">
+              <ShieldCheck className="h-4 w-4 text-amber-500 fill-amber-500/10 shrink-0" />
+            </span>
           )}
           {role === "admin" && (
-            <Shield className="h-4 w-4 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+            <span title="Admin User">
+              <Shield className="h-4 w-4 text-blue-500 fill-blue-500/10 shrink-0" />
+            </span>
           )}
         </p>
         <div className="flex justify-center gap-1.5 mt-2 flex-wrap">
@@ -807,10 +803,14 @@ export function SuperAdminView() {
               <p className="font-semibold text-sm truncate flex items-center gap-1.5">
                 <span>{a.profile?.username ?? "(unknown)"}</span>
                 {a.role === "super_admin" && (
-                  <ShieldCheck className="h-3.5 w-3.5 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
+                  <span title="Super Admin">
+                    <ShieldCheck className="h-3.5 w-3.5 text-amber-500 fill-amber-500/10 shrink-0" />
+                  </span>
                 )}
                 {a.role === "admin" && (
-                  <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+                  <span title="Admin User">
+                    <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" />
+                  </span>
                 )}
               </p>
               <p className="text-xs text-muted-foreground">{a.role} {a.profile?.is_blocked && <span className="text-destructive ml-1">· blocked</span>}</p>
