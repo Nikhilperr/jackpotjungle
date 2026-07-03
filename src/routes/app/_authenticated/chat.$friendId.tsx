@@ -46,6 +46,7 @@ interface GroupAddMembersModalProps {
   meId: string;
   onMembersAdded: () => void;
   isAdminOrSuper?: boolean;
+  isAdminTeamChat?: boolean;
 }
 
 export function GroupAddMembersModal({
@@ -54,7 +55,8 @@ export function GroupAddMembersModal({
   groupId,
   meId,
   onMembersAdded,
-  isAdminOrSuper: forceAdminOrSuper
+  isAdminOrSuper: forceAdminOrSuper,
+  isAdminTeamChat = false,
 }: GroupAddMembersModalProps) {
   const [friendsList, setFriendsList] = useState<any[]>([]);
   const [potentialMembers, setPotentialMembers] = useState<any[]>([]);
@@ -63,7 +65,7 @@ export function GroupAddMembersModal({
   const [potentialSearchQuery, setPotentialSearchQuery] = useState("");
   const [myUsername, setMyUsername] = useState("Someone");
   const { role } = useRole();
-  const isAdminOrSuper = forceAdminOrSuper !== undefined ? forceAdminOrSuper : (role === "admin" || role === "super_admin");
+  const isAdminOrSuper = forceAdminOrSuper !== undefined ? forceAdminOrSuper : (role === "admin" || role === "super_admin" || isAdminTeamChat);
 
   useEffect(() => {
     if (meId) {
@@ -83,6 +85,29 @@ export function GroupAddMembersModal({
         .eq("group_id", groupId);
 
       const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
+
+      if (isAdminTeamChat) {
+        const { data: roleRows } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .in("role", ["admin", "super_admin"]);
+
+        const staffIds = (roleRows ?? []).map(r => r.user_id).filter(id => id !== meId && !existingUserIds.has(id));
+
+        if (staffIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, username, first_name, last_name, avatar_url")
+            .in("id", staffIds);
+          setFriendsList(profiles ?? []);
+          setPotentialMembers(profiles ?? []);
+        } else {
+          setFriendsList([]);
+          setPotentialMembers([]);
+        }
+        setLoadingPotential(false);
+        return;
+      }
 
       const currentMembersUserIds = (currentMembers ?? []).map(m => m.user_id);
       const { data: currentAdminRoles } = await supabase
@@ -132,7 +157,7 @@ export function GroupAddMembersModal({
     } finally {
       setLoadingPotential(false);
     }
-  }, [groupId, meId]);
+  }, [groupId, meId, isAdminTeamChat]);
 
   useEffect(() => {
     if (open) {
@@ -151,6 +176,43 @@ export function GroupAddMembersModal({
     if (!trimmed) {
       setPotentialMembers(friendsList);
       return;
+    }
+
+    if (isAdminTeamChat) {
+      const delay = setTimeout(async () => {
+        setLoadingPotential(true);
+        try {
+          const { data: currentMembers } = await supabase
+            .from("group_members")
+            .select("user_id")
+            .eq("group_id", groupId);
+          const existingUserIds = new Set((currentMembers ?? []).map(m => m.user_id));
+
+          const { data: roleRows } = await supabase
+            .from("user_roles")
+            .select("user_id")
+            .in("role", ["admin", "super_admin"]);
+
+          const staffIds = (roleRows ?? []).map(r => r.user_id).filter(id => id !== meId && !existingUserIds.has(id));
+
+          if (staffIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("id, username, first_name, last_name, avatar_url")
+              .in("id", staffIds)
+              .or(`username.ilike.%${trimmed}%,first_name.ilike.%${trimmed}%,last_name.ilike.%${trimmed}%`)
+              .limit(30);
+            setPotentialMembers(profiles ?? []);
+          } else {
+            setPotentialMembers([]);
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setLoadingPotential(false);
+        }
+      }, 300);
+      return () => clearTimeout(delay);
     }
 
     if (!isAdminOrSuper) {
@@ -193,7 +255,7 @@ export function GroupAddMembersModal({
     }, 300);
 
     return () => clearTimeout(delay);
-  }, [potentialSearchQuery, open, groupId, meId, friendsList, isAdminOrSuper]);
+  }, [potentialSearchQuery, open, groupId, meId, friendsList, isAdminOrSuper, isAdminTeamChat]);
 
   async function handleAddSubmit() {
     if (!groupId || !meId || newMembersSelected.length === 0) return;

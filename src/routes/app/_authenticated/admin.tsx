@@ -54,6 +54,7 @@ import {
   Pin,
   BookOpen,
   Edit,
+  ShieldCheck,
 } from "lucide-react";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -1501,6 +1502,895 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           </div>
         );
       })()}
+      {shareProfileOpen && shareProfileTarget && (
+        <ShareProfileModal
+          isOpen={shareProfileOpen}
+          onOpenChange={setShareProfileOpen}
+          username={shareProfileTarget.username}
+          displayName={shareProfileTarget.displayName}
+          avatarUrl={shareProfileTarget.avatarUrl}
+          memberSince={shareProfileTarget.memberSince}
+        />
+      )}
+    </div>
+  );
+}
+
+function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void }) {
+  const navigate = useNavigate();
+  const [convs, setConvs] = useState<ConvRow[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem("jj_cached_team_conversations");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loadingConvs, setLoadingConvs] = useState(true);
+  const [search, setSearch] = useState("");
+  const searchParams = Route.useSearch();
+  
+  const activeId = searchParams.c || null;
+  const setActiveId = (id: string | null) => {
+    navigate({
+      search: (old: any) => ({
+        ...old,
+        c: id || undefined,
+        profile: id ? old.profile : undefined,
+      }),
+      replace: false,
+    });
+  };
+
+  const detailOpen = !!searchParams.profile;
+  const setDetailOpen = (val: boolean) => {
+    navigate({
+      search: (old: any) => ({
+        ...old,
+        profile: val ? true : undefined,
+      }),
+      replace: false,
+    });
+  };
+
+  const [viewGroups, setViewGroups] = useState(false);
+  const [groupRows, setGroupRows] = useState<ConvRow[]>([]);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [preselectedFriendId, setPreselectedFriendId] = useState<string | undefined>(undefined);
+
+  const handleOpenCreateGroupForUser = (userId: string) => {
+    setPreselectedFriendId(userId);
+    setCreateGroupOpen(true);
+  };
+  const [activeGroup, setActiveGroup] = useState<any>(null);
+  const [activeGroupMembers, setActiveGroupMembers] = useState<any[]>([]);
+  const [addMembersOpen, setAddMembersOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+
+  const [messages, setMessages] = useState<any[]>([]);
+  const [selectedMemberProfile, setSelectedMemberProfile] = useState<{ id: string; username: string; avatar_url: string | null } | null>(null);
+
+  const [shareProfileOpen, setShareProfileOpen] = useState(false);
+  const [shareProfileTarget, setShareProfileTarget] = useState<{ username: string; displayName: string; avatarUrl: string | null; memberSince?: string } | null>(null);
+
+  const handleShareProfile = async (userId: string, username: string, avatarUrl: string | null) => {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("first_name, last_name, created_at")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const displayName = prof?.first_name 
+      ? (prof.last_name ? `${prof.first_name} ${prof.last_name}` : prof.first_name) 
+      : username;
+
+    setShareProfileTarget({
+      username,
+      displayName,
+      avatarUrl,
+      memberSince: prof?.created_at
+    });
+    setShareProfileOpen(true);
+  };
+
+  const [myUsername, setMyUsername] = useState("Admin");
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeMatch, setActiveMatch] = useState(0);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!meId) return;
+    supabase.from("profiles").select("username").eq("id", meId).single().then(({ data }) => {
+      if (data?.username) setMyUsername(data.username);
+    });
+  }, [meId]);
+
+  useEffect(() => {
+    setMessages([]);
+    setSelectedMemberProfile(null);
+  }, [activeId]);
+
+  useEffect(() => {
+    if (!activeId || !activeId.startsWith("group-")) {
+      setActiveGroup(null);
+      setActiveGroupMembers([]);
+      return;
+    }
+    const groupId = activeId.replace("group-", "");
+    async function loadGroupDetails() {
+      const [{ data: g }, { data: m }] = await Promise.all([
+        supabase.from("groups").select("*").eq("id", groupId).maybeSingle(),
+        supabase.from("group_members").select("*, profiles:user_id(id, username, first_name, last_name, avatar_url)").eq("group_id", groupId)
+      ]);
+      if (!g) {
+        setActiveId(null);
+        toast.error("This group has been dismissed.");
+        return;
+      }
+      setActiveGroup(g);
+      if (m) setActiveGroupMembers(m);
+    }
+    loadGroupDetails();
+  }, [activeId]);
+
+  async function handleLeaveGroup() {
+    if (!meId || !activeGroup) return;
+
+    try {
+      const groupId = activeGroup.id;
+      const { data: membersRes } = await supabase
+        .from("group_members")
+        .select("user_id, role, joined_at")
+        .eq("group_id", groupId);
+
+      const membersList = membersRes ?? [];
+      const remaining = membersList.filter(m => m.user_id !== meId);
+
+      if (remaining.length === 0) {
+        await supabase.from("group_members").delete().eq("group_id", groupId);
+        await supabase.from("messages").delete().eq("group_id", groupId);
+        await supabase.from("groups").delete().eq("id", groupId);
+
+        toast.success("You left. Group has been dismissed.");
+        setActiveId(null);
+        load();
+        return;
+      }
+
+      const leavingMember = membersList.find(m => m.user_id === meId);
+      const wasAdmin = leavingMember?.role === "admin";
+
+      if (wasAdmin) {
+        const hasOtherAdmin = remaining.some(m => m.role === "admin");
+        if (!hasOtherAdmin) {
+          const remainingUserIds = remaining.map(m => m.user_id);
+          const { data: appRoles } = await supabase
+            .from("user_roles")
+            .select("user_id, role")
+            .in("user_id", remainingUserIds);
+
+          const eligibleAdminIds = new Set(
+            (appRoles ?? [])
+              .filter(r => r.role === "admin" || r.role === "super_admin")
+              .map(r => r.user_id)
+          );
+
+          const sortedRemaining = [...remaining].sort((a, b) =>
+            new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime()
+          );
+
+          const eligibleAdmins = sortedRemaining.filter(m => eligibleAdminIds.has(m.user_id));
+
+          let newAdminId = "";
+          if (eligibleAdmins.length > 0) {
+            newAdminId = eligibleAdmins[0].user_id;
+          } else {
+            newAdminId = sortedRemaining[0].user_id;
+          }
+
+          if (newAdminId) {
+            await supabase
+              .from("group_members")
+              .update({ role: "admin" } as any)
+              .eq("group_id", groupId)
+              .eq("user_id", newAdminId);
+
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("username, first_name, last_name")
+              .eq("id", newAdminId)
+              .single();
+
+            const targetDisplayName = profile
+              ? (profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : profile.username)
+              : "Someone";
+
+            await supabase.from("messages").insert({
+              group_id: groupId,
+              sender_id: meId,
+              content: `[system:ownership_transferred:${targetDisplayName}]`
+            } as any);
+          }
+        }
+      }
+
+      await supabase.from("messages").insert({
+        sender_id: meId,
+        group_id: groupId,
+        content: `[system:user_left:Jackpot Jungle]`
+      } as any);
+
+      const { error: deleteErr } = await supabase
+        .from("group_members")
+        .delete()
+        .eq("group_id", groupId)
+        .eq("user_id", meId);
+
+      if (deleteErr) throw deleteErr;
+
+      toast.success("You left the group");
+      setActiveId(null);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to leave group");
+    }
+  }
+
+  async function handleUpdateGroupName(newName: string) {
+    if (!activeGroup || !meId) return;
+    const { error } = await supabase.from("groups").update({ name: newName }).eq("id", activeGroup.id);
+    if (error) { toast.error(error.message); return; }
+    await supabase.from("messages").insert({
+      group_id: activeGroup.id,
+      sender_id: meId,
+      content: `[system:group_name_changed:${newName}:${myUsername}]`
+    } as any);
+    setActiveGroup(prev => prev ? { ...prev, name: newName } : null);
+    setGroupRows(prev => prev.map(c => c.conversationId === `group-${activeGroup.id}` ? { ...c, username: newName } : c));
+  }
+
+  async function handleUpdateGroupAvatar(newUrl: string) {
+    if (!activeGroup || !meId) return;
+    const { error } = await supabase.from("groups").update({ avatar_url: newUrl }).eq("id", activeGroup.id);
+    if (error) { toast.error(error.message); return; }
+    await supabase.from("messages").insert({
+      group_id: activeGroup.id,
+      sender_id: meId,
+      content: `[system:group_avatar_changed:${myUsername}]`
+    } as any);
+    setActiveGroup(prev => prev ? { ...prev, avatar_url: newUrl } : null);
+    setGroupRows(prev => prev.map(c => c.conversationId === `group-${activeGroup.id}` ? { ...c, avatar_url: newUrl } : c));
+  }
+
+  async function handleRemoveMember(userId: string, username: string) {
+    if (!activeGroup || !meId) return;
+    const { error } = await supabase.from("group_members").delete().eq("group_id", activeGroup.id).eq("user_id", userId);
+    if (error) { toast.error(error.message); return; }
+    await supabase.from("messages").insert({
+      group_id: activeGroup.id,
+      sender_id: meId,
+      content: `[system:user_removed:${username}:${myUsername}]`
+    } as any);
+    setActiveGroupMembers(prev => prev.filter(m => m.user_id !== userId));
+  }
+
+  async function handlePromoteMember(userId: string, username: string) {
+    if (!activeGroup || !meId) return;
+    const { error } = await supabase.from("group_members").update({ role: "admin" } as any).eq("group_id", activeGroup.id).eq("user_id", userId);
+    if (error) { toast.error(error.message); return; }
+    await supabase.from("messages").insert({
+      group_id: activeGroup.id,
+      sender_id: meId,
+      content: `[system:user_promoted:${username}:${myUsername}]`
+    } as any);
+    setActiveGroupMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role: "admin" } : m));
+  }
+
+  const [pinnedConvs, setPinnedConvs] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem("jj_pinned_team_convs");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [contextMenuTarget, setContextMenuTarget] = useState<string | null>(null);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const togglePin = (convId: string) => {
+    let next: string[];
+    if (pinnedConvs.includes(convId)) {
+      next = pinnedConvs.filter(id => id !== convId);
+      toast.success("Chat unpinned");
+    } else {
+      next = [...pinnedConvs, convId];
+      toast.success("Chat pinned to top");
+    }
+    setPinnedConvs(next);
+    localStorage.setItem("jj_pinned_team_convs", JSON.stringify(next));
+  };
+
+  async function load() {
+    try {
+      const { data: roleRows } = await supabase
+        .from("user_roles")
+        .select("user_id, role")
+        .in("role", ["admin", "super_admin"]);
+
+      const staffRoles = roleRows ?? [];
+      const staffUserIds = staffRoles.map(r => r.user_id);
+      
+      const adminUsers = new Set(staffRoles.filter(r => r.role === "admin" || r.role === "super_admin").map(r => r.user_id));
+      const superAdminUsers = new Set(staffRoles.filter(r => r.role === "super_admin").map(r => r.user_id));
+
+      const { data: profiles } = staffUserIds.length > 0
+        ? await supabase
+            .from("profiles")
+            .select("id, username, avatar_url, online, last_seen")
+            .in("id", staffUserIds)
+        : { data: [] };
+
+      const { data: dmMsgs } = staffUserIds.length > 0
+        ? await supabase
+            .from("messages")
+            .select("id, sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
+            .is("group_id", null)
+            .or(`and(sender_id.eq.${meId},receiver_id.in.(${staffUserIds.join(",")})),and(receiver_id.eq.${meId},sender_id.in.(${staffUserIds.join(",")}))`)
+            .order("created_at", { ascending: false })
+        : { data: [] };
+
+      const { data: memberships } = await supabase
+        .from("group_members")
+        .select("group_id, role, groups(id, name, avatar_url, created_at, created_by, is_admin_team)")
+        .eq("user_id", meId);
+
+      const adminGroups = (memberships ?? [])
+        .map((m: any) => m.groups)
+        .filter((g: any) => g && g.is_admin_team === true);
+
+      const adminGroupIds = adminGroups.map((g: any) => g.id);
+
+      const { data: groupMsgs } = adminGroupIds.length > 0
+        ? await supabase
+            .from("messages")
+            .select("id, sender_id, group_id, content, image_url, audio_url, created_at, seen")
+            .in("group_id", adminGroupIds)
+            .order("created_at", { ascending: false })
+        : { data: [] };
+
+      const dmRows: ConvRow[] = (profiles ?? [])
+        .filter((p: any) => p.id !== meId)
+        .map((p: any) => {
+          const convMsgs = (dmMsgs ?? []).filter((m: any) => 
+            (m.sender_id === meId && m.receiver_id === p.id) ||
+            (m.sender_id === p.id && m.receiver_id === meId)
+          );
+          const lastMsg = convMsgs[0];
+          const unread = convMsgs.filter((m: any) => m.sender_id === p.id && !m.seen).length;
+
+          let lastMessage = lastMsg?.content ?? null;
+          if (lastMessage?.startsWith("[system:reaction:")) {
+            lastMessage = "Reacted to a message";
+          } else if (lastMessage?.startsWith("[system:unsent]")) {
+            lastMessage = "Unsent a message";
+          } else if (lastMessage?.startsWith("[reply:")) {
+            const match = lastMessage.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+            if (match) lastMessage = match[1];
+          } else if (!lastMessage && (lastMsg?.image_url || lastMsg?.audio_url)) {
+            lastMessage = lastMsg.image_url ? "📷 Photo" : "🎤 Voice message";
+          }
+
+          return {
+            conversationId: p.id,
+            userId: p.id,
+            username: p.username ?? "(unknown)",
+            avatar_url: p.avatar_url ?? null,
+            online: p.online ?? false,
+            last_seen: p.last_seen ?? new Date().toISOString(),
+            lastMessage: lastMessage ?? "No messages yet",
+            lastAt: lastMsg?.created_at ?? null,
+            unread,
+            credit: 0,
+            isSpam: false,
+            isAdmin: adminUsers.has(p.id),
+            isSuperAdmin: superAdminUsers.has(p.id),
+          };
+        });
+
+      const gRows: ConvRow[] = adminGroups.map((g: any) => {
+        const gMsgs = (groupMsgs ?? []).filter((msg: any) => msg.group_id === g.id);
+        const lastMsg = gMsgs[0];
+        const unread = gMsgs.filter((msg: any) => msg.sender_id !== meId && !msg.seen).length;
+
+        let lastMessage = lastMsg?.content ?? null;
+        if (lastMessage?.startsWith("[system:reaction:")) {
+          lastMessage = "Reacted to a message";
+        } else if (lastMessage?.startsWith("[system:unsent]")) {
+          lastMessage = "Unsent a message";
+        } else if (lastMessage?.startsWith("[reply:")) {
+          const match = lastMessage.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+          if (match) lastMessage = match[1];
+        }
+
+        return {
+          conversationId: `group-${g.id}`,
+          userId: g.created_by,
+          username: g.name || "Unnamed Group",
+          avatar_url: g.avatar_url,
+          online: false,
+          last_seen: g.created_at,
+          lastMessage: lastMessage ?? "Group created",
+          lastAt: lastMsg?.created_at ?? g.created_at,
+          unread,
+          credit: 0,
+          isSpam: false,
+          isGroup: true,
+        };
+      });
+
+      setConvs(dmRows);
+      setGroupRows(gRows);
+
+      try {
+        localStorage.setItem("jj_cached_team_conversations", JSON.stringify(dmRows));
+      } catch {}
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to load team conversations");
+    } finally {
+      setLoadingConvs(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    let mounted = true;
+    const rand = Math.random().toString(36).slice(2, 9);
+    const ch = supabase
+      .channel(`admin-teamchat-${rand}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
+        if (!mounted) return;
+        load();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "groups" }, () => {
+        if (mounted) load();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => {
+        if (mounted) load();
+      })
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(ch);
+    };
+  }, [meId]);
+
+  useEffect(() => {
+    if (activeId) {
+      setConvs((prev) =>
+        prev.map((c) => (c.conversationId === activeId ? { ...c, unread: 0 } : c))
+      );
+      setGroupRows((prev) =>
+        prev.map((c) => (c.conversationId === activeId ? { ...c, unread: 0 } : c))
+      );
+    }
+  }, [activeId]);
+
+  const filtered = viewGroups
+    ? groupRows.filter((u) => !search || u.username.toLowerCase().includes(search.toLowerCase()))
+    : (() => {
+        const baseConvs = [...convs, ...groupRows];
+        return baseConvs.filter((u) => {
+          if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
+          return true;
+        });
+      })();
+
+  const sorted = [...filtered].sort((a, b) => {
+    const aPinned = pinnedConvs.includes(a.conversationId);
+    const bPinned = pinnedConvs.includes(b.conversationId);
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+    return (b.lastAt ?? "").localeCompare(a.lastAt ?? "");
+  });
+
+  const active = (convs.find((u) => u.conversationId === activeId) || groupRows.find((u) => u.conversationId === activeId)) ?? null;
+  const onlineUsers = convs.filter((u) => u.online);
+
+  return (
+    <div className="flex h-full min-h-0">
+      {/* Sidebar List */}
+      <div className={`${active ? "hidden sm:flex" : "flex"} w-full sm:w-80 border-r border-border bg-card flex-col min-h-0`}>
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center gap-2 mb-3 sm:mb-1">
+            <button
+              onClick={onOpenNav}
+              className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary shrink-0"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="flex-1">
+              <h2 className="text-lg font-bold leading-tight">Jackpot Jungle</h2>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Team Chat</p>
+            </div>
+          </div>
+
+          {onlineUsers.length > 0 && (
+            <div className="flex items-center gap-4 py-2 mt-3 overflow-x-auto no-scrollbar">
+              {onlineUsers.map((f) => (
+                <button
+                  key={f.conversationId}
+                  onClick={() => setActiveId(f.conversationId)}
+                  className="flex flex-col items-center shrink-0 w-[56px] text-center group cursor-pointer"
+                >
+                  <div className="relative">
+                    <Avatar name={f.username} url={f.avatar_url} size={40} />
+                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-background" />
+                  </div>
+                  <span className="text-[10px] font-medium text-foreground mt-1 truncate w-full group-hover:underline">
+                    {f.username.split(" ")[0]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
+            <button
+              onClick={() => { setViewGroups(false); }}
+              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${!viewGroups ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => { setViewGroups(true); }}
+              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border inline-flex items-center gap-1 ${viewGroups ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
+            >
+              Groups
+            </button>
+          </div>
+
+          <div className="relative mt-3">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search staff..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 rounded-full bg-secondary border-transparent"
+            />
+          </div>
+        </div>
+
+        <PullToRefresh onRefresh={load}>
+          {viewGroups && (
+            <button
+              onClick={() => setCreateGroupOpen(true)}
+              className="flex items-center gap-3 px-4 py-3 mx-2 my-1 rounded-2xl text-left bg-primary/10 hover:bg-primary/15 text-primary border border-primary/15 transition-all font-semibold w-[calc(100%-1rem)]"
+            >
+              <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary shrink-0">
+                <Plus className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold leading-tight">Create Group Chat</p>
+                <p className="text-[10px] text-muted-foreground/90 truncate leading-snug">Start a staff team group chat</p>
+              </div>
+            </button>
+          )}
+
+          {loadingConvs && (viewGroups ? groupRows.length === 0 : convs.length === 0) ? (
+            <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <span>Loading chats…</span>
+            </div>
+          ) : sorted.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">{viewGroups ? "No groups yet." : "No staff members found."}</p>
+          ) : sorted.map((u) => {
+            const startPress = () => {
+              if (pressTimer.current) clearTimeout(pressTimer.current);
+              pressTimer.current = setTimeout(() => setContextMenuTarget(u.conversationId), 600);
+            };
+            const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
+            const isPinned = pinnedConvs.includes(u.conversationId);
+            return (
+              <div key={u.conversationId} className="group relative">
+                <button
+                  onClick={() => setActiveId(u.conversationId)}
+                  onPointerDown={startPress}
+                  onPointerUp={cancelPress}
+                  onPointerMove={cancelPress}
+                  onPointerLeave={cancelPress}
+                  onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(u.conversationId); }}
+                  className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${activeId === u.conversationId ? "bg-secondary" : ""}`}
+                >
+                  <div className="relative shrink-0">
+                    <Avatar name={u.username} url={u.avatar_url} size={44} />
+                    {u.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+                  </div>
+                  <div className="flex-1 min-w-0 pr-9">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className={`truncate text-sm flex items-center gap-1.5 ${u.unread ? "font-bold" : "font-semibold"}`}>
+                        {u.username}
+                        {u.isSuperAdmin ? (
+                          <ShieldCheck className="h-3.5 w-3.5 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
+                        ) : u.isAdmin ? (
+                          <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin" />
+                        ) : null}
+                        {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
+                      </p>
+                      {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
+                    </div>
+                    <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                      {u.lastMessage ?? "No messages yet"}
+                    </p>
+                  </div>
+                  {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
+                </button>
+              </div>
+            );
+          })}
+        </PullToRefresh>
+      </div>
+
+      {/* Active Conversation Pane */}
+      <div className={`${active ? "flex" : "hidden sm:flex"} flex-1 min-w-0 flex-col bg-background min-h-0`}>
+        {active ? (
+          <Conversation 
+            meId={meId} 
+            conv={active} 
+            convs={convs} 
+            messages={messages}
+            setMessages={setMessages}
+            onBack={() => setActiveId(null)} 
+            onOpenDetail={() => setDetailOpen(true)} 
+            onToggleSpam={() => {}} 
+            searchOpen={searchOpen}
+            setSearchOpen={setSearchOpen}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            activeMatch={activeMatch}
+            setActiveMatch={setActiveMatch}
+            isTeamChat={true}
+            onLastMessageUpdate={(content, image_url, audio_url, created_at) => {
+              const updater = (prev: ConvRow[]) => {
+                const idx = prev.findIndex((c) => c.conversationId === active.conversationId);
+                if (idx === -1) return prev;
+                let preview = content;
+                if (!preview) {
+                  preview = image_url ? "📷 Photo" : audio_url ? "🎤 Voice message" : "Message";
+                }
+                const copy = [...prev];
+                const updated = { ...copy[idx] };
+                updated.lastMessage = preview;
+                updated.lastAt = created_at;
+                copy[idx] = updated;
+                return copy.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+              };
+              if (active.isGroup || active.conversationId.startsWith("group-")) {
+                setGroupRows(updater);
+              } else {
+                setConvs(updater);
+              }
+            }}
+          />
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center text-center px-6 text-muted-foreground">
+            <MessageSquare className="h-12 w-12 mb-3 opacity-50" />
+            <p className="text-sm">Select a conversation to start team chatting.</p>
+          </div>
+        )}
+      </div>
+
+      {detailOpen && active && (
+        <aside className="w-80 border-l border-border bg-card hidden lg:flex flex-col overflow-y-auto shrink-0 animate-in slide-in-from-right duration-200">
+          {selectedMemberProfile ? (
+            <UserDetailPanel
+              userId={selectedMemberProfile.id}
+              username={selectedMemberProfile.username}
+              avatar={selectedMemberProfile.avatar_url}
+              variant="embedded"
+              onClose={() => setSelectedMemberProfile(null)}
+              onCreateGroupClick={() => handleOpenCreateGroupForUser(selectedMemberProfile.id)}
+              onSearchClick={() => {
+                setDetailOpen(false);
+                setSearchOpen(true);
+                setSearchQuery("");
+                setActiveMatch(0);
+              }}
+              onShareClick={() => handleShareProfile(selectedMemberProfile.id, selectedMemberProfile.username, selectedMemberProfile.avatar_url)}
+            />
+          ) : active.isGroup ? (
+            <GroupDetailPanel
+              group={activeGroup}
+              members={activeGroupMembers}
+              messages={messages}
+              meId={meId}
+              onClose={() => setDetailOpen(false)}
+              onLeave={handleLeaveGroup}
+              onUpdateName={handleUpdateGroupName}
+              onUpdateAvatar={handleUpdateGroupAvatar}
+              onAddMembers={() => setAddMembersOpen(true)}
+              onShare={() => setShareOpen(true)}
+              onRemoveMember={handleRemoveMember}
+              onPromoteMember={handlePromoteMember}
+              onMemberClick={(userId, username, avatarUrl) => {
+                setSelectedMemberProfile({ id: userId, username, avatar_url: avatarUrl });
+              }}
+            />
+          ) : (
+            <UserDetailPanel
+              userId={active.userId}
+              username={active.username}
+              avatar={active.avatar_url}
+              variant="embedded"
+              onClose={() => setDetailOpen(false)}
+              onCreateGroupClick={() => handleOpenCreateGroupForUser(active.userId)}
+              onSearchClick={() => {
+                setDetailOpen(false);
+                setSearchOpen(true);
+                setSearchQuery("");
+                setActiveMatch(0);
+              }}
+              onShareClick={() => handleShareProfile(active.userId, active.username, active.avatar_url)}
+            />
+          )}
+        </aside>
+      )}
+
+      <Sheet open={detailOpen && !!active && !isDesktop} onOpenChange={setDetailOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-none p-0 lg:hidden flex flex-col h-full bg-card [&>button]:hidden">
+          {active && (
+            selectedMemberProfile ? (
+              <UserDetailPanel
+                userId={selectedMemberProfile.id}
+                username={selectedMemberProfile.username}
+                avatar={selectedMemberProfile.avatar_url}
+                variant="embedded"
+                onClose={() => setSelectedMemberProfile(null)}
+                onCreateGroupClick={() => handleOpenCreateGroupForUser(selectedMemberProfile.id)}
+                onSearchClick={() => {
+                  setDetailOpen(false);
+                  setSearchOpen(true);
+                  setSearchQuery("");
+                  setActiveMatch(0);
+                }}
+                onShareClick={() => handleShareProfile(selectedMemberProfile.id, selectedMemberProfile.username, selectedMemberProfile.avatar_url)}
+              />
+            ) : active.isGroup ? (
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <GroupDetailPanel
+                  group={activeGroup}
+                  members={activeGroupMembers}
+                  messages={messages}
+                  meId={meId}
+                  onClose={() => setDetailOpen(false)}
+                  onLeave={handleLeaveGroup}
+                  onUpdateName={handleUpdateGroupName}
+                  onUpdateAvatar={handleUpdateGroupAvatar}
+                  onAddMembers={() => setAddMembersOpen(true)}
+                  onShare={() => setShareOpen(true)}
+                  onRemoveMember={handleRemoveMember}
+                  onPromoteMember={handlePromoteMember}
+                  onMemberClick={(userId, username, avatarUrl) => {
+                    setSelectedMemberProfile({ id: userId, username, avatar_url: avatarUrl });
+                  }}
+                />
+              </div>
+            ) : (
+              <UserDetailPanel
+                userId={active.userId}
+                username={active.username}
+                avatar={active.avatar_url}
+                variant="embedded"
+                onClose={() => setDetailOpen(false)}
+                onCreateGroupClick={() => handleOpenCreateGroupForUser(active.userId)}
+                onSearchClick={() => {
+                  setDetailOpen(false);
+                  setSearchOpen(true);
+                  setSearchQuery("");
+                  setActiveMatch(0);
+                }}
+                onShareClick={() => handleShareProfile(active.userId, active.username, active.avatar_url)}
+              />
+            )
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <CreateGroupModal
+        open={createGroupOpen}
+        onClose={() => {
+          setCreateGroupOpen(false);
+          setPreselectedFriendId(undefined);
+        }}
+        meId={meId}
+        isAdminOrSuper={true}
+        isAdminTeamChat={true}
+        preselectedMemberId={preselectedFriendId}
+        onGroupCreated={(groupId) => {
+          load();
+          setActiveId(`group-${groupId}`);
+        }}
+      />
+
+      {/* Group Add Members Modal */}
+      {addMembersOpen && activeGroup && (
+        <GroupAddMembersModal
+          open={addMembersOpen}
+          onClose={() => setAddMembersOpen(false)}
+          groupId={activeGroup.id}
+          meId={meId}
+          isAdminOrSuper={true}
+          isAdminTeamChat={true}
+          onMembersAdded={() => {
+            supabase.from("group_members").select("*, profiles:user_id(id, username, first_name, last_name, avatar_url)").eq("group_id", activeGroup.id).then(({ data }) => {
+              if (data) setActiveGroupMembers(data);
+            });
+            load();
+          }}
+        />
+      )}
+
+      {/* Group Share Modal */}
+      {shareOpen && activeGroup && (
+        <GroupShareModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          groupId={activeGroup.id}
+          groupName={activeGroup.name || "Group"}
+          meId={meId}
+        />
+      )}
+
+      {contextMenuTarget && (() => {
+        const targetConv = convs.find(c => c.conversationId === contextMenuTarget) || groupRows.find(c => c.conversationId === contextMenuTarget);
+        if (!targetConv) return null;
+        const isPinned = pinnedConvs.includes(contextMenuTarget);
+
+        return (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setContextMenuTarget(null)} />
+            <div className="relative w-full max-w-[280px] bg-card border border-border rounded-2xl shadow-2xl p-4 overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="flex flex-col items-center text-center pb-3 border-b border-border">
+                <Avatar name={targetConv.username} url={targetConv.avatar_url} size={56} />
+                <h3 className="font-bold text-base mt-2 text-foreground truncate w-full">{targetConv.username}</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Manage conversation options</p>
+              </div>
+              <div className="py-2 space-y-1">
+                <button
+                  onClick={() => {
+                    togglePin(contextMenuTarget);
+                    setContextMenuTarget(null);
+                  }}
+                  className="w-full h-11 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Pin className="h-4 w-4 shrink-0 text-primary rotate-45 fill-primary" />
+                  <span>{isPinned ? "Unpin conversation" : "Pin conversation"}</span>
+                </button>
+                <button
+                  onClick={() => setContextMenuTarget(null)}
+                  className="w-full h-11 px-3 rounded-lg flex items-center justify-center text-sm font-semibold hover:bg-secondary text-muted-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {shareProfileOpen && shareProfileTarget && (
         <ShareProfileModal
           isOpen={shareProfileOpen}

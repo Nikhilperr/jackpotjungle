@@ -1093,6 +1093,7 @@ export interface CreateGroupModalProps {
   onGroupCreated: (groupId: string) => void;
   isAdminOrSuper?: boolean;
   preselectedMemberId?: string | null;
+  isAdminTeamChat?: boolean;
 }
 
 export function CreateGroupModal({ 
@@ -1101,7 +1102,8 @@ export function CreateGroupModal({
   meId, 
   onGroupCreated, 
   isAdminOrSuper: forceAdminOrSuper,
-  preselectedMemberId
+  preselectedMemberId,
+  isAdminTeamChat = false,
 }: CreateGroupModalProps) {
   const [groupName, setGroupName] = useState("");
   const [groupAvatar, setGroupAvatar] = useState("");
@@ -1113,7 +1115,7 @@ export function CreateGroupModal({
   const [creating, setCreating] = useState(false);
   const [preselectedProfile, setPreselectedProfile] = useState<any | null>(null);
   const { role } = useRole();
-  const isAdminOrSuper = forceAdminOrSuper !== undefined ? forceAdminOrSuper : (role === "admin" || role === "super_admin");
+  const isAdminOrSuper = forceAdminOrSuper !== undefined ? forceAdminOrSuper : (role === "admin" || role === "super_admin" || isAdminTeamChat);
 
   useEffect(() => {
     if (open && preselectedMemberId) {
@@ -1148,6 +1150,24 @@ export function CreateGroupModal({
     async function fetchFriends() {
       setLoading(true);
       try {
+        if (isAdminTeamChat) {
+          const { data: roleRows } = await supabase
+            .from("user_roles")
+            .select("user_id")
+            .in("role", ["admin", "super_admin"]);
+          const staffIds = (roleRows ?? []).map(r => r.user_id).filter(id => id !== meId);
+          if (staffIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("id, username, first_name, last_name, avatar_url")
+              .in("id", staffIds);
+            setFriends(profiles ?? []);
+          } else {
+            setFriends([]);
+          }
+          return;
+        }
+
         const { data: friendships } = await supabase
           .from("friendships")
           .select("user_a, user_b");
@@ -1167,10 +1187,10 @@ export function CreateGroupModal({
       }
     }
 
-    if (!isAdminOrSuper) {
+    if (!isAdminOrSuper || isAdminTeamChat) {
       fetchFriends();
     }
-  }, [open, meId, isAdminOrSuper]);
+  }, [open, meId, isAdminOrSuper, isAdminTeamChat]);
 
   useEffect(() => {
     if (!open || !isAdminOrSuper || !searchQuery.trim()) {
@@ -1181,6 +1201,26 @@ export function CreateGroupModal({
     const delay = setTimeout(async () => {
       setLoading(true);
       try {
+        if (isAdminTeamChat) {
+          const { data: roleRows } = await supabase
+            .from("user_roles")
+            .select("user_id")
+            .in("role", ["admin", "super_admin"]);
+          const staffIds = (roleRows ?? []).map(r => r.user_id).filter(id => id !== meId);
+          if (staffIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("id, username, first_name, last_name, avatar_url")
+              .in("id", staffIds)
+              .ilike("username", `%${searchQuery.trim()}%`)
+              .limit(30);
+            setAllProfiles(profiles ?? []);
+          } else {
+            setAllProfiles([]);
+          }
+          return;
+        }
+
         const { data: profiles } = await supabase
           .from("profiles")
           .select("id, username, first_name, last_name, avatar_url")
@@ -1197,7 +1237,7 @@ export function CreateGroupModal({
     }, 300);
 
     return () => clearTimeout(delay);
-  }, [searchQuery, open, isAdminOrSuper, meId]);
+  }, [searchQuery, open, isAdminOrSuper, meId, isAdminTeamChat]);
 
   async function handleCreate() {
     if (!groupName.trim() || !meId) {
@@ -1216,8 +1256,9 @@ export function CreateGroupModal({
         .insert({
           name: groupName.trim(),
           avatar_url: groupAvatar.trim() || null,
-          created_by: meId
-        })
+          created_by: meId,
+          is_admin_team: isAdminTeamChat
+        } as any)
         .select()
         .single();
 
