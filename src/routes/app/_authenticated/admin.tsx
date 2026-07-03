@@ -171,6 +171,7 @@ type ConvRow = {
   lastAt: string | null;
   unread: number;
   credit: number;
+  wallet: number;
   isSpam: boolean;
   isGroup?: boolean;
 };
@@ -795,7 +796,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       const convIds = convList ? convList.map((c) => c.id) : [];
 
       const queries: Promise<any>[] = [
-        userIds.length > 0 ? supabase.from("profiles").select("id, username, avatar_url, online, last_seen").in("id", userIds) : Promise.resolve({ data: [] }),
+        userIds.length > 0 ? supabase.from("profiles").select("id, username, avatar_url, online, last_seen, wallet_balance, credit_balance").in("id", userIds) : Promise.resolve({ data: [] }),
         convIds.length > 0 ? supabase.from("page_messages").select("conversation_id, content, created_at, seen, from_page, image_url, audio_url").in("conversation_id", convIds).order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [] }),
         supabase.from("tags").select("id, name, color").order("name"),
         userIds.length > 0 ? supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds) : Promise.resolve({ data: [] }),
@@ -886,7 +887,8 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           lastMessage,
           lastAt,
           unread,
-          credit: creditMap.get(c.user_id) ?? 0,
+          credit: p?.credit_balance ?? creditMap.get(c.user_id) ?? 0,
+          wallet: p?.wallet_balance ?? 0,
           isSpam: (c as any).is_spam ?? false,
           isAdmin: adminUsers.has(c.user_id),
         };
@@ -2672,11 +2674,10 @@ function Conversation({
   const [walletTransactions, setWalletTransactions] = useState<any[]>([]);
   const [loadingWalletDetails, setLoadingWalletDetails] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  
   // Wallet action fields
   const [walletAction, setWalletAction] = useState<any>("deposit");
   const [walletAmount, setWalletAmount] = useState("");
-  const [walletReason, setWalletReason] = useState("");
+  const [walletPaymentMethod, setWalletPaymentMethod] = useState("Cashapp");
   const [walletNotes, setWalletNotes] = useState("");
   const [performingWalletAction, setPerformingWalletAction] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("all");
@@ -2720,8 +2721,18 @@ function Conversation({
     if (isNaN(amt) || (amt < 0 && walletAction !== "reset")) {
       return toast.error("Amount must be a non-negative number.");
     }
-    if (!walletReason && walletAction !== "reset") {
-      return toast.error("A reason is required to log the transaction.");
+
+    let computedReason = "";
+    if (walletAction === "deposit") {
+      computedReason = `${walletPaymentMethod} Load`;
+    } else if (walletAction === "credit_added") {
+      computedReason = `${walletPaymentMethod} Credit Load`;
+    } else if (walletAction === "deduction") {
+      computedReason = "Played Funds";
+    } else if (walletAction === "deduct_credit") {
+      computedReason = "Played Credit";
+    } else {
+      computedReason = "Manual adjustment";
     }
 
     setPerformingWalletAction(true);
@@ -2732,7 +2743,7 @@ function Conversation({
           targetUserId: conv.userId,
           action: walletAction,
           amount: amt,
-          reason: walletReason,
+          reason: computedReason,
           notes: walletNotes || undefined,
         }
       });
@@ -2740,7 +2751,6 @@ function Conversation({
       if (res.success) {
         toast.success("Wallet updated successfully!");
         setWalletAmount("");
-        setWalletReason("");
         setWalletNotes("");
         // Reload details
         loadWalletDetails();
@@ -4004,11 +4014,28 @@ function Conversation({
                     <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
                   )}
                 </p>
-                {conv.credit > 0 && (
-                  <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
-                    Credit ${conv.credit.toFixed(2)}
-                  </span>
-                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    loadWalletDetails(conv.userId);
+                    setWalletPopupOpen(true);
+                  }}
+                  className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 font-bold transition-colors cursor-pointer"
+                >
+                  Bal: ${(conv.wallet || 0).toFixed(2)}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    loadWalletDetails(conv.userId);
+                    setWalletPopupOpen(true);
+                  }}
+                  className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 font-bold transition-colors cursor-pointer"
+                >
+                  Credit: ${(conv.credit || 0).toFixed(2)}
+                </button>
               </div>
               <p className="text-xs text-muted-foreground truncate">
                 {isGroup ? (
@@ -4727,17 +4754,32 @@ function Conversation({
                     onChange={(e) => setWalletAction(e.target.value)}
                     className="w-full h-10 px-3 rounded-lg bg-secondary text-sm border-border focus:ring-1 focus:ring-primary/40 focus:border-transparent font-medium"
                   >
-                    <option value="deposit">Deposit (Add to Available Balance)</option>
-                    <option value="credit_added">Add Credit (Add to Credit Balance)</option>
-                    <option value="credit_released">Release Credit (Move Credit to Available)</option>
-                    <option value="deduction">Deduct Available (Deduct Available Balance)</option>
-                    <option value="deduct_credit">Deduct Credit (Deduct Credit Balance)</option>
-                    <option value="transfer">Transfer (Move Available to Credit)</option>
-                    <option value="correction">Correction (Adjust Available Balance)</option>
-                    <option value="refund">Refund (Credit Available Balance)</option>
-                    <option value="bonus">Bonus (Grant Available Balance)</option>
+                    <option value="deposit">Add Wallet Funds</option>
+                    <option value="deduction">Played Wallet Funds</option>
+                    <option value="credit_added">Load Credit</option>
+                    <option value="deduct_credit">Played Credit</option>
                   </select>
                 </div>
+
+                {(walletAction === "deposit" || walletAction === "credit_added") && (
+                  <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-150">
+                    <label className="text-xs font-bold text-muted-foreground">Payment Method</label>
+                    <select
+                      value={walletPaymentMethod}
+                      onChange={(e) => setWalletPaymentMethod(e.target.value)}
+                      className="w-full h-10 px-3 rounded-lg bg-secondary text-sm border-border focus:ring-1 focus:ring-primary/40 focus:border-transparent font-medium"
+                    >
+                      <option value="Cashapp">Cashapp</option>
+                      <option value="Chime">Chime</option>
+                      <option value="Venmo">Venmo</option>
+                      <option value="Paypal">Paypal</option>
+                      <option value="Apple pay">Apple pay</option>
+                      <option value="Stripe">Stripe</option>
+                      <option value="Crypto">Crypto</option>
+                      <option value="Credit">Credit</option>
+                    </select>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-muted-foreground">Amount ($)</label>
@@ -4748,19 +4790,6 @@ function Conversation({
                     placeholder="Enter amount (e.g. 50.00)"
                     value={walletAmount}
                     onChange={(e) => setWalletAmount(e.target.value)}
-                    className="h-10 rounded-lg bg-secondary border-transparent text-sm"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-muted-foreground flex justify-between">
-                    <span>Reason</span>
-                    <span className="text-[10px] text-red-500 font-medium">*Mandatory for audit logs</span>
-                  </label>
-                  <Input
-                    placeholder="Enter audit reason..."
-                    value={walletReason}
-                    onChange={(e) => setWalletReason(e.target.value)}
                     className="h-10 rounded-lg bg-secondary border-transparent text-sm"
                   />
                 </div>
@@ -4849,12 +4878,8 @@ function Conversation({
                 className="h-8 px-2 rounded bg-secondary text-xs border-border/50 font-medium"
               >
                 <option value="all">All Transactions</option>
-                <option value="deposit">Deposits</option>
-                <option value="credit_added">Credit Added</option>
-                <option value="credit_released">Credit Released</option>
-                <option value="deduction">Deductions (Available)</option>
-                <option value="deduct_credit">Deductions (Credit)</option>
-                <option value="transfer">Transfers</option>
+                <option value="wallet">Wallet Balance</option>
+                <option value="credit">Credit Balance</option>
               </select>
             </div>
 

@@ -613,20 +613,24 @@ export const runDatabaseMigration = createServerFn({ method: "POST" })
         }
       }
 
-      const dbPassword = "grootMahakal7X";
-      const host = "db.chancerealm.casino";
-      const dbName = "postgres";
-      const username = "postgres";
+      const dbPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD || "grootMahakal7X";
+      const dbName = process.env.SUPABASE_DB_NAME || process.env.DATABASE_NAME || "postgres";
+      const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "postgres";
 
-      const hosts = ["localhost", "127.0.0.1", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
-      const ports = [5432, 6543];
+      const configuredHost = process.env.SUPABASE_DB_HOST || process.env.DATABASE_HOST;
+      const hosts = configuredHost ? [configuredHost] : ["localhost", "127.0.0.1", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
+
+      const configuredPort = process.env.SUPABASE_DB_PORT || process.env.DATABASE_PORT;
+      const ports = configuredPort ? [parseInt(configuredPort, 10)] : [5432, 6543];
 
       for (const h of hosts) {
         for (const p of ports) {
           console.log(`[Migration] Trying connection to ${h}:${p}...`);
+          const isRemote = h.includes(".") && !h.startsWith("127.");
+          const sslVal = process.env.DATABASE_SSL === "true" || (process.env.DATABASE_SSL !== "false" && isRemote);
           const client = new pg.Client({
             connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
-            ssl: h === "db.chancerealm.casino" || h === "db.gsnhqzsgptqxtlhggzkz.supabase.co" ? { rejectUnauthorized: false } : undefined
+            ssl: sslVal ? { rejectUnauthorized: false } : undefined
           });
           try {
             await client.connect();
@@ -641,7 +645,7 @@ export const runDatabaseMigration = createServerFn({ method: "POST" })
           }
         }
       }
-      return { success: false, error: "Could not connect to database on any host/port configuration" };
+      return { success: false, error: "Could not connect to database on any host/port configuration. Please check your env parameters: DATABASE_URL, SUPABASE_DB_PASSWORD, or DATABASE_PASSWORD." };
     } catch (e: any) {
       return { success: false, error: e.message };
     }
@@ -765,20 +769,24 @@ export const runAutoDatabaseMigrations = createServerFn({ method: "POST" })
         }
       }
 
-      const dbPassword = "grootMahakal7X";
-      const host = "db.chancerealm.casino";
-      const dbName = "postgres";
-      const username = "postgres";
+      const dbPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD || "grootMahakal7X";
+      const dbName = process.env.SUPABASE_DB_NAME || process.env.DATABASE_NAME || "postgres";
+      const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "postgres";
 
-      const hosts = ["localhost", "127.0.0.1", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
-      const ports = [5432, 6543];
+      const configuredHost = process.env.SUPABASE_DB_HOST || process.env.DATABASE_HOST;
+      const hosts = configuredHost ? [configuredHost] : ["localhost", "127.0.0.1", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
+
+      const configuredPort = process.env.SUPABASE_DB_PORT || process.env.DATABASE_PORT;
+      const ports = configuredPort ? [parseInt(configuredPort, 10)] : [5432, 6543];
 
       for (const h of hosts) {
         for (const p of ports) {
           console.log(`[AutoMigration] Trying connection to ${h}:${p}...`);
+          const isRemote = h.includes(".") && !h.startsWith("127.");
+          const sslVal = process.env.DATABASE_SSL === "true" || (process.env.DATABASE_SSL !== "false" && isRemote);
           const client = new pg.Client({
             connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
-            ssl: h === "db.chancerealm.casino" || h === "db.gsnhqzsgptqxtlhggzkz.supabase.co" ? { rejectUnauthorized: false } : undefined
+            ssl: sslVal ? { rejectUnauthorized: false } : undefined
           });
           try {
             await client.connect();
@@ -794,7 +802,7 @@ export const runAutoDatabaseMigrations = createServerFn({ method: "POST" })
           }
         }
       }
-      return { success: false, error: "Could not connect to database on any host/port configuration" };
+      return { success: false, error: "Could not connect to database on any host/port configuration. Please check your env parameters: DATABASE_URL, SUPABASE_DB_PASSWORD, or DATABASE_PASSWORD." };
     } catch (e: any) {
       console.error("[AutoMigration Catch Error]:", e);
       return { success: false, error: e.message };

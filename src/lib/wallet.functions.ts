@@ -64,7 +64,13 @@ export const getWalletHistoryAdmin = createServerFn({ method: "GET" })
       .eq("user_id", data.targetUserId);
 
     if (data.filter && data.filter !== "all") {
-      query = query.eq("action", data.filter);
+      if (data.filter === "credit") {
+        query = query.in("action", ["credit_added", "deduct_credit", "credit_released", "transfer"]);
+      } else if (data.filter === "wallet") {
+        query = query.in("action", ["deposit", "deduction", "credit_released", "refund", "bonus", "transfer", "correction", "reset"]);
+      } else {
+        query = query.eq("action", data.filter);
+      }
     }
 
     const { data: txs, error } = await query.order("created_at", { ascending: false });
