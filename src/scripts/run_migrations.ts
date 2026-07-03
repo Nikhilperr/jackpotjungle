@@ -34,12 +34,17 @@ const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "p
 const migrationsDir = path.resolve("supabase/migrations");
 
 async function runMigrationsForHostPort(host: string, port: number, useSSL: boolean): Promise<boolean> {
-  const connectionString = process.env.DATABASE_URL || `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
+  const connectionString = host === "env-url"
+    ? process.env.DATABASE_URL
+    : `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
   console.log(`Attempting migration on ${host}:${port} (SSL: ${useSSL})...`);
   
+  const isRemote = connectionString && (connectionString.includes("supabase.co") || connectionString.includes("chancerealm.casino") || !host.startsWith("127.") && host !== "localhost" && host !== "env-url");
   const client = new pg.Client({
     connectionString,
-    ssl: useSSL ? { rejectUnauthorized: false } : undefined
+    ssl: useSSL || isRemote
+      ? { rejectUnauthorized: false }
+      : undefined
   });
 
   try {
@@ -74,7 +79,8 @@ async function runMigrationsForHostPort(host: string, port: number, useSSL: bool
 async function main() {
   if (process.env.DATABASE_URL) {
     console.log("DATABASE_URL env variable detected. Running migrations using connection string...");
-    const success = await runMigrationsForHostPort("env-url", 0, false);
+    const isRemote = process.env.DATABASE_URL.includes(".") && !process.env.DATABASE_URL.includes("localhost") && !process.env.DATABASE_URL.includes("127.0.0.1");
+    const success = await runMigrationsForHostPort("env-url", 0, isRemote);
     if (success) {
       console.log("Migration complete!");
       process.exit(0);
