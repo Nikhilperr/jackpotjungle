@@ -55,10 +55,25 @@ import {
   BookOpen,
   Edit,
   ShieldCheck,
+  Wallet,
+  Coins,
+  ArrowRightLeft,
+  Printer,
+  Download,
+  Mail,
+  History,
+  FileText,
 } from "lucide-react";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { formatDistanceToNow, format } from "date-fns";
 import { toast } from "sonner";
 import { unsendPageMessagesServer, unsendMessagesServer } from "@/lib/messages.functions";
@@ -74,6 +89,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   TagsView,
   QuickRepliesView,
@@ -2577,6 +2600,240 @@ function Conversation({
   const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set());
   const [showDeleteBottomSheet, setShowDeleteBottomSheet] = useState(false);
 
+  // Wallet Credit System States
+  const { isSuperAdmin } = useRole();
+  const [walletPopupOpen, setWalletPopupOpen] = useState(false);
+  const [walletHistoryPopupOpen, setWalletHistoryPopupOpen] = useState(false);
+  const [walletDetails, setWalletDetails] = useState<any>(null);
+  const [walletTransactions, setWalletTransactions] = useState<any[]>([]);
+  const [loadingWalletDetails, setLoadingWalletDetails] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  
+  // Wallet action fields
+  const [walletAction, setWalletAction] = useState<any>("deposit");
+  const [walletAmount, setWalletAmount] = useState("");
+  const [walletReason, setWalletReason] = useState("");
+  const [walletNotes, setWalletNotes] = useState("");
+  const [performingWalletAction, setPerformingWalletAction] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState("all");
+
+  const loadWalletDetails = async () => {
+    if (!conv.userId) return;
+    setLoadingWalletDetails(true);
+    try {
+      const { getWalletDetailsAdmin } = await import("@/lib/wallet.functions");
+      const res = await getWalletDetailsAdmin({ targetUserId: conv.userId });
+      setWalletDetails(res.profile);
+      setWalletTransactions(res.transactions ?? []);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load wallet stats");
+    } finally {
+      setLoadingWalletDetails(false);
+    }
+  };
+
+  const loadWalletHistory = async (filterVal: string) => {
+    if (!conv.userId) return;
+    setLoadingHistory(true);
+    try {
+      const { getWalletHistoryAdmin } = await import("@/lib/wallet.functions");
+      const res = await getWalletHistoryAdmin({ targetUserId: conv.userId, filter: filterVal });
+      setWalletTransactions(res ?? []);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load wallet ledger history");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const submitWalletAction = async () => {
+    if (!walletAmount && walletAction !== "reset") {
+      return toast.error("Please enter a valid amount.");
+    }
+    const amt = walletAction === "reset" ? 0 : Number(walletAmount);
+    if (isNaN(amt) || (amt < 0 && walletAction !== "reset")) {
+      return toast.error("Amount must be a non-negative number.");
+    }
+    if (!walletReason && walletAction !== "reset") {
+      return toast.error("A reason is required to log the transaction.");
+    }
+
+    setPerformingWalletAction(true);
+    try {
+      const { performWalletActionAdmin } = await import("@/lib/wallet.functions");
+      const res = await performWalletActionAdmin({
+        targetUserId: conv.userId,
+        action: walletAction,
+        amount: amt,
+        reason: walletReason,
+        notes: walletNotes || undefined,
+      });
+
+      if (res.success) {
+        toast.success("Wallet updated successfully!");
+        setWalletAmount("");
+        setWalletReason("");
+        setWalletNotes("");
+        // Reload details
+        loadWalletDetails();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update wallet");
+    } finally {
+      setPerformingWalletAction(false);
+    }
+  };
+
+  const handleResetWallet = async () => {
+    if (!isSuperAdmin) {
+      return toast.error("Only super admins can reset wallets.");
+    }
+    const confirmed = window.confirm("WARNING: Are you absolutely sure you want to RESET this user's wallet balances and stats to zero? This action cannot be undone.");
+    if (!confirmed) return;
+
+    setPerformingWalletAction(true);
+    try {
+      const { performWalletActionAdmin } = await import("@/lib/wallet.functions");
+      const res = await performWalletActionAdmin({
+        targetUserId: conv.userId,
+        action: "reset",
+        amount: 0,
+        reason: "Super Admin Wallet Reset",
+        notes: "Perform total reset of available and credit balances",
+      });
+
+      if (res.success) {
+        toast.success("Wallet reset successfully!");
+        loadWalletDetails();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reset wallet");
+    } finally {
+      setPerformingWalletAction(false);
+    }
+  };
+
+  const exportAdminCSV = () => {
+    if (walletTransactions.length === 0) return toast.error("No transactions to export.");
+    const headers = ["Date & Time", "Action", "Amount", "Avail Before", "Avail After", "Credit Before", "Credit After", "Reason", "Admin Name", "Notes"];
+    const rows = walletTransactions.map(tx => [
+      new Date(tx.created_at).toLocaleString(),
+      tx.action.toUpperCase(),
+      `$${Number(tx.amount).toFixed(2)}`,
+      `$${Number(tx.avail_before).toFixed(2)}`,
+      `$${Number(tx.avail_after).toFixed(2)}`,
+      `$${Number(tx.credit_before).toFixed(2)}`,
+      `$${Number(tx.credit_after).toFixed(2)}`,
+      tx.reason,
+      tx.admin_name || "Admin",
+      tx.notes || ""
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `JJ_Wallet_Ledger_Customer_${conv.username || "user"}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("CSV Statement exported successfully!");
+  };
+
+  const printAdminStatement = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return toast.error("Could not open print window.");
+    
+    const customerName = conv.username || "Customer";
+    const txRows = walletTransactions.map(tx => `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${new Date(tx.created_at).toLocaleString()}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-transform: uppercase; font-weight: bold;">${tx.action}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.amount).toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_before).toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_after).toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_before).toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_after).toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${tx.reason}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${tx.admin_name || "Admin"}</td>
+      </tr>
+    `).join("");
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Jackpot Jungle Ledger Statement</title>
+          <style>
+            body { font-family: sans-serif; padding: 24px; color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th { background-color: #f5f5f5; text-align: left; padding: 8px; border-bottom: 2px solid #ddd; }
+            .header { margin-bottom: 30px; border-bottom: 3px solid #10b981; padding-bottom: 16px; }
+            .summary { background: #f9f9f9; padding: 16px; border-radius: 8px; margin-bottom: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1 style="margin: 0; color: #10b981;">JACKPOT JUNGLE</h1>
+            <p style="margin: 4px 0 0 0; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px;">Admin ledger statement</p>
+          </div>
+          <div>
+            <h3 style="margin: 0;">Customer Name: ${customerName}</h3>
+            <p style="margin: 4px 0; font-size: 13px;">Customer ID: ${conv.userId}</p>
+            <p style="margin: 4px 0; font-size: 13px;">Statement generated: ${new Date().toLocaleString()}</p>
+          </div>
+          <div class="summary" style="display: flex; justify-content: space-between; margin-top: 20px;">
+            <div>
+              <p style="margin: 4px 0;"><strong>Available Balance:</strong> $${(walletDetails?.wallet_balance ?? 0).toFixed(2)}</p>
+              <p style="margin: 4px 0;"><strong>Credit Balance:</strong> $${(walletDetails?.credit_balance ?? 0).toFixed(2)}</p>
+            </div>
+            <div style="text-align: right;">
+              <p style="margin: 4px 0;"><strong>Deposits:</strong> $${(walletDetails?.wallet_deposits ?? 0).toFixed(2)}</p>
+              <p style="margin: 4px 0;"><strong>Released:</strong> $${(walletDetails?.wallet_released ?? 0).toFixed(2)}</p>
+              <p style="margin: 4px 0;"><strong>Used:</strong> $${(walletDetails?.wallet_used ?? 0).toFixed(2)}</p>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Date & Time</th>
+                <th>Action</th>
+                <th style="text-align: right;">Amount</th>
+                <th style="text-align: right;">Avail. Before</th>
+                <th style="text-align: right;">Avail. After</th>
+                <th style="text-align: right;">Credit Before</th>
+                <th style="text-align: right;">Credit After</th>
+                <th>Reason</th>
+                <th>Admin</th>
+              </tr>
+            </thead>
+            <tbody>
+              \${txRows || '<tr><td colspan="9" style="text-align: center; padding: 20px;">No transaction records found.</td></tr>'}
+            </tbody>
+          </table>
+          <script>window.print();</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const sendStatementToUser = async (method: "email" | "chat") => {
+    if (!walletDetails) return toast.error("No wallet details loaded.");
+    try {
+      const { sendWalletStatementAdmin } = await import("@/lib/wallet.functions");
+      await sendWalletStatementAdmin({
+        targetUserId: conv.userId,
+        method,
+        openingBalance: walletDetails.wallet_balance,
+        closingBalance: walletDetails.wallet_balance, // simple closing balance check
+        transactions: walletTransactions,
+      });
+      toast.success(`Statement sent via ${method === "chat" ? "Support Chat" : "Email"}!`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send statement");
+    }
+  };
+
   useEffect(() => {
     try {
       const list = JSON.parse(localStorage.getItem("jj_deleted_messages") || "[]");
@@ -3939,6 +4196,51 @@ function Conversation({
           </button>
           <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
           <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
+          {!isTeamChat && conv.userId && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary transition-colors"
+                  aria-label="Wallet menu"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48 bg-card border-border">
+                <DropdownMenuItem
+                  onClick={() => {
+                    loadWalletDetails();
+                    setWalletPopupOpen(true);
+                  }}
+                  className="cursor-pointer gap-2 py-2 font-semibold"
+                >
+                  <Wallet className="h-4 w-4 text-green-500" />
+                  <span>Wallet</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    loadWalletHistory("all");
+                    setWalletHistoryPopupOpen(true);
+                  }}
+                  className="cursor-pointer gap-2 py-2 font-semibold"
+                >
+                  <History className="h-4 w-4 text-amber-500" />
+                  <span>Wallet History</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    loadWalletDetails();
+                    setWalletPopupOpen(true);
+                  }}
+                  className="cursor-pointer gap-2 py-2 font-semibold"
+                >
+                  <Wallet className="h-4 w-4 text-blue-500" />
+                  <span>Wallet Popup</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Input
             ref={inputRef}
             autoFocus
@@ -4300,10 +4602,347 @@ function Conversation({
           </div>
         );
       })()}
+
+      {/* 1. Wallet Control Dialog */}
+      <Dialog open={walletPopupOpen} onOpenChange={setWalletPopupOpen}>
+        <DialogContent className="max-w-md bg-card border border-border text-foreground shadow-2xl rounded-2xl p-6 overflow-y-auto max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-primary">
+              <Wallet className="h-6 w-6 text-green-500 animate-pulse" />
+              <span>Wallet Control Panel</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Manage Available Balance and Credit Balance for customer <strong>{conv.username}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingWalletDetails ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-xs text-muted-foreground">Fetching ledger details...</p>
+            </div>
+          ) : (
+            <div className="space-y-6 my-4">
+              {/* Financial Stats Display */}
+              <div className="grid grid-cols-2 gap-3 bg-secondary/35 p-4 rounded-xl border border-border/40">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Available Balance</span>
+                  <p className="text-xl font-black text-emerald-500">${Number(walletDetails?.wallet_balance ?? 0).toFixed(2)}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Credit Balance</span>
+                  <p className="text-xl font-black text-amber-500">${Number(walletDetails?.credit_balance ?? 0).toFixed(2)}</p>
+                </div>
+                <div className="col-span-2 border-t border-border/40 my-1"></div>
+                <div className="space-y-0.5">
+                  <span className="text-[9px] text-muted-foreground block">Total Deposited</span>
+                  <span className="text-xs font-semibold">${Number(walletDetails?.wallet_deposits ?? 0).toFixed(2)}</span>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[9px] text-muted-foreground block">Total Released</span>
+                  <span className="text-xs font-semibold">${Number(walletDetails?.wallet_released ?? 0).toFixed(2)}</span>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[9px] text-muted-foreground block">Total Used/Deducted</span>
+                  <span className="text-xs font-semibold">${Number(walletDetails?.wallet_used ?? 0).toFixed(2)}</span>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[9px] text-muted-foreground block">Last Action Update</span>
+                  <span className="text-[10px] font-medium text-muted-foreground truncate block">
+                    {walletDetails?.wallet_last_updated ? new Date(walletDetails.wallet_last_updated).toLocaleDateString() : "Never"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Perform Adjustment Form */}
+              <div className="space-y-4 border-t border-border/50 pt-4">
+                <h4 className="text-xs font-black uppercase text-muted-foreground tracking-wider">Perform Ledger Adjustment</h4>
+                
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground">Action Type</label>
+                  <select
+                    value={walletAction}
+                    onChange={(e) => setWalletAction(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg bg-secondary text-sm border-border focus:ring-1 focus:ring-primary/40 focus:border-transparent font-medium"
+                  >
+                    <option value="deposit">Deposit (Add to Available Balance)</option>
+                    <option value="credit_added">Add Credit (Add to Credit Balance)</option>
+                    <option value="credit_released">Release Credit (Move Credit to Available)</option>
+                    <option value="deduction">Deduct Available (Deduct Available Balance)</option>
+                    <option value="deduct_credit">Deduct Credit (Deduct Credit Balance)</option>
+                    <option value="transfer">Transfer (Move Available to Credit)</option>
+                    <option value="correction">Correction (Adjust Available Balance)</option>
+                    <option value="refund">Refund (Credit Available Balance)</option>
+                    <option value="bonus">Bonus (Grant Available Balance)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground">Amount ($)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Enter amount (e.g. 50.00)"
+                    value={walletAmount}
+                    onChange={(e) => setWalletAmount(e.target.value)}
+                    className="h-10 rounded-lg bg-secondary border-transparent text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground flex justify-between">
+                    <span>Reason</span>
+                    <span className="text-[10px] text-red-500 font-medium">*Mandatory for audit logs</span>
+                  </label>
+                  <Input
+                    placeholder="Enter audit reason..."
+                    value={walletReason}
+                    onChange={(e) => setWalletReason(e.target.value)}
+                    className="h-10 rounded-lg bg-secondary border-transparent text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground">Internal Notes (Optional)</label>
+                  <textarea
+                    placeholder="Add optional notes visible to admins only..."
+                    value={walletNotes}
+                    onChange={(e) => setWalletNotes(e.target.value)}
+                    rows={2}
+                    className="w-full p-3 rounded-lg bg-secondary text-sm border-transparent focus:ring-1 focus:ring-primary/40 focus:border-transparent resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex flex-col gap-2 mt-4 sm:flex-row">
+            {isSuperAdmin && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleResetWallet}
+                disabled={performingWalletAction || loadingWalletDetails}
+                className="w-full sm:w-auto shrink-0 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs gap-1.5"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset Wallet
+              </Button>
+            )}
+            <div className="flex-1"></div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setWalletPopupOpen(false)}
+              className="w-full sm:w-auto rounded-xl text-xs font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={submitWalletAction}
+              disabled={performingWalletAction || loadingWalletDetails}
+              className="w-full sm:w-auto rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:opacity-90"
+            >
+              {performingWalletAction ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                  Applying...
+                </>
+              ) : (
+                "Apply Adjustment"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 2. Wallet History Dialog */}
+      <Dialog open={walletHistoryPopupOpen} onOpenChange={setWalletHistoryPopupOpen}>
+        <DialogContent className="max-w-4xl bg-card border border-border text-foreground shadow-2xl rounded-2xl p-6 overflow-hidden flex flex-col h-[85vh]">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="flex items-center justify-between text-xl font-bold text-primary">
+              <div className="flex items-center gap-2">
+                <History className="h-6 w-6 text-amber-500" />
+                <span>Wallet Transaction Ledger</span>
+              </div>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Review transactional history logs, export statements, and send notifications to customer <strong>{conv.username}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Filtering and Export Action Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-secondary/20 p-3 rounded-xl border border-border/30 my-2 shrink-0">
+            {/* Filter controls */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-muted-foreground">Filter:</span>
+              <select
+                value={historyFilter}
+                onChange={(e) => {
+                  setHistoryFilter(e.target.value);
+                  loadWalletHistory(e.target.value);
+                }}
+                className="h-8 px-2 rounded bg-secondary text-xs border-border/50 font-medium"
+              >
+                <option value="all">All Transactions</option>
+                <option value="deposit">Deposits</option>
+                <option value="credit_added">Credit Added</option>
+                <option value="credit_released">Credit Released</option>
+                <option value="deduction">Deductions (Available)</option>
+                <option value="deduct_credit">Deductions (Credit)</option>
+                <option value="transfer">Transfers</option>
+              </select>
+            </div>
+
+            {/* Export buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportAdminCSV}
+                className="h-8 rounded-lg text-xs gap-1.5 font-bold"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={printAdminStatement}
+                className="h-8 rounded-lg text-xs gap-1.5 font-bold"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Print Statement
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    className="h-8 rounded-lg text-xs gap-1.5 font-bold bg-primary text-primary-foreground hover:bg-primary/95"
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    Send Statement
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-card border-border">
+                  <DropdownMenuItem
+                    onClick={() => sendStatementToUser("chat")}
+                    className="cursor-pointer gap-2 py-2 font-semibold"
+                  >
+                    <MessageSquare className="h-4 w-4 text-emerald-500" />
+                    <span>Send to Support Chat</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => sendStatementToUser("email")}
+                    className="cursor-pointer gap-2 py-2 font-semibold"
+                  >
+                    <Mail className="h-4 w-4 text-blue-500" />
+                    <span>Send to Registered Email</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          {/* Ledger Table Container */}
+          <div className="flex-1 overflow-y-auto border border-border/40 rounded-xl bg-card">
+            {loadingHistory ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-2">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-xs text-muted-foreground font-medium">Loading ledger statements...</p>
+              </div>
+            ) : walletTransactions.length === 0 ? (
+              <div className="text-center py-20">
+                <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-sm font-bold text-muted-foreground">No ledger transactions found</p>
+                <p className="text-xs text-muted-foreground/75 mt-1">Try changing the search filter or perform a new adjustment.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-secondary/40 sticky top-0 border-b border-border/50 text-[10px] text-muted-foreground uppercase tracking-wider font-bold shrink-0 z-10">
+                  <tr>
+                    <th className="p-3">Date & Time</th>
+                    <th className="p-3">Action</th>
+                    <th className="p-3 text-right">Amount</th>
+                    <th className="p-3 text-right">Avail. Bal</th>
+                    <th className="p-3 text-right">Credit Bal</th>
+                    <th className="p-3">Reason</th>
+                    <th className="p-3">Admin</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30">
+                  {walletTransactions.map((tx) => {
+                    const isCredit = tx.action.includes("credit");
+                    const isPositive = ["deposit", "credit_added", "refund", "bonus"].includes(tx.action);
+                    
+                    return (
+                      <tr key={tx.id} className="hover:bg-secondary/20 transition-colors">
+                        <td className="p-3 text-muted-foreground whitespace-nowrap">
+                          {new Date(tx.created_at).toLocaleString()}
+                        </td>
+                        <td className="p-3 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider inline-block ${
+                            tx.action === "deposit" || tx.action === "bonus" || tx.action === "refund"
+                              ? "bg-emerald-500/10 text-emerald-500"
+                              : tx.action === "credit_added"
+                              ? "bg-amber-500/10 text-amber-500"
+                              : tx.action === "credit_released"
+                              ? "bg-blue-500/10 text-blue-500"
+                              : tx.action === "transfer"
+                              ? "bg-indigo-500/10 text-indigo-500"
+                              : tx.action === "reset"
+                              ? "bg-red-500/10 text-red-500"
+                              : "bg-red-500/15 text-red-500"
+                          }`}>
+                            {tx.action.replace("_", " ")}
+                          </span>
+                        </td>
+                        <td className={`p-3 text-right font-black whitespace-nowrap ${
+                          isPositive ? "text-emerald-500" : "text-destructive"
+                        }`}>
+                          {isPositive ? "+" : "-"}${Number(tx.amount).toFixed(2)}
+                        </td>
+                        <td className="p-3 text-right whitespace-nowrap font-medium">
+                          <span className="text-[10px] text-muted-foreground block">
+                            ${Number(tx.avail_before).toFixed(2)} &rarr;
+                          </span>
+                          <span className="font-bold">${Number(tx.avail_after).toFixed(2)}</span>
+                        </td>
+                        <td className="p-3 text-right whitespace-nowrap font-medium">
+                          <span className="text-[10px] text-muted-foreground block">
+                            ${Number(tx.credit_before).toFixed(2)} &rarr;
+                          </span>
+                          <span className="font-bold">${Number(tx.credit_after).toFixed(2)}</span>
+                        </td>
+                        <td className="p-3 font-semibold break-words max-w-xs">{tx.reason}</td>
+                        <td className="p-3 text-muted-foreground whitespace-nowrap font-medium">
+                          {tx.admin_name || "Admin"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <DialogFooter className="shrink-0 pt-4 border-t border-border/40 mt-2">
+            <Button
+              type="button"
+              onClick={() => setWalletHistoryPopupOpen(false)}
+              className="w-full sm:w-auto rounded-xl text-xs font-bold"
+            >
+              Close Ledger
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
-
 
 /* ---------------- ADMINS (super admin only) ---------------- */
 
