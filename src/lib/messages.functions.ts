@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export const unsendMessagesServer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { ids: string[] }) => d)
+  .validator((d: { ids: string[] }) => d)
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     
@@ -33,7 +33,7 @@ export const unsendMessagesServer = createServerFn({ method: "POST" })
 
 export const unsendPageMessagesServer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { ids: string[] }) => d)
+  .validator((d: { ids: string[] }) => d)
   .handler(async ({ data, context }) => {
     // Check if caller is admin/super_admin
     const { data: roleRows } = await context.supabase

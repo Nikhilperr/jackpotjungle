@@ -14,7 +14,7 @@ async function assertSuperAdmin(supabase: any, userId: string) {
 
 export const deleteAdminUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { userId: string }) => d)
+  .validator((d: { userId: string }) => d)
   .handler(async ({ data, context }) => {
     await assertSuperAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -25,7 +25,7 @@ export const deleteAdminUser = createServerFn({ method: "POST" })
 
 export const setUserBlocked = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { userId: string; blocked: boolean }) => d)
+  .validator((d: { userId: string; blocked: boolean }) => d)
   .handler(async ({ data, context }) => {
     // Admins or super admins can block/unblock regular users.
     const { data: roleRows } = await context.supabase
@@ -43,7 +43,7 @@ export const setUserBlocked = createServerFn({ method: "POST" })
 
 export const resetUserPassword = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { userId: string; newPassword: string }) => {
+  .validator((d: { userId: string; newPassword: string }) => {
     if (!d.newPassword || d.newPassword.length < 6) throw new Error("Password too short");
     return d;
   })
@@ -59,7 +59,7 @@ export const resetUserPassword = createServerFn({ method: "POST" })
 
 export const sendBroadcast = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { content: string; targetType: "all" | "tag" | "selected"; tagId?: string; userIds?: string[] }) => {
+  .validator((d: { content: string; targetType: "all" | "tag" | "selected"; tagId?: string; userIds?: string[] }) => {
     if (!d.content?.trim()) throw new Error("Empty broadcast");
     return d;
   })
@@ -496,7 +496,7 @@ export const runDatabaseMigration = createServerFn({ method: "POST" })
 
 export const publishSystemAnnouncement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { channelType: "rules" | "updates"; content: string; imageUrl?: string | null; audioUrl?: string | null }) => {
+  .validator((d: { channelType: "rules" | "updates"; content: string; imageUrl?: string | null; audioUrl?: string | null }) => {
     if (!d.content?.trim() && !d.imageUrl && !d.audioUrl) throw new Error("Empty announcement");
     return d;
   })
@@ -552,7 +552,7 @@ export const publishSystemAnnouncement = createServerFn({ method: "POST" })
 
 export const deleteSystemAnnouncement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { id: string }) => d)
+  .validator((d: { id: string }) => d)
   .handler(async ({ data, context }) => {
     try {
       const { data: roleRows, error: rolesErr } = await context.supabase
