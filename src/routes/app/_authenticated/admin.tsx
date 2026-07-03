@@ -1865,7 +1865,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
       const { data: groupMsgs } = adminGroupIds.length > 0
         ? await supabase
             .from("messages")
-            .select("id, sender_id, group_id, content, image_url, audio_url, created_at, seen")
+            .select("id, sender_id, group_id, content, image_url, audio_url, created_at, seen, sender:sender_id(id, username)")
             .in("group_id", adminGroupIds)
             .order("created_at", { ascending: false })
         : { data: [] };
@@ -1922,6 +1922,8 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
         } else if (lastMessage?.startsWith("[reply:")) {
           const match = lastMessage.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
           if (match) lastMessage = match[1];
+        } else if (lastMessage && isSystemMessage(lastMessage)) {
+          lastMessage = formatSystemMessage(lastMessage, lastMsg.sender?.username);
         }
 
         return {
@@ -2170,6 +2172,9 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                 let preview = content;
                 if (!preview) {
                   preview = image_url ? "📷 Photo" : audio_url ? "🎤 Voice message" : "Message";
+                }
+                if (preview && isSystemMessage(preview)) {
+                  preview = formatSystemMessage(preview);
                 }
                 const copy = [...prev];
                 const updated = { ...copy[idx] };
