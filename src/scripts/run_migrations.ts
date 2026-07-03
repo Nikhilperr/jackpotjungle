@@ -39,17 +39,47 @@ const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "p
 
 const migrationsDir = path.resolve("supabase/migrations");
 
+async function resolveHostToIPv4(host: string): Promise<string> {
+  if (host === "localhost" || host === "127.0.0.1" || host === "env-url") return host;
+  try {
+    const addresses = await dns.promises.resolve4(host);
+    if (addresses && addresses.length > 0) {
+      console.log(`[DNS] Resolved ${host} to IPv4: ${addresses[0]}`);
+      return addresses[0];
+    }
+  } catch (err: any) {
+    console.warn(`[DNS] Failed to resolve ${host} to IPv4:`, err.message);
+  }
+  return host;
+}
+
 async function runMigrationsForHostPort(host: string, port: number, useSSL: boolean): Promise<boolean> {
-  const connectionString = host === "env-url"
+  let connectionString = host === "env-url"
     ? process.env.DATABASE_URL
     : `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
+  
+  let originalHost = host;
+  if (connectionString) {
+    try {
+      const parsed = new URL(connectionString);
+      originalHost = parsed.hostname;
+      if (!/^[0-9.]+$/.test(originalHost) && originalHost !== "localhost") {
+        const ipv4 = await resolveHostToIPv4(originalHost);
+        parsed.hostname = ipv4;
+        connectionString = parsed.toString();
+      }
+    } catch (e) {
+      // fallback
+    }
+  }
+
   console.log(`Attempting migration on ${host}:${port} (SSL: ${useSSL})...`);
   
-  const isRemote = connectionString && (connectionString.includes("supabase.co") || connectionString.includes("chancerealm.casino") || !host.startsWith("127.") && host !== "localhost" && host !== "env-url");
+  const isRemote = originalHost.includes(".") && !originalHost.startsWith("127.") && originalHost !== "localhost";
   const client = new pg.Client({
     connectionString,
     ssl: useSSL || isRemote
-      ? { rejectUnauthorized: false }
+      ? { rejectUnauthorized: false, servername: originalHost }
       : undefined
   });
 
