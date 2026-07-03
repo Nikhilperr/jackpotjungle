@@ -2455,6 +2455,7 @@ function Conversation({
   const groupId = isGroup ? conv.conversationId.replace("group-", "") : null;
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const typingChannelRef = useRef<any>(null);
 
   useEffect(() => {
     if (meId) {
@@ -2466,7 +2467,16 @@ function Conversation({
 
   useEffect(() => {
     if (!isGroup || !meId || !groupId) return;
+    
+    // Clean up any existing channel with the same name to prevent callbacks error
+    const existing = supabase.getChannels().find(c => c.topic === `realtime:typing-${groupId}`);
+    if (existing) {
+      supabase.removeChannel(existing);
+    }
+
     const typingChannel = supabase.channel(`typing-${groupId}`);
+    typingChannelRef.current = typingChannel;
+
     typingChannel
       .on("presence", { event: "sync" }, () => {
         const state = typingChannel.presenceState();
@@ -2482,7 +2492,11 @@ function Conversation({
         setTypingUsers(users);
       })
       .subscribe();
-    return () => { supabase.removeChannel(typingChannel); };
+
+    return () => {
+      typingChannelRef.current = null;
+      supabase.removeChannel(typingChannel);
+    };
   }, [isGroup, meId, groupId]);
 
   const lastTypingTimeRef = useRef(0);
@@ -2492,12 +2506,13 @@ function Conversation({
     const now = Date.now();
     if (now - lastTypingTimeRef.current > 2000) {
       lastTypingTimeRef.current = now;
-      const channel = supabase.channel(`typing-${groupId}`);
-      channel.track({
-        userId: meId,
-        username: currentUser?.username || "Someone",
-        isTyping: val.trim().length > 0
-      }).then();
+      if (typingChannelRef.current) {
+        typingChannelRef.current.track({
+          userId: meId,
+          username: currentUser?.username || "Someone",
+          isTyping: val.trim().length > 0
+        }).then();
+      }
     }
   };
 
