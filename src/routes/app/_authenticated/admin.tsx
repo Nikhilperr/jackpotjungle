@@ -2712,6 +2712,10 @@ function Conversation({
   const [editTxNotes, setEditTxNotes] = useState("");
   const [editTxCreatedAt, setEditTxCreatedAt] = useState("");
 
+  // Delete Transaction States
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmTxId, setDeleteConfirmTxId] = useState<string | null>(null);
+
   // Reset wallet dialog fields when modal opens
   useEffect(() => {
     if (walletPopupOpen) {
@@ -2826,13 +2830,17 @@ function Conversation({
     }
   };
 
-  const handleDeleteTx = async (txId: string) => {
-    const confirmed = window.confirm("Are you sure you want to delete this transaction? This will revert its effect on the user's balance.");
-    if (!confirmed) return;
+  const handleDeleteTx = (txId: string) => {
+    setDeleteConfirmTxId(txId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteTx = async () => {
+    if (!deleteConfirmTxId) return;
     try {
       const { deleteWalletTransactionAdmin } = await import("@/lib/wallet.functions");
       const res = await deleteWalletTransactionAdmin({
-        data: { transactionId: txId }
+        data: { transactionId: deleteConfirmTxId }
       });
       if (res.success) {
         toast.success("Transaction deleted successfully!");
@@ -2853,6 +2861,9 @@ function Conversation({
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to delete transaction");
+    } finally {
+      setDeleteConfirmOpen(false);
+      setDeleteConfirmTxId(null);
     }
   };
 
@@ -5318,6 +5329,37 @@ function Conversation({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 4. Delete Transaction Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent className="bg-card border border-border text-foreground rounded-2xl max-w-sm p-6">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-bold text-destructive">
+              Confirm Transaction Deletion
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-muted-foreground mt-2">
+              Are you sure you want to delete this transaction? This will revert its effect on the user's balance. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel 
+              className="rounded-xl text-xs font-bold"
+              onClick={() => {
+                setDeleteConfirmOpen(false);
+                setDeleteConfirmTxId(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl text-xs font-bold"
+              onClick={confirmDeleteTx}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
