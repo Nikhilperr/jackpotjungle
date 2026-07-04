@@ -921,6 +921,12 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
   const [newPassword, setNewPassword] = useState("");
   const [settingPw, setSettingPw] = useState(false);
 
+  // Elevation states
+  const [aalState, setAalState] = useState<{ current: string; next: string } | null>(null);
+  const [elevationCode, setElevationCode] = useState("");
+  const [elevating, setElevating] = useState(false);
+  const [elevated, setElevated] = useState(false);
+
   // MFA states
   const [mfaStatus, setMfaStatus] = useState<"unverified" | "enrolling" | "active">("unverified");
   const [mfaFactorId, setMfaFactorId] = useState("");
@@ -970,8 +976,21 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
     }
   };
 
+  const checkAalStatus = async () => {
+    try {
+      const { data, error } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!error && data) {
+        setAalState({ current: data.currentLevel, next: data.nextLevel });
+        if (data.currentLevel === "aal2") {
+          setElevated(true);
+        }
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     checkMFA();
+    checkAalStatus();
     sb.auth.getSession().then(({ data }: any) => {
       if (data.session) {
         setCurrentSessionId(data.session.id);
@@ -980,6 +999,36 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
       }
     });
   }, []);
+
+  const handleElevateSession = async () => {
+    setElevating(true);
+    try {
+      const { data: factors, error: listErr } = await sb.auth.mfa.listFactors();
+      if (listErr) throw listErr;
+      const totpFactor = factors.totp.find((f: any) => f.status === "verified");
+      if (!totpFactor) throw new Error("No verified factor found");
+
+      const { data: challenge, error: challengeErr } = await sb.auth.mfa.challenge({
+        factorId: totpFactor.id
+      });
+      if (challengeErr) throw challengeErr;
+
+      const { error: verifyErr } = await sb.auth.mfa.verify({
+        factorId: totpFactor.id,
+        challengeId: challenge.id,
+        code: elevationCode
+      });
+      if (verifyErr) throw verifyErr;
+
+      toast.success("Identity verified! Settings unlocked.");
+      setElevated(true);
+      setAalState((prev: any) => prev ? { ...prev, current: "aal2" } : null);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to verify authenticator code.");
+    } finally {
+      setElevating(false);
+    }
+  };
 
   const handleEnableMFA = async () => {
     setMfaLoading(true);
@@ -1215,33 +1264,60 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
                 </Button>
               </div>
 
-              <div className="bg-secondary/40 border border-border/80 rounded-2xl p-5 space-y-3 text-xs">
-                <p className="font-semibold text-foreground flex items-center gap-1.5">
-                  <KeyRound className="h-4 w-4 text-primary" /> 
-                  {isGoogle ? "Create Account Password" : "Change Password"}
-                </p>
-                <p className="text-muted-foreground leading-relaxed">
-                  {isGoogle 
-                    ? "You logged in via Google. You can create a password below to allow email & password login in the future."
-                    : "Update your account password below."}
-                </p>
-                <form onSubmit={handleSetPassword} className="space-y-3 pt-1">
-                  <div className="space-y-1">
-                    <label htmlFor="admin-new-pw" className="text-[10px] uppercase font-bold text-muted-foreground">New Password</label>
-                    <Input 
-                      id="admin-new-pw" 
-                      type="password" 
-                      value={newPassword} 
-                      onChange={(e) => setNewPassword(e.target.value)} 
-                      placeholder="Min 6 characters" 
-                      className="bg-card h-9" 
-                    />
-                  </div>
-                  <Button type="submit" disabled={newPassword.length < 6 || settingPw} size="sm" className="rounded-full">
-                    {settingPw ? "Updating..." : isGoogle ? "Set Password" : "Update Password"}
-                  </Button>
-                </form>
-              </div>
+              {aalState && aalState.next === "aal2" && aalState.current !== "aal2" && !elevated ? (
+                <div className="bg-secondary/40 border border-amber-500/20 rounded-2xl p-5 space-y-3 text-xs">
+                  <p className="font-semibold text-amber-500 flex items-center gap-1.5">
+                    <Shield className="h-4 w-4" /> 2FA Verification Required
+                  </p>
+                  <p className="text-muted-foreground leading-relaxed">
+                    To lock these settings and update password/emails, please enter your Google Authenticator code first.
+                  </p>
+                  <form onSubmit={(e) => { e.preventDefault(); handleElevateSession(); }} className="space-y-3 pt-1">
+                    <div className="space-y-1">
+                      <label htmlFor="admin-elevate-code" className="text-[10px] uppercase font-bold text-muted-foreground">Authenticator Code</label>
+                      <Input 
+                        id="admin-elevate-code" 
+                        type="text" 
+                        placeholder="000000" 
+                        value={elevationCode} 
+                        onChange={(e) => setElevationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        className="bg-card font-mono text-center tracking-widest max-w-[120px] h-9" 
+                      />
+                    </div>
+                    <Button type="submit" disabled={elevationCode.length !== 6 || elevating} size="sm" className="rounded-full">
+                      {elevating ? "Verifying..." : "Verify Code"}
+                    </Button>
+                  </form>
+                </div>
+              ) : (
+                <div className="bg-secondary/40 border border-border/80 rounded-2xl p-5 space-y-3 text-xs">
+                  <p className="font-semibold text-foreground flex items-center gap-1.5">
+                    <KeyRound className="h-4 w-4 text-primary" /> 
+                    {isGoogle ? "Create Account Password" : "Change Password"}
+                  </p>
+                  <p className="text-muted-foreground leading-relaxed">
+                    {isGoogle 
+                      ? "You logged in via Google. You can create a password below to allow email & password login in the future."
+                      : "Update your account password below."}
+                  </p>
+                  <form onSubmit={handleSetPassword} className="space-y-3 pt-1">
+                    <div className="space-y-1">
+                      <label htmlFor="admin-new-pw" className="text-[10px] uppercase font-bold text-muted-foreground">New Password</label>
+                      <Input 
+                        id="admin-new-pw" 
+                        type="password" 
+                        value={newPassword} 
+                        onChange={(e) => setNewPassword(e.target.value)} 
+                        placeholder="Min 6 characters" 
+                        className="bg-card h-9" 
+                      />
+                    </div>
+                    <Button type="submit" disabled={newPassword.length < 6 || settingPw} size="sm" className="rounded-full">
+                      {settingPw ? "Updating..." : isGoogle ? "Set Password" : "Update Password"}
+                    </Button>
+                  </form>
+                </div>
+              )}
             </div>
           )}
 
