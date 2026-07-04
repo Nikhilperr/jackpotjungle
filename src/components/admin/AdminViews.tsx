@@ -400,25 +400,25 @@ export function LogsView() {
 }
 
 /* ============ USER DETAIL PANEL (notes/tags/credits/payments/referrer) ============ */
-export function UserDetailPanel({ 
-  userId, 
-  username, 
-  avatar, 
-  variant = "desktop", 
-  onClose, 
-  onCreateGroupClick, 
-  onSearchClick, 
+export function UserDetailPanel({
+  userId,
+  username,
+  avatar,
+  variant = "desktop",
+  onClose,
+  onCreateGroupClick,
+  onSearchClick,
   onShareClick,
   onWalletClick,
   onHistoryClick
-}: { 
-  userId: string; 
-  username: string; 
-  avatar: string | null; 
-  variant?: "desktop" | "embedded"; 
-  onClose?: () => void; 
-  onCreateGroupClick?: () => void; 
-  onSearchClick?: () => void; 
+}: {
+  userId: string;
+  username: string;
+  avatar: string | null;
+  variant?: "desktop" | "embedded";
+  onClose?: () => void;
+  onCreateGroupClick?: () => void;
+  onSearchClick?: () => void;
   onShareClick?: () => void;
   onWalletClick?: () => void;
   onHistoryClick?: () => void;
@@ -449,13 +449,13 @@ export function UserDetailPanel({
     setNotes(n.data ?? []);
     setIsBlocked(!!prof.data?.is_blocked);
     setProfileData(prof.data || null);
-    
+
     // Map stats for display in details card
     setTotals({
       loaded: Number(prof.data?.wallet_deposits ?? 0),
       paid: Number(prof.data?.wallet_used ?? 0)
     });
-    
+
     const rolesList = (r.data ?? []).map((x: any) => x.role);
     if (rolesList.includes("super_admin")) setRole("super_admin");
     else if (rolesList.includes("admin")) setRole("admin");
@@ -557,7 +557,7 @@ export function UserDetailPanel({
               Group
             </Button>
           )}
-           {onSearchClick && (
+          {onSearchClick && (
             <Button size="sm" variant="outline" onClick={onSearchClick} className="flex-1 border-primary/20 hover:bg-primary/5 text-primary hover:text-primary transition-all">
               <Search className="h-3.5 w-3.5 mr-1.5" />
               Search
@@ -579,8 +579,8 @@ export function UserDetailPanel({
           <div className="space-y-1">
             <span className="text-[10px] uppercase text-muted-foreground font-semibold">Full Name</span>
             <p className="text-sm font-semibold text-foreground">
-              {profileData?.first_name || profileData?.last_name 
-                ? `${profileData?.first_name ?? ""} ${profileData?.last_name ?? ""}`.trim() 
+              {profileData?.first_name || profileData?.last_name
+                ? `${profileData?.first_name ?? ""} ${profileData?.last_name ?? ""}`.trim()
                 : "Not specified"}
             </p>
           </div>
@@ -611,14 +611,14 @@ export function UserDetailPanel({
           <Wallet className="h-3.5 w-3.5 text-primary" /> Wallet balances
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <button 
+          <button
             onClick={onWalletClick}
             className="bg-secondary/40 border border-border/60 hover:bg-secondary/80 transition-colors rounded-xl p-3 text-left w-full"
           >
             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Available</p>
             <p className="text-lg font-black text-emerald-500 mt-1">${(profileData?.wallet_balance ?? 0).toFixed(2)}</p>
           </button>
-          <button 
+          <button
             onClick={onWalletClick}
             className="bg-secondary/40 border border-border/60 hover:bg-secondary/80 transition-colors rounded-xl p-3 text-left w-full"
           >

@@ -221,7 +221,7 @@ function AdminPage() {
     if (user) {
       try {
         localStorage.setItem("jj_me_id", user.id);
-      } catch {}
+      } catch { }
     }
   }, [user]);
 
@@ -268,7 +268,7 @@ function AdminPage() {
 
     await supabase.auth.signOut();
     await new Promise((resolve) => setTimeout(resolve, 150));
-    
+
     const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
     const isProdDomain = hostname.endsWith("playjackpotjungle.com");
     if (isProdDomain) {
@@ -433,9 +433,8 @@ function SideBtn({
   return (
     <button
       onClick={onClick}
-      className={`w-full h-10 rounded-lg flex items-center gap-3 px-3 text-sm font-medium transition-colors ${
-        active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-      }`}
+      className={`w-full h-10 rounded-lg flex items-center gap-3 px-3 text-sm font-medium transition-colors ${active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+        }`}
     >
       <Icon className="h-4 w-4 shrink-0" />
       <span>{label}</span>
@@ -472,7 +471,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [search, setSearch] = useState("");
   const searchParams = Route.useSearch();
-  
+
   const activeId = searchParams.c || null;
   const setActiveId = (id: string | null) => {
     navigate({
@@ -523,8 +522,8 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       .eq("id", userId)
       .maybeSingle();
 
-    const displayName = prof?.first_name 
-      ? (prof.last_name ? `${prof.first_name} ${prof.last_name}` : prof.first_name) 
+    const displayName = prof?.first_name
+      ? (prof.last_name ? `${prof.first_name} ${prof.last_name}` : prof.first_name)
       : username;
 
     setShareProfileTarget({
@@ -952,7 +951,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
 
       try {
         localStorage.setItem("jj_cached_admin_conversations", JSON.stringify(rows));
-      } catch {}
+      } catch { }
     } finally {
       setLoadingConvs(false);
     }
@@ -1000,7 +999,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             if (preview && isSystemMessage(preview)) {
               preview = formatSystemMessage(preview);
             }
-            
+
             const copy = [...prev];
             const updated = { ...copy[idx] };
             updated.lastMessage = preview;
@@ -1066,19 +1065,19 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const filtered = viewGroups
     ? groupRows.filter((u) => !search || u.username.toLowerCase().includes(search.toLowerCase()))
     : (() => {
-        const showBoth = !viewSpam && tagFilter === null;
-        const baseConvs = showBoth ? [...convs, ...groupRows] : convs;
-        return baseConvs.filter((u) => {
-          if (u.isGroup) {
-            if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
-            return true;
-          }
-          if (viewSpam ? !u.isSpam : u.isSpam) return false;
+      const showBoth = !viewSpam && tagFilter === null;
+      const baseConvs = showBoth ? [...convs, ...groupRows] : convs;
+      return baseConvs.filter((u) => {
+        if (u.isGroup) {
           if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
-          if (tagFilter && !(userTagMap[u.userId] ?? []).includes(tagFilter)) return false;
           return true;
-        });
-      })();
+        }
+        if (viewSpam ? !u.isSpam : u.isSpam) return false;
+        if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
+        if (tagFilter && !(userTagMap[u.userId] ?? []).includes(tagFilter)) return false;
+        return true;
+      });
+    })();
 
   const sorted = [...filtered].sort((a, b) => {
     const aPinned = pinnedConvs.includes(a.conversationId);
@@ -1101,45 +1100,45 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     if (next && active?.conversationId === conv.conversationId) setActiveId(null);
   }
 
-    const onlineUsers = convs.filter((u) => u.online && !u.isSpam);
+  const onlineUsers = convs.filter((u) => u.online && !u.isSpam);
 
-    return (
-      <div className="flex h-full min-h-0">
-        {/* List — hidden on mobile when a conversation is open */}
-        <div className={`${active ? "hidden sm:flex" : "flex"} w-full sm:w-80 border-r border-border bg-card flex-col min-h-0`}>
-          <div className="p-4 border-b border-border">
-            <div className="flex items-center gap-2 mb-3 sm:mb-1">
-              <button
-                onClick={onOpenNav}
-                className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary shrink-0"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-              <div className="flex-1">
-                <h2 className="text-lg font-bold leading-tight">Jackpot Jungle</h2>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Page Inbox</p>
-              </div>
+  return (
+    <div className="flex h-full min-h-0">
+      {/* List — hidden on mobile when a conversation is open */}
+      <div className={`${active ? "hidden sm:flex" : "flex"} w-full sm:w-80 border-r border-border bg-card flex-col min-h-0`}>
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center gap-2 mb-3 sm:mb-1">
+            <button
+              onClick={onOpenNav}
+              className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary shrink-0"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="flex-1">
+              <h2 className="text-lg font-bold leading-tight">Jackpot Jungle</h2>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Page Inbox</p>
             </div>
-            {onlineUsers.length > 0 && (
-              <div className="flex items-center gap-4 py-2 mt-3 overflow-x-auto no-scrollbar">
-                {onlineUsers.map((f) => (
-                  <button
-                    key={f.conversationId}
-                    onClick={() => setActiveId(f.conversationId)}
-                    className="flex flex-col items-center shrink-0 w-[56px] text-center group cursor-pointer"
-                  >
-                    <div className="relative">
-                      <Avatar name={f.username} url={f.avatar_url} size={40} />
-                      <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-background" />
-                    </div>
-                    <span className="text-[10px] font-medium text-foreground mt-1 truncate w-full group-hover:underline">
-                      {f.username.split(" ")[0]}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
+          </div>
+          {onlineUsers.length > 0 && (
+            <div className="flex items-center gap-4 py-2 mt-3 overflow-x-auto no-scrollbar">
+              {onlineUsers.map((f) => (
+                <button
+                  key={f.conversationId}
+                  onClick={() => setActiveId(f.conversationId)}
+                  className="flex flex-col items-center shrink-0 w-[56px] text-center group cursor-pointer"
+                >
+                  <div className="relative">
+                    <Avatar name={f.username} url={f.avatar_url} size={40} />
+                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-background" />
+                  </div>
+                  <span className="text-[10px] font-medium text-foreground mt-1 truncate w-full group-hover:underline">
+                    {f.username.split(" ")[0]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-1.5 mt-3 overflow-x-auto -mx-1 px-1 pb-1">
             <button
               onClick={() => { setViewSpam(false); setViewGroups(false); setTagFilter(null); }}
               className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold border ${!viewSpam && !viewGroups && tagFilter === null ? "bg-primary text-primary-foreground border-transparent" : "bg-secondary border-transparent text-muted-foreground"}`}
@@ -1173,40 +1172,40 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 <Ban className="h-3 w-3" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
               </button>
             )}
-            </div>
-            <div className="relative mt-3">
-              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search users"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 rounded-full bg-secondary border-transparent"
-              />
-            </div>
           </div>
+          <div className="relative mt-3">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search users"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 rounded-full bg-secondary border-transparent"
+            />
+          </div>
+        </div>
         <PullToRefresh onRefresh={load}>
-            {viewGroups && (
-              <button
-                onClick={() => setCreateGroupOpen(true)}
-                className="flex items-center gap-3 px-4 py-3 mx-2 my-1 rounded-2xl text-left bg-primary/10 hover:bg-primary/15 text-primary border border-primary/15 transition-all font-semibold w-[calc(100%-1rem)]"
-              >
-                <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary shrink-0">
-                  <Plus className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold leading-tight">Create Group Chat</p>
-                  <p className="text-[10px] text-muted-foreground/90 truncate leading-snug">Start a group chat with players</p>
-                </div>
-              </button>
-            )}
-            {loadingConvs && (viewGroups ? groupRows.length === 0 : convs.length === 0) ? (
-              <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <span>Loading chats…</span>
+          {viewGroups && (
+            <button
+              onClick={() => setCreateGroupOpen(true)}
+              className="flex items-center gap-3 px-4 py-3 mx-2 my-1 rounded-2xl text-left bg-primary/10 hover:bg-primary/15 text-primary border border-primary/15 transition-all font-semibold w-[calc(100%-1rem)]"
+            >
+              <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary shrink-0">
+                <Plus className="h-4 w-4" />
               </div>
-            ) : sorted.length === 0 ? (
-              <p className="p-6 text-center text-sm text-muted-foreground">{viewGroups ? "No groups yet." : viewSpam ? "No spam conversations." : "No conversations."}</p>
-            ) : sorted.map((u) => {
+              <div className="min-w-0">
+                <p className="text-xs font-bold leading-tight">Create Group Chat</p>
+                <p className="text-[10px] text-muted-foreground/90 truncate leading-snug">Start a group chat with players</p>
+              </div>
+            </button>
+          )}
+          {loadingConvs && (viewGroups ? groupRows.length === 0 : convs.length === 0) ? (
+            <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <span>Loading chats…</span>
+            </div>
+          ) : sorted.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">{viewGroups ? "No groups yet." : viewSpam ? "No spam conversations." : "No conversations."}</p>
+          ) : sorted.map((u) => {
             const startPress = () => {
               if (pressTimer.current) clearTimeout(pressTimer.current);
               pressTimer.current = setTimeout(() => setContextMenuTarget(u.conversationId), 600);
@@ -1214,61 +1213,61 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
             const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
             const isPinned = pinnedConvs.includes(u.conversationId);
             return (
-            <div key={u.conversationId} className="group relative">
-            <button
-              onClick={() => setActiveId(u.conversationId)}
-              onPointerDown={startPress}
-              onPointerUp={cancelPress}
-              onPointerMove={cancelPress}
-              onPointerLeave={cancelPress}
-              onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(u.conversationId); }}
-              className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${activeId === u.conversationId ? "bg-secondary" : ""}`}
-            >
-              <div className="relative shrink-0">
-                <Avatar name={u.username} url={u.avatar_url} size={44} />
-                {u.online && !u.isSpam && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+              <div key={u.conversationId} className="group relative">
+                <button
+                  onClick={() => setActiveId(u.conversationId)}
+                  onPointerDown={startPress}
+                  onPointerUp={cancelPress}
+                  onPointerMove={cancelPress}
+                  onPointerLeave={cancelPress}
+                  onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(u.conversationId); }}
+                  className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${activeId === u.conversationId ? "bg-secondary" : ""}`}
+                >
+                  <div className="relative shrink-0">
+                    <Avatar name={u.username} url={u.avatar_url} size={44} />
+                    {u.online && !u.isSpam && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+                  </div>
+                  <div className="flex-1 min-w-0 pr-9">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className={`truncate text-sm flex items-center gap-1.5 ${u.unread ? "font-bold" : "font-semibold"}`}>
+                        {u.username}
+                        {u.isAdmin && (
+                          <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+                        )}
+                        {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
+                      </p>
+                      {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
+                    </div>
+                    <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                      {u.lastMessage ?? "No messages yet"}
+                    </p>
+                    <div className="flex gap-1 mt-1 flex-wrap items-center">
+                      {u.credit > 0 && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
+                          Credit ${u.credit.toFixed(2)}
+                        </span>
+                      )}
+                      {!u.isGroup && (userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
+                        const t = allTags.find((x) => x.id === tid);
+                        if (!t) return null;
+                        return <span key={tid} className="text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>;
+                      })}
+                    </div>
+                  </div>
+                  {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
+                </button>
+                {!u.isGroup && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvSpam(u, !u.isSpam); }}
+                    title={u.isSpam ? "Remove from spam" : "Move to spam"}
+                    aria-label={u.isSpam ? "Remove from spam" : "Move to spam"}
+                    className={`absolute right-4 top-3 h-7 w-7 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-opacity flex ${u.isSpam ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
+                  >
+                    {u.isSpam ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                  </button>
+                )}
               </div>
-              <div className="flex-1 min-w-0 pr-9">
-                <div className="flex items-baseline justify-between gap-2">
-                  <p className={`truncate text-sm flex items-center gap-1.5 ${u.unread ? "font-bold" : "font-semibold"}`}>
-                    {u.username}
-                    {u.isAdmin && (
-                      <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
-                    )}
-                    {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
-                  </p>
-                  {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
-                </div>
-                <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                  {u.lastMessage ?? "No messages yet"}
-                </p>
-                <div className="flex gap-1 mt-1 flex-wrap items-center">
-                  {u.credit > 0 && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
-                      Credit ${u.credit.toFixed(2)}
-                    </span>
-                  )}
-                  {!u.isGroup && (userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
-                    const t = allTags.find((x) => x.id === tid);
-                    if (!t) return null;
-                    return <span key={tid} className="text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>;
-                  })}
-                </div>
-              </div>
-              {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
-            </button>
-            {!u.isGroup && (
-              <button
-                type="button"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvSpam(u, !u.isSpam); }}
-                title={u.isSpam ? "Remove from spam" : "Move to spam"}
-                aria-label={u.isSpam ? "Remove from spam" : "Move to spam"}
-                className={`absolute right-4 top-3 h-7 w-7 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-opacity flex ${u.isSpam ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
-              >
-                {u.isSpam ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
-              </button>
-            )}
-            </div>
             );
           })}
         </PullToRefresh>
@@ -1277,15 +1276,15 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       {/* Conversation pane — full screen on mobile when open */}
       <div className={`${active ? "flex" : "hidden sm:flex"} flex-1 min-w-0 flex-col bg-background min-h-0`}>
         {active ? (
-          <Conversation 
-            meId={meId} 
-            conv={active} 
-            convs={convs} 
+          <Conversation
+            meId={meId}
+            conv={active}
+            convs={convs}
             messages={messages}
             setMessages={setMessages}
-            onBack={() => setActiveId(null)} 
-            onOpenDetail={() => setDetailOpen(true)} 
-            onToggleSpam={() => setConvSpam(active, !active.isSpam)} 
+            onBack={() => setActiveId(null)}
+            onOpenDetail={() => setDetailOpen(true)}
+            onToggleSpam={() => setConvSpam(active, !active.isSpam)}
             searchOpen={searchOpen}
             setSearchOpen={setSearchOpen}
             searchQuery={searchQuery}
@@ -1595,7 +1594,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [search, setSearch] = useState("");
   const searchParams = Route.useSearch();
-  
+
   const activeId = searchParams.c || null;
   const setActiveId = (id: string | null) => {
     navigate({
@@ -1646,8 +1645,8 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
       .eq("id", userId)
       .maybeSingle();
 
-    const displayName = prof?.first_name 
-      ? (prof.last_name ? `${prof.first_name} ${prof.last_name}` : prof.first_name) 
+    const displayName = prof?.first_name
+      ? (prof.last_name ? `${prof.first_name} ${prof.last_name}` : prof.first_name)
       : username;
 
     setShareProfileTarget({
@@ -1896,24 +1895,24 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
 
       const staffRoles = roleRows ?? [];
       const staffUserIds = staffRoles.map(r => r.user_id);
-      
+
       const adminUsers = new Set(staffRoles.filter(r => r.role === "admin" || r.role === "super_admin").map(r => r.user_id));
       const superAdminUsers = new Set(staffRoles.filter(r => r.role === "super_admin").map(r => r.user_id));
 
       const { data: profiles } = staffUserIds.length > 0
         ? await supabase
-            .from("profiles")
-            .select("id, username, avatar_url, online, last_seen")
-            .in("id", staffUserIds)
+          .from("profiles")
+          .select("id, username, avatar_url, online, last_seen")
+          .in("id", staffUserIds)
         : { data: [] };
 
       const { data: dmMsgs } = staffUserIds.length > 0
         ? await supabase
-            .from("messages")
-            .select("id, sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
-            .is("group_id", null)
-            .or(`and(sender_id.eq.${meId},receiver_id.in.(${staffUserIds.join(",")})),and(receiver_id.eq.${meId},sender_id.in.(${staffUserIds.join(",")}))`)
-            .order("created_at", { ascending: false })
+          .from("messages")
+          .select("id, sender_id, receiver_id, content, image_url, audio_url, created_at, seen")
+          .is("group_id", null)
+          .or(`and(sender_id.eq.${meId},receiver_id.in.(${staffUserIds.join(",")})),and(receiver_id.eq.${meId},sender_id.in.(${staffUserIds.join(",")}))`)
+          .order("created_at", { ascending: false })
         : { data: [] };
 
       const { data: memberships } = await supabase
@@ -1929,16 +1928,16 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
 
       const { data: groupMsgs } = adminGroupIds.length > 0
         ? await supabase
-            .from("messages")
-            .select("id, sender_id, group_id, content, image_url, audio_url, created_at, seen, sender:sender_id(id, username)")
-            .in("group_id", adminGroupIds)
-            .order("created_at", { ascending: false })
+          .from("messages")
+          .select("id, sender_id, group_id, content, image_url, audio_url, created_at, seen, sender:sender_id(id, username)")
+          .in("group_id", adminGroupIds)
+          .order("created_at", { ascending: false })
         : { data: [] };
 
       const dmRows: ConvRow[] = (profiles ?? [])
         .filter((p: any) => p.id !== meId)
         .map((p: any) => {
-          const convMsgs = (dmMsgs ?? []).filter((m: any) => 
+          const convMsgs = (dmMsgs ?? []).filter((m: any) =>
             (m.sender_id === meId && m.receiver_id === p.id) ||
             (m.sender_id === p.id && m.receiver_id === meId)
           );
@@ -2012,7 +2011,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
 
       try {
         localStorage.setItem("jj_cached_team_conversations", JSON.stringify(dmRows));
-      } catch {}
+      } catch { }
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Failed to load team conversations");
@@ -2059,12 +2058,12 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
   const filtered = viewGroups
     ? groupRows.filter((u) => !search || u.username.toLowerCase().includes(search.toLowerCase()))
     : (() => {
-        const baseConvs = [...convs, ...groupRows];
-        return baseConvs.filter((u) => {
-          if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
-          return true;
-        });
-      })();
+      const baseConvs = [...convs, ...groupRows];
+      return baseConvs.filter((u) => {
+        if (search && !u.username.toLowerCase().includes(search.toLowerCase())) return false;
+        return true;
+      });
+    })();
 
   const sorted = [...filtered].sort((a, b) => {
     const aPinned = pinnedConvs.includes(a.conversationId);
@@ -2214,15 +2213,15 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
       {/* Active Conversation Pane */}
       <div className={`${active ? "flex" : "hidden sm:flex"} flex-1 min-w-0 flex-col bg-background min-h-0`}>
         {active ? (
-          <Conversation 
-            meId={meId} 
-            conv={active} 
-            convs={convs} 
+          <Conversation
+            meId={meId}
+            conv={active}
+            convs={convs}
             messages={messages}
             setMessages={setMessages}
-            onBack={() => setActiveId(null)} 
-            onOpenDetail={() => setDetailOpen(true)} 
-            onToggleSpam={() => {}} 
+            onBack={() => setActiveId(null)}
+            onOpenDetail={() => setDetailOpen(true)}
+            onToggleSpam={() => { }}
             searchOpen={searchOpen}
             setSearchOpen={setSearchOpen}
             searchQuery={searchQuery}
@@ -2510,14 +2509,14 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
 type PageMsg = { id: string; sender_id: string; content: string | null; image_url: string | null; audio_url: string | null; created_at: string; seen: boolean; from_page: boolean; failed?: boolean };
 type CallRow = { id: string; caller_id: string; callee_id: string; call_type: "voice" | "video"; status: "ringing" | "active" | "ended" | "missed" | "declined" | "canceled"; duration_seconds: number; created_at: string };
 
-function Conversation({ 
-  meId, 
-  conv, 
-  convs = [], 
+function Conversation({
+  meId,
+  conv,
+  convs = [],
   messages,
   setMessages,
-  onBack, 
-  onOpenDetail, 
+  onBack,
+  onOpenDetail,
   onToggleSpam,
   onLastMessageUpdate,
   searchOpen,
@@ -2527,14 +2526,14 @@ function Conversation({
   activeMatch,
   setActiveMatch,
   isTeamChat = false,
-}: { 
-  meId: string; 
-  conv: ConvRow; 
-  convs?: ConvRow[]; 
+}: {
+  meId: string;
+  conv: ConvRow;
+  convs?: ConvRow[];
   messages: any[];
   setMessages: React.Dispatch<React.SetStateAction<any[]>>;
-  onBack: () => void; 
-  onOpenDetail: () => void; 
+  onBack: () => void;
+  onOpenDetail: () => void;
   onToggleSpam: () => void;
   onLastMessageUpdate: (content: string | null, image_url: string | null, audio_url: string | null, created_at: string) => void;
   searchOpen: boolean;
@@ -2564,11 +2563,11 @@ function Conversation({
 
   useEffect(() => {
     if (!isGroup || !meId || !groupId) return;
-    
+
     // Clean up any existing channel with the same name to prevent callbacks error
     if (supabase.realtime?.channels) {
-      supabase.realtime.channels = supabase.realtime.channels.filter(c => 
-        c.topic !== `realtime:typing-${groupId}` && 
+      supabase.realtime.channels = supabase.realtime.channels.filter(c =>
+        c.topic !== `realtime:typing-${groupId}` &&
         c.topic !== `typing-${groupId}`
       );
     }
@@ -2681,6 +2680,27 @@ function Conversation({
   const [walletNotes, setWalletNotes] = useState("");
   const [performingWalletAction, setPerformingWalletAction] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("all");
+
+  // Reset wallet dialog fields when modal opens
+  useEffect(() => {
+    if (walletPopupOpen) {
+      setWalletAction("deposit");
+      setWalletPaymentMethod("Cashapp");
+      setWalletAmount("");
+      setWalletNotes("");
+    }
+  }, [walletPopupOpen]);
+
+  // Automatically select "Credit" payment method when credit load/played is selected
+  useEffect(() => {
+    if (walletAction === "credit_added" || walletAction === "deduct_credit") {
+      setWalletPaymentMethod("Credit");
+    } else if (walletAction === "deposit") {
+      if (walletPaymentMethod === "Credit") {
+        setWalletPaymentMethod("Cashapp");
+      }
+    }
+  }, [walletAction]);
 
   const loadWalletDetails = async (customUserId?: string) => {
     const targetUserId = customUserId || conv.userId;
@@ -2808,7 +2828,7 @@ function Conversation({
       tx.admin_name || "Admin",
       tx.notes || ""
     ]);
-    const csvContent = "data:text/csv;charset=utf-8," 
+    const csvContent = "data:text/csv;charset=utf-8,"
       + [headers.join(","), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -2823,7 +2843,7 @@ function Conversation({
   const printAdminStatement = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return toast.error("Could not open print window.");
-    
+
     const customerName = conv.username || "Customer";
     const txRows = walletTransactions.map(tx => `
       <tr>
@@ -3125,7 +3145,7 @@ function Conversation({
     } else {
       setMessages([]);
     }
-    
+
     load();
   }, [conv.conversationId]);
 
@@ -3179,8 +3199,8 @@ function Conversation({
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
           const m = payload.new as any;
           if (m && !m.group_id) {
-            const isMatch = (m.sender_id === meId && m.receiver_id === conv.userId) || 
-                            (m.sender_id === conv.userId && m.receiver_id === meId);
+            const isMatch = (m.sender_id === meId && m.receiver_id === conv.userId) ||
+              (m.sender_id === conv.userId && m.receiver_id === meId);
             if (isMatch) {
               setMessages((prev) => {
                 if (prev.some((x) => x.id === m.id)) return prev;
@@ -3203,8 +3223,8 @@ function Conversation({
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
           const m = payload.new as any;
           if (m && !m.group_id) {
-            const isMatch = (m.sender_id === meId && m.receiver_id === conv.userId) || 
-                            (m.sender_id === conv.userId && m.receiver_id === meId);
+            const isMatch = (m.sender_id === meId && m.receiver_id === conv.userId) ||
+              (m.sender_id === conv.userId && m.receiver_id === meId);
             if (isMatch) {
               setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, ...m, from_page: m.sender_id === meId } : x)));
             }
@@ -3225,7 +3245,7 @@ function Conversation({
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "page_messages" }, (payload) => {
         const m = payload.new as PageMsg;
         const currentConvId = activeIdRef.current;
-        
+
         if (m.conversation_id === currentConvId) {
           setMessages((prev) => {
             if (prev.some((x) => x.id === m.id)) return prev;
@@ -3256,7 +3276,7 @@ function Conversation({
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "page_messages" }, (payload) => {
         const m = payload.new as PageMsg;
         const currentConvId = activeIdRef.current;
-        
+
         if (m.conversation_id === currentConvId) {
           setMessages((prev) => {
             const next = prev.map((x) => (x.id === m.id ? m : x));
@@ -3274,7 +3294,7 @@ function Conversation({
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "page_messages" }, (payload) => {
         const m = payload.old as PageMsg;
         const currentConvId = activeIdRef.current;
-        
+
         if (m.conversation_id === currentConvId) {
           setMessages((prev) => {
             const next = prev.filter((x) => x.id !== m.id);
@@ -3293,7 +3313,7 @@ function Conversation({
         const row = (payload.new ?? payload.old) as CallRow;
         if (!row || row.status === "ringing" || row.status === "active") return;
         if (row.page_conversation_id !== activeIdRef.current) return;
-        
+
         setCalls((prev) => {
           const exists = prev.some((c) => c.id === row.id);
           if (exists) return prev.map((c) => (c.id === row.id ? row : c));
@@ -4121,9 +4141,9 @@ function Conversation({
               {pinnedMessages[pinnedMessages.length - 1].content || (pinnedMessages[pinnedMessages.length - 1].image_url ? "Image 📷" : "Voice message 🎙️")}
             </span>
           </div>
-          <button 
+          <button
             type="button"
-            onClick={() => setShowAllPins(true)} 
+            onClick={() => setShowAllPins(true)}
             className="text-[10px] uppercase tracking-wider font-bold text-primary hover:underline ml-3 shrink-0"
           >
             See All ({pinnedMessages.length})
@@ -4173,11 +4193,11 @@ function Conversation({
                     </div>
                   )}
                   <div className={`flex ${mine ? "justify-end" : "justify-start"} p-1`}>
-                    <CallMessage 
-                      mine={mine} 
-                      kind={c.call_type} 
-                      status={c.status} 
-                      durationSeconds={c.duration_seconds} 
+                    <CallMessage
+                      mine={mine}
+                      kind={c.call_type}
+                      status={c.status}
+                      durationSeconds={c.duration_seconds}
                       onCallBack={() => startCall({ calleeId: conv.userId, kind: c.call_type, peer: { name: conv.username, avatar: conv.avatar_url }, context: isTeamChat ? "friend" : "page", ...(isTeamChat ? {} : { pageConversationId: conv.conversationId }) })}
                     />
                   </div>
@@ -4534,8 +4554,8 @@ function Conversation({
                 <p className="text-center text-xs text-muted-foreground py-6">No pinned messages.</p>
               ) : (
                 pinnedMessages.map(m => (
-                  <div 
-                    key={m.id} 
+                  <div
+                    key={m.id}
                     className="p-3 bg-secondary/30 hover:bg-secondary/60 border border-border rounded-xl transition-colors flex flex-col gap-1.5 relative group"
                   >
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground">
@@ -4575,7 +4595,7 @@ function Conversation({
             <div className="text-center text-xs text-muted-foreground font-medium py-1.5 border-b border-border/50">
               Delete {selectedMsgs.size} message{selectedMsgs.size > 1 ? "s" : ""}?
             </div>
-            
+
             {allSelectedAreMine && (
               <button
                 type="button"
@@ -4584,7 +4604,7 @@ function Conversation({
                   const targetIds = Array.from(selectedMsgs);
                   setSelectionMode(false);
                   setSelectedMsgs(new Set());
-                  
+
                   try {
                     if (isGroup || isTeamChat) {
                       await unsendMessagesServer({ data: { ids: targetIds } });
@@ -4602,7 +4622,7 @@ function Conversation({
                 Delete for everyone
               </button>
             )}
-            
+
             <button
               type="button"
               onClick={() => {
@@ -4617,7 +4637,7 @@ function Conversation({
             >
               Delete for you
             </button>
-            
+
             <button
               type="button"
               onClick={() => setShowDeleteBottomSheet(false)}
@@ -4644,7 +4664,7 @@ function Conversation({
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              
+
               {/* Messenger style Search Bar */}
               <div className="px-4 py-2 border-b border-border/40 bg-transparent shrink-0">
                 <div className="relative">
@@ -4675,10 +4695,10 @@ function Conversation({
                           )}
                         </div>
                       </div>
-                      <Button 
-                        onClick={() => executeForward(c)} 
-                        disabled={forwardingTargetId !== null} 
-                        size="sm" 
+                      <Button
+                        onClick={() => executeForward(c)}
+                        disabled={forwardingTargetId !== null}
+                        size="sm"
                         className="rounded-full shrink-0 shadow-sm"
                       >
                         {forwardingTargetId === c.conversationId ? "Sending..." : "Send"}
@@ -4746,7 +4766,7 @@ function Conversation({
               {/* Perform Adjustment Form */}
               <div className="space-y-4 border-t border-border/50 pt-4">
                 <h4 className="text-xs font-black uppercase text-muted-foreground tracking-wider">Perform Ledger Adjustment</h4>
-                
+
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-muted-foreground">Action Type</label>
                   <select
@@ -4964,32 +4984,30 @@ function Conversation({
                   {walletTransactions.map((tx) => {
                     const isCredit = tx.action.includes("credit");
                     const isPositive = ["deposit", "credit_added", "refund", "bonus"].includes(tx.action);
-                    
+
                     return (
                       <tr key={tx.id} className="hover:bg-secondary/20 transition-colors">
                         <td className="p-3 text-muted-foreground whitespace-nowrap">
                           {new Date(tx.created_at).toLocaleString()}
                         </td>
                         <td className="p-3 whitespace-nowrap">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider inline-block ${
-                            tx.action === "deposit" || tx.action === "bonus" || tx.action === "refund"
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider inline-block ${tx.action === "deposit" || tx.action === "bonus" || tx.action === "refund"
                               ? "bg-emerald-500/10 text-emerald-500"
                               : tx.action === "credit_added"
-                              ? "bg-amber-500/10 text-amber-500"
-                              : tx.action === "credit_released"
-                              ? "bg-blue-500/10 text-blue-500"
-                              : tx.action === "transfer"
-                              ? "bg-indigo-500/10 text-indigo-500"
-                              : tx.action === "reset"
-                              ? "bg-red-500/10 text-red-500"
-                              : "bg-red-500/15 text-red-500"
-                          }`}>
+                                ? "bg-amber-500/10 text-amber-500"
+                                : tx.action === "credit_released"
+                                  ? "bg-blue-500/10 text-blue-500"
+                                  : tx.action === "transfer"
+                                    ? "bg-indigo-500/10 text-indigo-500"
+                                    : tx.action === "reset"
+                                      ? "bg-red-500/10 text-red-500"
+                                      : "bg-red-500/15 text-red-500"
+                            }`}>
                             {tx.action.replace("_", " ")}
                           </span>
                         </td>
-                        <td className={`p-3 text-right font-black whitespace-nowrap ${
-                          isPositive ? "text-emerald-500" : "text-destructive"
-                        }`}>
+                        <td className={`p-3 text-right font-black whitespace-nowrap ${isPositive ? "text-emerald-500" : "text-destructive"
+                          }`}>
                           {isPositive ? "+" : "-"}${Number(tx.amount).toFixed(2)}
                         </td>
                         <td className="p-3 text-right whitespace-nowrap font-medium">
@@ -5310,7 +5328,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
   };
 
   const senderUsername = m.sender?.username || "Someone";
-  const senderDispName = m.sender 
+  const senderDispName = m.sender
     ? (m.sender.first_name && m.sender.last_name ? `${m.sender.first_name} ${m.sender.last_name}` : `@${m.sender.username}`)
     : (mine ? "You" : "Someone");
 
@@ -5418,8 +5436,8 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
   }
 
   return (
-    <div 
-      ref={(el) => { msgRefs.current[m.id] = el; }} 
+    <div
+      ref={(el) => { msgRefs.current[m.id] = el; }}
       className={`group/msg py-1 flex items-center gap-3 transition-colors ${selectionMode ? "hover:bg-secondary/10 cursor-pointer" : ""}`}
       onClick={() => {
         if (selectionMode) {
@@ -5438,7 +5456,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
           </div>
         </div>
       )}
-      
+
       <div className="flex-1 min-w-0">
         {showTime && (
           <div className="flex justify-center py-3 select-none">
@@ -5447,7 +5465,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
             </span>
           </div>
         )}
-        
+
         {/* Sender Header for Group Chats */}
         {!mine && m.sender && (
           <div className="flex items-center gap-1.5 ml-2 mb-1 select-none">
@@ -5461,7 +5479,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
         {/* Reply To Preview */}
         {m.replyTo && (
           <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
-            <div 
+            <div
               onClick={() => m.replyTo && msgRefs.current[m.replyTo.id]?.scrollIntoView({ behavior: "smooth", block: "center" })}
               className="max-w-[60%] text-[10px] bg-secondary/80 hover:bg-secondary border border-border/60 rounded-2xl px-3 py-1 text-muted-foreground truncate cursor-pointer transition-colors"
             >
@@ -5481,7 +5499,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
         )}
 
         <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-          <div 
+          <div
             onPointerDown={selectionMode ? undefined : startPress}
             onPointerUp={selectionMode ? undefined : cancelPress}
             onPointerMove={selectionMode ? undefined : cancelPress}

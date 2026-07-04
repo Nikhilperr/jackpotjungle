@@ -103,7 +103,7 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
       .select("username, first_name, last_name")
       .eq("id", context.userId)
       .maybeSingle();
-    const adminName = adminProf?.first_name 
+    const adminName = adminProf?.first_name
       ? `${adminProf.first_name} ${adminProf.last_name || ""}`.trim()
       : adminProf?.username || "Administrator";
 
@@ -311,7 +311,7 @@ export const sendWalletStatementAdmin = createServerFn({ method: "POST" })
 
     if (!profile) throw new Error("Target user not found.");
 
-    const customerName = profile.first_name 
+    const customerName = profile.first_name
       ? `${profile.first_name} ${profile.last_name || ""}`.trim()
       : profile.username;
 

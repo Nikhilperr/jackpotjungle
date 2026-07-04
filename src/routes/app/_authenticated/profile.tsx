@@ -111,8 +111,8 @@ function ProfilePage() {
       .subscribe();
 
     if (typeof window !== "undefined" && "Notification" in window) setPermission(Notification.permission);
-    return () => { 
-      mounted = false; 
+    return () => {
+      mounted = false;
       channel.unsubscribe();
     };
   }, [user]);
@@ -139,21 +139,21 @@ function ProfilePage() {
     e.preventDefault();
     if (!profile) return;
     setSaving(true);
-    const { error } = await supabase.from("profiles").update({ 
+    const { error } = await supabase.from("profiles").update({
       username,
       first_name: firstName.trim(),
       last_name: lastName.trim()
     }).eq("id", profile.id);
     setSaving(false);
     if (error) toast.error(error.message);
-    else { 
-      toast.success("Profile updated."); 
-      setProfile({ 
-        ...profile, 
+    else {
+      toast.success("Profile updated.");
+      setProfile({
+        ...profile,
         username,
         first_name: firstName.trim(),
         last_name: lastName.trim()
-      }); 
+      });
     }
   }
 
@@ -206,7 +206,7 @@ function ProfilePage() {
       tx.reason,
       tx.notes || ""
     ]);
-    const csvContent = "data:text/csv;charset=utf-8," 
+    const csvContent = "data:text/csv;charset=utf-8,"
       + [headers.join(","), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -221,11 +221,11 @@ function ProfilePage() {
   const printStatement = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return toast.error("Could not open print window.");
-    
-    const customerName = profile?.first_name 
+
+    const customerName = profile?.first_name
       ? `${profile.first_name} ${profile.last_name || ""}`.trim()
       : profile?.username || "Valued Customer";
-      
+
     const txRows = filteredHistory.map(tx => `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${new Date(tx.created_at).toLocaleString()}</td>
@@ -410,13 +410,13 @@ function ProfilePage() {
                 Owner Only
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4 pt-2">
               <div className="bg-card border border-border/80 rounded-xl p-3.5 flex flex-col justify-between">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Available Balance</p>
                 <p className="text-xl font-black text-green-500 mt-1">${(profile.wallet_balance ?? 0).toFixed(2)}</p>
               </div>
-              
+
               <div className="bg-card border border-border/80 rounded-xl p-3.5 flex flex-col justify-between">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Credit Balance</p>
                 <p className="text-xl font-black text-amber-500 mt-1">${(profile.credit_balance ?? 0).toFixed(2)}</p>
@@ -442,28 +442,28 @@ function ProfilePage() {
             </div>
 
             <div className="flex gap-2 pt-2 border-t border-border/60">
-              <Button 
-                type="button" 
-                variant="outline" 
-                size="sm" 
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   fetchHistory();
                   setHistoryOpen(true);
-                }} 
+                }}
                 className="flex-1 rounded-full gap-1.5 h-10 font-bold text-xs"
               >
                 <History className="h-3.5 w-3.5" />
                 History Ledger
               </Button>
-              
-              <Button 
-                type="button" 
-                variant="outline" 
-                size="sm" 
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   fetchHistory();
                   setStatementOpen(true);
-                }} 
+                }}
                 className="flex-1 rounded-full gap-1.5 h-10 font-bold text-xs"
               >
                 <FileText className="h-3.5 w-3.5" />
@@ -535,13 +535,12 @@ function ProfilePage() {
                           {new Date(tx.created_at).toLocaleString()}
                         </td>
                         <td className="p-3">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            tx.action === "deposit" || tx.action === "refund" || tx.action === "bonus"
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${tx.action === "deposit" || tx.action === "refund" || tx.action === "bonus"
                               ? "bg-green-500/10 text-green-500"
                               : tx.action === "credit_added" || tx.action === "credit_released"
-                              ? "bg-amber-500/10 text-amber-500"
-                              : "bg-red-500/10 text-red-500"
-                          }`}>
+                                ? "bg-amber-500/10 text-amber-500"
+                                : "bg-red-500/10 text-red-500"
+                            }`}>
                             {tx.action.replace("_", " ")}
                           </span>
                         </td>
@@ -584,7 +583,7 @@ function ProfilePage() {
               <h3 className="text-sm font-black text-green-500 uppercase tracking-widest">Jackpot Jungle</h3>
               <p className="text-[10px] text-muted-foreground uppercase font-bold mt-0.5">Wallet Credit Statement</p>
             </div>
-            
+
             <div className="text-xs space-y-1">
               <p className="font-bold">Customer: <span className="font-normal text-muted-foreground">
                 {profile.first_name ? `${profile.first_name} ${profile.last_name || ""}`.trim() : profile.username} (@{profile.username})
