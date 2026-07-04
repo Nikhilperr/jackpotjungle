@@ -11,7 +11,7 @@ try {
   
   // Try pm2 show 0 --json first
   try {
-    pm2Output = execSync('pm2 show 0 --json', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+    pm2Output = execSync('pm2 show 0 --json', { encoding: 'utf8' });
     const pm2Data = JSON.parse(pm2Output);
     const pm2Env = pm2Data[0]?.pm2_env;
     if (pm2Env) {
@@ -38,9 +38,11 @@ try {
       console.log("Loaded credentials from PM2 JSON successfully.");
     }
   } catch (jsonErr) {
+    console.warn("pm2 show 0 --json failed: " + jsonErr.message);
+    
     // Try text table parsing of pm2 show 0
     try {
-      pm2Output = execSync('pm2 show 0', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      pm2Output = execSync('pm2 show 0', { encoding: 'utf8' });
       const keys = [
         'DATABASE_URL',
         'SUPABASE_DB_PASSWORD',
@@ -67,7 +69,7 @@ try {
         console.log("Loaded credentials from PM2 text table successfully.");
       }
     } catch (txtErr) {
-      console.warn("pm2 show 0 text table parsing failed.");
+      console.warn("pm2 show 0 text table parsing failed: " + txtErr.message);
     }
   }
 
@@ -75,7 +77,7 @@ try {
   if (!loadedFromPm2) {
     console.log("Trying npx pm2 show fallback...");
     try {
-      pm2Output = execSync('npx pm2 show 0 --json', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      pm2Output = execSync('npx pm2 show 0 --json', { encoding: 'utf8' });
       const pm2Data = JSON.parse(pm2Output);
       const pm2Env = pm2Data[0]?.pm2_env;
       if (pm2Env) {
@@ -102,7 +104,7 @@ try {
         console.log("Loaded credentials from npx PM2 JSON successfully.");
       }
     } catch (npxErr) {
-      console.warn("npx pm2 show failed.");
+      console.warn("npx pm2 show failed: " + npxErr.message);
     }
   }
 } catch (pm2Err) {
