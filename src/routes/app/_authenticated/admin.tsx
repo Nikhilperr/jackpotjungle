@@ -18,6 +18,7 @@ import {
   Search,
   Send,
   Shield,
+  Eye,
   Inbox,
   Users as UsersIcon,
   ChevronLeft,
