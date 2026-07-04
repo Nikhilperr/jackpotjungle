@@ -1425,5 +1425,69 @@ export const getMonitorMessagesAdmin = createServerFn({ method: "POST" })
     return { messages };
   });
 
+async function getDbClient() {
+  const pg = (await import("pg")).default;
+  let connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    const dbPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD || "grootMahakal7X";
+    const dbName = process.env.SUPABASE_DB_NAME || process.env.DATABASE_NAME || "postgres";
+    const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "postgres";
+    const host = process.env.SUPABASE_DB_HOST || process.env.DATABASE_HOST || "localhost";
+    const port = process.env.SUPABASE_DB_PORT || process.env.DATABASE_PORT || "5432";
+    connectionString = `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
+  }
+  const client = new pg.Client({
+    connectionString,
+    ssl: connectionString.includes("supabase.co") || connectionString.includes("chancerealm.casino")
+      ? { rejectUnauthorized: false }
+      : undefined
+  });
+  await client.connect();
+  return client;
+}
+
+export const getActiveSessionsUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const userId = context.userId;
+    const client = await getDbClient();
+    try {
+      const query = `
+        SELECT id, created_at, updated_at, ip, user_agent
+        FROM auth.sessions
+        WHERE user_id = $1
+        ORDER BY updated_at DESC
+      `;
+      const { rows } = await client.query(query, [userId]);
+      return { sessions: rows };
+    } catch (err: any) {
+      throw new Error(err.message || "Failed to query active sessions");
+    } finally {
+      await client.end();
+    }
+  });
+
+export const terminateSessionUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ data, context }) => {
+    const userId = context.userId;
+    const sessionId = data.sessionId;
+    if (!sessionId) throw new Error("Session ID required");
+
+    const client = await getDbClient();
+    try {
+      const query = `
+        DELETE FROM auth.sessions
+        WHERE id = $1 AND user_id = $2
+      `;
+      const { rowCount } = await client.query(query, [sessionId, userId]);
+      return { ok: true, terminatedCount: rowCount };
+    } catch (err: any) {
+      throw new Error(err.message || "Failed to terminate session");
+    } finally {
+      await client.end();
+    }
+  });
+
 
 
