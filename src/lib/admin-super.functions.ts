@@ -1496,60 +1496,87 @@ async function getDbClient() {
 
   for (const h of hostsToTry) {
     const isRemote = h !== "localhost" && h !== "127.0.0.1" && h !== "db";
-    const ports = isRemote ? ["5432", "6543"] : ["54322", "5432"];
+    const ports = isRemote ? ["5432", "6543"] : ["5432", "54322"];
 
     for (const p of ports) {
-      let projectRef = "gsnhqzsgptqxtlhggzkz";
+      // Determine possible project refs to try for this host
+      const projectRefs = ["gsnhqzsgptqxtlhggzkz"];
       const match = h.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
       if (match) {
-        projectRef = match[1];
+        projectRefs.unshift(match[1]);
+      }
+      const envRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID;
+      if (envRef) {
+        projectRefs.unshift(envRef);
       }
 
-      if (isRemote) {
-        // 1. SSL with tenant suffix
-        candidates.push({
-          host: h,
-          port: p,
-          user: `${config.user.split(".")[0]}.${projectRef}`,
-          ssl: { rejectUnauthorized: false, servername: `db.${projectRef}.supabase.co` },
-          label: `Remote SSL (${h}:${p})`
-        });
+      // Add "self-hosted" as fallback for local host
+      if (!isRemote) {
+        projectRefs.push("self-hosted");
+      }
 
-        // 2. Non-SSL with tenant suffix
-        candidates.push({
-          host: h,
-          port: p,
-          user: `${config.user.split(".")[0]}.${projectRef}`,
-          ssl: undefined,
-          label: `Remote Non-SSL (${h}:${p})`
-        });
+      // Remove duplicate project refs
+      const uniqueRefs = Array.from(new Set(projectRefs));
 
-        // 3. SSL without suffix
-        candidates.push({
-          host: h,
-          port: p,
-          user: config.user.split(".")[0],
-          ssl: { rejectUnauthorized: false, servername: h },
-          label: `Remote SSL No-Suffix (${h}:${p})`
-        });
+      for (const ref of uniqueRefs) {
+        const baseUser = config.user.split(".")[0];
+        
+        if (isRemote) {
+          // 1. SSL with suffix
+          candidates.push({
+            host: h,
+            port: p,
+            user: `${baseUser}.${ref}`,
+            ssl: { rejectUnauthorized: false, servername: `db.${ref}.supabase.co` },
+            label: `Remote SSL (${h}:${p} as ${baseUser}.${ref})`
+          });
 
-        // 4. Non-SSL without suffix
-        candidates.push({
-          host: h,
-          port: p,
-          user: config.user.split(".")[0],
-          ssl: undefined,
-          label: `Remote Non-SSL No-Suffix (${h}:${p})`
-        });
-      } else {
-        // Local connection try
-        candidates.push({
-          host: h,
-          port: p,
-          user: config.user.split(".")[0],
-          ssl: undefined,
-          label: `Local Direct (${h}:${p})`
-        });
+          // 2. Non-SSL with suffix
+          candidates.push({
+            host: h,
+            port: p,
+            user: `${baseUser}.${ref}`,
+            ssl: undefined,
+            label: `Remote Non-SSL (${h}:${p} as ${baseUser}.${ref})`
+          });
+
+          // 3. SSL without suffix
+          candidates.push({
+            host: h,
+            port: p,
+            user: baseUser,
+            ssl: { rejectUnauthorized: false, servername: h },
+            label: `Remote SSL No-Suffix (${h}:${p} as ${baseUser})`
+          });
+
+          // 4. Non-SSL without suffix
+          candidates.push({
+            host: h,
+            port: p,
+            user: baseUser,
+            ssl: undefined,
+            label: `Remote Non-SSL No-Suffix (${h}:${p} as ${baseUser})`
+          });
+        } else {
+          // Local candidates
+          // Try with tenant suffix
+          candidates.push({
+            host: h,
+            port: p,
+            user: `${baseUser}.${ref}`,
+            ssl: undefined,
+            label: `Local Supavisor with Tenant (${h}:${p} as ${baseUser}.${ref})`
+          });
+
+          // Try without suffix
+          candidates.push({
+            host: h,
+            port: p,
+            user: baseUser,
+            ssl: undefined,
+            label: `Local Standard No-Suffix (${h}:${p} as ${baseUser})`
+          });
+        }
       }
     }
   }
