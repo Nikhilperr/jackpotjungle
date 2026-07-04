@@ -440,6 +440,25 @@ export function UsersManagementView({ meId }: { meId: string }) {
             Manage your casino players, roles, verification status, and wallet limits.
           </p>
         </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-card px-3 py-1.5 rounded-lg border border-border/80 h-10 select-none">
+            <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs font-semibold text-muted-foreground">{totalCount} registered players</span>
+          </div>
+
+          <Button
+            onClick={() => setDownloadEmailsOpen(true)}
+            variant="outline"
+            className="rounded-full gap-1.5 h-10 text-xs font-bold font-sans bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20"
+          >
+            <Mail className="h-4 w-4" />
+            <span>Download Emails</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Control bar */}
+      <div className="flex flex-col gap-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search bar */}
           <div className="relative flex-1 max-w-md">
