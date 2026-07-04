@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar } from "@/components/messenger/Avatar";
 import { toast } from "sonner";
 import { formatDistanceToNow, format } from "date-fns";
+import { formatSystemMessage, isSystemMessage } from "@/lib/chat-helpers";
 import { 
   Eye, Search, MessageSquare, Shield, Users, User, Clock, 
   Volume2, ImageIcon, FileText, ArrowLeft, RefreshCw, Bot
@@ -105,6 +106,8 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
       if (c.type === "direct") {
         if (c.userA.username.toLowerCase().includes(query)) return true;
         if (c.userB.username.toLowerCase().includes(query)) return true;
+        if (c.userA.name.toLowerCase().includes(query)) return true;
+        if (c.userB.name.toLowerCase().includes(query)) return true;
       }
       return false;
     }
@@ -206,17 +209,21 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
                         <Users className="h-5 w-5" />
                       </div>
                     ) : (
-                      <div className="relative shrink-0 flex">
-                        <Avatar
-                          src={conv.userA.avatar_url}
-                          username={conv.userA.username}
-                          className="h-7 w-7 border border-background shadow"
-                        />
-                        <Avatar
-                          src={conv.userB.avatar_url}
-                          username={conv.userB.username}
-                          className="h-7 w-7 -ml-3 mt-3 border border-background shadow"
-                        />
+                      <div className="relative shrink-0 flex items-center h-10 w-12 mr-1">
+                        <div className="absolute top-0 left-0 border border-background rounded-full shadow overflow-hidden z-10">
+                          <Avatar
+                            name={conv.userA.name || conv.userA.username}
+                            url={conv.userA.avatar_url}
+                            size={28}
+                          />
+                        </div>
+                        <div className="absolute bottom-0 right-0 border border-background rounded-full shadow overflow-hidden z-0">
+                          <Avatar
+                            name={conv.userB.name || conv.userB.username}
+                            url={conv.userB.avatar_url}
+                            size={28}
+                          />
+                        </div>
                       </div>
                     )}
 
@@ -243,7 +250,7 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
                       </div>
                       
                       <p className="text-[11px] text-muted-foreground truncate mt-0.5 font-sans leading-relaxed">
-                        {conv.last_message}
+                        {isSystemMessage(conv.last_message) ? formatSystemMessage(conv.last_message) : conv.last_message}
                       </p>
                     </div>
                   </button>
@@ -299,15 +306,16 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
                   </div>
                 ) : (
                   messages.map((msg, index) => {
-                    const isSystem = msg.content && msg.content.startsWith("[system:");
+                    const isSystem = isSystemMessage(msg.content);
                     const sender = msg.sender || { username: "unknown", first_name: "Unknown", last_name: "" };
                     const senderName = `${sender.first_name || ""} ${sender.last_name || ""}`.trim() || sender.username;
+                    const systemText = isSystem ? formatSystemMessage(msg.content, senderName) : "";
                     
                     if (isSystem) {
                       return (
-                        <div key={msg.id} className="flex justify-center my-2 select-none">
+                        <div key={msg.id} className="flex justify-center my-2 select-none w-full">
                           <span className="bg-secondary text-muted-foreground text-[10px] px-2.5 py-1 rounded-full font-sans border border-border max-w-[80%] text-center">
-                            {msg.content}
+                            {systemText}
                           </span>
                         </div>
                       );
@@ -316,9 +324,9 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
                     return (
                       <div key={msg.id} className="flex items-start gap-2.5 max-w-[85%] mx-1">
                         <Avatar
-                          src={sender.avatar_url}
-                          username={sender.username}
-                          className="h-8 w-8 mt-0.5 border border-border/60"
+                          name={senderName}
+                          url={sender.avatar_url}
+                          size={32}
                         />
                         <div className="flex flex-col">
                           <div className="flex items-baseline gap-1.5">
