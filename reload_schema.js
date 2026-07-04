@@ -143,10 +143,15 @@ async function triggerReload() {
   if (process.env.DATABASE_URL) {
     console.log("Found DATABASE_URL, attempting connection...");
     let connected = false;
+    let servername = undefined;
+    try {
+      servername = new URL(process.env.DATABASE_URL).hostname;
+    } catch (err) {}
+
     let client = new pg.Client({
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DATABASE_URL.includes("supabase.co") || process.env.DATABASE_URL.includes("chancerealm.casino")
-        ? { rejectUnauthorized: false }
+        ? { rejectUnauthorized: false, servername }
         : undefined
     });
     try {
@@ -199,7 +204,7 @@ async function triggerReload() {
       console.log(`Trying connection to ${h}:${p} (SSL: ${sslVal})...`);
       let client = new pg.Client({
         connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
-        ssl: sslVal ? { rejectUnauthorized: false } : undefined
+        ssl: sslVal ? { rejectUnauthorized: false, servername: h } : undefined
       });
       
       let success = false;

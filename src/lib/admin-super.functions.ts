@@ -1436,10 +1436,21 @@ async function getDbClient() {
     const port = process.env.SUPABASE_DB_PORT || process.env.DATABASE_PORT || "5432";
     connectionString = `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
   }
+
+  let servername: string | undefined = undefined;
+  try {
+    if (connectionString.includes("://")) {
+      servername = new URL(connectionString).hostname;
+    } else {
+      const match = connectionString.match(/@([^:/]+)/);
+      if (match) servername = match[1];
+    }
+  } catch {}
+
   const client = new pg.Client({
     connectionString,
     ssl: connectionString.includes("supabase.co") || connectionString.includes("chancerealm.casino")
-      ? { rejectUnauthorized: false }
+      ? { rejectUnauthorized: false, servername }
       : undefined
   });
   await client.connect();
