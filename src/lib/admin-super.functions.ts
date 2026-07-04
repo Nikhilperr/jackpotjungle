@@ -1489,27 +1489,31 @@ async function getDbClient() {
     hasPassword: !!config.password
   });
 
-  let servername: string | undefined = undefined;
+  let projectRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID;
+  const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
+  if (match) {
+    projectRef = match[1];
+    console.log("[DB_DEBUG] Extracted projectRef from host name:", projectRef);
+  }
+
   const isRemote = config.host && config.host !== "localhost" && config.host !== "127.0.0.1" && config.host !== "db";
   console.log("[DB_DEBUG] isRemote:", isRemote);
 
-  if (isRemote) {
-    let projectRef = "gsnhqzsgptqxtlhggzkz"; // Default project ref
-    const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
-    if (match) {
-      projectRef = match[1];
-      console.log("[DB_DEBUG] Extracted projectRef from host:", projectRef);
-    } else {
-      console.log("[DB_DEBUG] Using default fallback projectRef:", projectRef);
-    }
-    
-    // 1. Rewrite username to include tenant suffix if not already present
-    if (config.user && !config.user.includes(".")) {
-      const oldUser = config.user;
-      config.user = `${config.user}.${projectRef}`;
-      console.log(`[DB_DEBUG] Appended projectRef to user: ${oldUser} -> ${config.user}`);
-    }
-    // 2. Set canonical servername for TLS SNI
+  if (!projectRef) {
+    projectRef = isRemote ? "gsnhqzsgptqxtlhggzkz" : "self-hosted";
+    console.log("[DB_DEBUG] Using fallback projectRef:", projectRef);
+  }
+
+  // 1. Rewrite username to include tenant suffix if not already present
+  if (projectRef && config.user && !config.user.includes(".")) {
+    const oldUser = config.user;
+    config.user = `${config.user}.${projectRef}`;
+    console.log(`[DB_DEBUG] Appended projectRef to user: ${oldUser} -> ${config.user}`);
+  }
+
+  // 2. Set canonical servername for TLS SNI if remote
+  let servername: string | undefined = undefined;
+  if (isRemote && projectRef) {
     servername = `db.${projectRef}.supabase.co`;
     console.log("[DB_DEBUG] Configured servername SNI:", servername);
   }

@@ -183,15 +183,20 @@ async function triggerReload() {
     const config = parsePostgresConfig(connUrlStr);
     const isRemote = config.host && config.host !== "localhost" && config.host !== "127.0.0.1" && config.host !== "db";
     
-    if (isRemote) {
-      let projectRef = "gsnhqzsgptqxtlhggzkz";
-      const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
-      if (match) {
-        projectRef = match[1];
-      }
-      if (config.user && !config.user.includes(".")) {
-        config.user = `${config.user}.${projectRef}`;
-      }
+    let projectRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID;
+    const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
+    if (match) {
+      projectRef = match[1];
+    }
+    if (!projectRef) {
+      projectRef = isRemote ? "gsnhqzsgptqxtlhggzkz" : "self-hosted";
+    }
+
+    if (projectRef && config.user && !config.user.includes(".")) {
+      config.user = `${config.user}.${projectRef}`;
+    }
+
+    if (isRemote && projectRef) {
       servername = `db.${projectRef}.supabase.co`;
     }
 
