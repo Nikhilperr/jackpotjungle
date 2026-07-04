@@ -111,6 +111,7 @@ import {
 } from "@/components/admin/AdminViews";
 import { SystemAnnouncementsAdminView } from "@/components/admin/SystemAnnouncementsAdmin";
 import { UsersManagementView } from "@/components/admin/UsersManagement";
+import { MonitorChatsView } from "@/components/admin/MonitorChatsView";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 import { CreateGroupModal } from "./chat";
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
@@ -131,7 +132,8 @@ type Tab =
   | "super"
   | "profile"
   | "rules"
-  | "updates";
+  | "updates"
+  | "monitor";
 
 type AdminSearch = {
   c?: string;
@@ -146,7 +148,7 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
     const validTabs: Tab[] = [
       "inbox", "teamchat", "quickreplies", "tags", "broadcasts", "followups",
       "autoresp", "referrals", "logs", "users", "admins", "super", "profile",
-      "rules", "updates"
+      "rules", "updates", "monitor"
     ];
     const incomingTab = search.tab as Tab;
     return {
@@ -322,6 +324,7 @@ function AdminPage() {
         <SideBtn active={tab === "referrals"} onClick={() => selectTab("referrals")} icon={Gift} label="Referrals" />
         <SideBtn active={tab === "logs"} onClick={() => selectTab("logs")} icon={Activity} label="Logs" />
         <SideBtn active={tab === "users"} onClick={() => selectTab("users")} icon={UsersIcon} label="Users Management" />
+        <SideBtn active={tab === "monitor"} onClick={() => selectTab("monitor")} icon={Eye} label="Monitor Chats" />
         {isSuperAdmin && (
           <>
             <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Pinned Chats</p>
@@ -390,6 +393,9 @@ function AdminPage() {
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Users Management">
             <UsersManagementView meId={user.id} />
           </ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "monitor" ? "" : "hidden"}`}>
+          <MonitorChatsView meId={user.id} onOpenNav={() => setNavOpen(true)} />
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "rules" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Rules"><SystemAnnouncementsAdminView channelType="rules" meId={user.id} /></ScrollWrap>

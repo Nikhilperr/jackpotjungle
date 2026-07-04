@@ -1284,4 +1284,146 @@ export const getAllEmailsAdmin = createServerFn({ method: "POST" })
     return { list };
   });
 
+export const getMonitorConversationsAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: callerRoles } = await context.supabase
+      .from("user_roles").select("role").eq("user_id", context.userId);
+    const isAdmin = (callerRoles ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
+    if (!isAdmin) throw new Error("Admins only");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: profiles, error: profErr } = await supabaseAdmin
+      .from("profiles")
+      .select("id, username, first_name, last_name, avatar_url, online, last_seen");
+    if (profErr) throw profErr;
+
+    const profilesMap: Record<string, any> = {};
+    (profiles ?? []).forEach(p => {
+      profilesMap[p.id] = {
+        id: p.id,
+        username: p.username,
+        name: `${p.first_name || ""} ${p.last_name || ""}`.trim() || p.username || "User",
+        avatar_url: p.avatar_url,
+        online: p.online,
+        last_seen: p.last_seen
+      };
+    });
+
+    const { data: groups, error: grpErr } = await supabaseAdmin
+      .from("groups")
+      .select("id, name, avatar_url, created_at, is_admin_team");
+    if (grpErr) throw grpErr;
+
+    const { data: messages, error: msgErr } = await supabaseAdmin
+      .from("messages")
+      .select("id, sender_id, receiver_id, group_id, content, image_url, audio_url, created_at")
+      .order("created_at", { ascending: false })
+      .limit(3000);
+    if (msgErr) throw msgErr;
+
+    const conversationMap = new Map<string, any>();
+
+    (messages ?? []).forEach(m => {
+      if (m.group_id) {
+        const key = `group-${m.group_id}`;
+        if (!conversationMap.has(key)) {
+          const groupInfo = (groups ?? []).find(g => g.id === m.group_id);
+          if (groupInfo) {
+            conversationMap.set(key, {
+              id: key,
+              type: "group",
+              groupId: m.group_id,
+              name: groupInfo.name,
+              avatar_url: groupInfo.avatar_url,
+              is_admin_team: groupInfo.is_admin_team,
+              last_message: m.content || (m.image_url ? "[Image]" : m.audio_url ? "[Voice Message]" : ""),
+              last_at: m.created_at
+            });
+          }
+        }
+      } else if (m.sender_id && m.receiver_id) {
+        const userA = m.sender_id < m.receiver_id ? m.sender_id : m.receiver_id;
+        const userB = m.sender_id < m.receiver_id ? m.receiver_id : m.sender_id;
+        const key = `direct-${userA}-${userB}`;
+
+        if (!conversationMap.has(key)) {
+          const profileA = profilesMap[userA];
+          const profileB = profilesMap[userB];
+          if (profileA && profileB) {
+            conversationMap.set(key, {
+              id: key,
+              type: "direct",
+              userA: profileA,
+              userB: profileB,
+              name: `${profileA.name} & ${profileB.name}`,
+              avatar_url: null,
+              last_message: m.content || (m.image_url ? "[Image]" : m.audio_url ? "[Voice Message]" : ""),
+              last_at: m.created_at
+            });
+          }
+        }
+      }
+    });
+
+    (groups ?? []).forEach(g => {
+      const key = `group-${g.id}`;
+      if (!conversationMap.has(key)) {
+        conversationMap.set(key, {
+          id: key,
+          type: "group",
+          groupId: g.id,
+          name: g.name,
+          avatar_url: g.avatar_url,
+          is_admin_team: g.is_admin_team,
+          last_message: "No messages yet",
+          last_at: g.created_at
+        });
+      }
+    });
+
+    const list = Array.from(conversationMap.values());
+    list.sort((a, b) => {
+      const timeA = a.last_at ? new Date(a.last_at).getTime() : 0;
+      const timeB = b.last_at ? new Date(b.last_at).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    return { list };
+  });
+
+export const getMonitorMessagesAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ data, context }) => {
+    const { data: callerRoles } = await context.supabase
+      .from("user_roles").select("role").eq("user_id", context.userId);
+    const isAdmin = (callerRoles ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
+    if (!isAdmin) throw new Error("Admins only");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    let messages: any[] = [];
+    if (data.type === "group") {
+      const { data: grpMsgs, error } = await supabaseAdmin
+        .from("messages")
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+        .eq("group_id", data.groupId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      messages = grpMsgs ?? [];
+    } else {
+      const { data: dirMsgs, error } = await supabaseAdmin
+        .from("messages")
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+        .or(`and(sender_id.eq.${data.userA},receiver_id.eq.${data.userB}),and(sender_id.eq.${data.userB},receiver_id.eq.${data.userA})`)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      messages = dirMsgs ?? [];
+    }
+
+    return { messages };
+  });
+
+
 
