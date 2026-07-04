@@ -1426,9 +1426,11 @@ export const getMonitorMessagesAdmin = createServerFn({ method: "POST" })
   });
 
 async function getDbClient() {
+  console.log("[DB_DEBUG] getDbClient called.");
   const pg = (await import("pg")).default;
   let connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
+    console.log("[DB_DEBUG] DATABASE_URL is not set, falling back to individual env variables.");
     const dbPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD || "grootMahakal7X";
     const dbName = process.env.SUPABASE_DB_NAME || process.env.DATABASE_NAME || "postgres";
     const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "postgres";
@@ -1436,6 +1438,10 @@ async function getDbClient() {
     const port = process.env.SUPABASE_DB_PORT || process.env.DATABASE_PORT || "5432";
     connectionString = `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
   }
+
+  // Log raw connection string with masked password
+  const maskedRaw = connectionString.replace(/:[^:@]+@/, ":****@");
+  console.log("[DB_DEBUG] Raw connection string:", maskedRaw);
 
   // Parse PostgreSQL config supporting both URI and Key-Value formats
   function parsePostgresConfig(connStr: string) {
@@ -1453,8 +1459,11 @@ async function getDbClient() {
         user = url.username;
         password = url.password;
         database = url.pathname.replace(/^\//, "");
-      } catch (e) {}
+      } catch (e) {
+        console.log("[DB_DEBUG] URI parsing threw error:", e.message);
+      }
     } else {
+      console.log("[DB_DEBUG] Parsing as key-value string.");
       const pairs = connStr.split(/\s+/);
       for (const pair of pairs) {
         const [k, v] = pair.split("=");
@@ -1472,25 +1481,43 @@ async function getDbClient() {
   }
 
   const config = parsePostgresConfig(connectionString);
-  let servername: string | undefined = undefined;
+  console.log("[DB_DEBUG] Parsed Config:", {
+    host: config.host,
+    port: config.port,
+    user: config.user,
+    database: config.database,
+    hasPassword: !!config.password
+  });
 
+  let servername: string | undefined = undefined;
   const isRemote = config.host && config.host !== "localhost" && config.host !== "127.0.0.1" && config.host !== "db";
+  console.log("[DB_DEBUG] isRemote:", isRemote);
+
   if (isRemote) {
     let projectRef = "gsnhqzsgptqxtlhggzkz"; // Default project ref
     const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
     if (match) {
       projectRef = match[1];
+      console.log("[DB_DEBUG] Extracted projectRef from host:", projectRef);
+    } else {
+      console.log("[DB_DEBUG] Using default fallback projectRef:", projectRef);
     }
+    
     // 1. Rewrite username to include tenant suffix if not already present
     if (config.user && !config.user.includes(".")) {
+      const oldUser = config.user;
       config.user = `${config.user}.${projectRef}`;
+      console.log(`[DB_DEBUG] Appended projectRef to user: ${oldUser} -> ${config.user}`);
     }
     // 2. Set canonical servername for TLS SNI
     servername = `db.${projectRef}.supabase.co`;
+    console.log("[DB_DEBUG] Configured servername SNI:", servername);
   }
 
   // Re-assemble connection string in standard URI format
   const resolvedConnectionString = `postgres://${config.user}:${config.password}@${config.host}:${config.port}/${config.database}`;
+  const maskedResolved = resolvedConnectionString.replace(/:[^:@]+@/, ":****@");
+  console.log("[DB_DEBUG] Resolved connection string:", maskedResolved);
 
   const client = new pg.Client({
     connectionString: resolvedConnectionString,
@@ -1498,7 +1525,15 @@ async function getDbClient() {
       ? { rejectUnauthorized: false, servername }
       : undefined
   });
-  await client.connect();
+  
+  try {
+    await client.connect();
+    console.log("[DB_DEBUG] Connection successful.");
+  } catch (err: any) {
+    console.error("[DB_DEBUG] Connection failed with error:", err.message);
+    throw err;
+  }
+  
   return client;
 }
 
