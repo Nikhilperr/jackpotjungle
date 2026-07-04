@@ -1437,34 +1437,35 @@ async function getDbClient() {
     connectionString = `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
   }
 
-  // Resolve Supavisor username format dynamically (username.project_ref)
+  // Resolve Supavisor username format and SNI servername dynamically
+  let servername: string | undefined = undefined;
   try {
     const url = new URL(connectionString);
     const host = url.hostname;
+    
+    // Determine project ref
+    let projectRef = "gsnhqzsgptqxtlhggzkz"; // Default project ref
     const match = host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
     if (match) {
-      const projectRef = match[1];
-      const port = url.port || "5432";
-      if (port === "6543" && url.username && !url.username.includes(".")) {
+      projectRef = match[1];
+    }
+
+    const isRemote = host !== "localhost" && host !== "127.0.0.1" && host !== "db";
+    if (isRemote) {
+      // 1. Rewrite username to include tenant suffix if not already present
+      if (url.username && !url.username.includes(".")) {
         url.username = `${url.username}.${projectRef}`;
       }
+      // 2. Override servername to match the canonical Supabase host for TLS handshake
+      servername = `db.${projectRef}.supabase.co`;
     }
+    
     connectionString = url.toString();
-  } catch {}
-
-  let servername: string | undefined = undefined;
-  try {
-    if (connectionString.includes("://")) {
-      servername = new URL(connectionString).hostname;
-    } else {
-      const match = connectionString.match(/@([^:/]+)/);
-      if (match) servername = match[1];
-    }
   } catch {}
 
   const client = new pg.Client({
     connectionString,
-    ssl: connectionString.includes("supabase.co") || connectionString.includes("chancerealm.casino")
+    ssl: servername
       ? { rejectUnauthorized: false, servername }
       : undefined
   });

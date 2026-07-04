@@ -147,21 +147,27 @@ async function triggerReload() {
     let connUrlStr = process.env.DATABASE_URL;
     try {
       const url = new URL(connUrlStr);
-      servername = url.hostname;
-      const match = servername.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
+      const host = url.hostname;
+      
+      let projectRef = "gsnhqzsgptqxtlhggzkz";
+      const match = host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
       if (match) {
-        const projectRef = match[1];
-        const port = url.port || "5432";
-        if (port === "6543" && url.username && !url.username.includes(".")) {
+        projectRef = match[1];
+      }
+
+      const isRemote = host !== "localhost" && host !== "127.0.0.1" && host !== "db";
+      if (isRemote) {
+        if (url.username && !url.username.includes(".")) {
           url.username = `${url.username}.${projectRef}`;
         }
+        servername = `db.${projectRef}.supabase.co`;
       }
       connUrlStr = url.toString();
     } catch (err) {}
 
     let client = new pg.Client({
       connectionString: connUrlStr,
-      ssl: connUrlStr.includes("supabase.co") || connUrlStr.includes("chancerealm.casino")
+      ssl: servername
         ? { rejectUnauthorized: false, servername }
         : undefined
     });
