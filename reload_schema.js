@@ -1,8 +1,41 @@
 import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 
-// Load .env file into process.env, ignoring commented-out lines
+// 1. Try to read credentials from running PM2 process env
+try {
+  console.log("Querying PM2 for active database credentials...");
+  const pm2Output = execSync('pm2 jshow 0', { encoding: 'utf8' });
+  const pm2Data = JSON.parse(pm2Output);
+  const pm2Env = pm2Data[0]?.pm2_env;
+  if (pm2Env) {
+    const keys = [
+      'DATABASE_URL',
+      'SUPABASE_DB_PASSWORD',
+      'DATABASE_PASSWORD',
+      'SUPABASE_DB_HOST',
+      'DATABASE_HOST',
+      'SUPABASE_DB_PORT',
+      'DATABASE_PORT',
+      'SUPABASE_DB_USER',
+      'DATABASE_USER',
+      'SUPABASE_DB_NAME',
+      'DATABASE_NAME',
+      'DATABASE_SSL'
+    ];
+    for (const key of keys) {
+      if (pm2Env[key]) {
+        process.env[key] = pm2Env[key];
+      }
+    }
+    console.log("Loaded credentials from PM2 successfully.");
+  }
+} catch (pm2Err) {
+  console.log("Could not read from PM2 directly. Falling back to local .env...");
+}
+
+// 2. Load .env file if process.env is still missing parameters
 if (fs.existsSync(path.resolve('.env'))) {
   const envContent = fs.readFileSync(path.resolve('.env'), 'utf8');
   const lines = envContent.split(/\r?\n/);
@@ -16,7 +49,9 @@ if (fs.existsSync(path.resolve('.env'))) {
       if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
       }
-      process.env[key] = val;
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
     }
   }
 }
@@ -27,7 +62,6 @@ async function triggerReload() {
   // 1. Try DATABASE_URL first
   if (process.env.DATABASE_URL) {
     console.log("Found DATABASE_URL, attempting connection...");
-    // Try with SSL first
     let connected = false;
     let client = new pg.Client({
       connectionString: process.env.DATABASE_URL,
@@ -48,7 +82,7 @@ async function triggerReload() {
         await client.connect();
         connected = true;
       } catch (e2) {
-        console.error("Database connection failed completely.");
+        console.error("DATABASE_URL connection failed: " + e2.message);
       }
     }
 
