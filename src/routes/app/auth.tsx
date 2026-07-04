@@ -321,13 +321,13 @@ function LoginForm({
         email = res.email;
       }
       
-      const { data: signed, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-
       if (typeof window !== "undefined") {
         localStorage.setItem("jj_google_session", "false");
         localStorage.setItem("jj_verified", "true");
       }
+
+      const { data: signed, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
 
       const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", signed.user.id);
       const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
@@ -335,6 +335,9 @@ function LoginForm({
       toast.success("Welcome back!");
       navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
     } catch (err: any) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("jj_verified");
+      }
       toast.error(err.message ?? "Login failed.");
     } finally {
       setBusy(false);
