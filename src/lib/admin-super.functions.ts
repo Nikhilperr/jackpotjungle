@@ -1485,82 +1485,73 @@ async function getDbClient() {
     label: string;
   }> = [];
 
-  const isLocal = config.host === "localhost" || config.host === "127.0.0.1" || config.host === "db";
+  const isLocalConfig = config.host === "localhost" || config.host === "127.0.0.1" || config.host === "db";
 
-  if (isLocal) {
-    // 1. Try local direct port 54322 (bypasses Supavisor on self-hosted Docker setups)
-    candidates.push({
-      host: config.host,
-      port: "54322",
-      user: config.user.split(".")[0],
-      ssl: undefined,
-      label: "Local Direct (Port 54322)"
-    });
+  // Scan candidates across possible hosts
+  const hostsToTry = [config.host];
+  if (isLocalConfig) {
+    hostsToTry.push("db.chancerealm.casino");
+    hostsToTry.push("db.gsnhqzsgptqxtlhggzkz.supabase.co");
+  }
 
-    // 2. Try local port 5432 with tenant ID suffix
-    const projectRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID || "self-hosted";
-    candidates.push({
-      host: config.host,
-      port: config.port,
-      user: config.user.includes(".") ? config.user : `${config.user}.${projectRef}`,
-      ssl: undefined,
-      label: `Local Supavisor with Tenant (${projectRef})`
-    });
+  for (const h of hostsToTry) {
+    const isRemote = h !== "localhost" && h !== "127.0.0.1" && h !== "db";
+    const ports = isRemote ? ["5432", "6543"] : ["54322", "5432"];
 
-    // 3. Try local port 5432 without suffix
-    candidates.push({
-      host: config.host,
-      port: config.port,
-      user: config.user.split(".")[0],
-      ssl: undefined,
-      label: "Local Standard (No Suffix)"
-    });
-  } else {
-    // Remote host candidates
-    let projectRef = "gsnhqzsgptqxtlhggzkz";
-    const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
-    if (match) {
-      projectRef = match[1];
-    } else {
-      const envRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID;
-      if (envRef && envRef !== "self-hosted") projectRef = envRef;
+    for (const p of ports) {
+      let projectRef = "gsnhqzsgptqxtlhggzkz";
+      const match = h.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
+      if (match) {
+        projectRef = match[1];
+      }
+
+      if (isRemote) {
+        // 1. SSL with tenant suffix
+        candidates.push({
+          host: h,
+          port: p,
+          user: `${config.user.split(".")[0]}.${projectRef}`,
+          ssl: { rejectUnauthorized: false, servername: `db.${projectRef}.supabase.co` },
+          label: `Remote SSL (${h}:${p})`
+        });
+
+        // 2. Non-SSL with tenant suffix
+        candidates.push({
+          host: h,
+          port: p,
+          user: `${config.user.split(".")[0]}.${projectRef}`,
+          ssl: undefined,
+          label: `Remote Non-SSL (${h}:${p})`
+        });
+
+        // 3. SSL without suffix
+        candidates.push({
+          host: h,
+          port: p,
+          user: config.user.split(".")[0],
+          ssl: { rejectUnauthorized: false, servername: h },
+          label: `Remote SSL No-Suffix (${h}:${p})`
+        });
+
+        // 4. Non-SSL without suffix
+        candidates.push({
+          host: h,
+          port: p,
+          user: config.user.split(".")[0],
+          ssl: undefined,
+          label: `Remote Non-SSL No-Suffix (${h}:${p})`
+        });
+      } else {
+        // Local connection try
+        candidates.push({
+          host: h,
+          port: p,
+          user: config.user.split(".")[0],
+          ssl: undefined,
+          label: `Local Direct (${h}:${p})`
+        });
+      }
     }
-
-    // 1. Remote SSL with tenant username suffix
-    candidates.push({
-      host: config.host,
-      port: config.port,
-      user: config.user.includes(".") ? config.user : `${config.user}.${projectRef}`,
-      ssl: { rejectUnauthorized: false, servername: `db.${projectRef}.supabase.co` },
-      label: "Remote SSL with Tenant Suffix"
-    });
-
-    // 2. Remote Non-SSL with tenant username suffix
-    candidates.push({
-      host: config.host,
-      port: config.port,
-      user: config.user.includes(".") ? config.user : `${config.user}.${projectRef}`,
-      ssl: undefined,
-      label: "Remote Non-SSL with Tenant Suffix"
-    });
-
-    // 3. Remote SSL (No Suffix)
-    candidates.push({
-      host: config.host,
-      port: config.port,
-      user: config.user.split(".")[0],
-      ssl: { rejectUnauthorized: false, servername: config.host },
-      label: "Remote SSL (No Suffix)"
-    });
-
-    // 4. Remote Non-SSL (No Suffix)
-    candidates.push({
-      host: config.host,
-      port: config.port,
-      user: config.user.split(".")[0],
-      ssl: undefined,
-      label: "Remote Non-SSL (No Suffix)"
-    });
   }
 
   let lastError: any = null;
