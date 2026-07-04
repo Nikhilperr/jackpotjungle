@@ -124,6 +124,18 @@ function ProfilePage() {
   const handleEnableMFA = async () => {
     setMfaLoading(true);
     try {
+      // Clean up any existing unverified factors to avoid duplication errors
+      const { data: factors, error: listError } = await supabase.auth.mfa.listFactors();
+      if (!listError && factors?.all) {
+        const unverified = factors.all.filter(f => f.status === "unverified" || (f as any).status === "unverified");
+        for (const factor of unverified) {
+          console.log("[MFA_DEBUG] Cleaning up unverified factor:", factor.id);
+          try {
+            await supabase.auth.mfa.unenroll({ factorId: factor.id });
+          } catch {}
+        }
+      }
+
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
         issuer: "JackpotJungle"

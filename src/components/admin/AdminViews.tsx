@@ -959,6 +959,18 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
   const handleEnableMFA = async () => {
     setMfaLoading(true);
     try {
+      // Clean up any existing unverified factors to avoid duplication errors
+      const { data: factors, error: listError } = await sb.auth.mfa.listFactors();
+      if (!listError && factors?.all) {
+        const unverified = factors.all.filter((f: any) => f.status === "unverified" || f.status === "unverified");
+        for (const factor of unverified) {
+          console.log("[MFA_DEBUG] Cleaning up unverified factor:", factor.id);
+          try {
+            await sb.auth.mfa.unenroll({ factorId: factor.id });
+          } catch {}
+        }
+      }
+
       const { data, error } = await sb.auth.mfa.enroll({
         factorType: "totp",
         issuer: "JackpotJungle"
