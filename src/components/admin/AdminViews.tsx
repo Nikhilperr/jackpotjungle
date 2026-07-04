@@ -638,17 +638,7 @@ export function UserDetailPanel({
             <p className="text-lg font-black text-amber-500 mt-1">${(profileData?.credit_balance ?? 0).toFixed(2)}</p>
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-[10px] my-3 text-muted-foreground font-semibold">
-          <div className="bg-secondary/60 rounded-lg p-2 flex flex-col justify-between">
-            <span>Total Loaded:</span>
-            <span className="font-bold text-xs text-foreground mt-0.5">${totals.loaded.toFixed(2)}</span>
-          </div>
-          <div className="bg-secondary/60 rounded-lg p-2 flex flex-col justify-between">
-            <span>Total Played:</span>
-            <span className="font-bold text-xs text-destructive mt-0.5">${totals.paid.toFixed(2)}</span>
-          </div>
-        </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 mt-3">
           <Button size="sm" onClick={onWalletClick} className="flex-1 rounded-xl h-9 text-xs font-bold gap-1 bg-primary text-primary-foreground hover:opacity-90">
             <Plus className="h-3.5 w-3.5" /> Adjust Balance
           </Button>
