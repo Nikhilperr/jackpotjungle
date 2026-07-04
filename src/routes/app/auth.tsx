@@ -247,6 +247,7 @@ function LoginForm({
   signInWithGoogle: () => void;
   googleBusy: boolean;
 }) {
+  const navigate = useNavigate();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
