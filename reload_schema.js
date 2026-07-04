@@ -145,25 +145,57 @@ async function triggerReload() {
     let connected = false;
     let servername = undefined;
     let connUrlStr = process.env.DATABASE_URL;
-    try {
-      const url = new URL(connUrlStr);
-      const host = url.hostname;
-      
+
+    // Helper to parse PostgreSQL config in both URI and Key-Value formats
+    function parsePostgresConfig(connStr) {
+      let host = "";
+      let port = "5432";
+      let user = "postgres";
+      let password = "";
+      let database = "postgres";
+
+      if (connStr.includes("://")) {
+        try {
+          const url = new URL(connStr);
+          host = url.hostname;
+          port = url.port || "5432";
+          user = url.username;
+          password = url.password;
+          database = url.pathname.replace(/^\//, "");
+        } catch (e) {}
+      } else {
+        const pairs = connStr.split(/\s+/);
+        for (const pair of pairs) {
+          const [k, v] = pair.split("=");
+          if (k && v) {
+            const cleanV = v.replace(/(^["']|["']$)/g, "");
+            if (k === "host") host = cleanV;
+            else if (k === "port") port = cleanV;
+            else if (k === "user") user = cleanV;
+            else if (k === "password") password = cleanV;
+            else if (k === "dbname") database = cleanV;
+          }
+        }
+      }
+      return { host, port, user, password, database };
+    }
+
+    const config = parsePostgresConfig(connUrlStr);
+    const isRemote = config.host && config.host !== "localhost" && config.host !== "127.0.0.1" && config.host !== "db";
+    
+    if (isRemote) {
       let projectRef = "gsnhqzsgptqxtlhggzkz";
-      const match = host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
+      const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
       if (match) {
         projectRef = match[1];
       }
-
-      const isRemote = host !== "localhost" && host !== "127.0.0.1" && host !== "db";
-      if (isRemote) {
-        if (url.username && !url.username.includes(".")) {
-          url.username = `${url.username}.${projectRef}`;
-        }
-        servername = `db.${projectRef}.supabase.co`;
+      if (config.user && !config.user.includes(".")) {
+        config.user = `${config.user}.${projectRef}`;
       }
-      connUrlStr = url.toString();
-    } catch (err) {}
+      servername = `db.${projectRef}.supabase.co`;
+    }
+
+    connUrlStr = `postgres://${config.user}:${config.password}@${config.host}:${config.port}/${config.database}`;
 
     let client = new pg.Client({
       connectionString: connUrlStr,

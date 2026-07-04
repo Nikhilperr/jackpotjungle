@@ -1437,34 +1437,63 @@ async function getDbClient() {
     connectionString = `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
   }
 
-  // Resolve Supavisor username format and SNI servername dynamically
+  // Parse PostgreSQL config supporting both URI and Key-Value formats
+  function parsePostgresConfig(connStr: string) {
+    let host = "";
+    let port = "5432";
+    let user = "postgres";
+    let password = "";
+    let database = "postgres";
+
+    if (connStr.includes("://")) {
+      try {
+        const url = new URL(connStr);
+        host = url.hostname;
+        port = url.port || "5432";
+        user = url.username;
+        password = url.password;
+        database = url.pathname.replace(/^\//, "");
+      } catch (e) {}
+    } else {
+      const pairs = connStr.split(/\s+/);
+      for (const pair of pairs) {
+        const [k, v] = pair.split("=");
+        if (k && v) {
+          const cleanV = v.replace(/(^["']|["']$)/g, "");
+          if (k === "host") host = cleanV;
+          else if (k === "port") port = cleanV;
+          else if (k === "user") user = cleanV;
+          else if (k === "password") password = cleanV;
+          else if (k === "dbname") database = cleanV;
+        }
+      }
+    }
+    return { host, port, user, password, database };
+  }
+
+  const config = parsePostgresConfig(connectionString);
   let servername: string | undefined = undefined;
-  try {
-    const url = new URL(connectionString);
-    const host = url.hostname;
-    
-    // Determine project ref
+
+  const isRemote = config.host && config.host !== "localhost" && config.host !== "127.0.0.1" && config.host !== "db";
+  if (isRemote) {
     let projectRef = "gsnhqzsgptqxtlhggzkz"; // Default project ref
-    const match = host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
+    const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
     if (match) {
       projectRef = match[1];
     }
-
-    const isRemote = host !== "localhost" && host !== "127.0.0.1" && host !== "db";
-    if (isRemote) {
-      // 1. Rewrite username to include tenant suffix if not already present
-      if (url.username && !url.username.includes(".")) {
-        url.username = `${url.username}.${projectRef}`;
-      }
-      // 2. Override servername to match the canonical Supabase host for TLS handshake
-      servername = `db.${projectRef}.supabase.co`;
+    // 1. Rewrite username to include tenant suffix if not already present
+    if (config.user && !config.user.includes(".")) {
+      config.user = `${config.user}.${projectRef}`;
     }
-    
-    connectionString = url.toString();
-  } catch {}
+    // 2. Set canonical servername for TLS SNI
+    servername = `db.${projectRef}.supabase.co`;
+  }
+
+  // Re-assemble connection string in standard URI format
+  const resolvedConnectionString = `postgres://${config.user}:${config.password}@${config.host}:${config.port}/${config.database}`;
 
   const client = new pg.Client({
-    connectionString,
+    connectionString: resolvedConnectionString,
     ssl: servername
       ? { rejectUnauthorized: false, servername }
       : undefined
