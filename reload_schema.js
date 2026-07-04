@@ -4,35 +4,113 @@ import path from 'path';
 import { execSync } from 'child_process';
 
 // 1. Try to read credentials from running PM2 process env
+let loadedFromPm2 = false;
 try {
   console.log("Querying PM2 for active database credentials...");
-  const pm2Output = execSync('pm2 jshow 0', { encoding: 'utf8' });
-  const pm2Data = JSON.parse(pm2Output);
-  const pm2Env = pm2Data[0]?.pm2_env;
-  if (pm2Env) {
-    const keys = [
-      'DATABASE_URL',
-      'SUPABASE_DB_PASSWORD',
-      'DATABASE_PASSWORD',
-      'SUPABASE_DB_HOST',
-      'DATABASE_HOST',
-      'SUPABASE_DB_PORT',
-      'DATABASE_PORT',
-      'SUPABASE_DB_USER',
-      'DATABASE_USER',
-      'SUPABASE_DB_NAME',
-      'DATABASE_NAME',
-      'DATABASE_SSL'
-    ];
-    for (const key of keys) {
-      if (pm2Env[key]) {
-        process.env[key] = pm2Env[key];
+  let pm2Output = "";
+  
+  // Try pm2 show 0 --json first
+  try {
+    pm2Output = execSync('pm2 show 0 --json', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+    const pm2Data = JSON.parse(pm2Output);
+    const pm2Env = pm2Data[0]?.pm2_env;
+    if (pm2Env) {
+      const keys = [
+        'DATABASE_URL',
+        'SUPABASE_DB_PASSWORD',
+        'DATABASE_PASSWORD',
+        'SUPABASE_DB_HOST',
+        'DATABASE_HOST',
+        'SUPABASE_DB_PORT',
+        'DATABASE_PORT',
+        'SUPABASE_DB_USER',
+        'DATABASE_USER',
+        'SUPABASE_DB_NAME',
+        'DATABASE_NAME',
+        'DATABASE_SSL'
+      ];
+      for (const key of keys) {
+        if (pm2Env[key]) {
+          process.env[key] = pm2Env[key];
+        }
       }
+      loadedFromPm2 = true;
+      console.log("Loaded credentials from PM2 JSON successfully.");
     }
-    console.log("Loaded credentials from PM2 successfully.");
+  } catch (jsonErr) {
+    // Try text table parsing of pm2 show 0
+    try {
+      pm2Output = execSync('pm2 show 0', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const keys = [
+        'DATABASE_URL',
+        'SUPABASE_DB_PASSWORD',
+        'DATABASE_PASSWORD',
+        'SUPABASE_DB_HOST',
+        'DATABASE_HOST',
+        'SUPABASE_DB_PORT',
+        'DATABASE_PORT',
+        'SUPABASE_DB_USER',
+        'DATABASE_USER',
+        'SUPABASE_DB_NAME',
+        'DATABASE_NAME',
+        'DATABASE_SSL'
+      ];
+      for (const key of keys) {
+        const regex = new RegExp(`│\\s*${key}\\s*│\\s*([^\\s│]+)`);
+        const match = pm2Output.match(regex);
+        if (match) {
+          process.env[key] = match[1].trim();
+          loadedFromPm2 = true;
+        }
+      }
+      if (loadedFromPm2) {
+        console.log("Loaded credentials from PM2 text table successfully.");
+      }
+    } catch (txtErr) {
+      console.warn("pm2 show 0 text table parsing failed.");
+    }
+  }
+
+  // Try npx fallback if still not loaded
+  if (!loadedFromPm2) {
+    console.log("Trying npx pm2 show fallback...");
+    try {
+      pm2Output = execSync('npx pm2 show 0 --json', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const pm2Data = JSON.parse(pm2Output);
+      const pm2Env = pm2Data[0]?.pm2_env;
+      if (pm2Env) {
+        const keys = [
+          'DATABASE_URL',
+          'SUPABASE_DB_PASSWORD',
+          'DATABASE_PASSWORD',
+          'SUPABASE_DB_HOST',
+          'DATABASE_HOST',
+          'SUPABASE_DB_PORT',
+          'DATABASE_PORT',
+          'SUPABASE_DB_USER',
+          'DATABASE_USER',
+          'SUPABASE_DB_NAME',
+          'DATABASE_NAME',
+          'DATABASE_SSL'
+        ];
+        for (const key of keys) {
+          if (pm2Env[key]) {
+            process.env[key] = pm2Env[key];
+          }
+        }
+        loadedFromPm2 = true;
+        console.log("Loaded credentials from npx PM2 JSON successfully.");
+      }
+    } catch (npxErr) {
+      console.warn("npx pm2 show failed.");
+    }
   }
 } catch (pm2Err) {
-  console.log("Could not read from PM2 directly. Falling back to local .env...");
+  console.log("Could not read from PM2 directly: " + pm2Err.message);
+}
+
+if (!loadedFromPm2) {
+  console.log("Falling back to local .env file...");
 }
 
 // 2. Load .env file if process.env is still missing parameters
