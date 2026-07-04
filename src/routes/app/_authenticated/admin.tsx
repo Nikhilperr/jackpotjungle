@@ -5740,6 +5740,233 @@ function AddAdminDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+const printStatementFromMessage = async (content: string, userId: string) => {
+  let filter = "all";
+  if (content.includes("STATEMENT (WALLET)")) filter = "wallet";
+  else if (content.includes("STATEMENT (CREDIT)")) filter = "credit";
+
+  let startDate: string | undefined = undefined;
+  let endDate: string | undefined = undefined;
+
+  const rangeMatch = content.match(/Date Range:\s*(.*)/i);
+  if (rangeMatch && rangeMatch[1]) {
+    const range = rangeMatch[1].trim();
+    if (range !== "All Time") {
+      const parts = range.split(/\s+to\s+/i);
+      if (parts[0] && parts[0] !== "Beginning") {
+        try {
+          startDate = new Date(parts[0]).toISOString().split('T')[0];
+        } catch {}
+      }
+      if (parts[1] && parts[1] !== "Present") {
+        try {
+          endDate = new Date(parts[1]).toISOString().split('T')[0];
+        } catch {}
+      }
+    }
+  }
+
+  // 1. Open the print window synchronously to avoid popup blockers
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    return toast.error("Please allow popups to print/view the statement PDF.");
+  }
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Loading Statement...</title>
+        <style>
+          body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 80vh; color: #666; }
+        </style>
+      </head>
+      <body>
+        <div>
+          <h2>Loading Statement Details...</h2>
+          <p>Please wait while we compile the transactions.</p>
+        </div>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+
+  try {
+    const { getWalletHistoryAdmin } = await import("@/lib/wallet.functions");
+    const txs = await getWalletHistoryAdmin({
+      data: {
+        targetUserId: userId,
+        filter,
+        startDate,
+        endDate,
+      }
+    });
+
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single();
+
+    if (profileErr || !profile) throw new Error("Customer profile not found");
+
+    const customerName = profile.first_name
+      ? `${profile.first_name} ${profile.last_name || ""}`.trim()
+      : profile.username;
+
+    let tableHeaders = "";
+    let colspan = 9;
+    if (filter === "wallet") {
+      tableHeaders = `
+        <th>Date & Time</th>
+        <th>Action</th>
+        <th style="text-align: right;">Amount</th>
+        <th style="text-align: right;">Avail. Before</th>
+        <th style="text-align: right;">Avail. After</th>
+        <th>Reason</th>
+        <th>Admin</th>
+      `;
+      colspan = 7;
+    } else if (filter === "credit") {
+      tableHeaders = `
+        <th>Date & Time</th>
+        <th>Action</th>
+        <th style="text-align: right;">Amount</th>
+        <th style="text-align: right;">Credit Before</th>
+        <th style="text-align: right;">Credit After</th>
+        <th>Reason</th>
+        <th>Admin</th>
+      `;
+      colspan = 7;
+    } else {
+      tableHeaders = `
+        <th>Date & Time</th>
+        <th>Action</th>
+        <th style="text-align: right;">Amount</th>
+        <th style="text-align: right;">Avail. Before</th>
+        <th style="text-align: right;">Avail. After</th>
+        <th style="text-align: right;">Credit Before</th>
+        <th style="text-align: right;">Credit After</th>
+        <th>Reason</th>
+        <th>Admin</th>
+      `;
+      colspan = 9;
+    }
+
+    const txRows = txs.map((tx: any) => {
+      let cells = `
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${new Date(tx.created_at).toLocaleString()}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-transform: uppercase; font-weight: bold;">${tx.action}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.amount).toFixed(2)}</td>
+      `;
+
+      if (filter === "wallet") {
+        cells += `
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_after).toFixed(2)}</td>
+        `;
+      } else if (filter === "credit") {
+        cells += `
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_after).toFixed(2)}</td>
+        `;
+      } else {
+        cells += `
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_after).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_after).toFixed(2)}</td>
+        `;
+      }
+
+      cells += `
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${tx.reason}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${tx.admin_name || "Admin"}</td>
+      `;
+
+      return `<tr>${cells}</tr>`;
+    }).join("");
+
+    let summaryHTML = "";
+    if (filter === "wallet") {
+      summaryHTML = `
+        <div>
+          <p style="margin: 4px 0;"><strong>Available Balance:</strong> $${(profile.wallet_balance ?? 0).toFixed(2)}</p>
+        </div>
+        <div style="text-align: right;">
+          <p style="margin: 4px 0;"><strong>Deposits:</strong> $${(profile.wallet_deposits ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Used:</strong> $${(profile.wallet_used ?? 0).toFixed(2)}</p>
+        </div>
+      `;
+    } else if (filter === "credit") {
+      summaryHTML = `
+        <div>
+          <p style="margin: 4px 0;"><strong>Credit Balance:</strong> $${(profile.credit_balance ?? 0).toFixed(2)}</p>
+        </div>
+        <div style="text-align: right;">
+          <p style="margin: 4px 0;"><strong>Released:</strong> $${(profile.wallet_released ?? 0).toFixed(2)}</p>
+        </div>
+      `;
+    } else {
+      summaryHTML = `
+        <div>
+          <p style="margin: 4px 0;"><strong>Available Balance:</strong> $${(profile.wallet_balance ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Credit Balance:</strong> $${(profile.credit_balance ?? 0).toFixed(2)}</p>
+        </div>
+        <div style="text-align: right;">
+          <p style="margin: 4px 0;"><strong>Deposits:</strong> $${(profile.wallet_deposits ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Released:</strong> $${(profile.wallet_released ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Used:</strong> $${(profile.wallet_used ?? 0).toFixed(2)}</p>
+        </div>
+      `;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Jackpot Jungle Ledger Statement</title>
+          <style>
+            body { font-family: sans-serif; padding: 24px; color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th { background-color: #f5f5f5; text-align: left; padding: 8px; border-bottom: 2px solid #ddd; }
+            .header { margin-bottom: 30px; border-bottom: 3px solid #10b981; padding-bottom: 16px; }
+            .summary { background: #f9f9f9; padding: 16px; border-radius: 8px; margin-bottom: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1 style="margin: 0; color: #10b981;">JACKPOT JUNGLE</h1>
+            <p style="margin: 4px 0 0 0; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px;">Ledger statement</p>
+          </div>
+          <div>
+            <h3 style="margin: 0;">Customer Name: ${customerName}</h3>
+            <p style="margin: 4px 0; font-size: 13px;">Customer ID: ${userId}</p>
+            <p style="margin: 4px 0; font-size: 13px;">Statement generated: ${new Date().toLocaleString()}</p>
+          </div>
+          <div class="summary" style="display: flex; justify-content: space-between; margin-top: 20px;">
+            ${summaryHTML}
+          </div>
+          <table>
+            <thead>
+              <tr>
+                ${tableHeaders}
+              </tr>
+            </thead>
+            <tbody>
+              ${txRows || `<tr><td colspan="${colspan}" style="text-align: center; padding: 20px;">No transaction records found.</td></tr>`}
+            </tbody>
+          </table>
+          <script>window.print();</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  } catch (err: any) {
+    printWindow.close();
+    toast.error(err.message || "Failed to generate print statement");
+  }
+};
+
 interface AdminConversationMessageItemProps {
   m: any;
   meId: string;

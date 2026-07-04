@@ -1447,6 +1447,30 @@ const printStatementFromMessage = async (content: string, userId: string) => {
     }
   }
 
+  // 1. Open the print window synchronously to avoid popup blockers
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    return toast.error("Please allow popups to print/view the statement PDF.");
+  }
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Loading Statement...</title>
+        <style>
+          body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 80vh; color: #666; }
+        </style>
+      </head>
+      <body>
+        <div>
+          <h2>Loading Statement Details...</h2>
+          <p>Please wait while we compile the transactions.</p>
+        </div>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+
   const toastId = toast.loading("Generating printable statement PDF...");
   try {
     let query = supabase
@@ -1591,9 +1615,7 @@ const printStatementFromMessage = async (content: string, userId: string) => {
       `;
     }
 
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) throw new Error("Could not open print window");
-
+    printWindow.document.open();
     printWindow.document.write(`
       <html>
         <head>
@@ -1637,6 +1659,7 @@ const printStatementFromMessage = async (content: string, userId: string) => {
     toast.dismiss(toastId);
     toast.success("Statement PDF opened for printing!");
   } catch (err: any) {
+    printWindow.close();
     toast.dismiss(toastId);
     toast.error(err.message || "Failed to generate print statement");
   }
