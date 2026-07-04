@@ -917,6 +917,10 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
   // Sub-tab selection state
   const [activeSubTab, setActiveSubTab] = useState<"profile" | "logins">("profile");
 
+  const [isGoogle, setIsGoogle] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [settingPw, setSettingPw] = useState(false);
+
   // MFA states
   const [mfaStatus, setMfaStatus] = useState<"unverified" | "enrolling" | "active">("unverified");
   const [mfaFactorId, setMfaFactorId] = useState("");
@@ -947,11 +951,32 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
     } catch {}
   };
 
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    setSettingPw(true);
+    try {
+      const { error } = await sb.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      toast.success("Password updated successfully!");
+      setNewPassword("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update password");
+    } finally {
+      setSettingPw(false);
+    }
+  };
+
   useEffect(() => {
     checkMFA();
     sb.auth.getSession().then(({ data }: any) => {
       if (data.session) {
         setCurrentSessionId(data.session.id);
+        const google = data.session.user?.app_metadata?.provider === "google" || data.session.user?.identities?.some((id: any) => id.provider === "google");
+        setIsGoogle(!!google);
       }
     });
   }, []);
@@ -1188,6 +1213,34 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
                 <Button onClick={save} disabled={saving || username === profile.username} className="rounded-full">
                   {saving ? "Saving…" : "Save changes"}
                 </Button>
+              </div>
+
+              <div className="bg-secondary/40 border border-border/80 rounded-2xl p-5 space-y-3 text-xs">
+                <p className="font-semibold text-foreground flex items-center gap-1.5">
+                  <KeyRound className="h-4 w-4 text-primary" /> 
+                  {isGoogle ? "Create Account Password" : "Change Password"}
+                </p>
+                <p className="text-muted-foreground leading-relaxed">
+                  {isGoogle 
+                    ? "You logged in via Google. You can create a password below to allow email & password login in the future."
+                    : "Update your account password below."}
+                </p>
+                <form onSubmit={handleSetPassword} className="space-y-3 pt-1">
+                  <div className="space-y-1">
+                    <label htmlFor="admin-new-pw" className="text-[10px] uppercase font-bold text-muted-foreground">New Password</label>
+                    <Input 
+                      id="admin-new-pw" 
+                      type="password" 
+                      value={newPassword} 
+                      onChange={(e) => setNewPassword(e.target.value)} 
+                      placeholder="Min 6 characters" 
+                      className="bg-card h-9" 
+                    />
+                  </div>
+                  <Button type="submit" disabled={newPassword.length < 6 || settingPw} size="sm" className="rounded-full">
+                    {settingPw ? "Updating..." : isGoogle ? "Set Password" : "Update Password"}
+                  </Button>
+                </form>
               </div>
             </div>
           )}
