@@ -558,13 +558,10 @@ export const deleteWalletTransactionAdmin = createServerFn({ method: "POST" })
       nextAvail = Math.max(0, nextAvail - amount);
     }
 
-    // 3. Mark transaction as soft-deleted
+    // 3. Hard-delete transaction from the database
     const { error: deleteTxErr } = await supabaseAdmin
       .from("wallet_transactions")
-      .update({
-        deleted: true,
-        deleted_at: new Date().toISOString(),
-      } as any)
+      .delete()
       .eq("id", tx.id);
 
     if (deleteTxErr) throw new Error(deleteTxErr.message);
