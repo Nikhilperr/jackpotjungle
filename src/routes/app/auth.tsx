@@ -44,6 +44,132 @@ function AuthPage() {
   const { mode: urlMode, logout } = Route.useSearch();
   const [mode, setMode] = useState<Mode>(urlMode || "welcome");
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [verificationRequired, setVerificationRequired] = useState(false);
+  const [verificationMethod, setVerificationMethod] = useState<"email" | "2fa" | null>(null);
+  const [has2FaFactor, setHas2FaFactor] = useState(false);
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [mfaBusy, setMfaBusy] = useState(false);
+
+  // Send Email OTP function
+  async function sendEmailOtp(email: string) {
+    setMfaBusy(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false
+        }
+      });
+      if (error) throw error;
+      setEmailOtpSent(true);
+      toast.success("Verification code sent to your email!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send email verification code");
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  // Verification challenge submission logic
+  async function onVerifyEmailOtp(e: React.FormEvent) {
+    e.preventDefault();
+    setMfaBusy(true);
+    try {
+      const email = user?.email;
+      if (!email) throw new Error("No active user session email found.");
+
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token: otpCode,
+        type: "email"
+      });
+      if (error) throw error;
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("jj_verified", "true");
+      }
+
+      try {
+        const { notifyRecentLogin } = await import("@/lib/email-notification.functions");
+        await notifyRecentLogin({ email });
+      } catch (e: any) {
+        console.warn("Failed to send login notification email:", e.message);
+      }
+
+      try {
+        if (user) {
+          await supabase.from("login_logs").insert({
+            user_id: user.id,
+            user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null,
+            success: true,
+          });
+        }
+      } catch {}
+
+      toast.success("Welcome back!");
+      setVerificationRequired(false);
+    } catch (err: any) {
+      toast.error(err.message || "Invalid email verification code.");
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  async function onVerifyMfa(e: React.FormEvent) {
+    e.preventDefault();
+    setMfaBusy(true);
+    try {
+      const { data: factors, error: listErr } = await supabase.auth.mfa.listFactors();
+      if (listErr) throw listErr;
+      
+      const totpFactor = factors.totp.find(f => f.status === "verified");
+      if (!totpFactor) throw new Error("No verified factor found");
+
+      const { data: challenge, error: challengeErr } = await supabase.auth.mfa.challenge({
+        factorId: totpFactor.id
+      });
+      if (challengeErr) throw challengeErr;
+
+      const { error: verifyErr } = await supabase.auth.mfa.verify({
+        factorId: totpFactor.id,
+        challengeId: challenge.id,
+        code: otpCode
+      });
+      if (verifyErr) throw verifyErr;
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("jj_verified", "true");
+      }
+
+      const email = user?.email;
+      if (email) {
+        try {
+          const { notifyRecentLogin } = await import("@/lib/email-notification.functions");
+          await notifyRecentLogin({ email });
+        } catch (e: any) {
+          console.warn("Failed to send login notification email:", e.message);
+        }
+      }
+
+      try {
+        if (user) {
+          await supabase.from("login_logs").insert({
+            user_id: user.id,
+            user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null,
+            success: true,
+          });
+        }
+      } catch {}
+
+      toast.success("Verified. Welcome back!");
+      setVerificationRequired(false);
+    } catch (err: any) {
+      toast.error(err.message ?? "Verification failed.");
+    } finally {
+      setMfaBusy(false);
+    }
+  }
 
   const isLogoutRequest = logout === "true" || logout === true;
 
@@ -71,7 +197,6 @@ function AuthPage() {
   useEffect(() => {
     if (loading || roleLoading || isLogoutRequest) return;
     
-    // Ignore redirect if we are inside a password recovery flow
     const isRecovery = typeof window !== "undefined" && (
       window.location.hash.includes("recovery") ||
       window.location.search.includes("recovery")
@@ -79,14 +204,29 @@ function AuthPage() {
     if (isRecovery) return;
 
     if (user) {
-      const timer = setTimeout(async () => {
-        const isGoogleLogin = user?.app_metadata?.provider === "google" || user?.identities?.some((id: any) => id.provider === "google");
-        const isVerified = typeof window !== "undefined" && localStorage.getItem("jj_verified") === "true";
+      const isGoogleLogin = user?.app_metadata?.provider === "google" || user?.identities?.some((id: any) => id.provider === "google");
+      const isVerified = typeof window !== "undefined" && localStorage.getItem("jj_verified") === "true";
 
-        if (!isGoogleLogin && !isVerified) {
-          return;
+      if (!isGoogleLogin && !isVerified) {
+        setVerificationRequired(true);
+        
+        supabase.auth.mfa.listFactors().then(({ data: factors, error: listErr }) => {
+          if (!listErr && factors) {
+            const has2fa = factors.totp?.some((f: any) => f.status === "verified");
+            setHas2FaFactor(has2fa);
+          }
+        });
+
+        if (!verificationMethod) {
+          setVerificationMethod("email");
+          if (user.email && !emailOtpSent) {
+            sendEmailOtp(user.email);
+          }
         }
+        return;
+      }
 
+      const timer = setTimeout(async () => {
         const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
         const isProdDomain = hostname.endsWith("playjackpotjungle.com");
         const isChatOrPrimary = hostname.startsWith("chat.") || hostname === "playjackpotjungle.com" || hostname === "www.playjackpotjungle.com";
@@ -117,7 +257,7 @@ function AuthPage() {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [user, loading, isAdmin, roleLoading, navigate]);
+  }, [user, loading, isAdmin, roleLoading, navigate, verificationMethod, emailOtpSent]);
 
   async function signInWithGoogle() {
     setGoogleBusy(true);
@@ -183,6 +323,143 @@ function AuthPage() {
             />
             <p className="text-sm font-semibold text-muted-foreground animate-pulse">Checking session...</p>
           </div>
+        </AuthCard>
+      </AuthLayout>
+    );
+  }
+
+  if (verificationRequired) {
+    return (
+      <AuthLayout mode="login">
+        <AuthCard>
+          {verificationMethod === "email" ? (
+            <form onSubmit={onVerifyEmailOtp} className="space-y-4 animate-in fade-in duration-300">
+              <div className="flex justify-between items-center mb-1">
+                <h2 className="text-xl font-bold text-foreground">Verify Email</h2>
+                <button 
+                  type="button" 
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setVerificationRequired(false);
+                    setVerificationMethod(null);
+                    setOtpCode("");
+                  }} 
+                  className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="space-y-2 py-2 text-center select-none">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  We've sent a 6-digit verification code to your email. Enter it below to complete sign-in:
+                </p>
+                <div className="pt-2">
+                  <AuthInput
+                    label="Verification Code"
+                    placeholder="000000"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    required
+                    maxLength={6}
+                    autoFocus
+                    className="text-center font-mono text-lg font-black tracking-widest bg-secondary"
+                    icon={<Shield className="h-4 w-4 text-primary" />}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 space-y-3">
+                <AuthButton type="submit" busy={mfaBusy} disabled={otpCode.length !== 6}>
+                  Verify and Login
+                </AuthButton>
+                
+                <div className="flex flex-col gap-2 pt-1 text-center">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (user?.email) {
+                        await sendEmailOtp(user.email);
+                      }
+                    }}
+                    className="text-xs font-semibold text-primary hover:underline"
+                  >
+                    Resend code
+                  </button>
+
+                  {has2FaFactor && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVerificationMethod("2fa");
+                        setOtpCode("");
+                      }}
+                      className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline border-t border-border/40 pt-2 mt-1 w-full"
+                    >
+                      Verify via Authenticator App instead
+                    </button>
+                  )}
+                </div>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={onVerifyMfa} className="space-y-4 animate-in fade-in duration-300">
+              <div className="flex justify-between items-center mb-1">
+                <h2 className="text-xl font-bold text-foreground">Security Verification</h2>
+                <button 
+                  type="button" 
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setVerificationRequired(false);
+                    setVerificationMethod(null);
+                    setOtpCode("");
+                  }} 
+                  className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="space-y-2 py-2 text-center select-none">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Enter the 6-digit verification code generated by your Google Authenticator app.
+                </p>
+                <div className="pt-2">
+                  <AuthInput
+                    label="6-Digit Code"
+                    placeholder="000000"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    required
+                    maxLength={6}
+                    autoFocus
+                    className="text-center font-mono text-lg font-black tracking-widest bg-secondary"
+                    icon={<Shield className="h-4 w-4 text-primary" />}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 space-y-3 text-center">
+                <AuthButton type="submit" busy={mfaBusy} disabled={otpCode.length !== 6}>
+                  Verify and Login
+                </AuthButton>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setVerificationMethod("email");
+                    setOtpCode("");
+                    if (user?.email) {
+                      await sendEmailOtp(user.email);
+                    }
+                  }}
+                  className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline border-t border-border/40 pt-2 w-full block"
+                >
+                  Verify via Email OTP instead
+                </button>
+              </div>
+            </form>
+          )}
         </AuthCard>
       </AuthLayout>
     );
