@@ -318,6 +318,11 @@ export const sendWalletStatementAdmin = createServerFn({ method: "POST" })
     openingBalance: number;
     closingBalance: number;
     transactions: any[];
+    startDate?: string;
+    endDate?: string;
+    totalDeposited?: number;
+    totalReleased?: number;
+    totalUsed?: number;
   }) => d)
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
@@ -326,7 +331,7 @@ export const sendWalletStatementAdmin = createServerFn({ method: "POST" })
     // Fetch user details
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("username, email, first_name, last_name")
+      .select("username, email, first_name, last_name, wallet_balance, credit_balance")
       .eq("id", data.targetUserId)
       .maybeSingle();
 
@@ -336,13 +341,29 @@ export const sendWalletStatementAdmin = createServerFn({ method: "POST" })
       ? `${profile.first_name} ${profile.last_name || ""}`.trim()
       : profile.username;
 
+    const dateRangeStr = (data.startDate || data.endDate)
+      ? `${data.startDate || "Beginning"} to ${data.endDate || "Present"}`
+      : "All Time";
+
+    const dep = data.totalDeposited !== undefined ? data.totalDeposited : 0;
+    const rel = data.totalReleased !== undefined ? data.totalReleased : 0;
+    const usd = data.totalUsed !== undefined ? data.totalUsed : 0;
+
     const statementSummary = `
---- WALLET FINANCIAL STATEMENT ---
-Customer Name: ${customerName}
-Opening Balance: $${Number(data.openingBalance).toFixed(2)}
-Closing Balance: $${Number(data.closingBalance).toFixed(2)}
-Total Transactions: ${data.transactions.length}
-Generated On: ${new Date().toLocaleString()}
+📄 JACKPOT JUNGLE STATEMENT
+
+Customer: ${customerName}
+Date Range: ${dateRangeStr}
+
+Available Balance: $${Number(profile.wallet_balance ?? 0).toFixed(2)}
+Credit Balance: $${Number(profile.credit_balance ?? 0).toFixed(2)}
+
+--- Period Summary ---
+• Total Deposits: $${Number(dep).toFixed(2)}
+• Total Released: $${Number(rel).toFixed(2)}
+• Total Played (Spent): $${Number(usd).toFixed(2)}
+
+Generated: ${new Date().toLocaleString()}
     `.trim();
 
     if (data.method === "chat") {
@@ -358,7 +379,7 @@ Generated On: ${new Date().toLocaleString()}
         conversation_id: conv.id,
         sender_id: context.userId,
         from_page: true,
-        content: `[Statement Details]\n${statementSummary}`,
+        content: statementSummary,
       });
     } else {
       // Mock email sending audit log

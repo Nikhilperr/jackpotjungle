@@ -3080,7 +3080,7 @@ function Conversation({
               </tr>
             </thead>
             <tbody>
-              \${txRows || '<tr><td colspan="9" style="text-align: center; padding: 20px;">No transaction records found.</td></tr>'}
+              ${txRows || '<tr><td colspan="9" style="text-align: center; padding: 20px;">No transaction records found.</td></tr>'}
             </tbody>
           </table>
           <script>window.print();</script>
@@ -3092,6 +3092,25 @@ function Conversation({
 
   const sendStatementToUser = async (method: "email" | "chat") => {
     if (!walletDetails) return toast.error("No wallet details loaded.");
+
+    // Calculate period totals from walletTransactions (already filtered by date/ledger filters!)
+    let periodDeposited = 0;
+    let periodReleased = 0;
+    let periodUsed = 0;
+
+    walletTransactions.forEach(tx => {
+      if (tx.deleted) return; // skip soft-deleted transactions
+      const amt = Number(tx.amount);
+      const action = tx.action.toLowerCase();
+      if (action === "deposit") {
+        periodDeposited += Math.abs(amt);
+      } else if (action === "credit_added") {
+        periodReleased += Math.abs(amt);
+      } else if (action === "used" || action === "deduct_credit") {
+        periodUsed += Math.abs(amt);
+      }
+    });
+
     try {
       const { sendWalletStatementAdmin } = await import("@/lib/wallet.functions");
       await sendWalletStatementAdmin({
@@ -3099,8 +3118,13 @@ function Conversation({
           targetUserId: conv.userId,
           method,
           openingBalance: walletDetails.wallet_balance,
-          closingBalance: walletDetails.wallet_balance, // simple closing balance check
+          closingBalance: walletDetails.wallet_balance,
           transactions: walletTransactions,
+          startDate: startDate || undefined,
+          endDate: endDate || undefined,
+          totalDeposited: periodDeposited,
+          totalReleased: periodReleased,
+          totalUsed: periodUsed,
         }
       });
       toast.success(`Statement sent via ${method === "chat" ? "Support Chat" : "Email"}!`);
