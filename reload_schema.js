@@ -144,13 +144,24 @@ async function triggerReload() {
     console.log("Found DATABASE_URL, attempting connection...");
     let connected = false;
     let servername = undefined;
+    let connUrlStr = process.env.DATABASE_URL;
     try {
-      servername = new URL(process.env.DATABASE_URL).hostname;
+      const url = new URL(connUrlStr);
+      servername = url.hostname;
+      const match = servername.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
+      if (match) {
+        const projectRef = match[1];
+        const port = url.port || "5432";
+        if (port === "6543" && url.username && !url.username.includes(".")) {
+          url.username = `${url.username}.${projectRef}`;
+        }
+      }
+      connUrlStr = url.toString();
     } catch (err) {}
 
     let client = new pg.Client({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL.includes("supabase.co") || process.env.DATABASE_URL.includes("chancerealm.casino")
+      connectionString: connUrlStr,
+      ssl: connUrlStr.includes("supabase.co") || connUrlStr.includes("chancerealm.casino")
         ? { rejectUnauthorized: false, servername }
         : undefined
     });
