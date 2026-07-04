@@ -1,6 +1,6 @@
-const pg = require('pg');
-const fs = require('fs');
-const path = require('path');
+import pg from 'pg';
+import fs from 'fs';
+import path from 'path';
 
 let connectionString = process.env.DATABASE_URL;
 
