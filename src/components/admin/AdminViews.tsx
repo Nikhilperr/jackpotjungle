@@ -473,7 +473,19 @@ export function UserDetailPanel({
       .on("postgres_changes", { event: "*", schema: "public", table: "wallet_transactions", filter: `user_id=eq.${userId}` }, () => loadAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` }, () => loadAll())
       .subscribe();
-    return () => { sb.removeChannel(ch); };
+
+    const handleWalletUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.userId === userId) {
+        loadAll();
+      }
+    };
+    window.addEventListener("wallet-updated", handleWalletUpdate);
+
+    return () => {
+      sb.removeChannel(ch);
+      window.removeEventListener("wallet-updated", handleWalletUpdate);
+    };
     /* eslint-disable-next-line */
   }, [userId]);
 

@@ -472,6 +472,27 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   const [search, setSearch] = useState("");
   const searchParams = Route.useSearch();
 
+  // Sync user wallet balance updates across components in real-time
+  useEffect(() => {
+    const handleWalletUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { userId, wallet_balance, credit_balance } = customEvent.detail || {};
+      if (userId) {
+        setConvs((prev) =>
+          prev.map((c) =>
+            c.userId === userId
+              ? { ...c, wallet: wallet_balance, credit: credit_balance }
+              : c
+          )
+        );
+      }
+    };
+    window.addEventListener("wallet-updated", handleWalletUpdate);
+    return () => {
+      window.removeEventListener("wallet-updated", handleWalletUpdate);
+    };
+  }, []);
+
   const activeId = searchParams.c || null;
   const setActiveId = (id: string | null) => {
     navigate({
@@ -2774,6 +2795,19 @@ function Conversation({
         setWalletNotes("");
         // Reload details
         loadWalletDetails();
+
+        // Broadcast global event to sync balances across components instantly
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("wallet-updated", {
+              detail: {
+                userId: conv.userId,
+                wallet_balance: res.wallet_balance,
+                credit_balance: res.credit_balance,
+              },
+            })
+          );
+        }
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to update wallet");
@@ -2805,6 +2839,19 @@ function Conversation({
       if (res.success) {
         toast.success("Wallet reset successfully!");
         loadWalletDetails();
+
+        // Broadcast global event to sync balances across components instantly
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("wallet-updated", {
+              detail: {
+                userId: conv.userId,
+                wallet_balance: res.wallet_balance,
+                credit_balance: res.credit_balance,
+              },
+            })
+          );
+        }
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to reset wallet");
