@@ -80,6 +80,16 @@ function AuthPage() {
 
     if (user) {
       const timer = setTimeout(async () => {
+        try {
+          const { data: mfaData, error: mfaErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+          if (!mfaErr && mfaData.nextLevel === "aal2" && mfaData.currentLevel !== "aal2") {
+            setMfaRequired(true);
+            return;
+          }
+        } catch (e) {
+          console.warn("MFA check failed:", e);
+        }
+
         const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
         const isProdDomain = hostname.endsWith("playjackpotjungle.com");
         const isChatOrPrimary = hostname.startsWith("chat.") || hostname === "playjackpotjungle.com" || hostname === "www.playjackpotjungle.com";

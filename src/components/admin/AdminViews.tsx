@@ -937,7 +937,7 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
     try {
       const { data, error } = await sb.auth.mfa.listFactors();
       if (error) throw error;
-      const verifiedTotp = data.all.find((f: any) => f.factorType === "totp" && f.status === "verified");
+      const verifiedTotp = data.all.find((f: any) => (f.factorType === "totp" || f.factor_type === "totp") && f.status === "verified");
       if (verifiedTotp) {
         setMfaStatus("active");
         setMfaFactorId(verifiedTotp.id);

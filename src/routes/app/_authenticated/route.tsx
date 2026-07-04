@@ -14,6 +14,18 @@ export const Route = createFileRoute("/app/_authenticated")({
       throw redirect({ to: "/app/auth" });
     }
 
+    try {
+      const { data: mfaData, error: mfaErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!mfaErr && mfaData.nextLevel === "aal2" && mfaData.currentLevel !== "aal2") {
+        throw redirect({ to: "/app/auth" });
+      }
+    } catch (e) {
+      if (e && typeof e === "object" && "to" in e) {
+        throw e;
+      }
+      console.warn("MFA check failed in route guard:", e);
+    }
+
     // Check cached status to avoid blocking network queries on every transition
     let isCachedComplete = false;
     try {

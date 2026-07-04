@@ -102,7 +102,7 @@ function ProfilePage() {
     try {
       const { data, error } = await supabase.auth.mfa.listFactors();
       if (error) throw error;
-      const verifiedTotp = data.all.find(f => f.factorType === "totp" && f.status === "verified");
+      const verifiedTotp = data.all.find(f => (f.factorType === "totp" || (f as any).factor_type === "totp") && f.status === "verified");
       if (verifiedTotp) {
         setMfaStatus("active");
         setMfaFactorId(verifiedTotp.id);
