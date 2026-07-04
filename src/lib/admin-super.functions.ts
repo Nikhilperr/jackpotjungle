@@ -1678,9 +1678,12 @@ async function getDbClient() {
   for (const cand of candidates) {
     for (const pw of passwordsToTry) {
       console.log(`[DB_DEBUG] Trying: ${cand.label} (${cand.host}:${cand.port} as ${cand.user})...`);
-      const resolvedConn = `postgres://${cand.user}:${pw}@${cand.host}:${cand.port}/${config.database}`;
       const client = new pg.Client({
-        connectionString: resolvedConn,
+        host: cand.host,
+        port: parseInt(cand.port, 10) || 5432,
+        user: cand.user,
+        password: pw,
+        database: config.database,
         ssl: cand.ssl
       });
 
