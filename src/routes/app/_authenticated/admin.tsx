@@ -2983,29 +2983,62 @@ function Conversation({
 
   const exportAdminCSV = () => {
     if (walletTransactions.length === 0) return toast.error("No transactions to export.");
-    const headers = ["Date & Time", "Action", "Amount", "Avail Before", "Avail After", "Credit Before", "Credit After", "Reason", "Admin Name", "Notes", "Status", "Original Amount", "Edited At", "Deleted At"];
-    const rows = walletTransactions.map(tx => [
-      new Date(tx.created_at).toLocaleString(),
-      tx.action.toUpperCase(),
-      `$${Number(tx.amount).toFixed(2)}`,
-      `$${Number(tx.avail_before).toFixed(2)}`,
-      `$${Number(tx.avail_after).toFixed(2)}`,
-      `$${Number(tx.credit_before).toFixed(2)}`,
-      `$${Number(tx.credit_after).toFixed(2)}`,
-      tx.reason,
-      tx.admin_name || "Admin",
-      tx.notes || "",
-      tx.deleted ? "DELETED" : tx.edited ? "EDITED" : "ACTIVE",
-      tx.original_amount !== null && tx.original_amount !== undefined ? `$${Number(tx.original_amount).toFixed(2)}` : "",
-      tx.edited_at ? new Date(tx.edited_at).toLocaleString() : "",
-      tx.deleted_at ? new Date(tx.deleted_at).toLocaleString() : ""
-    ]);
+
+    let headers: string[] = [];
+    let rows: any[][] = [];
+
+    if (historyFilter === "wallet") {
+      headers = ["Date & Time", "Action", "Amount", "Avail Before", "Avail After", "Reason", "Admin Name", "Notes", "Status"];
+      rows = walletTransactions.map(tx => [
+        new Date(tx.created_at).toLocaleString(),
+        tx.action.toUpperCase(),
+        `$${Number(tx.amount).toFixed(2)}`,
+        `$${Number(tx.avail_before).toFixed(2)}`,
+        `$${Number(tx.avail_after).toFixed(2)}`,
+        tx.reason,
+        tx.admin_name || "Admin",
+        tx.notes || "",
+        tx.deleted ? "DELETED" : tx.edited ? "EDITED" : "ACTIVE"
+      ]);
+    } else if (historyFilter === "credit") {
+      headers = ["Date & Time", "Action", "Amount", "Credit Before", "Credit After", "Reason", "Admin Name", "Notes", "Status"];
+      rows = walletTransactions.map(tx => [
+        new Date(tx.created_at).toLocaleString(),
+        tx.action.toUpperCase(),
+        `$${Number(tx.amount).toFixed(2)}`,
+        `$${Number(tx.credit_before).toFixed(2)}`,
+        `$${Number(tx.credit_after).toFixed(2)}`,
+        tx.reason,
+        tx.admin_name || "Admin",
+        tx.notes || "",
+        tx.deleted ? "DELETED" : tx.edited ? "EDITED" : "ACTIVE"
+      ]);
+    } else {
+      headers = ["Date & Time", "Action", "Amount", "Avail Before", "Avail After", "Credit Before", "Credit After", "Reason", "Admin Name", "Notes", "Status", "Original Amount", "Edited At", "Deleted At"];
+      rows = walletTransactions.map(tx => [
+        new Date(tx.created_at).toLocaleString(),
+        tx.action.toUpperCase(),
+        `$${Number(tx.amount).toFixed(2)}`,
+        `$${Number(tx.avail_before).toFixed(2)}`,
+        `$${Number(tx.avail_after).toFixed(2)}`,
+        `$${Number(tx.credit_before).toFixed(2)}`,
+        `$${Number(tx.credit_after).toFixed(2)}`,
+        tx.reason,
+        tx.admin_name || "Admin",
+        tx.notes || "",
+        tx.deleted ? "DELETED" : tx.edited ? "EDITED" : "ACTIVE",
+        tx.original_amount !== null && tx.original_amount !== undefined ? `$${Number(tx.original_amount).toFixed(2)}` : "",
+        tx.edited_at ? new Date(tx.edited_at).toLocaleString() : "",
+        tx.deleted_at ? new Date(tx.deleted_at).toLocaleString() : ""
+      ]);
+    }
+
     const csvContent = [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `JJ_Wallet_Ledger_Customer_${conv.username || "user"}.csv`);
+    link.setAttribute("download", `JJ_Wallet_Ledger_${historyFilter.toUpperCase()}_Customer_${conv.username || "user"}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -3018,19 +3051,115 @@ function Conversation({
     if (!printWindow) return toast.error("Could not open print window.");
 
     const customerName = conv.username || "Customer";
-    const txRows = walletTransactions.map(tx => `
-      <tr>
+
+    // Determine headers based on filter
+    let tableHeaders = "";
+    let colspan = 9;
+    if (historyFilter === "wallet") {
+      tableHeaders = `
+        <th>Date & Time</th>
+        <th>Action</th>
+        <th style="text-align: right;">Amount</th>
+        <th style="text-align: right;">Avail. Before</th>
+        <th style="text-align: right;">Avail. After</th>
+        <th>Reason</th>
+        <th>Admin</th>
+      `;
+      colspan = 7;
+    } else if (historyFilter === "credit") {
+      tableHeaders = `
+        <th>Date & Time</th>
+        <th>Action</th>
+        <th style="text-align: right;">Amount</th>
+        <th style="text-align: right;">Credit Before</th>
+        <th style="text-align: right;">Credit After</th>
+        <th>Reason</th>
+        <th>Admin</th>
+      `;
+      colspan = 7;
+    } else {
+      tableHeaders = `
+        <th>Date & Time</th>
+        <th>Action</th>
+        <th style="text-align: right;">Amount</th>
+        <th style="text-align: right;">Avail. Before</th>
+        <th style="text-align: right;">Avail. After</th>
+        <th style="text-align: right;">Credit Before</th>
+        <th style="text-align: right;">Credit After</th>
+        <th>Reason</th>
+        <th>Admin</th>
+      `;
+      colspan = 9;
+    }
+
+    const txRows = walletTransactions.map(tx => {
+      let cells = `
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${new Date(tx.created_at).toLocaleString()}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd; text-transform: uppercase; font-weight: bold;">${tx.action}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.amount).toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_before).toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_after).toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_before).toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_after).toFixed(2)}</td>
+      `;
+
+      if (historyFilter === "wallet") {
+        cells += `
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_after).toFixed(2)}</td>
+        `;
+      } else if (historyFilter === "credit") {
+        cells += `
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_after).toFixed(2)}</td>
+        `;
+      } else {
+        cells += `
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_after).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_after).toFixed(2)}</td>
+        `;
+      }
+
+      cells += `
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${tx.reason}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${tx.admin_name || "Admin"}</td>
-      </tr>
-    `).join("");
+      `;
+
+      return `<tr>${cells}</tr>`;
+    }).join("");
+
+    // Conditional summary stats
+    let summaryHTML = "";
+    if (historyFilter === "wallet") {
+      summaryHTML = `
+        <div>
+          <p style="margin: 4px 0;"><strong>Available Balance:</strong> $${(walletDetails?.wallet_balance ?? 0).toFixed(2)}</p>
+        </div>
+        <div style="text-align: right;">
+          <p style="margin: 4px 0;"><strong>Deposits:</strong> $${(walletDetails?.wallet_deposits ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Used:</strong> $${(walletDetails?.wallet_used ?? 0).toFixed(2)}</p>
+        </div>
+      `;
+    } else if (historyFilter === "credit") {
+      summaryHTML = `
+        <div>
+          <p style="margin: 4px 0;"><strong>Credit Balance:</strong> $${(walletDetails?.credit_balance ?? 0).toFixed(2)}</p>
+        </div>
+        <div style="text-align: right;">
+          <p style="margin: 4px 0;"><strong>Released:</strong> $${(walletDetails?.wallet_released ?? 0).toFixed(2)}</p>
+        </div>
+      `;
+    } else {
+      summaryHTML = `
+        <div>
+          <p style="margin: 4px 0;"><strong>Available Balance:</strong> $${(walletDetails?.wallet_balance ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Credit Balance:</strong> $${(walletDetails?.credit_balance ?? 0).toFixed(2)}</p>
+        </div>
+        <div style="text-align: right;">
+          <p style="margin: 4px 0;"><strong>Deposits:</strong> $${(walletDetails?.wallet_deposits ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Released:</strong> $${(walletDetails?.wallet_released ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Used:</strong> $${(walletDetails?.wallet_used ?? 0).toFixed(2)}</p>
+        </div>
+      `;
+    }
 
     printWindow.document.write(`
       <html>
@@ -3055,32 +3184,16 @@ function Conversation({
             <p style="margin: 4px 0; font-size: 13px;">Statement generated: ${new Date().toLocaleString()}</p>
           </div>
           <div class="summary" style="display: flex; justify-content: space-between; margin-top: 20px;">
-            <div>
-              <p style="margin: 4px 0;"><strong>Available Balance:</strong> $${(walletDetails?.wallet_balance ?? 0).toFixed(2)}</p>
-              <p style="margin: 4px 0;"><strong>Credit Balance:</strong> $${(walletDetails?.credit_balance ?? 0).toFixed(2)}</p>
-            </div>
-            <div style="text-align: right;">
-              <p style="margin: 4px 0;"><strong>Deposits:</strong> $${(walletDetails?.wallet_deposits ?? 0).toFixed(2)}</p>
-              <p style="margin: 4px 0;"><strong>Released:</strong> $${(walletDetails?.wallet_released ?? 0).toFixed(2)}</p>
-              <p style="margin: 4px 0;"><strong>Used:</strong> $${(walletDetails?.wallet_used ?? 0).toFixed(2)}</p>
-            </div>
+            ${summaryHTML}
           </div>
           <table>
             <thead>
               <tr>
-                <th>Date & Time</th>
-                <th>Action</th>
-                <th style="text-align: right;">Amount</th>
-                <th style="text-align: right;">Avail. Before</th>
-                <th style="text-align: right;">Avail. After</th>
-                <th style="text-align: right;">Credit Before</th>
-                <th style="text-align: right;">Credit After</th>
-                <th>Reason</th>
-                <th>Admin</th>
+                ${tableHeaders}
               </tr>
             </thead>
             <tbody>
-              ${txRows || '<tr><td colspan="9" style="text-align: center; padding: 20px;">No transaction records found.</td></tr>'}
+              ${txRows || `<tr><td colspan="${colspan}" style="text-align: center; padding: 20px;">No transaction records found.</td></tr>`}
             </tbody>
           </table>
           <script>window.print();</script>
@@ -3125,6 +3238,7 @@ function Conversation({
           totalDeposited: periodDeposited,
           totalReleased: periodReleased,
           totalUsed: periodUsed,
+          ledgerFilter: historyFilter,
         }
       });
       toast.success(`Statement sent via ${method === "chat" ? "Support Chat" : "Email"}!`);

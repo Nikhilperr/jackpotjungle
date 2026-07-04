@@ -323,6 +323,7 @@ export const sendWalletStatementAdmin = createServerFn({ method: "POST" })
     totalDeposited?: number;
     totalReleased?: number;
     totalUsed?: number;
+    ledgerFilter?: string;
   }) => d)
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
@@ -349,19 +350,40 @@ export const sendWalletStatementAdmin = createServerFn({ method: "POST" })
     const rel = data.totalReleased !== undefined ? data.totalReleased : 0;
     const usd = data.totalUsed !== undefined ? data.totalUsed : 0;
 
+    const showWallet = !data.ledgerFilter || data.ledgerFilter === "all" || data.ledgerFilter === "wallet";
+    const showCredit = !data.ledgerFilter || data.ledgerFilter === "all" || data.ledgerFilter === "credit";
+
+    let balanceLines = "";
+    if (showWallet) balanceLines += `Available Balance: $${Number(profile.wallet_balance ?? 0).toFixed(2)}\n`;
+    if (showCredit) balanceLines += `Credit Balance: $${Number(profile.credit_balance ?? 0).toFixed(2)}\n`;
+    balanceLines = balanceLines.trim();
+
+    let summaryLines = "";
+    if (showWallet) {
+      summaryLines += `• Total Deposits: $${Number(dep).toFixed(2)}\n`;
+    }
+    if (showCredit) {
+      summaryLines += `• Total Released: $${Number(rel).toFixed(2)}\n`;
+    }
+    if (showWallet) {
+      summaryLines += `• Total Played (Spent): $${Number(usd).toFixed(2)}\n`;
+    } else if (showCredit) {
+      summaryLines += `• Total Credit Spent: $${Number(usd).toFixed(2)}\n`;
+    }
+    summaryLines = summaryLines.trim();
+
+    const typeStr = data.ledgerFilter ? data.ledgerFilter.toUpperCase() : "ALL";
+
     const statementSummary = `
-📄 JACKPOT JUNGLE STATEMENT
+📄 JACKPOT JUNGLE STATEMENT (${typeStr})
 
 Customer: ${customerName}
 Date Range: ${dateRangeStr}
 
-Available Balance: $${Number(profile.wallet_balance ?? 0).toFixed(2)}
-Credit Balance: $${Number(profile.credit_balance ?? 0).toFixed(2)}
+${balanceLines}
 
 --- Period Summary ---
-• Total Deposits: $${Number(dep).toFixed(2)}
-• Total Released: $${Number(rel).toFixed(2)}
-• Total Played (Spent): $${Number(usd).toFixed(2)}
+${summaryLines}
 
 Generated: ${new Date().toLocaleString()}
     `.trim();
