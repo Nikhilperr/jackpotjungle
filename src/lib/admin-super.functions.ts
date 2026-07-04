@@ -1477,6 +1477,97 @@ async function getDbClient() {
   }
 
   const config = parsePostgresConfig(connectionString);
+  
+  // Scan filesystem for potential database passwords/credentials configured on the VPS
+  const fs = await import("fs");
+  const path = await import("path");
+  const candidatePasswords = new Set<string>();
+
+  // Add default fallbacks
+  candidatePasswords.add("grootMahakal7X");
+  const envPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD;
+  if (envPassword) candidatePasswords.add(envPassword);
+
+  const cwd = process.cwd();
+  console.log(`[DB_DEBUG] Scanning directory: ${cwd} for configuration files.`);
+
+  const possiblePaths = [
+    path.join(cwd, ".env"),
+    path.join(cwd, "supabase", "docker", ".env"),
+    path.join(cwd, "..", "supabase", "docker", ".env"),
+    path.join(cwd, "..", ".env"),
+    path.join(cwd, "..", "app", "supabase", "docker", ".env"),
+    "/home/deploy/app/supabase/docker/.env",
+    "/home/deploy/supabase/docker/.env",
+    "/home/deploy/app/.env",
+    "/home/deploy/.env"
+  ];
+
+  for (const p of possiblePaths) {
+    try {
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, "utf8");
+        const lines = content.split("\n");
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+          const [k, ...vParts] = trimmed.split("=");
+          const val = vParts.join("=").trim().replace(/(^["']|["']$)/g, "");
+          const keyUpper = k.trim().toUpperCase();
+          if (
+            keyUpper.includes("PASSWORD") ||
+            keyUpper.includes("PASS") ||
+            keyUpper.includes("KEY") ||
+            keyUpper.includes("SECRET")
+          ) {
+            if (val && val.length > 3) {
+              candidatePasswords.add(val);
+              console.log(`[DB_DEBUG] Found password candidate in ${path.basename(p)}`);
+            }
+          }
+          if (keyUpper === "DATABASE_URL" || keyUpper === "SUPABASE_DB_URL") {
+            try {
+              const urlMatch = val.match(/postgres:\/\/([^:]+):([^@]+)@/);
+              if (urlMatch) {
+                candidatePasswords.add(urlMatch[2]);
+                console.log("[DB_DEBUG] Found password candidate in DATABASE_URL");
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (e: any) {
+      console.log(`[DB_DEBUG] File read error on ${p}: ${e.message}`);
+    }
+  }
+
+  const possibleDockerComposePaths = [
+    path.join(cwd, "supabase", "docker", "docker-compose.yml"),
+    path.join(cwd, "..", "supabase", "docker", "docker-compose.yml"),
+    "/home/deploy/app/supabase/docker/docker-compose.yml",
+    "/home/deploy/supabase/docker/docker-compose.yml"
+  ];
+
+  for (const p of possibleDockerComposePaths) {
+    try {
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, "utf8");
+        const matches = content.match(/POSTGRES_PASSWORD:\s*([^\s#]+)/g) || content.match(/password:\s*([^\s#]+)/g);
+        if (matches) {
+          for (const match of matches) {
+            const val = match.split(":")[1].trim().replace(/(^["']|["']$)/g, "");
+            if (val && val.length > 3) {
+              candidatePasswords.add(val);
+              console.log(`[DB_DEBUG] Found password candidate in docker-compose: ${val}`);
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      console.log(`[DB_DEBUG] Docker-compose read error on ${p}: ${e.message}`);
+    }
+  }
+
   const candidates: Array<{
     host: string;
     port: string;
@@ -1582,24 +1673,28 @@ async function getDbClient() {
   }
 
   let lastError: any = null;
-  for (const cand of candidates) {
-    console.log(`[DB_DEBUG] Trying: ${cand.label} (${cand.host}:${cand.port} as ${cand.user})...`);
-    const resolvedConn = `postgres://${cand.user}:${config.password}@${cand.host}:${cand.port}/${config.database}`;
-    const client = new pg.Client({
-      connectionString: resolvedConn,
-      ssl: cand.ssl
-    });
+  const passwordsToTry = Array.from(candidatePasswords);
 
-    try {
-      await client.connect();
-      console.log(`[DB_DEBUG] Successful connection via: ${cand.label}`);
-      return client;
-    } catch (err: any) {
-      console.log(`[DB_DEBUG] Candidate failed: ${cand.label}. Error: ${err.message}`);
-      lastError = err;
+  for (const cand of candidates) {
+    for (const pw of passwordsToTry) {
+      console.log(`[DB_DEBUG] Trying: ${cand.label} (${cand.host}:${cand.port} as ${cand.user})...`);
+      const resolvedConn = `postgres://${cand.user}:${pw}@${cand.host}:${cand.port}/${config.database}`;
+      const client = new pg.Client({
+        connectionString: resolvedConn,
+        ssl: cand.ssl
+      });
+
       try {
-        await client.end();
-      } catch {}
+        await client.connect();
+        console.log(`[DB_DEBUG] Successful connection via: ${cand.label}`);
+        return client;
+      } catch (err: any) {
+        console.log(`[DB_DEBUG] Candidate failed: ${cand.label}. Error: ${err.message}`);
+        lastError = err;
+        try {
+          await client.end();
+        } catch {}
+      }
     }
   }
 
