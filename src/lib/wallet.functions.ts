@@ -140,18 +140,22 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
 
     const amt = Number(data.amount);
     let notificationText = "";
+    let chatText = "";
     const activeReason = data.reason || "Manual adjustment";
+    const paymentMethod = activeReason.replace(" Credit Load", "").replace(" Load", "");
 
     switch (data.action) {
       case "deposit":
         nextAvail = prevAvail + amt;
         nextDeposits = prevDeposits + amt;
         notificationText = `You received $${amt.toFixed(2)} into your Available Balance (via ${activeReason}).`;
+        chatText = `Wallet Updated: You received $${amt.toFixed(2)} into your wallet balance via ${paymentMethod}.`;
         break;
 
       case "credit_added":
         nextCredit = prevCredit + amt;
         notificationText = `$${amt.toFixed(2)} was added into your Credit Balance (via ${activeReason}).`;
+        chatText = `Wallet Updated: $${amt.toFixed(2)} was added into your Credit Balance.`;
         break;
 
       case "credit_released":
@@ -160,6 +164,7 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
         nextAvail = prevAvail + amt;
         nextReleased = prevReleased + amt;
         notificationText = `$${amt.toFixed(2)} was released from your Credit Balance.`;
+        chatText = `Wallet Updated: $${amt.toFixed(2)} was released from your Credit Balance.`;
         break;
 
       case "deduction":
@@ -169,6 +174,7 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
         notificationText = activeReason === "Played Funds"
           ? `You played $${amt.toFixed(2)} from your Available Balance.`
           : `$${amt.toFixed(2)} was deducted by an administrator.`;
+        chatText = `Wallet Updated: $${amt.toFixed(2)} has been played by you and has been deducted from your wallet balance.`;
         break;
 
       case "deduct_credit":
@@ -177,22 +183,26 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
         notificationText = activeReason === "Played Funds"
           ? `You played $${amt.toFixed(2)} from your Credit Balance.`
           : `$${amt.toFixed(2)} was deducted from your Credit Balance.`;
+        chatText = `Wallet Updated: $${amt.toFixed(2)} has been played by you and has been deducted from your Credit Balance via Credit.`;
         break;
 
       case "correction":
         // Correction can modify both or either, let's treat correction as adjusting Available Balance
         nextAvail = prevAvail + amt; // can pass negative amounts in server-code if adjusting downward, but here we require non-negative amount and reason
         notificationText = `Your wallet balance was corrected by $${amt.toFixed(2)}.`;
+        chatText = `Wallet Updated: Your wallet balance was corrected by $${amt.toFixed(2)}.`;
         break;
 
       case "refund":
         nextAvail = prevAvail + amt;
         notificationText = `A refund of $${amt.toFixed(2)} was credited to your Available Balance.`;
+        chatText = `Wallet Updated: A refund of $${amt.toFixed(2)} was credited to your Available Balance.`;
         break;
 
       case "bonus":
         nextAvail = prevAvail + amt;
         notificationText = `You received a bonus of $${amt.toFixed(2)} into your Available Balance.`;
+        chatText = `Wallet Updated: You received a bonus of $${amt.toFixed(2)} into your Available Balance.`;
         break;
 
       case "transfer":
@@ -201,6 +211,7 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
         nextAvail = prevAvail - amt;
         nextCredit = prevCredit + amt;
         notificationText = `Transferred $${amt.toFixed(2)} from Available Balance to Credit Balance.`;
+        chatText = `Wallet Updated: Transferred $${amt.toFixed(2)} from Available Balance to Credit Balance.`;
         break;
 
       case "reset":
@@ -211,6 +222,7 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
         nextReleased = 0;
         nextUsed = 0;
         notificationText = "Your wallet credit balances were reset by a super administrator.";
+        chatText = `Wallet Updated: Your wallet credit balances were reset by a super administrator.`;
         break;
 
       default:
@@ -274,7 +286,7 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
           conversation_id: conv.id,
           sender_id: context.userId,
           from_page: true,
-          content: `[Wallet Update] ${notificationText} Reason: ${data.reason}`,
+          content: chatText,
         });
       }
     } catch (chatErr) {
