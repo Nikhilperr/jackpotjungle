@@ -962,48 +962,75 @@ function ProfilePage() {
                           <p className="text-xs text-muted-foreground">Loading active sessions...</p>
                         </div>
                       ) : (
-                        sessions.map((s) => {
-                          const isCurrent = s.id === currentSessionId;
-                          const deviceLabel = parseUserAgent(s.user_agent);
-                          const isMobile = s.user_agent?.toLowerCase().includes("iphone") || s.user_agent?.toLowerCase().includes("android");
-                          
-                          return (
-                            <div key={s.id} className="flex items-center justify-between p-3.5 bg-card border border-border/60 hover:border-border rounded-xl transition-all gap-4">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="h-9 w-9 bg-secondary rounded-xl flex items-center justify-center text-primary shrink-0 border border-border/20">
-                                  {isMobile ? <Smartphone className="h-4 w-4" /> : <Laptop className="h-4 w-4" />}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <p className="text-xs font-bold text-foreground truncate">{deviceLabel}</p>
-                                    {isCurrent && (
-                                      <span className="bg-primary/10 border border-primary/20 text-primary text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
+                        <div className="space-y-3">
+                          {/* Current Device Session */}
+                          {sessions.filter(s => s.id === currentSessionId).map((s) => {
+                            const deviceLabel = parseUserAgent(s.user_agent);
+                            const isMobile = s.user_agent?.toLowerCase().includes("iphone") || s.user_agent?.toLowerCase().includes("android");
+                            return (
+                              <div key={s.id} className="flex items-center justify-between p-3.5 bg-card border border-primary/30 hover:border-primary/50 rounded-xl transition-all gap-4 shadow-sm">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="h-9 w-9 bg-primary/10 rounded-xl flex items-center justify-center text-primary shrink-0 border border-primary/20">
+                                    {isMobile ? <Smartphone className="h-4 w-4" /> : <Laptop className="h-4 w-4" />}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="text-xs font-bold text-foreground truncate">{deviceLabel}</p>
+                                      <span className="bg-primary/20 border border-primary/30 text-primary text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
                                         This Device
                                       </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
-                                    <span className="flex items-center gap-0.5"><Globe className="h-3 w-3" /> {s.ip || "Unknown IP"}</span>
-                                    <span>•</span>
-                                    <span>Last active: {new Date(s.updated_at).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
+                                      <span className="flex items-center gap-0.5"><Globe className="h-3 w-3" /> {s.ip || "Unknown IP"}</span>
+                                      <span>•</span>
+                                      <span>Last active: {new Date(s.updated_at).toLocaleString()}</span>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
+                            );
+                          })}
 
-                              {!isCurrent && (
-                                <Button
-                                  variant="destructive"
-                                  size="icon"
-                                  onClick={() => handleTerminateSession(s.id)}
-                                  className="h-8 w-8 rounded-lg shrink-0"
-                                  title="Log out device"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              )}
+                          {/* Other Device Sessions */}
+                          {sessions.filter(s => s.id !== currentSessionId).length === 0 ? (
+                            <div className="flex flex-col items-center justify-center p-6 border border-dashed border-border/40 rounded-2xl text-center select-none bg-secondary/30">
+                              <Smartphone className="h-7 w-7 text-muted-foreground/55 mb-2" />
+                              <p className="text-xs font-bold text-foreground">No other active devices found</p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">You are currently logged in only on this device.</p>
                             </div>
-                          );
-                        })
+                          ) : (
+                            sessions.filter(s => s.id !== currentSessionId).map((s) => {
+                              const deviceLabel = parseUserAgent(s.user_agent);
+                              const isMobile = s.user_agent?.toLowerCase().includes("iphone") || s.user_agent?.toLowerCase().includes("android");
+                              return (
+                                <div key={s.id} className="flex items-center justify-between p-3.5 bg-card border border-border/60 hover:border-border rounded-xl transition-all gap-4">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="h-9 w-9 bg-secondary rounded-xl flex items-center justify-center text-primary shrink-0 border border-border/20">
+                                      {isMobile ? <Smartphone className="h-4 w-4" /> : <Laptop className="h-4 w-4" />}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold text-foreground truncate">{deviceLabel}</p>
+                                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
+                                        <span className="flex items-center gap-0.5"><Globe className="h-3 w-3" /> {s.ip || "Unknown IP"}</span>
+                                        <span>•</span>
+                                        <span>Last active: {new Date(s.updated_at).toLocaleString()}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    onClick={() => handleTerminateSession(s.id)}
+                                    className="h-8 w-8 rounded-lg shrink-0"
+                                    title="Log out device"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
