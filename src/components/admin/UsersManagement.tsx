@@ -415,7 +415,6 @@ export function UsersManagementView({ meId }: { meId: string }) {
                   <th className="p-4 pl-6">Player profile</th>
                   <th className="p-4">User ID</th>
                   <th className="p-4">Permissions</th>
-                  <th className="p-4">Coins / Balance</th>
                   <th className="p-4">Activity Log</th>
                   <th className="p-4 pr-6"></th>
                 </tr>
@@ -466,19 +465,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         )}
                       </td>
 
-                      {/* Coins & Balance */}
-                      <td className="p-4">
-                        <div className="text-xs space-y-0.5">
-                          <div className="flex items-center gap-1 font-semibold text-foreground">
-                            <Coins className="h-3 w-3 text-amber-500" />
-                            {u.coins ?? 0} Coins
-                          </div>
-                          <div className="flex items-center gap-1 font-medium text-muted-foreground">
-                            <Wallet className="h-3 w-3" />
-                            ${Number(u.wallet_balance ?? 0).toFixed(2)}
-                          </div>
-                        </div>
-                      </td>
+
 
                       {/* Join / Active details */}
                       <td className="p-4">
@@ -549,17 +536,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                   <div className="h-full w-full bg-gradient-to-r from-primary/10 via-accent/5 to-secondary" />
                 )}
                 
-                {/* Upload cover button */}
-                {canEditSelectedUser && (
-                  <button 
-                    onClick={() => coverFileRef.current?.click()}
-                    disabled={uploadingCover}
-                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 text-xs flex items-center gap-1.5 transition-all shadow-md font-sans"
-                  >
-                    {uploadingCover ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
-                    <span>Change Banner</span>
-                  </button>
-                )}
+
                 <input
                   ref={coverFileRef}
                   type="file"
@@ -618,7 +595,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                 <TabsList className="mx-6 my-4 bg-secondary select-none">
                   <TabsTrigger value="general" className="flex-1 text-xs">General</TabsTrigger>
                   <TabsTrigger value="security" className="flex-1 text-xs">Security</TabsTrigger>
-                  <TabsTrigger value="wallet" className="flex-1 text-xs">Balance & VIP</TabsTrigger>
+                  <TabsTrigger value="wallet" className="flex-1 text-xs">VIP & XP</TabsTrigger>
                 </TabsList>
 
                 <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0 space-y-4">
@@ -837,36 +814,6 @@ export function UsersManagementView({ meId }: { meId: string }) {
 
                   {/* Balance / VIP Tab */}
                   <TabsContent value="wallet" className="space-y-4 m-0 focus:outline-none">
-                    {/* Coins */}
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
-                        <Coins className="h-4 w-4 text-amber-500" />
-                        Coins Balance
-                      </label>
-                      <Input
-                        type="number"
-                        value={editCoins}
-                        onChange={(e) => setEditCoins(Number(e.target.value))}
-                        className="bg-secondary/40 border-border/80 font-bold"
-                        disabled={!canEditSelectedUser}
-                      />
-                    </div>
-
-                    {/* Wallet Balance */}
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
-                        <Wallet className="h-4 w-4 text-green-500" />
-                        Wallet Cash Balance ($)
-                      </label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={editWalletBalance}
-                        onChange={(e) => setEditWalletBalance(Number(e.target.value))}
-                        className="bg-secondary/40 border-border/80 font-bold"
-                        disabled={!canEditSelectedUser}
-                      />
-                    </div>
 
                     {/* XP & Level */}
                     <div className="space-y-1">
