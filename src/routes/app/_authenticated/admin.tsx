@@ -2701,6 +2701,16 @@ function Conversation({
   const [walletNotes, setWalletNotes] = useState("");
   const [performingWalletAction, setPerformingWalletAction] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  // Edit Transaction States
+  const [editTxOpen, setEditTxOpen] = useState(false);
+  const [selectedTx, setSelectedTx] = useState<any>(null);
+  const [editTxAmount, setEditTxAmount] = useState("");
+  const [editTxReason, setEditTxReason] = useState("");
+  const [editTxNotes, setEditTxNotes] = useState("");
+  const [editTxCreatedAt, setEditTxCreatedAt] = useState("");
 
   // Reset wallet dialog fields when modal opens
   useEffect(() => {
@@ -2739,18 +2749,110 @@ function Conversation({
     }
   };
 
-  const loadWalletHistory = async (filterVal: string, customUserId?: string) => {
+  const loadWalletHistory = async (filterVal: string, customUserId?: string, start?: string, end?: string) => {
     const targetUserId = customUserId || conv.userId;
     if (!targetUserId) return;
     setLoadingHistory(true);
     try {
       const { getWalletHistoryAdmin } = await import("@/lib/wallet.functions");
-      const res = await getWalletHistoryAdmin({ data: { targetUserId, filter: filterVal } });
+      const res = await getWalletHistoryAdmin({
+        data: {
+          targetUserId,
+          filter: filterVal,
+          startDate: start !== undefined ? start : startDate || undefined,
+          endDate: end !== undefined ? end : endDate || undefined,
+        }
+      });
       setWalletTransactions(res ?? []);
     } catch (err: any) {
       toast.error(err.message || "Failed to load wallet ledger history");
     } finally {
       setLoadingHistory(false);
+    }
+  };
+
+  const handleOpenEditTx = (tx: any) => {
+    setSelectedTx(tx);
+    setEditTxAmount(tx.amount.toString());
+    setEditTxReason(tx.reason);
+    setEditTxNotes(tx.notes || "");
+    
+    // convert UTC date to datetime-local formatted local string
+    const dateObj = new Date(tx.created_at);
+    const offset = dateObj.getTimezoneOffset();
+    const localDateObj = new Date(dateObj.getTime() - offset * 60 * 1000);
+    setEditTxCreatedAt(localDateObj.toISOString().slice(0, 16));
+    
+    setEditTxOpen(true);
+  };
+
+  const submitEditTx = async () => {
+    if (!selectedTx) return;
+    if (!editTxAmount || isNaN(Number(editTxAmount)) || Number(editTxAmount) < 0) {
+      return toast.error("Please enter a valid positive amount.");
+    }
+    try {
+      const { editWalletTransactionAdmin } = await import("@/lib/wallet.functions");
+      const isoDate = new Date(editTxCreatedAt).toISOString();
+      const res = await editWalletTransactionAdmin({
+        data: {
+          transactionId: selectedTx.id,
+          newAmount: Number(editTxAmount),
+          newReason: editTxReason,
+          newNotes: editTxNotes || undefined,
+          newCreatedAt: isoDate
+        }
+      });
+      if (res.success) {
+        toast.success("Transaction updated successfully!");
+        setEditTxOpen(false);
+        loadWalletHistory(historyFilter);
+        loadWalletDetails();
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("wallet-updated", {
+              detail: {
+                userId: res.userId,
+                wallet_balance: res.wallet_balance,
+                credit_balance: res.credit_balance,
+              },
+            })
+          );
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update transaction");
+    }
+  };
+
+  const handleDeleteTx = async (txId: string) => {
+    const confirmed = window.confirm("Are you sure you want to delete this transaction? This will revert its effect on the user's balance.");
+    if (!confirmed) return;
+    try {
+      const { deleteWalletTransactionAdmin } = await import("@/lib/wallet.functions");
+      const res = await deleteWalletTransactionAdmin({
+        data: { transactionId: txId }
+      });
+      if (res.success) {
+        toast.success("Transaction deleted successfully!");
+        loadWalletHistory(historyFilter);
+        loadWalletDetails();
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("wallet-updated", {
+              detail: {
+                userId: res.userId,
+                wallet_balance: res.wallet_balance,
+                credit_balance: res.credit_balance,
+              },
+            })
+          );
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete transaction");
     }
   };
 
@@ -2862,7 +2964,7 @@ function Conversation({
 
   const exportAdminCSV = () => {
     if (walletTransactions.length === 0) return toast.error("No transactions to export.");
-    const headers = ["Date & Time", "Action", "Amount", "Avail Before", "Avail After", "Credit Before", "Credit After", "Reason", "Admin Name", "Notes"];
+    const headers = ["Date & Time", "Action", "Amount", "Avail Before", "Avail After", "Credit Before", "Credit After", "Reason", "Admin Name", "Notes", "Status", "Original Amount", "Edited At", "Deleted At"];
     const rows = walletTransactions.map(tx => [
       new Date(tx.created_at).toLocaleString(),
       tx.action.toUpperCase(),
@@ -2873,17 +2975,22 @@ function Conversation({
       `$${Number(tx.credit_after).toFixed(2)}`,
       tx.reason,
       tx.admin_name || "Admin",
-      tx.notes || ""
+      tx.notes || "",
+      tx.deleted ? "DELETED" : tx.edited ? "EDITED" : "ACTIVE",
+      tx.original_amount !== null && tx.original_amount !== undefined ? `$${Number(tx.original_amount).toFixed(2)}` : "",
+      tx.edited_at ? new Date(tx.edited_at).toLocaleString() : "",
+      tx.deleted_at ? new Date(tx.deleted_at).toLocaleString() : ""
     ]);
-    const csvContent = "data:text/csv;charset=utf-8,"
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `JJ_Wallet_Ledger_Customer_${conv.username || "user"}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast.success("CSV Statement exported successfully!");
   };
 
@@ -4934,20 +5041,46 @@ function Conversation({
           {/* Filtering and Export Action Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 bg-secondary/20 p-3 rounded-xl border border-border/30 my-2 shrink-0">
             {/* Filter controls */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-muted-foreground">Filter:</span>
-              <select
-                value={historyFilter}
-                onChange={(e) => {
-                  setHistoryFilter(e.target.value);
-                  loadWalletHistory(e.target.value);
-                }}
-                className="h-8 px-2 rounded bg-secondary text-xs border-border/50 font-medium"
-              >
-                <option value="all">All Transactions</option>
-                <option value="wallet">Wallet Balance</option>
-                <option value="credit">Credit Balance</option>
-              </select>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-muted-foreground">Filter:</span>
+                <select
+                  value={historyFilter}
+                  onChange={(e) => {
+                    setHistoryFilter(e.target.value);
+                    loadWalletHistory(e.target.value, conv.userId, startDate, endDate);
+                  }}
+                  className="h-8 px-2 rounded bg-secondary text-xs border-border/50 font-medium"
+                >
+                  <option value="all">All Transactions</option>
+                  <option value="wallet">Wallet Balance</option>
+                  <option value="credit">Credit Balance</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-muted-foreground">Start:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    loadWalletHistory(historyFilter, conv.userId, e.target.value, endDate);
+                  }}
+                  className="h-8 px-2 rounded bg-secondary text-xs border border-border/50 font-medium text-foreground dark:text-foreground"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-muted-foreground">End:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    loadWalletHistory(historyFilter, conv.userId, startDate, e.target.value);
+                  }}
+                  className="h-8 px-2 rounded bg-secondary text-xs border border-border/50 font-medium text-foreground dark:text-foreground"
+                />
+              </div>
             </div>
 
             {/* Export buttons */}
@@ -4971,33 +5104,14 @@ function Conversation({
                 Print Statement
               </Button>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="sm"
-                    className="h-8 rounded-lg text-xs gap-1.5 font-bold bg-primary text-primary-foreground hover:bg-primary/95"
-                  >
-                    <Mail className="h-3.5 w-3.5" />
-                    Send Statement
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-card border-border">
-                  <DropdownMenuItem
-                    onClick={() => sendStatementToUser("chat")}
-                    className="cursor-pointer gap-2 py-2 font-semibold"
-                  >
-                    <MessageSquare className="h-4 w-4 text-emerald-500" />
-                    <span>Send to Support Chat</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => sendStatementToUser("email")}
-                    className="cursor-pointer gap-2 py-2 font-semibold"
-                  >
-                    <Mail className="h-4 w-4 text-blue-500" />
-                    <span>Send to Registered Email</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                size="sm"
+                onClick={() => sendStatementToUser("chat")}
+                className="h-8 rounded-lg text-xs gap-1.5 font-bold bg-primary text-primary-foreground hover:bg-primary/95"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                Send to User
+              </Button>
             </div>
           </div>
 
@@ -5025,6 +5139,7 @@ function Conversation({
                     <th className="p-3 text-right">Credit Bal</th>
                     <th className="p-3">Reason</th>
                     <th className="p-3">Admin</th>
+                    <th className="p-3 text-right">Controls</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
@@ -5033,28 +5148,35 @@ function Conversation({
                     const isPositive = ["deposit", "credit_added", "refund", "bonus"].includes(tx.action);
 
                     return (
-                      <tr key={tx.id} className="hover:bg-secondary/20 transition-colors">
+                      <tr 
+                        key={tx.id} 
+                        className={`hover:bg-secondary/20 transition-colors ${tx.deleted ? "opacity-45 line-through bg-secondary/10" : ""}`}
+                      >
                         <td className="p-3 text-muted-foreground whitespace-nowrap">
                           {new Date(tx.created_at).toLocaleString()}
                         </td>
                         <td className="p-3 whitespace-nowrap">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider inline-block ${tx.action === "deposit" || tx.action === "bonus" || tx.action === "refund"
-                              ? "bg-emerald-500/10 text-emerald-500"
-                              : tx.action === "credit_added"
-                                ? "bg-amber-500/10 text-amber-500"
-                                : tx.action === "credit_released"
-                                  ? "bg-blue-500/10 text-blue-500"
-                                  : tx.action === "transfer"
-                                    ? "bg-indigo-500/10 text-indigo-500"
-                                    : tx.action === "reset"
-                                      ? "bg-red-500/10 text-red-500"
-                                      : "bg-red-500/15 text-red-500"
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider inline-block ${
+                            tx.deleted 
+                              ? "bg-muted text-muted-foreground"
+                              : tx.action === "deposit" || tx.action === "bonus" || tx.action === "refund"
+                                ? "bg-emerald-500/10 text-emerald-500"
+                                : tx.action === "credit_added"
+                                  ? "bg-amber-500/10 text-amber-500"
+                                  : tx.action === "credit_released"
+                                    ? "bg-blue-500/10 text-blue-500"
+                                    : tx.action === "transfer"
+                                      ? "bg-indigo-500/10 text-indigo-500"
+                                      : tx.action === "reset"
+                                        ? "bg-red-500/10 text-red-500"
+                                        : "bg-red-500/15 text-red-500"
                             }`}>
                             {tx.action.replace("_", " ")}
                           </span>
                         </td>
-                        <td className={`p-3 text-right font-black whitespace-nowrap ${isPositive ? "text-emerald-500" : "text-destructive"
-                          }`}>
+                        <td className={`p-3 text-right font-black whitespace-nowrap ${
+                          tx.deleted ? "text-muted-foreground" : isPositive ? "text-emerald-500" : "text-destructive"
+                        }`}>
                           {isPositive ? "+" : "-"}${Number(tx.amount).toFixed(2)}
                         </td>
                         <td className="p-3 text-right whitespace-nowrap font-medium">
@@ -5073,6 +5195,30 @@ function Conversation({
                         <td className="p-3 text-muted-foreground whitespace-nowrap font-medium">
                           {tx.admin_name || "Admin"}
                         </td>
+                        <td className="p-3 text-right whitespace-nowrap">
+                          {!tx.deleted ? (
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditTx(tx)}
+                                className="p-1 hover:bg-secondary rounded text-primary transition-colors"
+                                title="Edit transaction"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTx(tx.id)}
+                                className="p-1 hover:bg-destructive/10 rounded text-destructive transition-colors"
+                                title="Delete transaction"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide">Deleted</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -5088,6 +5234,86 @@ function Conversation({
               className="w-full sm:w-auto rounded-xl text-xs font-bold"
             >
               Close Ledger
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 3. Edit Transaction Dialog */}
+      <Dialog open={editTxOpen} onOpenChange={setEditTxOpen}>
+        <DialogContent className="max-w-md bg-card border border-border text-foreground shadow-2xl rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg font-bold text-primary">
+              <Edit className="h-5 w-5 text-amber-500" />
+              <span>Edit Wallet Transaction</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Correct transaction details. This will update the customer's balance accordingly.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 my-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-muted-foreground">Amount ($)</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={editTxAmount}
+                onChange={(e) => setEditTxAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full h-10 px-3 rounded-lg bg-secondary text-sm"
+              />
+            </div>
+            
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-muted-foreground">Reason / Description</label>
+              <Input
+                type="text"
+                value={editTxReason}
+                onChange={(e) => setEditTxReason(e.target.value)}
+                placeholder="Reason"
+                className="w-full h-10 px-3 rounded-lg bg-secondary text-sm"
+              />
+            </div>
+            
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-muted-foreground">Date & Time</label>
+              <input
+                type="datetime-local"
+                value={editTxCreatedAt}
+                onChange={(e) => setEditTxCreatedAt(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg bg-secondary text-sm border border-border/50 text-foreground dark:text-foreground"
+              />
+            </div>
+            
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-muted-foreground">Internal Notes (Optional)</label>
+              <Input
+                type="text"
+                value={editTxNotes}
+                onChange={(e) => setEditTxNotes(e.target.value)}
+                placeholder="Notes visible to admins only..."
+                className="w-full h-10 px-3 rounded-lg bg-secondary text-sm"
+              />
+            </div>
+          </div>
+          
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditTxOpen(false)}
+              className="w-full sm:w-auto rounded-xl text-xs font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={submitEditTx}
+              className="w-full sm:w-auto rounded-xl text-xs font-bold bg-primary text-primary-foreground hover:opacity-90"
+            >
+              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>

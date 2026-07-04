@@ -53,7 +53,7 @@ export const getWalletDetailsAdmin = createServerFn({ method: "GET" })
 // Fetch full wallet history for admin with filter options
 export const getWalletHistoryAdmin = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .validator((d: { targetUserId: string; filter?: string }) => d)
+  .validator((d: { targetUserId: string; filter?: string; startDate?: string; endDate?: string }) => d)
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -71,6 +71,15 @@ export const getWalletHistoryAdmin = createServerFn({ method: "GET" })
       } else {
         query = query.eq("action", data.filter);
       }
+    }
+
+    if (data.startDate) {
+      query = query.gte("created_at", data.startDate);
+    }
+    if (data.endDate) {
+      // Add 23:59:59 to capture the whole end date if just a date string is passed
+      const end = data.endDate.includes("T") ? data.endDate : `${data.endDate}T23:59:59.999Z`;
+      query = query.lte("created_at", end);
     }
 
     const { data: txs, error } = await query.order("created_at", { ascending: false });
@@ -377,6 +386,7 @@ export const getWalletDetailsUser = createServerFn({ method: "GET" })
       .from("wallet_transactions")
       .select("*")
       .eq("user_id", context.userId)
+      .eq("deleted", false)
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -401,8 +411,180 @@ export const getWalletHistoryUser = createServerFn({ method: "GET" })
       .from("wallet_transactions")
       .select("*")
       .eq("user_id", context.userId)
+      .eq("deleted", false)
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
     return txs ?? [];
+  });
+
+// Edit a past transaction with balance updates & audit log adjustments
+export const editWalletTransactionAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: {
+    transactionId: string;
+    newAmount: number;
+    newReason: string;
+    newNotes?: string;
+    newCreatedAt: string;
+  }) => d)
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Fetch original transaction
+    const { data: tx, error: txError } = await supabaseAdmin
+      .from("wallet_transactions")
+      .select("*")
+      .eq("id", data.transactionId)
+      .maybeSingle();
+
+    if (txError) throw new Error(txError.message);
+    if (!tx) throw new Error("Transaction not found.");
+    if (tx.deleted) throw new Error("Cannot edit a deleted transaction.");
+
+    // 2. Fetch user profile
+    const { data: profile, error: profError } = await supabaseAdmin
+      .from("profiles")
+      .select("wallet_balance, credit_balance")
+      .eq("id", tx.user_id)
+      .maybeSingle();
+
+    if (profError) throw new Error(profError.message);
+    if (!profile) throw new Error("User profile not found.");
+
+    const originalAmount = Number(tx.amount);
+    const newAmount = Number(data.newAmount);
+    const diff = newAmount - originalAmount;
+
+    let nextAvail = Number(profile.wallet_balance ?? 0);
+    let nextCredit = Number(profile.credit_balance ?? 0);
+
+    // Recalculate balance based on action type
+    if (tx.action === "deposit" || tx.action === "refund" || tx.action === "bonus") {
+      nextAvail = Math.max(0, nextAvail + diff);
+    } else if (tx.action === "deduction") {
+      nextAvail = Math.max(0, nextAvail - diff);
+    } else if (tx.action === "credit_added") {
+      nextCredit = Math.max(0, nextCredit + diff);
+    } else if (tx.action === "deduct_credit") {
+      nextCredit = Math.max(0, nextCredit - diff);
+    } else if (tx.action === "credit_released") {
+      nextCredit = Math.max(0, nextCredit - diff);
+      nextAvail = Math.max(0, nextAvail + diff);
+    }
+
+    // 3. Update the transaction with audit details
+    const originalAmountSaved = tx.original_amount !== null ? Number(tx.original_amount) : originalAmount;
+    const { error: updateTxErr } = await supabaseAdmin
+      .from("wallet_transactions")
+      .update({
+        amount: newAmount,
+        reason: data.newReason,
+        notes: data.newNotes || tx.notes,
+        created_at: data.newCreatedAt,
+        edited: true,
+        original_amount: originalAmountSaved,
+        edited_at: new Date().toISOString(),
+      } as any)
+      .eq("id", tx.id);
+
+    if (updateTxErr) throw new Error(updateTxErr.message);
+
+    // 4. Update the user profile balance
+    const { error: updateProfErr } = await supabaseAdmin
+      .from("profiles")
+      .update({
+        wallet_balance: nextAvail,
+        credit_balance: nextCredit,
+        wallet_last_updated: new Date().toISOString()
+      } as any)
+      .eq("id", tx.user_id);
+
+    if (updateProfErr) throw new Error(updateProfErr.message);
+
+    return {
+      success: true,
+      wallet_balance: nextAvail,
+      credit_balance: nextCredit,
+      userId: tx.user_id
+    };
+  });
+
+// Soft-delete a transaction and revert its balance impact
+export const deleteWalletTransactionAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { transactionId: string }) => d)
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Fetch original transaction
+    const { data: tx, error: txError } = await supabaseAdmin
+      .from("wallet_transactions")
+      .select("*")
+      .eq("id", data.transactionId)
+      .maybeSingle();
+
+    if (txError) throw new Error(txError.message);
+    if (!tx) throw new Error("Transaction not found.");
+    if (tx.deleted) throw new Error("Transaction is already deleted.");
+
+    // 2. Fetch user profile
+    const { data: profile, error: profError } = await supabaseAdmin
+      .from("profiles")
+      .select("wallet_balance, credit_balance")
+      .eq("id", tx.user_id)
+      .maybeSingle();
+
+    if (profError) throw new Error(profError.message);
+    if (!profile) throw new Error("User profile not found.");
+
+    const amount = Number(tx.amount);
+    let nextAvail = Number(profile.wallet_balance ?? 0);
+    let nextCredit = Number(profile.credit_balance ?? 0);
+
+    // Revert balance impact
+    if (tx.action === "deposit" || tx.action === "refund" || tx.action === "bonus") {
+      nextAvail = Math.max(0, nextAvail - amount);
+    } else if (tx.action === "deduction") {
+      nextAvail = Math.max(0, nextAvail + amount);
+    } else if (tx.action === "credit_added") {
+      nextCredit = Math.max(0, nextCredit - amount);
+    } else if (tx.action === "deduct_credit") {
+      nextCredit = Math.max(0, nextCredit + amount);
+    } else if (tx.action === "credit_released") {
+      nextCredit = Math.max(0, nextCredit + amount);
+      nextAvail = Math.max(0, nextAvail - amount);
+    }
+
+    // 3. Mark transaction as soft-deleted
+    const { error: deleteTxErr } = await supabaseAdmin
+      .from("wallet_transactions")
+      .update({
+        deleted: true,
+        deleted_at: new Date().toISOString(),
+      } as any)
+      .eq("id", tx.id);
+
+    if (deleteTxErr) throw new Error(deleteTxErr.message);
+
+    // 4. Update the user profile balance
+    const { error: updateProfErr } = await supabaseAdmin
+      .from("profiles")
+      .update({
+        wallet_balance: nextAvail,
+        credit_balance: nextCredit,
+        wallet_last_updated: new Date().toISOString()
+      } as any)
+      .eq("id", tx.user_id);
+
+    if (updateProfErr) throw new Error(updateProfErr.message);
+
+    return {
+      success: true,
+      wallet_balance: nextAvail,
+      credit_balance: nextCredit,
+      userId: tx.user_id
+    };
   });
