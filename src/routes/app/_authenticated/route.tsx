@@ -9,21 +9,17 @@ export const Route = createFileRoute("/app/_authenticated")({
     const session = await waitInitialSession();
     if (!session?.user) {
       if (typeof window !== "undefined") {
+        localStorage.removeItem("jj_verified");
         sessionStorage.setItem("jj_invite_redirect", window.location.href);
       }
       throw redirect({ to: "/app/auth" });
     }
 
-    try {
-      const { data: mfaData, error: mfaErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (!mfaErr && mfaData.nextLevel === "aal2" && mfaData.currentLevel !== "aal2") {
-        throw redirect({ to: "/app/auth" });
-      }
-    } catch (e) {
-      if (e && typeof e === "object" && "to" in e) {
-        throw e;
-      }
-      console.warn("MFA check failed in route guard:", e);
+    const isGoogleLogin = session?.user?.app_metadata?.provider === "google";
+    const isVerified = typeof window !== "undefined" && localStorage.getItem("jj_verified") === "true";
+
+    if (!isGoogleLogin && !isVerified) {
+      throw redirect({ to: "/app/auth" });
     }
 
     // Check cached status to avoid blocking network queries on every transition

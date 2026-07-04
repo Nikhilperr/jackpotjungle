@@ -80,14 +80,11 @@ function AuthPage() {
 
     if (user) {
       const timer = setTimeout(async () => {
-        try {
-          const { data: mfaData, error: mfaErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-          if (!mfaErr && mfaData.nextLevel === "aal2" && mfaData.currentLevel !== "aal2") {
-            setMfaRequired(true);
-            return;
-          }
-        } catch (e) {
-          console.warn("MFA check failed:", e);
+        const isGoogleLogin = user?.app_metadata?.provider === "google" || user?.identities?.some((id: any) => id.provider === "google");
+        const isVerified = typeof window !== "undefined" && localStorage.getItem("jj_verified") === "true";
+
+        if (!isGoogleLogin && !isVerified) {
+          return;
         }
 
         const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
@@ -260,9 +257,62 @@ function LoginForm({
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [mfaRequired, setMfaRequired] = useState(false);
-  const [mfaCode, setMfaCode] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
+
+  const [verificationRequired, setVerificationRequired] = useState(false);
+  const [verificationMethod, setVerificationMethod] = useState<"email" | "2fa" | null>(null);
+  const [has2FaFactor, setHas2FaFactor] = useState(false);
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+
+  useEffect(() => {
+    const checkAalOnMount = async () => {
+      try {
+        const sessionRes = await supabase.auth.getSession();
+        const session = sessionRes.data.session;
+        if (!session?.user) return;
+
+        const isGoogleLogin = session.user.app_metadata?.provider === "google";
+        if (isGoogleLogin) return;
+
+        const { data: mfaData, error: mfaErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (!mfaErr && mfaData.nextLevel === "aal2" && mfaData.currentLevel !== "aal2") {
+          setVerificationRequired(true);
+          
+          const { data: factors, error: listErr } = await supabase.auth.mfa.listFactors();
+          const has2fa = !listErr && factors?.totp?.some(f => f.status === "verified");
+          setHas2FaFactor(has2fa);
+
+          if (!has2fa) {
+            setVerificationMethod("email");
+            if (session.user.email) {
+              await sendEmailOtp(session.user.email);
+            }
+          }
+        }
+      } catch {}
+    };
+    checkAalOnMount();
+  }, []);
+
+  async function sendEmailOtp(email: string) {
+    setMfaBusy(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false
+        }
+      });
+      if (error) throw error;
+      setEmailOtpSent(true);
+      toast.success("Verification code sent to your email!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send email verification code");
+    } finally {
+      setMfaBusy(false);
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -275,30 +325,83 @@ function LoginForm({
         if (!res.email) throw new Error("No account with that username.");
         email = res.email;
       }
+      
       const { data: signed, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
+
+      // Check if user has 2FA enabled
+      const { data: factors, error: listErr } = await supabase.auth.mfa.listFactors();
+      const has2fa = !listErr && factors?.totp?.some(f => f.status === "verified");
+      setHas2FaFactor(has2fa);
+
+      setVerificationRequired(true);
       
-      const { data: mfaData, error: mfaErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (!mfaErr && mfaData.nextLevel === "aal2" && mfaData.currentLevel !== "aal2") {
-        setMfaRequired(true);
-        setBusy(false);
-        return;
+      if (!has2fa) {
+        setVerificationMethod("email");
+        await sendEmailOtp(email);
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Login failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onVerifyEmailOtp(e: React.FormEvent) {
+    e.preventDefault();
+    setMfaBusy(true);
+    try {
+      let email = identifier.trim();
+      if (!email.includes("@")) {
+        const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
+        const res = await lookupEmailByUsername({ data: { username: email } });
+        email = res.email || email;
+      }
+
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token: otpCode,
+        type: "email"
+      });
+      if (error) throw error;
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("jj_verified", "true");
+      }
+
+      // Send recent login notification email!
+      try {
+        const { notifyRecentLogin } = await import("@/lib/email-notification.functions");
+        await notifyRecentLogin({ email });
+      } catch (e: any) {
+        console.warn("Failed to send login notification email:", e.message);
       }
 
       try {
-        if (signed.user) {
+        const userRes = await supabase.auth.getUser();
+        if (userRes.data.user) {
           await (supabase as any).from("login_logs").insert({
-            user_id: signed.user.id,
+            user_id: userRes.data.user.id,
             user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null,
             success: true,
           });
         }
       } catch {}
+
       toast.success("Welcome back!");
+      
+      // Redirect
+      const sessionRes = await supabase.auth.getSession();
+      const session = sessionRes.data.session;
+      if (session?.user) {
+        const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id);
+        const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+        navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
+      }
     } catch (err: any) {
-      toast.error(err.message ?? "Login failed.");
+      toast.error(err.message || "Invalid email verification code.");
     } finally {
-      setBusy(false);
+      setMfaBusy(false);
     }
   }
 
@@ -320,9 +423,27 @@ function LoginForm({
       const { error: verifyErr } = await supabase.auth.mfa.verify({
         factorId: totpFactor.id,
         challengeId: challenge.id,
-        code: mfaCode
+        code: otpCode
       });
       if (verifyErr) throw verifyErr;
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("jj_verified", "true");
+      }
+
+      // Send recent login notification email!
+      let email = identifier.trim();
+      if (!email.includes("@")) {
+        const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
+        const res = await lookupEmailByUsername({ data: { username: email } });
+        email = res.email || email;
+      }
+      try {
+        const { notifyRecentLogin } = await import("@/lib/email-notification.functions");
+        await notifyRecentLogin({ email });
+      } catch (e: any) {
+        console.warn("Failed to send login notification email:", e.message);
+      }
 
       try {
         const userRes = await supabase.auth.getUser();
@@ -336,6 +457,15 @@ function LoginForm({
       } catch {}
 
       toast.success("Verified. Welcome back!");
+      
+      // Redirect
+      const sessionRes = await supabase.auth.getSession();
+      const session = sessionRes.data.session;
+      if (session?.user) {
+        const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id);
+        const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+        navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
+      }
     } catch (err: any) {
       toast.error(err.message ?? "Verification failed.");
     } finally {
@@ -343,50 +473,171 @@ function LoginForm({
     }
   }
 
-  if (mfaRequired) {
-    return (
-      <form onSubmit={onVerifyMfa} className="space-y-4 animate-in fade-in duration-300">
-        <div className="flex justify-between items-center mb-1">
-          <h2 className="text-xl font-bold text-foreground">Security Verification</h2>
-          <button 
-            type="button" 
-            onClick={async () => {
-              await supabase.auth.signOut();
-              setMfaRequired(false);
-              setMfaCode("");
-            }} 
-            className="text-xs font-semibold text-muted-foreground hover:text-foreground"
-          >
-            Cancel
-          </button>
-        </div>
+  if (verificationRequired) {
+    if (!verificationMethod) {
+      return (
+        <div className="space-y-5 animate-in fade-in duration-300">
+          <div className="flex justify-between items-center mb-1">
+            <h2 className="text-xl font-bold text-foreground">Choose Verification</h2>
+            <button 
+              type="button" 
+              onClick={async () => {
+                await supabase.auth.signOut();
+                setVerificationRequired(false);
+                setVerificationMethod(null);
+                setOtpCode("");
+              }} 
+              className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </button>
+          </div>
 
-        <div className="space-y-2 py-2 text-center select-none">
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Enter the 6-digit verification code generated by your Google Authenticator app.
+            Please choose a method to verify your identity and complete your login:
           </p>
-          <div className="pt-2">
-            <AuthInput
-              label="6-Digit Code"
-              placeholder="000000"
-              value={mfaCode}
-              onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              required
-              maxLength={6}
-              autoFocus
-              className="text-center font-mono text-lg font-black tracking-widest bg-secondary"
-              icon={<Shield className="h-4 w-4 text-primary" />}
-            />
+
+          <div className="space-y-3 pt-2">
+            <AuthButton 
+              type="button" 
+              onClick={async () => {
+                let email = identifier.trim();
+                if (!email.includes("@")) {
+                  const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
+                  const res = await lookupEmailByUsername({ data: { username: email } });
+                  email = res.email || email;
+                }
+                setVerificationMethod("email");
+                await sendEmailOtp(email);
+              }}
+            >
+              Verify via Email OTP
+            </AuthButton>
+
+            {has2FaFactor && (
+              <AuthButton 
+                type="button" 
+                variant="secondary"
+                onClick={() => setVerificationMethod("2fa")}
+              >
+                Verify via Authenticator App (2FA)
+              </AuthButton>
+            )}
           </div>
         </div>
+      );
+    }
 
-        <div className="pt-2">
-          <AuthButton type="submit" busy={mfaBusy} disabled={mfaCode.length !== 6}>
-            Verify and Login
-          </AuthButton>
-        </div>
-      </form>
-    );
+    if (verificationMethod === "email") {
+      return (
+        <form onSubmit={onVerifyEmailOtp} className="space-y-4 animate-in fade-in duration-300">
+          <div className="flex justify-between items-center mb-1">
+            <h2 className="text-xl font-bold text-foreground">Verify Email</h2>
+            <button 
+              type="button" 
+              onClick={() => {
+                if (has2FaFactor) {
+                  setVerificationMethod(null);
+                } else {
+                  supabase.auth.signOut();
+                  setVerificationRequired(false);
+                  setVerificationMethod(null);
+                }
+                setOtpCode("");
+              }} 
+              className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+            >
+              {has2FaFactor ? "Change Method" : "Cancel"}
+            </button>
+          </div>
+
+          <div className="space-y-2 py-2 text-center select-none">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              We've sent a 6-digit verification code to your email. Enter it below to complete sign-in:
+            </p>
+            <div className="pt-2">
+              <AuthInput
+                label="Verification Code"
+                placeholder="000000"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                required
+                maxLength={6}
+                autoFocus
+                className="text-center font-mono text-lg font-black tracking-widest bg-secondary"
+                icon={<Shield className="h-4 w-4 text-primary" />}
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 space-y-3">
+            <AuthButton type="submit" busy={mfaBusy} disabled={otpCode.length !== 6}>
+              Verify and Login
+            </AuthButton>
+            <button
+              type="button"
+              onClick={async () => {
+                let email = identifier.trim();
+                if (!email.includes("@")) {
+                  const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
+                  const res = await lookupEmailByUsername({ data: { username: email } });
+                  email = res.email || email;
+                }
+                await sendEmailOtp(email);
+              }}
+              className="text-xs font-semibold text-primary hover:underline text-center w-full block"
+            >
+              Resend code
+            </button>
+          </div>
+        </form>
+      );
+    }
+
+    if (verificationMethod === "2fa") {
+      return (
+        <form onSubmit={onVerifyMfa} className="space-y-4 animate-in fade-in duration-300">
+          <div className="flex justify-between items-center mb-1">
+            <h2 className="text-xl font-bold text-foreground">Security Verification</h2>
+            <button 
+              type="button" 
+              onClick={() => {
+                setVerificationMethod(null);
+                setOtpCode("");
+              }} 
+              className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+            >
+              Change Method
+            </button>
+          </div>
+
+          <div className="space-y-2 py-2 text-center select-none">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Enter the 6-digit verification code generated by your Google Authenticator app.
+            </p>
+            <div className="pt-2">
+              <AuthInput
+                label="6-Digit Code"
+                placeholder="000000"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                required
+                maxLength={6}
+                autoFocus
+                className="text-center font-mono text-lg font-black tracking-widest bg-secondary"
+                icon={<Shield className="h-4 w-4 text-primary" />}
+              />
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <AuthButton type="submit" busy={mfaBusy} disabled={otpCode.length !== 6}>
+              Verify and Login
+            </AuthButton>
+          </div>
+        </form>
+      );
+    }
   }
 
   return (
