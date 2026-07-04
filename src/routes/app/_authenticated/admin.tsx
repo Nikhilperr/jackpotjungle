@@ -581,9 +581,6 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   useEffect(() => {
     setMessages([]);
     setSelectedMemberProfile(null);
-    setStartDate("");
-    setEndDate("");
-    setHistoryFilter("all");
   }, [activeId]);
 
   useEffect(() => {
@@ -2718,6 +2715,13 @@ function Conversation({
   // Delete Transaction States
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteConfirmTxId, setDeleteConfirmTxId] = useState<string | null>(null);
+
+  // Reset date/ledger filters when active conversation changes
+  useEffect(() => {
+    setStartDate("");
+    setEndDate("");
+    setHistoryFilter("all");
+  }, [activeId]);
 
   // Reset wallet dialog fields when modal opens
   useEffect(() => {
