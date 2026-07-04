@@ -5788,6 +5788,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
   activeMatch,
 }: AdminConversationMessageItemProps) {
   const mine = m.from_page;
+  const isStatement = m.content?.startsWith("📄 JACKPOT JUNGLE STATEMENT");
   const [showSelfTime, setShowSelfTime] = useState(false);
   const reactionKeys = Object.keys(m.reactions).filter(k => m.reactions[k].length > 0);
   const isMatch = matchIds.includes(m.id);
@@ -5998,6 +5999,28 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
               </button>
             ) : m.audio_url ? (
               <div className="block"><VoiceMessage src={toCDNUrl(m.audio_url)} mine={mine} /></div>
+            ) : isStatement ? (
+              <div
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  await printStatementFromMessage(m.content || "", conv.userId);
+                }}
+                className={`max-w-[240px] rounded-2xl px-4 py-3 text-sm select-none cursor-pointer border border-primary/20 hover:opacity-90 active:scale-[0.98] transition-all flex flex-col gap-2 ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}
+              >
+                <div className="flex items-center gap-2 border-b border-current/10 pb-1.5 font-bold">
+                  <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                  </svg>
+                  <span>Click to Print PDF</span>
+                </div>
+                <p className="text-[12px] whitespace-pre-wrap break-words leading-relaxed font-mono opacity-90">
+                  {m.content}
+                </p>
+              </div>
             ) : (
               <div className={`max-w-[240px] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
                 <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">

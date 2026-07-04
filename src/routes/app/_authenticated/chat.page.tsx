@@ -1421,6 +1421,227 @@ interface PageMessageItemProps {
   jumpToMessage: (id: string) => void;
 }
 
+const printStatementFromMessage = async (content: string, userId: string) => {
+  let filter = "all";
+  if (content.includes("STATEMENT (WALLET)")) filter = "wallet";
+  else if (content.includes("STATEMENT (CREDIT)")) filter = "credit";
+
+  let startDate: string | undefined = undefined;
+  let endDate: string | undefined = undefined;
+
+  const rangeMatch = content.match(/Date Range:\s*(.*)/i);
+  if (rangeMatch && rangeMatch[1]) {
+    const range = rangeMatch[1].trim();
+    if (range !== "All Time") {
+      const parts = range.split(/\s+to\s+/i);
+      if (parts[0] && parts[0] !== "Beginning") {
+        try {
+          startDate = new Date(parts[0]).toISOString().split('T')[0];
+        } catch {}
+      }
+      if (parts[1] && parts[1] !== "Present") {
+        try {
+          endDate = new Date(parts[1]).toISOString().split('T')[0];
+        } catch {}
+      }
+    }
+  }
+
+  const toastId = toast.loading("Generating printable statement PDF...");
+  try {
+    let query = supabase
+      .from("wallet_transactions")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("deleted", false)
+      .order("created_at", { ascending: false });
+
+    if (startDate) {
+      query = query.gte("created_at", `${startDate}T00:00:00.000Z`);
+    }
+    if (endDate) {
+      query = query.lte("created_at", `${endDate}T23:59:59.999Z`);
+    }
+
+    const { data: txs, error: txsErr } = await query;
+    if (txsErr) throw txsErr;
+
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single();
+
+    if (profileErr || !profile) throw new Error("Customer profile not found");
+
+    const customerName = profile.first_name
+      ? `${profile.first_name} ${profile.last_name || ""}`.trim()
+      : profile.username;
+
+    // Filter txs on client side according to wallet/credit filter
+    const filteredTxs = (txs || []).filter((tx: any) => {
+      if (filter === "wallet") {
+        return tx.action === "deposit" || tx.action === "used" || tx.action === "deduct_credit";
+      } else if (filter === "credit") {
+        return tx.action === "credit_added" || tx.action === "released" || tx.action === "used" || tx.action === "deduct_credit";
+      }
+      return true;
+    });
+
+    let tableHeaders = "";
+    let colspan = 8;
+    if (filter === "wallet") {
+      tableHeaders = `
+        <th>Date & Time</th>
+        <th>Action</th>
+        <th style="text-align: right;">Amount</th>
+        <th style="text-align: right;">Avail. Before</th>
+        <th style="text-align: right;">Avail. After</th>
+        <th>Reason</th>
+      `;
+      colspan = 6;
+    } else if (filter === "credit") {
+      tableHeaders = `
+        <th>Date & Time</th>
+        <th>Action</th>
+        <th style="text-align: right;">Amount</th>
+        <th style="text-align: right;">Credit Before</th>
+        <th style="text-align: right;">Credit After</th>
+        <th>Reason</th>
+      `;
+      colspan = 6;
+    } else {
+      tableHeaders = `
+        <th>Date & Time</th>
+        <th>Action</th>
+        <th style="text-align: right;">Amount</th>
+        <th style="text-align: right;">Avail. Before</th>
+        <th style="text-align: right;">Avail. After</th>
+        <th style="text-align: right;">Credit Before</th>
+        <th style="text-align: right;">Credit After</th>
+        <th>Reason</th>
+      `;
+      colspan = 8;
+    }
+
+    const txRows = filteredTxs.map((tx: any) => {
+      let cells = `
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${new Date(tx.created_at).toLocaleString()}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-transform: uppercase; font-weight: bold;">${tx.action}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.amount).toFixed(2)}</td>
+      `;
+
+      if (filter === "wallet") {
+        cells += `
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_after).toFixed(2)}</td>
+        `;
+      } else if (filter === "credit") {
+        cells += `
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_after).toFixed(2)}</td>
+        `;
+      } else {
+        cells += `
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.avail_after).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_before).toFixed(2)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${Number(tx.credit_after).toFixed(2)}</td>
+        `;
+      }
+
+      cells += `
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${tx.reason}</td>
+      `;
+
+      return `<tr>${cells}</tr>`;
+    }).join("");
+
+    let summaryHTML = "";
+    if (filter === "wallet") {
+      summaryHTML = `
+        <div>
+          <p style="margin: 4px 0;"><strong>Available Balance:</strong> $${(profile.wallet_balance ?? 0).toFixed(2)}</p>
+        </div>
+        <div style="text-align: right;">
+          <p style="margin: 4px 0;"><strong>Deposits:</strong> $${(profile.wallet_deposits ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Used:</strong> $${(profile.wallet_used ?? 0).toFixed(2)}</p>
+        </div>
+      `;
+    } else if (filter === "credit") {
+      summaryHTML = `
+        <div>
+          <p style="margin: 4px 0;"><strong>Credit Balance:</strong> $${(profile.credit_balance ?? 0).toFixed(2)}</p>
+        </div>
+        <div style="text-align: right;">
+          <p style="margin: 4px 0;"><strong>Released:</strong> $${(profile.wallet_released ?? 0).toFixed(2)}</p>
+        </div>
+      `;
+    } else {
+      summaryHTML = `
+        <div>
+          <p style="margin: 4px 0;"><strong>Available Balance:</strong> $${(profile.wallet_balance ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Credit Balance:</strong> $${(profile.credit_balance ?? 0).toFixed(2)}</p>
+        </div>
+        <div style="text-align: right;">
+          <p style="margin: 4px 0;"><strong>Deposits:</strong> $${(profile.wallet_deposits ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Released:</strong> $${(profile.wallet_released ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Used:</strong> $${(profile.wallet_used ?? 0).toFixed(2)}</p>
+        </div>
+      `;
+    }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) throw new Error("Could not open print window");
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Jackpot Jungle Ledger Statement</title>
+          <style>
+            body { font-family: sans-serif; padding: 24px; color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th { background-color: #f5f5f5; text-align: left; padding: 8px; border-bottom: 2px solid #ddd; }
+            .header { margin-bottom: 30px; border-bottom: 3px solid #10b981; padding-bottom: 16px; }
+            .summary { background: #f9f9f9; padding: 16px; border-radius: 8px; margin-bottom: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1 style="margin: 0; color: #10b981;">JACKPOT JUNGLE</h1>
+            <p style="margin: 4px 0 0 0; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px;">Wallet ledger statement</p>
+          </div>
+          <div>
+            <h3 style="margin: 0;">Customer Name: ${customerName}</h3>
+            <p style="margin: 4px 0; font-size: 13px;">Username: @${profile.username}</p>
+            <p style="margin: 4px 0; font-size: 13px;">Statement generated: ${new Date().toLocaleString()}</p>
+          </div>
+          <div class="summary" style="display: flex; justify-content: space-between; margin-top: 20px;">
+            ${summaryHTML}
+          </div>
+          <table>
+            <thead>
+              <tr>
+                ${tableHeaders}
+              </tr>
+            </thead>
+            <tbody>
+              ${txRows || `<tr><td colspan="${colspan}" style="text-align: center; padding: 20px;">No transaction records found.</td></tr>`}
+            </tbody>
+          </table>
+          <script>window.print();</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    toast.dismiss(toastId);
+    toast.success("Statement PDF opened for printing!");
+  } catch (err: any) {
+    toast.dismiss(toastId);
+    toast.error(err.message || "Failed to generate print statement");
+  }
+};
+
 const PageMessageItem = React.memo(function PageMessageItem({
   m,
   meId,
@@ -1444,6 +1665,7 @@ const PageMessageItem = React.memo(function PageMessageItem({
   const mine = !m.from_page;
   const [showSelfTime, setShowSelfTime] = useState(false);
   const reactionKeys = Object.keys(m.reactions || {}).filter(k => m.reactions[k].length > 0);
+  const isStatement = m.content?.startsWith("📄 JACKPOT JUNGLE STATEMENT");
 
   const pressTimerRef = useRef<any>(null);
   const startPress = () => {
@@ -1562,6 +1784,28 @@ const PageMessageItem = React.memo(function PageMessageItem({
             ) : m.audio_url ? (
               <div className="block">
                 <VoiceMessage src={toCDNUrl(m.audio_url)} mine={mine} />
+              </div>
+            ) : isStatement ? (
+              <div
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  await printStatementFromMessage(m.content || "", meId);
+                }}
+                className={`max-w-[240px] rounded-2xl px-4 py-3 text-sm select-none cursor-pointer border border-primary/20 hover:opacity-90 active:scale-[0.98] transition-all flex flex-col gap-2 ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}
+              >
+                <div className="flex items-center gap-2 border-b border-current/10 pb-1.5 font-bold">
+                  <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                  </svg>
+                  <span>Click to Print PDF</span>
+                </div>
+                <p className="text-[12px] whitespace-pre-wrap break-words leading-relaxed font-mono opacity-90">
+                  {m.content}
+                </p>
               </div>
             ) : (
               <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
