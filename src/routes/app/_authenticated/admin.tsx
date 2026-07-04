@@ -2721,7 +2721,7 @@ function Conversation({
     setStartDate("");
     setEndDate("");
     setHistoryFilter("all");
-  }, [activeId]);
+  }, [conv.conversationId]);
 
   // Reset wallet dialog fields when modal opens
   useEffect(() => {
