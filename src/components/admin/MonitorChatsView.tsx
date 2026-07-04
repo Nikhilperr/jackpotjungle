@@ -10,8 +10,22 @@ import { formatDistanceToNow, format } from "date-fns";
 import { formatSystemMessage, isSystemMessage } from "@/lib/chat-helpers";
 import { 
   Eye, Search, MessageSquare, Shield, Users, User, Clock, 
-  Volume2, ImageIcon, FileText, ArrowLeft, RefreshCw, Bot
+  Volume2, ImageIcon, FileText, ArrowLeft, RefreshCw, Bot, Menu
 } from "lucide-react";
+
+function cleanMessageContent(content: string | null): string {
+  if (!content) return "";
+  if (content.startsWith("[system:forwarded] ")) {
+    return content.slice("[system:forwarded] ".length);
+  }
+  if (content.startsWith("[system:forwarded]")) {
+    return content.slice("[system:forwarded]".length).trim() || "Forwarded message";
+  }
+  if (content === "[system:forwarded]") {
+    return "Forwarded message";
+  }
+  return content;
+}
 
 export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void }) {
   const getConvsFn = useServerFn(getMonitorConversationsAdmin);
@@ -119,8 +133,8 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
       {/* Top Header */}
       <div className="sticky top-0 z-10 bg-card border-b border-border px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary lg:hidden">
-            <ArrowLeft className="h-5 w-5" />
+          <button onClick={onOpenNav} className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary">
+            <Menu className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-2">
             <Eye className="h-5 w-5 text-primary animate-pulse" />
@@ -250,7 +264,7 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
                       </div>
                       
                       <p className="text-[11px] text-muted-foreground truncate mt-0.5 font-sans leading-relaxed">
-                        {isSystemMessage(conv.last_message) ? formatSystemMessage(conv.last_message) : conv.last_message}
+                        {isSystemMessage(conv.last_message) ? formatSystemMessage(conv.last_message) : cleanMessageContent(conv.last_message)}
                       </p>
                     </div>
                   </button>
@@ -310,6 +324,7 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
                     const sender = msg.sender || { username: "unknown", first_name: "Unknown", last_name: "" };
                     const senderName = `${sender.first_name || ""} ${sender.last_name || ""}`.trim() || sender.username;
                     const systemText = isSystem ? formatSystemMessage(msg.content, senderName) : "";
+                    const cleanText = cleanMessageContent(msg.content);
                     
                     if (isSystem) {
                       return (
@@ -338,9 +353,9 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
 
                           <div className="mt-1 bg-card border border-border/80 p-3 rounded-2xl rounded-tl-none shadow-sm flex flex-col gap-2">
                             {/* Message text content */}
-                            {msg.content && (
+                            {cleanText && (
                               <p className="text-xs text-foreground select-text selection:bg-primary/20 break-words whitespace-pre-wrap leading-relaxed">
-                                {msg.content}
+                                {cleanText}
                               </p>
                             )}
 
