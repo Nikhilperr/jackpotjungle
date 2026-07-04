@@ -488,6 +488,7 @@ function ChatView() {
   const [addMembersOpen, setAddMembersOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<{ id: string; username: string } | null>(null);
   const { isAdmin, isSuperAdmin } = useRole();
 
   const myMemberInfo = groupMembers.find(m => m.profiles?.id === meId);
@@ -1677,9 +1678,13 @@ function ChatView() {
   }
 
   async function handleRemoveMember(memberId: string, memberUsername: string) {
-    if (!groupId || !meId) return;
-    const confirmRemove = window.confirm(`Remove ${memberUsername} from group?`);
-    if (!confirmRemove) return;
+    setMemberToRemove({ id: memberId, username: memberUsername });
+  }
+
+  async function confirmExecuteRemoveMember() {
+    if (!groupId || !meId || !memberToRemove) return;
+    const { id: memberId, username: memberUsername } = memberToRemove;
+    setMemberToRemove(null);
 
     try {
       if (memberId === "support-page-temp") {
@@ -2880,6 +2885,37 @@ function ChatView() {
           navigate({ to: "/app/chat/$friendId", params: { friendId: `group-${newGroupId}` } });
         }}
       />
+
+      {/* Member Removal Confirmation Dialog */}
+      <Dialog open={memberToRemove !== null} onOpenChange={(val) => { if (!val) setMemberToRemove(null); }}>
+        <DialogContent className="w-full max-w-sm p-6 bg-card border border-border rounded-3xl shadow-2xl flex flex-col gap-4 text-foreground text-center animate-in zoom-in-95 duration-200">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-12 w-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center">
+              <UserMinus className="h-6 w-6" />
+            </div>
+            <h3 className="font-bold text-lg">Remove Member</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Are you sure you want to remove <span className="font-semibold text-foreground">@{memberToRemove?.username}</span> from the group?
+            </p>
+          </div>
+          <div className="flex gap-3 mt-2">
+            <Button
+              variant="outline"
+              onClick={() => setMemberToRemove(null)}
+              className="flex-1 rounded-xl h-11 text-xs font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmExecuteRemoveMember}
+              className="flex-1 rounded-xl h-11 text-xs font-bold bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
