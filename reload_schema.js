@@ -27,7 +27,9 @@ async function triggerReload() {
   // 1. Try DATABASE_URL first
   if (process.env.DATABASE_URL) {
     console.log("Found DATABASE_URL, attempting connection...");
-    const client = new pg.Client({
+    // Try with SSL first
+    let connected = false;
+    let client = new pg.Client({
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DATABASE_URL.includes("supabase.co") || process.env.DATABASE_URL.includes("chancerealm.casino")
         ? { rejectUnauthorized: false }
@@ -35,14 +37,32 @@ async function triggerReload() {
     });
     try {
       await client.connect();
-      console.log("Connected successfully using DATABASE_URL! Reloading schema...");
-      await client.query(sql);
-      await client.end();
-      console.log("✓ PostgREST schema cache reload triggered successfully!");
-      return;
+      connected = true;
     } catch (e) {
-      console.warn("Connection using DATABASE_URL failed:", e.message);
-      try { await client.end(); } catch {}
+      console.warn("Connection with SSL failed, trying without SSL...");
+      client = new pg.Client({
+        connectionString: process.env.DATABASE_URL,
+        ssl: undefined
+      });
+      try {
+        await client.connect();
+        connected = true;
+      } catch (e2) {
+        console.error("Database connection failed completely.");
+      }
+    }
+
+    if (connected) {
+      try {
+        console.log("Connected successfully! Reloading schema...");
+        await client.query(sql);
+        await client.end();
+        console.log("✓ PostgREST schema cache reload triggered successfully!");
+        return;
+      } catch (err) {
+        console.error("Query failed:", err.message);
+        try { await client.end(); } catch {}
+      }
     }
   }
 
@@ -59,23 +79,50 @@ async function triggerReload() {
 
   for (const h of hosts) {
     for (const p of ports) {
-      console.log(`Trying connection to ${h}:${p}...`);
       const isRemote = h.includes(".") && !h.startsWith("127.");
       const sslVal = process.env.DATABASE_SSL === "true" || (process.env.DATABASE_SSL !== "false" && isRemote);
-      const client = new pg.Client({
+      
+      console.log(`Trying connection to ${h}:${p} (SSL: ${sslVal})...`);
+      let client = new pg.Client({
         connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
         ssl: sslVal ? { rejectUnauthorized: false } : undefined
       });
+      
+      let success = false;
       try {
         await client.connect();
-        console.log(`Connected to ${h}:${p}! Reloading schema...`);
-        await client.query(sql);
-        await client.end();
-        console.log("✓ PostgREST schema cache reload triggered successfully!");
-        return;
+        success = true;
       } catch (e) {
-        console.warn(`Failed on ${h}:${p}:`, e.message);
+        console.warn(`Failed on ${h}:${p} with SSL:`, e.message);
         try { await client.end(); } catch {}
+        
+        if (sslVal) {
+          console.log(`Retrying connection to ${h}:${p} WITHOUT SSL...`);
+          client = new pg.Client({
+            connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
+            ssl: undefined
+          });
+          try {
+            await client.connect();
+            success = true;
+          } catch (e2) {
+            console.warn(`Failed on ${h}:${p} without SSL:`, e2.message);
+            try { await client.end(); } catch {}
+          }
+        }
+      }
+
+      if (success) {
+        try {
+          console.log(`Connected to ${h}:${p}! Reloading schema...`);
+          await client.query(sql);
+          await client.end();
+          console.log("✓ PostgREST schema cache reload triggered successfully!");
+          return;
+        } catch (queryErr) {
+          console.error("Query failed:", queryErr.message);
+          try { await client.end(); } catch {}
+        }
       }
     }
   }
