@@ -1656,7 +1656,7 @@ function ChatView() {
     try {
       const { error } = await supabase
         .from("groups")
-        .update({ avatar_url: newAvatarUrl.trim() || null })
+        .update({ avatar_url: newAvatarUrl.trim() || "/groop.png" })
         .eq("id", groupId);
 
       if (error) throw error;
@@ -2070,7 +2070,7 @@ function ChatView() {
                 </div>
               ) : isGroup ? (
                 <>
-                  <Avatar name={friendDisplayName} url={group?.avatar_url ?? null} size={40} />
+                  <Avatar name={friendDisplayName} url={group?.avatar_url ?? null} size={40} isGroup={true} />
                 </>
               ) : (
                 <>
@@ -3539,7 +3539,7 @@ export function GroupDetailPanel({
 }: GroupDetailPanelProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [nameInput, setNameInput] = useState(group?.name || "");
-  const [avatarInput, setAvatarInput] = useState(group?.avatar_url || "");
+  const [avatarInput, setAvatarInput] = useState(group?.avatar_url || "/groop.png");
   const [activeMemberMenu, setActiveMemberMenu] = useState<string | null>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const { isSuperAdmin } = useRole();
@@ -3573,7 +3573,7 @@ export function GroupDetailPanel({
 
   useEffect(() => {
     setNameInput(group?.name || "");
-    setAvatarInput(group?.avatar_url || "");
+    setAvatarInput(group?.avatar_url || "/groop.png");
   }, [group, isEditing]);
 
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {

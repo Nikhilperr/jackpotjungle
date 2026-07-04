@@ -1256,7 +1256,7 @@ export function CreateGroupModal({
         .from("groups")
         .insert({
           name: groupName.trim(),
-          avatar_url: groupAvatar.trim() || null,
+          avatar_url: groupAvatar.trim() || "/groop.png",
           created_by: meId,
           is_admin_team: isAdminTeamChat
         } as any)
@@ -1541,7 +1541,7 @@ const ConversationItem = React.memo(function ConversationItem({
               <Megaphone className="h-5.5 w-5.5 animate-pulse" />
             </div>
           ) : (
-            <Avatar name={c.displayName} url={c.avatar_url} />
+            <Avatar name={c.displayName} url={c.avatar_url} isGroup={c.friendId.startsWith("group-")} />
           )}
           {c.online && !isSpam && !isSpammedBy && !c.friendId.startsWith("system-") && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
         </div>
