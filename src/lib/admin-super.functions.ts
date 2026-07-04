@@ -1439,10 +1439,6 @@ async function getDbClient() {
     connectionString = `postgres://${username}:${dbPassword}@${host}:${port}/${dbName}`;
   }
 
-  // Log raw connection string with masked password
-  const maskedRaw = connectionString.replace(/:[^:@]+@/, ":****@");
-  console.log("[DB_DEBUG] Raw connection string:", maskedRaw);
-
   // Parse PostgreSQL config supporting both URI and Key-Value formats
   function parsePostgresConfig(connStr: string) {
     let host = "";
@@ -1481,64 +1477,116 @@ async function getDbClient() {
   }
 
   const config = parsePostgresConfig(connectionString);
-  console.log("[DB_DEBUG] Parsed Config:", {
-    host: config.host,
-    port: config.port,
-    user: config.user,
-    database: config.database,
-    hasPassword: !!config.password
-  });
+  const candidates: Array<{
+    host: string;
+    port: string;
+    user: string;
+    ssl: any;
+    label: string;
+  }> = [];
 
-  let projectRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID;
-  const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
-  if (match) {
-    projectRef = match[1];
-    console.log("[DB_DEBUG] Extracted projectRef from host name:", projectRef);
+  const isLocal = config.host === "localhost" || config.host === "127.0.0.1" || config.host === "db";
+
+  if (isLocal) {
+    // 1. Try local direct port 54322 (bypasses Supavisor on self-hosted Docker setups)
+    candidates.push({
+      host: config.host,
+      port: "54322",
+      user: config.user.split(".")[0],
+      ssl: undefined,
+      label: "Local Direct (Port 54322)"
+    });
+
+    // 2. Try local port 5432 with tenant ID suffix
+    const projectRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID || "self-hosted";
+    candidates.push({
+      host: config.host,
+      port: config.port,
+      user: config.user.includes(".") ? config.user : `${config.user}.${projectRef}`,
+      ssl: undefined,
+      label: `Local Supavisor with Tenant (${projectRef})`
+    });
+
+    // 3. Try local port 5432 without suffix
+    candidates.push({
+      host: config.host,
+      port: config.port,
+      user: config.user.split(".")[0],
+      ssl: undefined,
+      label: "Local Standard (No Suffix)"
+    });
+  } else {
+    // Remote host candidates
+    let projectRef = "gsnhqzsgptqxtlhggzkz";
+    const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
+    if (match) {
+      projectRef = match[1];
+    } else {
+      const envRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID;
+      if (envRef && envRef !== "self-hosted") projectRef = envRef;
+    }
+
+    // 1. Remote SSL with tenant username suffix
+    candidates.push({
+      host: config.host,
+      port: config.port,
+      user: config.user.includes(".") ? config.user : `${config.user}.${projectRef}`,
+      ssl: { rejectUnauthorized: false, servername: `db.${projectRef}.supabase.co` },
+      label: "Remote SSL with Tenant Suffix"
+    });
+
+    // 2. Remote Non-SSL with tenant username suffix
+    candidates.push({
+      host: config.host,
+      port: config.port,
+      user: config.user.includes(".") ? config.user : `${config.user}.${projectRef}`,
+      ssl: undefined,
+      label: "Remote Non-SSL with Tenant Suffix"
+    });
+
+    // 3. Remote SSL (No Suffix)
+    candidates.push({
+      host: config.host,
+      port: config.port,
+      user: config.user.split(".")[0],
+      ssl: { rejectUnauthorized: false, servername: config.host },
+      label: "Remote SSL (No Suffix)"
+    });
+
+    // 4. Remote Non-SSL (No Suffix)
+    candidates.push({
+      host: config.host,
+      port: config.port,
+      user: config.user.split(".")[0],
+      ssl: undefined,
+      label: "Remote Non-SSL (No Suffix)"
+    });
   }
 
-  const isRemote = config.host && config.host !== "localhost" && config.host !== "127.0.0.1" && config.host !== "db";
-  console.log("[DB_DEBUG] isRemote:", isRemote);
+  let lastError: any = null;
+  for (const cand of candidates) {
+    console.log(`[DB_DEBUG] Trying: ${cand.label} (${cand.host}:${cand.port} as ${cand.user})...`);
+    const resolvedConn = `postgres://${cand.user}:${config.password}@${cand.host}:${cand.port}/${config.database}`;
+    const client = new pg.Client({
+      connectionString: resolvedConn,
+      ssl: cand.ssl
+    });
 
-  if (!projectRef) {
-    projectRef = isRemote ? "gsnhqzsgptqxtlhggzkz" : "self-hosted";
-    console.log("[DB_DEBUG] Using fallback projectRef:", projectRef);
+    try {
+      await client.connect();
+      console.log(`[DB_DEBUG] Successful connection via: ${cand.label}`);
+      return client;
+    } catch (err: any) {
+      console.log(`[DB_DEBUG] Candidate failed: ${cand.label}. Error: ${err.message}`);
+      lastError = err;
+      try {
+        await client.end();
+      } catch {}
+    }
   }
 
-  // 1. Rewrite username to include tenant suffix if not already present
-  if (projectRef && config.user && !config.user.includes(".")) {
-    const oldUser = config.user;
-    config.user = `${config.user}.${projectRef}`;
-    console.log(`[DB_DEBUG] Appended projectRef to user: ${oldUser} -> ${config.user}`);
-  }
-
-  // 2. Set canonical servername for TLS SNI if remote
-  let servername: string | undefined = undefined;
-  if (isRemote && projectRef) {
-    servername = `db.${projectRef}.supabase.co`;
-    console.log("[DB_DEBUG] Configured servername SNI:", servername);
-  }
-
-  // Re-assemble connection string in standard URI format
-  const resolvedConnectionString = `postgres://${config.user}:${config.password}@${config.host}:${config.port}/${config.database}`;
-  const maskedResolved = resolvedConnectionString.replace(/:[^:@]+@/, ":****@");
-  console.log("[DB_DEBUG] Resolved connection string:", maskedResolved);
-
-  const client = new pg.Client({
-    connectionString: resolvedConnectionString,
-    ssl: servername
-      ? { rejectUnauthorized: false, servername }
-      : undefined
-  });
-  
-  try {
-    await client.connect();
-    console.log("[DB_DEBUG] Connection successful.");
-  } catch (err: any) {
-    console.error("[DB_DEBUG] Connection failed with error:", err.message);
-    throw err;
-  }
-  
-  return client;
+  console.error("[DB_DEBUG] All connection attempts failed.");
+  throw lastError || new Error("Failed to connect to database");
 }
 
 export const getActiveSessionsUser = createServerFn({ method: "POST" })
