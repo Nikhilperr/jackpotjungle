@@ -1308,10 +1308,16 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
                 </p>
 
                 <div className="space-y-3 pt-2">
-                  {sessions.length === 0 ? (
+                  {loadingSessions ? (
                     <div className="flex flex-col items-center justify-center p-6 border border-dashed border-border/80 rounded-xl text-center select-none">
                       <Loader2 className="h-5 w-5 text-muted-foreground animate-spin mb-2" />
                       <p className="text-xs text-muted-foreground">Loading active sessions...</p>
+                    </div>
+                  ) : sessions.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center p-6 border border-dashed border-border/40 rounded-2xl text-center select-none bg-secondary/30">
+                      <Smartphone className="h-7 w-7 text-muted-foreground/55 mb-2" />
+                      <p className="text-xs font-bold text-foreground">No active sessions found</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Please refresh or verify your connection settings.</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
