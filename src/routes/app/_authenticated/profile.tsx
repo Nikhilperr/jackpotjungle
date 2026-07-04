@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Copy, Camera, Loader2, Bell, BellOff, Wallet, History, FileText, Download, Printer, CheckCircle } from "lucide-react";
+import { Copy, Camera, Loader2, Bell, BellOff, Wallet, History, FileText, Download, Printer, CheckCircle, Share2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
 import { getWalletHistoryUser } from "@/lib/wallet.functions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 
 export const Route = createFileRoute("/app/_authenticated/profile")({
   ssr: false,
@@ -51,6 +52,7 @@ function ProfilePage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState<"all" | "wallet" | "credit">("all");
+  const [shareOpen, setShareOpen] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
@@ -461,14 +463,25 @@ function ProfilePage() {
             </h1>
             <p className="text-xs text-muted-foreground font-semibold">@{profile.username}</p>
             <p className="text-sm text-muted-foreground mt-0.5">{email}</p>
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-              className="mt-2 text-xs text-primary hover:underline disabled:opacity-50"
-            >
-              {uploading ? "Uploading…" : "Change profile picture"}
-            </button>
+            <div className="flex gap-2.5 mt-3 select-none">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="text-xs text-primary hover:underline disabled:opacity-50 flex items-center gap-1.5 bg-secondary/50 hover:bg-secondary px-3.5 py-2 rounded-full border border-border/40 font-bold transition-all"
+              >
+                <Camera className="h-3.5 w-3.5" />
+                <span>{uploading ? "Uploading…" : "Change photo"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShareOpen(true)}
+                className="text-xs text-primary hover:underline flex items-center gap-1.5 bg-secondary/50 hover:bg-secondary px-3.5 py-2 rounded-full border border-border/40 font-bold transition-all"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                <span>Share Profile</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -815,6 +828,15 @@ function ProfilePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ShareProfileModal
+        isOpen={shareOpen}
+        onOpenChange={setShareOpen}
+        username={profile.username}
+        displayName={profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : profile.username}
+        avatarUrl={profile.avatar_url}
+        memberSince={profile.created_at}
+      />
     </AppShell>
   );
 }
