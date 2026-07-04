@@ -6,7 +6,8 @@ import {
   updateUserProfileAdmin, 
   changeUserPasswordAdmin, 
   changeUserEmailAdmin, 
-  deleteUserAccountAdmin 
+  deleteUserAccountAdmin,
+  getAllEmailsAdmin
 } from "@/lib/admin-super.functions";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
   const passwordFn = useServerFn(changeUserPasswordAdmin);
   const emailFn = useServerFn(changeUserEmailAdmin);
   const deleteFn = useServerFn(deleteUserAccountAdmin);
+  const getEmailsFn = useServerFn(getAllEmailsAdmin);
 
   const [users, setUsers] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -68,6 +70,10 @@ export function UsersManagementView({ meId }: { meId: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
+  const [downloadEmailsOpen, setDownloadEmailsOpen] = useState(false);
+  const [downloadType, setDownloadType] = useState<"all" | "users" | "admins">("all");
+  const [downloadFormat, setDownloadFormat] = useState<"csv" | "pdf">("csv");
+  const [downloadingEmails, setDownloadingEmails] = useState(false);
 
   // Edit details form states
   const [editUsername, setEditUsername] = useState("");
@@ -309,14 +315,122 @@ export function UsersManagementView({ meId }: { meId: string }) {
     }
   };
 
+  const handleExportEmails = async () => {
+    setDownloadingEmails(true);
+    try {
+      const { list } = await getEmailsFn();
+      
+      const filtered = list.filter((item: any) => {
+        if (downloadType === "admins") return item.role === "admin" || item.role === "super_admin";
+        if (downloadType === "users") return item.role !== "admin" && item.role !== "super_admin";
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        toast.error("No email records found.");
+        return;
+      }
+
+      if (downloadFormat === "csv") {
+        const headers = ["Email Address", "Username", "Display Name", "Role", "Joined Date"];
+        const rows = filtered.map((item: any) => [
+          item.email,
+          item.username,
+          item.name,
+          item.role.toUpperCase(),
+          item.created_at ? new Date(item.created_at).toLocaleDateString() : ""
+        ]);
+
+        const csvContent = [
+          headers.join(","),
+          ...rows.map((e: any) => e.map((val: any) => `"${String(val).replace(/"/g, '""')}"`).join(","))
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `JackpotJungle_Emails_${downloadType.toUpperCase()}_${new Date().toISOString().split("T")[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success("CSV Email file downloaded successfully!");
+      } else {
+        const printWindow = window.open("", "_blank");
+        if (!printWindow) {
+          toast.error("Could not open print window. Please allow popups.");
+          return;
+        }
+
+        const listRows = filtered.map((item: any) => `
+          <tr>
+            <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: left; font-family: monospace;"><strong>${item.email}</strong></td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: left;">@${item.username}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: left;">${item.name}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: left; text-transform: uppercase; font-size: 10px; font-weight: bold; color: ${item.role.includes("admin") ? "#d97706" : "#059669"};">${item.role}</td>
+          </tr>
+        `).join("");
+
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Jackpot Jungle Users Email Export</title>
+              <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; color: #333; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                th { text-align: left; padding: 8px; border-bottom: 2px solid #ddd; background-color: #f3f4f6; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+                .header { margin-bottom: 20px; border-bottom: 3px solid #10b981; padding-bottom: 12px; }
+                .meta { font-size: 12px; color: #6b7280; margin-bottom: 20px; }
+              </style>
+            </head>
+            <body>
+              <div class="header">
+                <h1 style="margin: 0; color: #10b981; font-size: 24px;">JACKPOT JUNGLE</h1>
+                <p style="margin: 4px 0 0 0; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #4b5563;">Email Address Export</p>
+              </div>
+              <div class="meta">
+                <p style="margin: 4px 0;"><strong>Export Type:</strong> ${downloadType.toUpperCase()}</p>
+                <p style="margin: 4px 0;"><strong>Total Count:</strong> ${filtered.length} records</p>
+                <p style="margin: 4px 0;"><strong>Date:</strong> ${new Date().toLocaleString()}</p>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Email Address</th>
+                    <th>Username</th>
+                    <th>Name</th>
+                    <th>Role</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${listRows}
+                </tbody>
+              </table>
+              <script>window.print();</script>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        toast.success("PDF print layout prepared!");
+      }
+      setDownloadEmailsOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to download emails.");
+    } finally {
+      setDownloadingEmails(false);
+    }
+  };
+
   // Pagination totals
   const totalPages = Math.ceil(totalCount / LIMIT) || 1;
+// ... (in JSX return)
 
   return (
     <div className="p-4 md:p-6 max-w-[1400px] mx-auto space-y-4">
       {/* Header section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
+        <div className="space-y-1">
           <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Users className="h-6 w-6 text-primary" />
             Users Management
@@ -325,14 +439,6 @@ export function UsersManagementView({ meId }: { meId: string }) {
             Manage your casino players, roles, verification status, and wallet limits.
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-card px-3 py-1.5 rounded-lg border border-border/80 self-start sm:self-center">
-          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-xs font-semibold text-muted-foreground">{totalCount} registered players</span>
-        </div>
-      </div>
-
-      {/* Control bar */}
-      <div className="flex flex-col gap-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search bar */}
           <div className="relative flex-1 max-w-md">
@@ -999,6 +1105,91 @@ export function UsersManagementView({ meId }: { meId: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Download Emails Dialog */}
+      <Dialog open={downloadEmailsOpen} onOpenChange={setDownloadEmailsOpen}>
+        <DialogContent className="w-full max-w-sm p-6 bg-card border border-border rounded-3xl shadow-2xl flex flex-col gap-4 text-foreground select-none">
+          <div className="flex flex-col items-center gap-2 text-center border-b border-border pb-3">
+            <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+              <Mail className="h-5 w-5" />
+            </div>
+            <h3 className="font-bold text-lg">Export Email Addresses</h3>
+            <p className="text-xs text-muted-foreground">
+              Choose who you want to export and select the file format.
+            </p>
+          </div>
+
+          <div className="space-y-4 py-2">
+            {/* Export Target Option */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase">Filter Target</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "all", label: "All" },
+                  { id: "users", label: "Users" },
+                  { id: "admins", label: "Admins" }
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setDownloadType(t.id as any)}
+                    className={`h-9 rounded-xl text-xs font-bold transition-all border ${
+                      downloadType === t.id
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-secondary/45 text-muted-foreground border-border hover:bg-secondary"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Export Format Option */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted-foreground uppercase">File Format</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: "csv", label: "CSV File" },
+                  { id: "pdf", label: "PDF Document" }
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setDownloadFormat(f.id as any)}
+                    className={`h-9 rounded-xl text-xs font-bold transition-all border ${
+                      downloadFormat === f.id
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-secondary/45 text-muted-foreground border-border hover:bg-secondary"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2.5 pt-3 border-t border-border mt-1">
+            <Button
+              variant="outline"
+              onClick={() => setDownloadEmailsOpen(false)}
+              disabled={downloadingEmails}
+              className="flex-1 rounded-xl h-11 text-xs font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExportEmails}
+              disabled={downloadingEmails}
+              className="flex-1 rounded-xl h-11 text-xs font-bold bg-primary text-primary-foreground hover:opacity-90 flex items-center justify-center gap-1.5"
+            >
+              {downloadingEmails && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              <span>Export</span>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

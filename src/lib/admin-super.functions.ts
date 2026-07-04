@@ -1251,3 +1251,37 @@ export const deleteUserAccountAdmin = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const getAllEmailsAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: callerRoles } = await context.supabase
+      .from("user_roles").select("role").eq("user_id", context.userId);
+    const isAdmin = (callerRoles ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
+    if (!isAdmin) throw new Error("Admins only");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: allRoles } = await supabaseAdmin.from("user_roles").select("user_id, role");
+    const rolesMap: Record<string, string> = {};
+    (allRoles ?? []).forEach((r: any) => {
+      rolesMap[r.user_id] = r.role;
+    });
+
+    const { data: profiles, error } = await supabaseAdmin
+      .from("profiles")
+      .select("id, email, username, first_name, last_name, created_at");
+
+    if (error) throw new Error(error.message);
+
+    const list = (profiles ?? []).map((p: any) => ({
+      email: p.email || "",
+      username: p.username || "",
+      name: `${p.first_name || ""} ${p.last_name || ""}`.trim() || p.username || "User",
+      role: rolesMap[p.id] || "user",
+      created_at: p.created_at
+    }));
+
+    return { list };
+  });
+
+
