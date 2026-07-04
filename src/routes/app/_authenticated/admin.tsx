@@ -581,6 +581,9 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   useEffect(() => {
     setMessages([]);
     setSelectedMemberProfile(null);
+    setStartDate("");
+    setEndDate("");
+    setHistoryFilter("all");
   }, [activeId]);
 
   useEffect(() => {
@@ -2757,6 +2760,7 @@ function Conversation({
     const targetUserId = customUserId || conv.userId;
     if (!targetUserId) return;
     setLoadingHistory(true);
+    loadWalletDetails(targetUserId);
     try {
       const { getWalletHistoryAdmin } = await import("@/lib/wallet.functions");
       const res = await getWalletHistoryAdmin({
@@ -4752,64 +4756,65 @@ function Conversation({
           </div>
         </div>
       )}
-      {/* Delete Confirmation Bottom Sheet */}
+      {/* Delete Confirmation Dialog */}
       {showDeleteBottomSheet && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end justify-center animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="absolute inset-0" onClick={() => setShowDeleteBottomSheet(false)} />
-          <div className="relative bg-card border-t border-border w-full max-w-md rounded-t-2xl shadow-2xl p-4 flex flex-col gap-2.5 animate-in slide-in-from-bottom duration-300 z-10">
-            <div className="text-center text-xs text-muted-foreground font-medium py-1.5 border-b border-border/50">
-              Delete {selectedMsgs.size} message{selectedMsgs.size > 1 ? "s" : ""}?
-            </div>
+          <div className="relative bg-card border border-border w-full max-w-[320px] rounded-2xl shadow-2xl p-5 flex flex-col gap-3 animate-in zoom-in-95 duration-200 z-10 text-foreground text-center">
+            <h3 className="font-bold text-base leading-snug">Delete {selectedMsgs.size} message{selectedMsgs.size > 1 ? "s" : ""}?</h3>
+            <p className="text-xs text-muted-foreground">This action cannot be undone.</p>
+            
+            <div className="flex flex-col gap-2 mt-2">
+              {allSelectedAreMine && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setShowDeleteBottomSheet(false);
+                    const targetIds = Array.from(selectedMsgs);
+                    setSelectionMode(false);
+                    setSelectedMsgs(new Set());
 
-            {allSelectedAreMine && (
+                    try {
+                      if (isGroup || isTeamChat) {
+                        await unsendMessagesServer({ data: { ids: targetIds } });
+                      } else {
+                        await unsendPageMessagesServer({ data: { ids: targetIds } });
+                      }
+                      setMessages(prev => prev.map(m => targetIds.includes(m.id) ? { ...m, content: "[system:unsent]", image_url: null, audio_url: null } : m));
+                      toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for everyone`);
+                    } catch (e: any) {
+                      toast.error(e?.message || "Could not unsend message");
+                    }
+                  }}
+                  className="w-full py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition-colors text-center shadow-sm"
+                >
+                  Delete for everyone
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={async () => {
+                onClick={() => {
                   setShowDeleteBottomSheet(false);
                   const targetIds = Array.from(selectedMsgs);
                   setSelectionMode(false);
                   setSelectedMsgs(new Set());
-
-                  try {
-                    if (isGroup || isTeamChat) {
-                      await unsendMessagesServer({ data: { ids: targetIds } });
-                    } else {
-                      await unsendPageMessagesServer({ data: { ids: targetIds } });
-                    }
-                    setMessages(prev => prev.map(m => targetIds.includes(m.id) ? { ...m, content: "[system:unsent]", image_url: null, audio_url: null } : m));
-                    toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for everyone`);
-                  } catch (e: any) {
-                    toast.error(e?.message || "Could not unsend message");
-                  }
+                  deleteForMe(targetIds);
+                  toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for you`);
                 }}
-                className="w-full py-3 bg-red-600/10 hover:bg-red-600/20 text-red-500 font-bold rounded-xl text-sm transition-colors text-center"
+                className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-bold rounded-xl text-xs transition-colors text-center border border-border/40"
               >
-                Delete for everyone
+                Delete for you
               </button>
-            )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setShowDeleteBottomSheet(false);
-                const targetIds = Array.from(selectedMsgs);
-                setSelectionMode(false);
-                setSelectedMsgs(new Set());
-                deleteForMe(targetIds);
-                toast.success(`${targetIds.length} message${targetIds.length > 1 ? "s" : ""} deleted for you`);
-              }}
-              className="w-full py-3 bg-secondary hover:bg-secondary/80 text-foreground font-bold rounded-xl text-sm transition-colors text-center"
-            >
-              Delete for you
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowDeleteBottomSheet(false)}
-              className="w-full py-3 bg-secondary hover:bg-secondary/80 text-muted-foreground font-semibold rounded-xl text-sm transition-colors text-center border border-border"
-            >
-              Cancel
-            </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteBottomSheet(false)}
+                className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-muted-foreground font-semibold rounded-xl text-xs transition-colors text-center border border-border"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -5092,6 +5097,20 @@ function Conversation({
                   className="h-8 px-2 rounded bg-secondary text-xs border border-border/50 font-medium text-foreground dark:text-foreground"
                 />
               </div>
+              {(startDate || endDate) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setStartDate("");
+                    setEndDate("");
+                    loadWalletHistory(historyFilter, conv.userId, "", "");
+                  }}
+                  className="h-8 rounded-lg text-xs font-bold text-destructive hover:bg-destructive/10 gap-1"
+                >
+                  <X className="h-3.5 w-3.5" /> Clear Dates
+                </Button>
+              )}
             </div>
 
             {/* Export buttons */}
@@ -5100,7 +5119,8 @@ function Conversation({
                 variant="outline"
                 size="sm"
                 onClick={exportAdminCSV}
-                className="h-8 rounded-lg text-xs gap-1.5 font-bold"
+                disabled={loadingHistory || loadingWalletDetails}
+                className="h-8 rounded-lg text-xs gap-1.5 font-bold disabled:opacity-50"
               >
                 <Download className="h-3.5 w-3.5" />
                 Export CSV
@@ -5109,7 +5129,8 @@ function Conversation({
                 variant="outline"
                 size="sm"
                 onClick={printAdminStatement}
-                className="h-8 rounded-lg text-xs gap-1.5 font-bold"
+                disabled={loadingHistory || loadingWalletDetails}
+                className="h-8 rounded-lg text-xs gap-1.5 font-bold disabled:opacity-50"
               >
                 <Printer className="h-3.5 w-3.5" />
                 Print Statement
@@ -5118,7 +5139,8 @@ function Conversation({
               <Button
                 size="sm"
                 onClick={() => sendStatementToUser("chat")}
-                className="h-8 rounded-lg text-xs gap-1.5 font-bold bg-primary text-primary-foreground hover:bg-primary/95"
+                disabled={loadingHistory || loadingWalletDetails}
+                className="h-8 rounded-lg text-xs gap-1.5 font-bold bg-primary text-primary-foreground hover:bg-primary/95 disabled:opacity-50"
               >
                 <Mail className="h-3.5 w-3.5" />
                 Send to User
@@ -5624,6 +5646,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
   activeMatch,
 }: AdminConversationMessageItemProps) {
   const mine = m.from_page;
+  const [showSelfTime, setShowSelfTime] = useState(false);
   const reactionKeys = Object.keys(m.reactions).filter(k => m.reactions[k].length > 0);
   const isMatch = matchIds.includes(m.id);
   const isActiveMatch = isMatch && matchIds[activeMatch] === m.id;
@@ -5821,6 +5844,11 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
             onPointerLeave={selectionMode ? undefined : cancelPress}
             onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) onMenuOpen(m.id); }}
             className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
+            onClick={() => {
+              if (!selectionMode) {
+                setShowSelfTime(!showSelfTime);
+              }
+            }}
           >
             {m.image_url ? (
               <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none">
@@ -5842,6 +5870,14 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
             )}
           </div>
         </div>
+
+        {showSelfTime && m.created_at && !isNaN(new Date(m.created_at).getTime()) && (
+          <div className={`flex mt-0.5 ${mine ? "justify-end" : "justify-start"} px-2 select-none`}>
+            <span className="text-[9px] text-muted-foreground/60 font-semibold">
+              {format(new Date(m.created_at), "MMM d, h:mm a")}
+            </span>
+          </div>
+        )}
 
         {/* Reactions Badge */}
         {reactionKeys.length > 0 && (

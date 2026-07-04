@@ -51,13 +51,26 @@ function ProfilePage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState<"all" | "wallet" | "credit">("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const filteredHistory = walletHistory.filter((tx) => {
-    if (ledgerFilter === "all") return true;
-    const isCreditAction = ["credit_added", "credit_released", "deduct_credit", "transfer", "reset"].includes(tx.action);
-    const isWalletAction = ["deposit", "deduction", "correction", "refund", "bonus", "reset"].includes(tx.action);
-    if (ledgerFilter === "credit") return isCreditAction;
-    if (ledgerFilter === "wallet") return isWalletAction;
+    if (ledgerFilter !== "all") {
+      const isCreditAction = ["credit_added", "credit_released", "deduct_credit", "transfer", "reset"].includes(tx.action);
+      const isWalletAction = ["deposit", "deduction", "correction", "refund", "bonus", "reset"].includes(tx.action);
+      if (ledgerFilter === "credit" && !isCreditAction) return false;
+      if (ledgerFilter === "wallet" && !isWalletAction) return false;
+    }
+    if (startDate) {
+      const txDate = new Date(tx.created_at);
+      const limitDate = new Date(startDate + "T00:00:00");
+      if (txDate < limitDate) return false;
+    }
+    if (endDate) {
+      const txDate = new Date(tx.created_at);
+      const limitDate = new Date(endDate + "T23:59:59.999");
+      if (txDate > limitDate) return false;
+    }
     return true;
   });
 
@@ -206,15 +219,16 @@ function ProfilePage() {
       tx.reason,
       tx.notes || ""
     ]);
-    const csvContent = "data:text/csv;charset=utf-8,"
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `JJ_Wallet_Statement_${profile?.username || "user"}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast.success("CSV Statement exported successfully!");
   };
 
@@ -282,7 +296,7 @@ function ProfilePage() {
               </tr>
             </thead>
             <tbody>
-              \${txRows || '<tr><td colspan="6" style="text-align: center; padding: 20px;">No transaction records found.</td></tr>'}
+              ${txRows || '<tr><td colspan="6" style="text-align: center; padding: 20px;">No transaction records found.</td></tr>'}
             </tbody>
           </table>
           <script>window.print();</script>
@@ -490,17 +504,48 @@ function ProfilePage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex justify-between items-center gap-2 my-2">
-            <select
-              value={ledgerFilter}
-              onChange={(e) => setLedgerFilter(e.target.value as any)}
-              className="bg-secondary text-foreground text-xs font-bold px-3 py-1.5 rounded-full border border-border focus:outline-none cursor-pointer"
-            >
-              <option value="all">All Transactions</option>
-              <option value="wallet">Wallet Balance Only</option>
-              <option value="credit">Credit Balance Only</option>
-            </select>
-            <Button size="sm" variant="outline" onClick={exportUserCSV} className="rounded-full text-xs font-bold gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-secondary/35 p-3 rounded-xl border border-border/40 my-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-muted-foreground">Type:</span>
+                <select
+                  value={ledgerFilter}
+                  onChange={(e) => setLedgerFilter(e.target.value as any)}
+                  className="bg-card text-foreground text-xs font-bold px-2 py-1 rounded border border-border focus:outline-none cursor-pointer h-8"
+                >
+                  <option value="all">All</option>
+                  <option value="wallet">Wallet Only</option>
+                  <option value="credit">Credit Only</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-muted-foreground">Start:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="h-8 px-2 rounded bg-card text-xs border border-border/50 font-medium text-foreground dark:text-foreground"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-muted-foreground">End:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="h-8 px-2 rounded bg-card text-xs border border-border/50 font-medium text-foreground dark:text-foreground"
+                />
+              </div>
+              {(startDate || endDate) && (
+                <button
+                  onClick={() => { setStartDate(""); setEndDate(""); }}
+                  className="text-xs font-bold text-destructive hover:underline"
+                >
+                  Clear dates
+                </button>
+              )}
+            </div>
+            <Button size="sm" variant="outline" onClick={exportUserCSV} className="rounded-full text-xs font-bold gap-1.5 h-8 shrink-0">
               <Download className="h-3.5 w-3.5" /> Export CSV
             </Button>
           </div>
@@ -577,6 +622,35 @@ function ProfilePage() {
               Preview and print your financial wallet ledger statement.
             </DialogDescription>
           </DialogHeader>
+
+          <div className="flex items-center gap-2 bg-secondary/35 p-3 rounded-xl border border-border/40 my-1">
+            <div className="flex-1 flex items-center gap-1.5 min-w-0">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">Start:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-8 px-2 rounded bg-card text-xs border border-border/50 font-medium text-foreground dark:text-foreground w-full"
+              />
+            </div>
+            <div className="flex-1 flex items-center gap-1.5 min-w-0">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">End:</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-8 px-2 rounded bg-card text-xs border border-border/50 font-medium text-foreground dark:text-foreground w-full"
+              />
+            </div>
+            {(startDate || endDate) && (
+              <button
+                onClick={() => { setStartDate(""); setEndDate(""); }}
+                className="text-[10px] font-bold text-destructive hover:underline shrink-0"
+              >
+                Clear
+              </button>
+            )}
+          </div>
 
           <div className="flex-1 overflow-y-auto border border-border/80 rounded-xl p-4 space-y-4 bg-secondary/10">
             <div className="border-b border-green-500 pb-2">

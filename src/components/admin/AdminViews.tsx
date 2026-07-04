@@ -59,6 +59,7 @@ export function TagsView() {
   }
   async function del(id: string, label: string) {
     if (!(await ask({ title: "Delete tag?", desc: `“${label}” will be removed from all users.`, confirmText: "Delete", destructive: true }))) return;
+    await sb.from("user_tags").delete().eq("tag_id", id);
     await sb.from("tags").delete().eq("id", id);
     load();
   }
@@ -638,14 +639,7 @@ export function UserDetailPanel({
             <p className="text-lg font-black text-amber-500 mt-1">${(profileData?.credit_balance ?? 0).toFixed(2)}</p>
           </button>
         </div>
-        <div className="flex gap-2 mt-3">
-          <Button size="sm" onClick={onWalletClick} className="flex-1 rounded-xl h-9 text-xs font-bold gap-1 bg-primary text-primary-foreground hover:opacity-90">
-            <Plus className="h-3.5 w-3.5" /> Adjust Balance
-          </Button>
-          <Button size="sm" variant="outline" onClick={onHistoryClick} className="flex-1 rounded-xl h-9 text-xs font-bold gap-1">
-            <History className="h-3.5 w-3.5" /> Ledger History
-          </Button>
-        </div>
+
       </section>
 
       {/* Tags */}
