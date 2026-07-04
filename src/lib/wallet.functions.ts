@@ -183,7 +183,7 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
         notificationText = activeReason === "Played Funds"
           ? `You played $${amt.toFixed(2)} from your Credit Balance.`
           : `$${amt.toFixed(2)} was deducted from your Credit Balance.`;
-        chatText = `Wallet Updated: $${amt.toFixed(2)} has been played by you and has been deducted from your Credit Balance via Credit.`;
+        chatText = `Wallet Updated: $${amt.toFixed(2)} has been played by you and has been deducted from your Credit Balance via ${paymentMethod}.`;
         break;
 
       case "correction":

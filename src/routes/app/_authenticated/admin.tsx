@@ -2691,11 +2691,11 @@ function Conversation({
     }
   }, [walletPopupOpen]);
 
-  // Automatically select "Credit" payment method when credit load/played is selected
+  // Automatically select "Credit" payment method when Load Credit is selected
   useEffect(() => {
-    if (walletAction === "credit_added" || walletAction === "deduct_credit") {
+    if (walletAction === "credit_added") {
       setWalletPaymentMethod("Credit");
-    } else if (walletAction === "deposit") {
+    } else if (walletAction === "deposit" || walletAction === "deduct_credit") {
       if (walletPaymentMethod === "Credit") {
         setWalletPaymentMethod("Cashapp");
       }
@@ -2750,7 +2750,7 @@ function Conversation({
     } else if (walletAction === "deduction") {
       computedReason = "Played Funds";
     } else if (walletAction === "deduct_credit") {
-      computedReason = "Played Credit";
+      computedReason = `${walletPaymentMethod} Paid Credit`;
     } else {
       computedReason = "Manual adjustment";
     }
@@ -4777,11 +4777,11 @@ function Conversation({
                     <option value="deposit">Add Wallet Funds</option>
                     <option value="deduction">Played Wallet Funds</option>
                     <option value="credit_added">Load Credit</option>
-                    <option value="deduct_credit">Played Credit</option>
+                    <option value="deduct_credit">Paid Credit</option>
                   </select>
                 </div>
 
-                {(walletAction === "deposit" || walletAction === "credit_added") && (
+                {(walletAction === "deposit" || walletAction === "deduct_credit") && (
                   <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-150">
                     <label className="text-xs font-bold text-muted-foreground">Payment Method</label>
                     <select
