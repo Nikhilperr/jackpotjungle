@@ -15,6 +15,14 @@ import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
+
+function getVipBadgeUrl(status: string | null | undefined): string | null {
+  if (!status || status === "none") return null;
+  const normalized = status.toLowerCase();
+  if (normalized === "platinum") return "/platium.png";
+  if (normalized === "diamond") return "/dimond.png";
+  return `/${normalized}.png`;
+}
 import { unsendMessagesServer } from "@/lib/messages.functions";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -431,6 +439,7 @@ type Profile = {
   phone?: string | null;
   address?: string | null;
   created_at?: string;
+  vip_status?: string | null;
 };
 
 function ChatView() {
@@ -573,9 +582,9 @@ function ChatView() {
       try {
         const [{ data: groupData }, { data: membersData }, { data: msgsData }] = await Promise.all([
           supabase.from("groups").select("*").eq("id", groupId).maybeSingle(),
-          supabase.from("group_members").select("role, joined_at, profiles(id, username, first_name, last_name, avatar_url, online, last_seen)").eq("group_id", groupId),
+          supabase.from("group_members").select("role, joined_at, profiles(id, username, first_name, last_name, avatar_url, online, last_seen, vip_status)").eq("group_id", groupId),
           supabase.from("messages")
-            .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+            .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
             .eq("group_id", groupId)
             .order("created_at", { ascending: false })
             .limit(50 + 1)
@@ -678,8 +687,8 @@ function ChatView() {
     try {
       if (lastCachedMsg) {
         const [{ data: prof }, { data: deltaMsgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
-          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
-          supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at, vip_status").eq("id", friendId).maybeSingle(),
+          supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
             .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
             .gt("created_at", lastCachedMsg.created_at)
             .order("created_at", { ascending: false }),
@@ -708,8 +717,8 @@ function ChatView() {
         setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
       } else {
         const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
-          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at").eq("id", friendId).maybeSingle(),
-          supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at, vip_status").eq("id", friendId).maybeSingle(),
+          supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
             .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
             .order("created_at", { ascending: false }).limit(PAGE + 1),
           supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
@@ -1412,7 +1421,7 @@ function ChatView() {
     if (isGroup) insertObj.group_id = groupId;
     else insertObj.receiver_id = friendId;
 
-    const { data, error } = await supabase.from("messages").insert(insertObj).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)").single();
+    const { data, error } = await supabase.from("messages").insert(insertObj).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)").single();
     if (error) {
       toast.error("Failed to update reaction");
     } else {
@@ -1432,7 +1441,7 @@ function ChatView() {
     if (isGroup) insertObj.group_id = groupId;
     else insertObj.receiver_id = friendId;
 
-    const { data, error } = await supabase.from("messages").insert(insertObj).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)").single();
+    const { data, error } = await supabase.from("messages").insert(insertObj).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)").single();
     if (error) {
       toast.error("Failed to pin message");
     } else {
@@ -1453,7 +1462,7 @@ function ChatView() {
     if (isGroup) insertObj.group_id = groupId;
     else insertObj.receiver_id = friendId;
 
-    const { data, error } = await supabase.from("messages").insert(insertObj).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)").single();
+    const { data, error } = await supabase.from("messages").insert(insertObj).select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)").single();
     if (error) {
       toast.error("Failed to unpin message");
     } else {
@@ -1824,7 +1833,7 @@ function ChatView() {
         .from("messages")
         .update({ content, is_edited: true })
         .eq("id", msgId)
-        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
         .single();
       if (error) {
         toast.error("Failed to edit message");
@@ -1923,7 +1932,7 @@ function ChatView() {
       const { data } = await supabase
         .from("messages")
         .insert(insertObj as any)
-        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
         .single();
       if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as any) : x)));
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, image_url: url } : x)));
@@ -1960,7 +1969,7 @@ function ChatView() {
       const { data } = await supabase
         .from("messages")
         .insert(insertObj as any)
-        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
         .single();
       if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as any) : x)));
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, audio_url: url } : x)));
@@ -2087,6 +2096,14 @@ function ChatView() {
             <div className="min-w-0 flex-1">
               <p className="font-semibold truncate flex items-center gap-1.5">
                 <span>{friendDisplayName}</span>
+                {!isGroup && friend?.vip_status && friend.vip_status !== "none" && (
+                  <img 
+                    src={getVipBadgeUrl(friend.vip_status) || undefined} 
+                    alt={`${friend.vip_status} VIP`} 
+                    className="h-5 w-auto object-contain select-none shrink-0"
+                    title={`${friend.vip_status.toUpperCase()} VIP`}
+                  />
+                )}
                 {!isGroup && friendRole === "super_admin" && (
                   <ShieldCheck className="h-3.5 w-3.5 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
                 )}
@@ -3424,6 +3441,14 @@ const MessageItem = React.memo(function MessageItem({
                   ? `${(m as any).sender.first_name} ${(m as any).sender.last_name}` 
                   : `@${(m as any).sender.username}`}
               </span>
+              {(m as any).sender.vip_status && (m as any).sender.vip_status !== "none" && (
+                <img 
+                  src={getVipBadgeUrl((m as any).sender.vip_status) || undefined} 
+                  alt={`${(m as any).sender.vip_status} VIP`} 
+                  className="h-3.5 w-auto object-contain select-none shrink-0"
+                  title={`${(m as any).sender.vip_status.toUpperCase()} VIP`}
+                />
+              )}
               {senderRole === "super_admin" && (
                 <ShieldCheck className="h-3 w-3 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
               )}

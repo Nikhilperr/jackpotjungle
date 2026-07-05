@@ -856,7 +856,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       const convIds = convList ? convList.map((c) => c.id) : [];
 
       const queries: Promise<any>[] = [
-        userIds.length > 0 ? supabase.from("profiles").select("id, username, avatar_url, online, last_seen, wallet_balance, credit_balance").in("id", userIds) : Promise.resolve({ data: [] }),
+        userIds.length > 0 ? supabase.from("profiles").select("id, username, avatar_url, online, last_seen, wallet_balance, credit_balance, vip_status").in("id", userIds) : Promise.resolve({ data: [] }),
         convIds.length > 0 ? supabase.from("page_messages").select("conversation_id, content, created_at, seen, from_page, image_url, audio_url").in("conversation_id", convIds).order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [] }),
         supabase.from("tags").select("id, name, color").order("name"),
         userIds.length > 0 ? supabase.from("user_tags").select("user_id, tag_id").in("user_id", userIds) : Promise.resolve({ data: [] }),
@@ -3486,7 +3486,7 @@ function Conversation({
     if (isGroup) {
       const { data } = await supabase
         .from("messages")
-        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+        .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
         .eq("group_id", groupId)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -3616,7 +3616,7 @@ function Conversation({
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `group_id=eq.${groupId}` }, (payload) => {
           const m = payload.new as any;
           if (m) {
-            supabase.from("profiles").select("id, username, first_name, last_name, avatar_url")
+            supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, vip_status")
               .eq("id", m.sender_id).maybeSingle().then(({ data: sender }) => {
                 const mappedMsg = {
                   ...m,

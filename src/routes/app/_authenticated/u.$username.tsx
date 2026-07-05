@@ -10,6 +10,14 @@ import { format } from "date-fns";
 
 const sb: any = supabase;
 
+function getVipBadgeUrl(status: string | null | undefined): string | null {
+  if (!status || status === "none") return null;
+  const normalized = status.toLowerCase();
+  if (normalized === "platinum") return "/platium.png";
+  if (normalized === "diamond") return "/dimond.png";
+  return `/${normalized}.png`;
+}
+
 export const Route = createFileRoute("/app/_authenticated/u/$username")({
   head: ({ params }) => ({
     meta: [
@@ -85,7 +93,7 @@ function UserProfileLandingPage() {
       try {
         const { data: prof, error } = await sb
           .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url, friend_code, created_at")
+          .select("id, username, first_name, last_name, avatar_url, friend_code, created_at, vip_status")
           .eq("username", username)
           .maybeSingle();
 
@@ -269,8 +277,16 @@ function UserProfileLandingPage() {
             </div>
 
             <div className="space-y-1.5">
-              <h2 className="text-2xl font-extrabold text-foreground truncate max-w-[280px] mx-auto tracking-tight">
-                {displayName}
+              <h2 className="text-2xl font-extrabold text-foreground truncate max-w-[280px] mx-auto tracking-tight flex items-center justify-center gap-2">
+                <span>{displayName}</span>
+                {profile?.vip_status && profile.vip_status !== "none" && (
+                  <img 
+                    src={getVipBadgeUrl(profile.vip_status) || undefined} 
+                    alt={`${profile.vip_status} VIP`} 
+                    className="h-7 w-auto object-contain select-none inline-block align-middle"
+                    title={`${profile.vip_status.toUpperCase()} VIP`}
+                  />
+                )}
               </h2>
               <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground font-medium">
                 <span>@{profile.username}</span>

@@ -22,6 +22,14 @@ export const Route = createFileRoute("/app/_authenticated/profile")({
   component: ProfilePage,
 });
 
+export function getVipBadgeUrl(status: string | null | undefined): string | null {
+  if (!status || status === "none") return null;
+  const normalized = status.toLowerCase();
+  if (normalized === "platinum") return "/platium.png";
+  if (normalized === "diamond") return "/dimond.png";
+  return `/${normalized}.png`;
+}
+
 type Profile = {
   id: string;
   username: string;
@@ -37,6 +45,7 @@ type Profile = {
   wallet_released?: number;
   wallet_used?: number;
   wallet_last_updated?: string;
+  vip_status?: string | null;
 };
 
 function parseUserAgent(ua: string | null): string {
@@ -341,7 +350,7 @@ function ProfilePage() {
     if (!user) return;
     let mounted = true;
     supabase.from("profiles")
-      .select("id, username, first_name, last_name, avatar_url, friend_code, referral_code, created_at, notif_enabled, wallet_balance, credit_balance, wallet_deposits, wallet_released, wallet_used, wallet_last_updated" as any)
+      .select("id, username, first_name, last_name, avatar_url, friend_code, referral_code, created_at, notif_enabled, wallet_balance, credit_balance, wallet_deposits, wallet_released, wallet_used, wallet_last_updated, vip_status" as any)
       .eq("id", user.id).maybeSingle()
       .then(({ data }) => {
         if (!mounted || !data) return;
@@ -706,8 +715,16 @@ function ProfilePage() {
                 className="hidden"
               />
             </div>
-            <h1 className="mt-4 text-2xl font-bold">
-              {profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : profile.username}
+            <h1 className="mt-4 text-2xl font-bold flex items-center justify-center gap-2">
+              <span>{profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : profile.username}</span>
+              {profile.vip_status && profile.vip_status !== "none" && (
+                <img 
+                  src={getVipBadgeUrl(profile.vip_status) || undefined} 
+                  alt={`${profile.vip_status} VIP`} 
+                  className="h-7 w-auto object-contain select-none inline-block align-middle"
+                  title={`${profile.vip_status.toUpperCase()} VIP`}
+                />
+              )}
             </h1>
             <p className="text-xs text-muted-foreground font-semibold">@{profile.username}</p>
             <p className="text-sm text-muted-foreground mt-0.5">{email}</p>

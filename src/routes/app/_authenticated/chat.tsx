@@ -14,6 +14,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { prefetchConversation } from "@/lib/chat-cache";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
+function getVipBadgeUrl(status: string | null | undefined): string | null {
+  if (!status || status === "none") return null;
+  const normalized = status.toLowerCase();
+  if (normalized === "platinum") return "/platium.png";
+  if (normalized === "diamond") return "/dimond.png";
+  return `/${normalized}.png`;
+}
+
 export const Route = createFileRoute("/app/_authenticated/chat")({
   head: () => ({ meta: [{ title: "Chats — JJ Messenger" }] }),
   component: ChatLayout,
@@ -29,6 +37,9 @@ type Conversation = {
   lastAt: string | null;
   unread: number;
   allText: string;
+  vip_status?: string | null;
+  isGroup?: boolean;
+  groupId?: string;
 };
 
 function ChatLayout() {
@@ -190,7 +201,7 @@ function ChatLayout() {
         queries.push(
           supabase
             .from("profiles")
-            .select("id, username, first_name, last_name, avatar_url, online")
+            .select("id, username, first_name, last_name, avatar_url, online, vip_status")
             .in("id", friendIds)
         );
       } else {
@@ -252,7 +263,8 @@ function ChatLayout() {
           lastMessage: null, 
           lastAt: null, 
           unread: 0, 
-          allText: "" 
+          allText: "",
+          vip_status: p.vip_status
         };
       });
 
@@ -1549,6 +1561,14 @@ const ConversationItem = React.memo(function ConversationItem({
           <div className="flex items-baseline justify-between gap-2">
             <p className={`truncate text-sm flex items-center gap-1.5 ${c.unread > 0 ? "font-bold" : "font-semibold"}`}>
               {c.displayName}
+              {c.vip_status && c.vip_status !== "none" && (
+                <img 
+                  src={getVipBadgeUrl(c.vip_status) || undefined} 
+                  alt={`${c.vip_status} VIP`} 
+                  className="h-4 w-auto object-contain select-none shrink-0"
+                  title={`${c.vip_status.toUpperCase()} VIP`}
+                />
+              )}
               {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
             </p>
             {c.lastAt && !isNaN(new Date(c.lastAt).getTime()) && (

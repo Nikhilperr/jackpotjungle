@@ -326,6 +326,119 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
       }
     }
 
+    // VIP Upgrade logic on cashin
+    if (data.action === "cashin") {
+      try {
+        const { data: cashins, error: cashinsErr } = await supabaseAdmin
+          .from("wallet_transactions")
+          .select("amount")
+          .eq("user_id", data.targetUserId)
+          .eq("action", "cashin");
+
+        if (!cashinsErr && cashins) {
+          const totalCashIn = cashins.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
+          const { data: prof, error: profErr } = await supabaseAdmin
+            .from("profiles")
+            .select("vip_status, wallet_balance, wallet_deposits")
+            .eq("id", data.targetUserId)
+            .maybeSingle();
+
+          if (!profErr && prof) {
+            const currentVip = (prof.vip_status || "none").toLowerCase();
+
+            const ranks: Record<string, number> = {
+              none: 0,
+              bronze: 1,
+              silver: 2,
+              gold: 3,
+              platinum: 4,
+              diamond: 5
+            };
+
+            const currentRank = ranks[currentVip] ?? 0;
+
+            let qualifiedVip = "none";
+            let bonusAmount = 0;
+
+            if (totalCashIn >= 5000) {
+              qualifiedVip = "diamond";
+              bonusAmount = 100;
+            } else if (totalCashIn >= 1000) {
+              qualifiedVip = "platinum";
+              bonusAmount = 75;
+            } else if (totalCashIn >= 500) {
+              qualifiedVip = "gold";
+              bonusAmount = 40;
+            } else if (totalCashIn >= 250) {
+              qualifiedVip = "silver";
+              bonusAmount = 10;
+            } else if (totalCashIn >= 100) {
+              qualifiedVip = "bronze";
+              bonusAmount = 5;
+            }
+
+            const qualifiedRank = ranks[qualifiedVip] ?? 0;
+
+            if (qualifiedRank > currentRank) {
+              const prevBalance = Number(prof.wallet_balance || 0);
+              const newAvail = prevBalance + bonusAmount;
+              const newDeposits = Number(prof.wallet_deposits || 0) + bonusAmount;
+
+              // 1. Update user profile to the new vip_status and credit available balance
+              const { error: vipUpdateErr } = await supabaseAdmin
+                .from("profiles")
+                .update({
+                  vip_status: qualifiedVip,
+                  wallet_balance: newAvail,
+                  wallet_deposits: newDeposits,
+                  wallet_last_updated: new Date().toISOString()
+                } as any)
+                .eq("id", data.targetUserId);
+
+              if (!vipUpdateErr) {
+                // 2. Insert wallet transaction for cashback deposit
+                await supabaseAdmin
+                  .from("wallet_transactions")
+                  .insert({
+                    user_id: data.targetUserId,
+                    admin_id: context.userId,
+                    admin_name: "System",
+                    action: "deposit",
+                    amount: bonusAmount,
+                    avail_before: prevBalance,
+                    avail_after: newAvail,
+                    credit_before: 0,
+                    credit_after: 0,
+                    reason: `VIP Upgrade Cashback - ${qualifiedVip.toUpperCase()}`,
+                    notes: `Automatically awarded for reaching ${qualifiedVip.toUpperCase()} VIP level.`,
+                  });
+
+                // 3. Send automated system message to their support chat
+                const { data: conv } = await supabaseAdmin
+                  .from("page_conversations")
+                  .select("id")
+                  .eq("user_id", data.targetUserId)
+                  .maybeSingle();
+
+                if (conv) {
+                  const messageText = `your level upgraded to ${qualifiedVip} you got ${bonusAmount}$ cashback for reaching ${qualifiedVip} its as deposit you can cashout or play it`;
+                  await supabaseAdmin.from("page_messages").insert({
+                    conversation_id: conv.id,
+                    sender_id: context.userId,
+                    from_page: true,
+                    content: messageText,
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to run VIP upgrade checks:", err);
+      }
+    }
+
     return {
       success: true,
       wallet_balance: nextAvail,
