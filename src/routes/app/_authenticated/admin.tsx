@@ -3091,15 +3091,27 @@ function Conversation({
   const exportAdminCSV = () => {
     if (walletTransactions.length === 0) return toast.error("No transactions to export.");
 
+    const checkIsPositive = (action: string) => ["deposit", "credit_added", "refund", "bonus", "cashin"].includes(action);
+
     let headers: string[] = [];
     let rows: any[][] = [];
+
+    const cashInTotal = walletTransactions
+      .filter(tx => tx.action === "cashin" && !tx.deleted)
+      .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
+    const cashOutTotal = walletTransactions
+      .filter(tx => tx.action === "cashout" && !tx.deleted)
+      .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
+    const netCashFlow = cashInTotal - cashOutTotal;
 
     if (historyFilter === "wallet") {
       headers = ["Date & Time", "Action", "Amount", "Avail Before", "Avail After", "Reason", "Admin Name", "Notes", "Status"];
       rows = walletTransactions.map(tx => [
         new Date(tx.created_at).toLocaleString(),
         tx.action.toUpperCase(),
-        `$${Number(tx.amount).toFixed(2)}`,
+        `${checkIsPositive(tx.action) ? "+" : "-"}$${Number(tx.amount).toFixed(2)}`,
         `$${Number(tx.avail_before).toFixed(2)}`,
         `$${Number(tx.avail_after).toFixed(2)}`,
         tx.reason,
@@ -3112,7 +3124,7 @@ function Conversation({
       rows = walletTransactions.map(tx => [
         new Date(tx.created_at).toLocaleString(),
         tx.action.toUpperCase(),
-        `$${Number(tx.amount).toFixed(2)}`,
+        `${checkIsPositive(tx.action) ? "+" : "-"}$${Number(tx.amount).toFixed(2)}`,
         `$${Number(tx.credit_before).toFixed(2)}`,
         `$${Number(tx.credit_after).toFixed(2)}`,
         tx.reason,
@@ -3125,7 +3137,7 @@ function Conversation({
       rows = walletTransactions.map(tx => [
         new Date(tx.created_at).toLocaleString(),
         tx.action.toUpperCase(),
-        `$${Number(tx.amount).toFixed(2)}`,
+        `${checkIsPositive(tx.action) ? "+" : "-"}$${Number(tx.amount).toFixed(2)}`,
         `$${Number(tx.avail_before).toFixed(2)}`,
         `$${Number(tx.avail_after).toFixed(2)}`,
         `$${Number(tx.credit_before).toFixed(2)}`,
@@ -3138,6 +3150,11 @@ function Conversation({
         tx.edited_at ? new Date(tx.edited_at).toLocaleString() : "",
         tx.deleted_at ? new Date(tx.deleted_at).toLocaleString() : ""
       ]);
+
+      rows.push([]);
+      rows.push(["TOTAL CASH IN", "", `$${cashInTotal.toFixed(2)}`]);
+      rows.push(["TOTAL CASH OUT", "", `$${cashOutTotal.toFixed(2)}`]);
+      rows.push(["NET CASH FLOW (IN - OUT)", "", `$${netCashFlow.toFixed(2)}`]);
     }
 
     const csvContent = [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
@@ -3234,6 +3251,16 @@ function Conversation({
     }).join("");
 
     // Conditional summary stats
+    const cashInTotal = walletTransactions
+      .filter(tx => tx.action === "cashin" && !tx.deleted)
+      .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
+    const cashOutTotal = walletTransactions
+      .filter(tx => tx.action === "cashout" && !tx.deleted)
+      .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
+    const netCashFlow = cashInTotal - cashOutTotal;
+
     let summaryHTML = "";
     if (historyFilter === "wallet") {
       summaryHTML = `
@@ -3259,6 +3286,9 @@ function Conversation({
         <div>
           <p style="margin: 4px 0;"><strong>Available Balance:</strong> $${(walletDetails?.wallet_balance ?? 0).toFixed(2)}</p>
           <p style="margin: 4px 0;"><strong>Credit Balance:</strong> $${(walletDetails?.credit_balance ?? 0).toFixed(2)}</p>
+          <p style="margin: 4px 0; border-top: 1px dashed #ccc; padding-top: 4px; margin-top: 6px;"><strong>Total Cash In:</strong> $${cashInTotal.toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Total Cash Out:</strong> $${cashOutTotal.toFixed(2)}</p>
+          <p style="margin: 4px 0;"><strong>Net Cash Flow:</strong> $${netCashFlow.toFixed(2)}</p>
         </div>
         <div style="text-align: right;">
           <p style="margin: 4px 0;"><strong>Deposits:</strong> $${(walletDetails?.wallet_deposits ?? 0).toFixed(2)}</p>
@@ -5555,117 +5585,151 @@ function Conversation({
             </div>
           </div>
 
-          {/* Ledger Table Container */}
-          <div className="flex-1 overflow-y-auto border border-border/40 rounded-xl bg-card">
-            {loadingHistory ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-2">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-xs text-muted-foreground font-medium">Loading ledger statements...</p>
-              </div>
-            ) : walletTransactions.length === 0 ? (
-              <div className="text-center py-20">
-                <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-sm font-bold text-muted-foreground">No ledger transactions found</p>
-                <p className="text-xs text-muted-foreground/75 mt-1">Try changing the search filter or perform a new adjustment.</p>
-              </div>
-            ) : (
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-secondary/40 sticky top-0 border-b border-border/50 text-[10px] text-muted-foreground uppercase tracking-wider font-bold shrink-0 z-10">
-                  <tr>
-                    <th className="p-3">Date & Time</th>
-                    <th className="p-3">Action</th>
-                    <th className="p-3 text-right">Amount</th>
-                    <th className="p-3 text-right">Avail. Bal</th>
-                    <th className="p-3 text-right">Credit Bal</th>
-                    <th className="p-3">Reason</th>
-                    <th className="p-3">Admin</th>
-                    <th className="p-3 text-right">Controls</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/30">
-                  {walletTransactions.map((tx) => {
-                    const isCredit = tx.action.includes("credit");
-                    const isPositive = ["deposit", "credit_added", "refund", "bonus"].includes(tx.action);
+          {(() => {
+            const cashInTotal = walletTransactions
+              .filter(tx => tx.action === "cashin" && !tx.deleted)
+              .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
 
-                    return (
-                      <tr 
-                        key={tx.id} 
-                        className={`hover:bg-secondary/20 transition-colors ${tx.deleted ? "opacity-45 line-through bg-secondary/10" : ""}`}
-                      >
-                        <td className="p-3 text-muted-foreground whitespace-nowrap">
-                          {new Date(tx.created_at).toLocaleString()}
-                        </td>
-                        <td className="p-3 whitespace-nowrap">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider inline-block ${
-                            tx.deleted 
-                              ? "bg-muted text-muted-foreground"
-                              : tx.action === "deposit" || tx.action === "bonus" || tx.action === "refund"
-                                ? "bg-emerald-500/10 text-emerald-500"
-                                : tx.action === "credit_added"
-                                  ? "bg-amber-500/10 text-amber-500"
-                                  : tx.action === "credit_released"
-                                    ? "bg-blue-500/10 text-blue-500"
-                                    : tx.action === "transfer"
-                                      ? "bg-indigo-500/10 text-indigo-500"
-                                      : tx.action === "reset"
-                                        ? "bg-red-500/10 text-red-500"
-                                        : "bg-red-500/15 text-red-500"
-                            }`}>
-                            {tx.action.replace("_", " ")}
-                          </span>
-                        </td>
-                        <td className={`p-3 text-right font-black whitespace-nowrap ${
-                          tx.deleted ? "text-muted-foreground" : isPositive ? "text-emerald-500" : "text-destructive"
-                        }`}>
-                          {isPositive ? "+" : "-"}${Number(tx.amount).toFixed(2)}
-                        </td>
-                        <td className="p-3 text-right whitespace-nowrap font-medium">
-                          <span className="text-[10px] text-muted-foreground block">
-                            ${Number(tx.avail_before).toFixed(2)} &rarr;
-                          </span>
-                          <span className="font-bold">${Number(tx.avail_after).toFixed(2)}</span>
-                        </td>
-                        <td className="p-3 text-right whitespace-nowrap font-medium">
-                          <span className="text-[10px] text-muted-foreground block">
-                            ${Number(tx.credit_before).toFixed(2)} &rarr;
-                          </span>
-                          <span className="font-bold">${Number(tx.credit_after).toFixed(2)}</span>
-                        </td>
-                        <td className="p-3 font-semibold break-words max-w-xs">{tx.reason}</td>
-                        <td className="p-3 text-muted-foreground whitespace-nowrap font-medium">
-                          {tx.admin_name || "Admin"}
-                        </td>
-                        <td className="p-3 text-right whitespace-nowrap">
-                          {!tx.deleted ? (
-                            <div className="flex justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditTx(tx)}
-                                className="p-1 hover:bg-secondary rounded text-primary transition-colors"
-                                title="Edit transaction"
-                              >
-                                <Edit className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteTx(tx.id)}
-                                className="p-1 hover:bg-destructive/10 rounded text-destructive transition-colors"
-                                title="Delete transaction"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide">Deleted</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
+            const cashOutTotal = walletTransactions
+              .filter(tx => tx.action === "cashout" && !tx.deleted)
+              .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
+            const netCashFlow = cashInTotal - cashOutTotal;
+
+            return (
+              <>
+                {/* Cash In / Cash Out Stats Banner */}
+                <div className="grid grid-cols-3 gap-4 bg-secondary/15 p-4 rounded-xl border border-border/30 my-2 shrink-0 select-none">
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Cash In</span>
+                    <p className="text-lg font-black text-emerald-500">${cashInTotal.toFixed(2)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Cash Out</span>
+                    <p className="text-lg font-black text-red-500">${cashOutTotal.toFixed(2)}</p>
+                  </div>
+                  <div className="space-y-1 border-l border-border/40 pl-4">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Net Cash Flow (In - Out)</span>
+                    <p className={`text-lg font-black ${netCashFlow >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                      {netCashFlow >= 0 ? "+" : ""}${netCashFlow.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Ledger Table Container */}
+                <div className="flex-1 overflow-y-auto border border-border/40 rounded-xl bg-card">
+                  {loadingHistory ? (
+                    <div className="flex flex-col items-center justify-center py-20 gap-2">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      <p className="text-xs text-muted-foreground font-medium">Loading ledger statements...</p>
+                    </div>
+                  ) : walletTransactions.length === 0 ? (
+                    <div className="text-center py-20">
+                      <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-sm font-bold text-muted-foreground">No ledger transactions found</p>
+                      <p className="text-xs text-muted-foreground/75 mt-1">Try changing the search filter or perform a new adjustment.</p>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-secondary/40 sticky top-0 border-b border-border/50 text-[10px] text-muted-foreground uppercase tracking-wider font-bold shrink-0 z-10">
+                        <tr>
+                          <th className="p-3">Date & Time</th>
+                          <th className="p-3">Action</th>
+                          <th className="p-3 text-right">Amount</th>
+                          <th className="p-3 text-right">Avail. Bal</th>
+                          <th className="p-3 text-right">Credit Bal</th>
+                          <th className="p-3">Reason</th>
+                          <th className="p-3">Admin</th>
+                          <th className="p-3 text-right">Controls</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/30">
+                        {walletTransactions.map((tx) => {
+                          const isCredit = tx.action.includes("credit");
+                          const isPositive = ["deposit", "credit_added", "refund", "bonus", "cashin"].includes(tx.action);
+
+                          return (
+                            <tr 
+                              key={tx.id} 
+                              className={`hover:bg-secondary/20 transition-colors ${tx.deleted ? "opacity-45 line-through bg-secondary/10" : ""}`}
+                            >
+                              <td className="p-3 text-muted-foreground whitespace-nowrap">
+                                {new Date(tx.created_at).toLocaleString()}
+                              </td>
+                              <td className="p-3 whitespace-nowrap">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider inline-block ${
+                                  tx.deleted 
+                                    ? "bg-muted text-muted-foreground"
+                                    : tx.action === "deposit" || tx.action === "bonus" || tx.action === "refund" || tx.action === "cashin"
+                                      ? "bg-emerald-500/10 text-emerald-500"
+                                      : tx.action === "credit_added"
+                                        ? "bg-amber-500/10 text-amber-500"
+                                        : tx.action === "credit_released"
+                                          ? "bg-blue-500/10 text-blue-500"
+                                          : tx.action === "transfer"
+                                            ? "bg-indigo-500/10 text-indigo-500"
+                                            : tx.action === "reset"
+                                              ? "bg-red-500/10 text-red-500"
+                                              : "bg-red-500/15 text-red-500"
+                                }`}>
+                                  {tx.action.replace("_", " ")}
+                                </span>
+                              </td>
+                              <td className={`p-3 text-right font-black whitespace-nowrap ${
+                                tx.deleted ? "text-muted-foreground" : isPositive ? "text-emerald-500" : "text-destructive"
+                              }`}>
+                                {isPositive ? "+" : "-"}${Number(tx.amount).toFixed(2)}
+                              </td>
+                              <td className="p-3 text-right whitespace-nowrap font-medium">
+                                <span className="text-[10px] text-muted-foreground block">
+                                  ${Number(tx.avail_before).toFixed(2)} &rarr;
+                                </span>
+                                <span className="font-bold">${Number(tx.avail_after).toFixed(2)}</span>
+                              </td>
+                              <td className="p-3 text-right whitespace-nowrap font-medium">
+                                <span className="text-[10px] text-muted-foreground block">
+                                  ${Number(tx.credit_before).toFixed(2)} &rarr;
+                                </span>
+                                <span className="font-bold">${Number(tx.credit_after).toFixed(2)}</span>
+                              </td>
+                              <td className="p-3 font-semibold break-words max-w-xs">{tx.reason}</td>
+                              <td className="p-3 text-muted-foreground whitespace-nowrap font-medium">
+                                {tx.admin_name || "Admin"}
+                              </td>
+                              <td className="p-3 text-right whitespace-nowrap">
+                                {!tx.deleted ? (
+                                  <div className="flex justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditTx(tx)}
+                                      className="p-1 hover:bg-secondary rounded text-primary transition-colors"
+                                      title="Edit transaction"
+                                    >
+                                      <Edit className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteTx(tx.id)}
+                                      className="p-1 hover:bg-destructive/10 rounded text-destructive transition-colors"
+                                      title="Delete transaction"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide">Deleted</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </>
+            );
+          })()}
 
           <DialogFooter className="shrink-0 pt-4 border-t border-border/40 mt-2">
             <Button

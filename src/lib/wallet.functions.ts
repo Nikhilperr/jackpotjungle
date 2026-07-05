@@ -17,7 +17,7 @@ async function assertAdmin(supabase: any, userId: string) {
 }
 
 // Fetch wallet details for admin view
-export const getWalletDetailsAdmin = createServerFn({ method: "GET" })
+export const getWalletDetailsAdmin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((d: { targetUserId: string }) => d)
   .handler(async ({ data, context }) => {
@@ -51,7 +51,7 @@ export const getWalletDetailsAdmin = createServerFn({ method: "GET" })
   });
 
 // Fetch full wallet history for admin with filter options
-export const getWalletHistoryAdmin = createServerFn({ method: "GET" })
+export const getWalletHistoryAdmin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((d: { targetUserId: string; filter?: string; startDate?: string; endDate?: string }) => d)
   .handler(async ({ data, context }) => {
