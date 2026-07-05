@@ -16,6 +16,14 @@ import {
 
 const sb: any = supabase;
 
+function getVipBadgeUrl(status: string | null | undefined): string | null {
+  if (!status || status === "none") return null;
+  const normalized = status.toLowerCase();
+  if (normalized === "platinum") return "/platium.png";
+  if (normalized === "diamond") return "/dimond.png";
+  return `/${normalized}.png`;
+}
+
 /* ============ CONFIRM DIALOG HOOK ============ */
 function useConfirm() {
   const [state, setState] = useState<{ open: boolean; title: string; desc?: string; confirmText?: string; destructive?: boolean; resolve?: (v: boolean) => void }>({ open: false, title: "" });
@@ -442,7 +450,7 @@ export function UserDetailPanel({
       sb.from("tags").select("*"),
       sb.from("user_notes").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
       sb.from("referrals").select("referrer_id").eq("referred_id", userId).maybeSingle(),
-      sb.from("profiles").select("is_blocked, first_name, last_name, phone, address, friend_code, created_at, wallet_balance, credit_balance, wallet_deposits, wallet_released, wallet_used").eq("id", userId).maybeSingle(),
+      sb.from("profiles").select("is_blocked, first_name, last_name, phone, address, friend_code, created_at, wallet_balance, credit_balance, wallet_deposits, wallet_released, wallet_used, vip_status").eq("id", userId).maybeSingle(),
       sb.from("user_roles").select("role").eq("user_id", userId),
     ]);
     setTags((t.data ?? []).map((r: any) => r.tags));
@@ -531,6 +539,14 @@ export function UserDetailPanel({
         <div className="flex justify-center mb-2"><Avatar name={username} url={avatar} size={72} /></div>
         <p className="font-bold flex items-center justify-center gap-1.5">
           <span>{username}</span>
+          {profileData?.vip_status && profileData.vip_status !== "none" && (
+            <img 
+              src={getVipBadgeUrl(profileData.vip_status) || undefined} 
+              alt={`${profileData.vip_status} VIP`} 
+              className="h-5 w-auto object-contain select-none shrink-0"
+              title={`${profileData.vip_status.toUpperCase()} VIP`}
+            />
+          )}
           {role === "super_admin" && (
             <span title="Super Admin">
               <ShieldCheck className="h-4 w-4 text-amber-500 fill-amber-500/10 shrink-0" />

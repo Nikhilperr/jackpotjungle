@@ -168,6 +168,14 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
   component: AdminPage,
 });
 
+function getVipBadgeUrl(status: string | null | undefined): string | null {
+  if (!status || status === "none") return null;
+  const normalized = status.toLowerCase();
+  if (normalized === "platinum") return "/platium.png";
+  if (normalized === "diamond") return "/dimond.png";
+  return `/${normalized}.png`;
+}
+
 type ConvRow = {
   conversationId: string;
   userId: string;
@@ -182,6 +190,7 @@ type ConvRow = {
   wallet: number;
   isSpam: boolean;
   isGroup?: boolean;
+  vip_status?: string | null;
 };
 
 function AdminPage() {
@@ -951,6 +960,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
           wallet: p?.wallet_balance ?? 0,
           isSpam: (c as any).is_spam ?? false,
           isAdmin: adminUsers.has(c.user_id),
+          vip_status: p?.vip_status ?? null,
         };
       });
 
@@ -1292,6 +1302,14 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                     <div className="flex items-baseline justify-between gap-2">
                       <p className={`truncate text-sm flex items-center gap-1.5 ${u.unread ? "font-bold" : "font-semibold"}`}>
                         {u.username}
+                        {u.vip_status && u.vip_status !== "none" && (
+                          <img 
+                            src={getVipBadgeUrl(u.vip_status) || undefined} 
+                            alt={`${u.vip_status} VIP`} 
+                            className="h-4 w-auto object-contain select-none shrink-0"
+                            title={`${u.vip_status.toUpperCase()} VIP`}
+                          />
+                        )}
                         {u.isAdmin && (
                           <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
                         )}
@@ -4485,7 +4503,15 @@ function Conversation({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <p className="font-semibold text-sm truncate flex items-center gap-1.5">
-                  {conv.username}
+                  <span>{conv.username}</span>
+                  {conv.vip_status && conv.vip_status !== "none" && (
+                    <img 
+                      src={getVipBadgeUrl(conv.vip_status) || undefined} 
+                      alt={`${conv.vip_status} VIP`} 
+                      className="h-5 w-auto object-contain select-none shrink-0"
+                      title={`${conv.vip_status.toUpperCase()} VIP`}
+                    />
+                  )}
                   {conv.isAdmin && (
                     <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
                   )}
