@@ -11,6 +11,7 @@ import { AuthButton } from "@/components/auth/AuthButton";
 import { PasswordStrength } from "@/components/auth/PasswordStrength";
 
 export const Route = createFileRoute("/app/reset-password")({
+  ssr: false,
   head: () => ({ meta: [{ title: "Reset password — Jackpot Jungle Messenger" }] }),
   component: ResetPage,
 });

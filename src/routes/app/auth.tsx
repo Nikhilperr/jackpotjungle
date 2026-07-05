@@ -21,6 +21,7 @@ const searchSchema = z.object({
 });
 
 export const Route = createFileRoute("/app/auth")({
+  ssr: false,
   head: () => ({ meta: [{ title: "Log in — Jackpot Jungle Messenger" }] }),
   validateSearch: (s) => searchSchema.parse(s),
   component: AuthPage,

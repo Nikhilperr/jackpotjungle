@@ -10,6 +10,7 @@ import { AuthInput } from "@/components/auth/AuthInput";
 import { AuthButton } from "@/components/auth/AuthButton";
 
 export const Route = createFileRoute("/app/forgot-password")({
+  ssr: false,
   head: () => ({ meta: [{ title: "Forgot password — Jackpot Jungle Messenger" }] }),
   component: ForgotPage,
 });

@@ -16,6 +16,7 @@ const searchSchema = z.object({
 });
 
 export const Route = createFileRoute("/app/verify-otp")({
+  ssr: false,
   head: () => ({ meta: [{ title: "Verify code — Jackpot Jungle Messenger" }] }),
   validateSearch: (s) => searchSchema.parse(s),
   component: VerifyOtpPage,
