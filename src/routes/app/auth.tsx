@@ -78,6 +78,10 @@ function AuthPage() {
     if (isRecovery) return;
 
     if (user) {
+      const isGoogleLogin = user.app_metadata?.provider === "google";
+      const isVerified = typeof window !== "undefined" && localStorage.getItem("jj_verified") === "true";
+      if (!isGoogleLogin && !isVerified) return;
+
       const timer = setTimeout(async () => {
         const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
         const isProdDomain = hostname.endsWith("playjackpotjungle.com");
@@ -259,6 +263,15 @@ function LoginForm({
   const [has2FaFactor, setHas2FaFactor] = useState(false);
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  const [resendCountdown, setResendCountdown] = useState(0);
+
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCountdown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCountdown]);
 
   useEffect(() => {
     const checkAalOnMount = async () => {
@@ -270,19 +283,22 @@ function LoginForm({
         const isGoogleLogin = session.user.app_metadata?.provider === "google";
         if (isGoogleLogin) return;
 
-        const { data: mfaData, error: mfaErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-        if (!mfaErr && mfaData.nextLevel === "aal2" && mfaData.currentLevel !== "aal2") {
-          setVerificationRequired(true);
-          
-          const { data: factors, error: listErr } = await supabase.auth.mfa.listFactors();
-          const has2fa = !listErr && factors?.totp?.some(f => f.status === "verified");
-          setHas2FaFactor(has2fa);
+        const isVerified = typeof window !== "undefined" && localStorage.getItem("jj_verified") === "true";
+        if (isVerified) return;
 
-          if (!has2fa) {
-            setVerificationMethod("email");
-            if (session.user.email) {
-              await sendEmailOtp(session.user.email);
-            }
+        // Force secondary verification
+        setVerificationRequired(true);
+        
+        const { data: factors, error: listErr } = await supabase.auth.mfa.listFactors();
+        const has2fa = !listErr && factors?.totp?.some(f => f.status === "verified");
+        setHas2FaFactor(has2fa);
+
+        if (has2fa) {
+          setVerificationMethod(null);
+        } else {
+          setVerificationMethod("email");
+          if (session.user.email) {
+            await sendEmailOtp(session.user.email);
           }
         }
       } catch {}
@@ -301,6 +317,7 @@ function LoginForm({
       });
       if (error) throw error;
       setEmailOtpSent(true);
+      setResendCountdown(60);
       toast.success("Verification code sent to your email!");
     } catch (err: any) {
       toast.error(err.message || "Failed to send email verification code");
@@ -323,17 +340,23 @@ function LoginForm({
       
       if (typeof window !== "undefined") {
         localStorage.setItem("jj_google_session", "false");
-        localStorage.setItem("jj_verified", "true");
+        localStorage.removeItem("jj_verified");
       }
 
       const { data: signed, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
 
-      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", signed.user.id);
-      const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+      const { data: factors, error: listErr } = await supabase.auth.mfa.listFactors();
+      const has2fa = !listErr && factors?.totp?.some(f => f.status === "verified");
+      setHas2FaFactor(has2fa);
 
-      toast.success("Welcome back!");
-      navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
+      setVerificationRequired(true);
+      if (has2fa) {
+        setVerificationMethod(null);
+      } else {
+        setVerificationMethod("email");
+        await sendEmailOtp(email);
+      }
     } catch (err: any) {
       if (typeof window !== "undefined") {
         localStorage.removeItem("jj_verified");
@@ -349,7 +372,11 @@ function LoginForm({
     setMfaBusy(true);
     try {
       let email = identifier.trim();
-      if (!email.includes("@")) {
+      if (!email) {
+        const sessionRes = await supabase.auth.getSession();
+        email = sessionRes.data.session?.user?.email || "";
+      }
+      if (email && !email.includes("@")) {
         const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
         const res = await lookupEmailByUsername({ data: { username: email } });
         email = res.email || email;
@@ -430,7 +457,11 @@ function LoginForm({
 
       // Send recent login notification email!
       let email = identifier.trim();
-      if (!email.includes("@")) {
+      if (!email) {
+        const sessionRes = await supabase.auth.getSession();
+        email = sessionRes.data.session?.user?.email || "";
+      }
+      if (email && !email.includes("@")) {
         const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
         const res = await lookupEmailByUsername({ data: { username: email } });
         email = res.email || email;
@@ -473,30 +504,40 @@ function LoginForm({
   if (verificationRequired) {
     if (!verificationMethod) {
       return (
-        <div className="space-y-5 animate-in fade-in duration-300">
-          <div className="flex justify-between items-center mb-1">
-            <h2 className="text-xl font-bold text-foreground">Choose Verification</h2>
-            <button 
-              type="button" 
-              onClick={async () => {
-                await supabase.auth.signOut();
-                setVerificationRequired(false);
-                setVerificationMethod(null);
-                setOtpCode("");
-              }} 
-              className="text-xs font-semibold text-muted-foreground hover:text-foreground"
-            >
-              Cancel
-            </button>
+        <div className="space-y-6 w-full max-w-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="text-center space-y-2 select-none">
+            <div className="inline-flex p-3 rounded-full bg-primary/10 text-primary mb-1">
+              <Shield className="h-6 w-6 animate-pulse" />
+            </div>
+            <h2 className="text-xl font-bold tracking-tight text-foreground">Two-Step Verification</h2>
+            <p className="text-xs text-muted-foreground leading-relaxed max-w-[280px] mx-auto">
+              For your account security, choose one verification method.
+            </p>
           </div>
 
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Please choose a method to verify your identity and complete your login:
-          </p>
+          <div className="space-y-4 pt-1">
+            {/* Card 1: Google Authenticator */}
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setVerificationMethod("2fa")}
+              className="flex items-start gap-4 p-4 rounded-2xl border border-border/80 bg-card/50 hover:bg-secondary/40 transition-colors cursor-pointer group shadow-sm hover:shadow-md"
+            >
+              <div className="p-3 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0">
+                <Shield className="h-5 w-5" />
+              </div>
+              <div className="text-left space-y-1">
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Google Authenticator</h3>
+                <p className="text-xs text-muted-foreground leading-normal">
+                  Verify using the 6-digit code from your authenticator app.
+                </p>
+              </div>
+            </motion.div>
 
-          <div className="space-y-3 pt-2">
-            <AuthButton 
-              type="button" 
+            {/* Card 2: Email Verification */}
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={async () => {
                 let email = identifier.trim();
                 if (!email.includes("@")) {
@@ -507,19 +548,33 @@ function LoginForm({
                 setVerificationMethod("email");
                 await sendEmailOtp(email);
               }}
+              className="flex items-start gap-4 p-4 rounded-2xl border border-border/80 bg-card/50 hover:bg-secondary/40 transition-colors cursor-pointer group shadow-sm hover:shadow-md"
             >
-              Verify via Email OTP
-            </AuthButton>
+              <div className="p-3 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0">
+                <Mail className="h-5 w-5" />
+              </div>
+              <div className="text-left space-y-1">
+                <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Email OTP</h3>
+                <p className="text-xs text-muted-foreground leading-normal">
+                  Receive a secure 6-digit code in your registered email inbox.
+                </p>
+              </div>
+            </motion.div>
+          </div>
 
-            {has2FaFactor && (
-              <AuthButton 
-                type="button" 
-                variant="secondary"
-                onClick={() => setVerificationMethod("2fa")}
-              >
-                Verify via Authenticator App (2FA)
-              </AuthButton>
-            )}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                setVerificationRequired(false);
+                setVerificationMethod(null);
+                setOtpCode("");
+              }}
+              className="w-full text-center text-xs text-muted-foreground hover:text-foreground font-semibold py-2 transition-colors select-none"
+            >
+              Back to Login
+            </button>
           </div>
         </div>
       );
@@ -573,7 +628,9 @@ function LoginForm({
             </AuthButton>
             <button
               type="button"
+              disabled={resendCountdown > 0}
               onClick={async () => {
+                if (resendCountdown > 0) return;
                 let email = identifier.trim();
                 if (!email.includes("@")) {
                   const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
@@ -582,9 +639,9 @@ function LoginForm({
                 }
                 await sendEmailOtp(email);
               }}
-              className="text-xs font-semibold text-primary hover:underline text-center w-full block"
+              className="text-xs font-semibold text-primary disabled:text-muted-foreground hover:underline disabled:no-underline text-center w-full block transition-all"
             >
-              Resend code
+              {resendCountdown > 0 ? `Resend code in ${resendCountdown}s` : "Resend code"}
             </button>
           </div>
         </form>
