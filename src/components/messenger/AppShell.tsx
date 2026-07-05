@@ -79,19 +79,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [router]);
 
   async function signOut() {
+    console.log("[SignOut] Initiated.");
     if (typeof window !== "undefined") {
+      console.log("[SignOut] Clearing local storage keys.");
       localStorage.removeItem("profile_complete");
       localStorage.removeItem("jj_verified");
     }
     
     // Update database presence in the background so it never hangs sign out
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log("[SignOut] Active user ID:", session?.user?.id);
       if (session?.user?.id) {
         supabase
           .from("profiles")
           .update({ online: false, last_seen: new Date().toISOString() })
           .eq("id", session.user.id)
-          .then(() => {})
+          .then(() => console.log("[SignOut] User presence set to offline."))
           .catch((e) => console.error("Failed to update presence:", e));
       }
     }).catch(() => {});
@@ -109,7 +112,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
 
     try {
+      console.log("[SignOut] Calling Supabase auth.signOut().");
       await supabase.auth.signOut();
+      console.log("[SignOut] Supabase auth.signOut() completed.");
     } catch (e) {
       console.error("Supabase signOut failed:", e);
     }
@@ -118,9 +123,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
     const isProdDomain = hostname.endsWith("playjackpotjungle.com");
+    console.log("[SignOut] Hostname:", hostname, "isProdDomain:", isProdDomain);
     if (isProdDomain) {
+      console.log("[SignOut] Redirecting window location to chat domain auth.");
       window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
     } else {
+      console.log("[SignOut] Navigating local router to auth.");
       navigate({ to: "/app/auth", search: { logout: "true" }, replace: true });
     }
   }
