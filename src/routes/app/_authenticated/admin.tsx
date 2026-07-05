@@ -6639,7 +6639,8 @@ function renderContentWithMentions(
   onMentionClick: (username: string) => void,
   isMatch: boolean,
   highlight: (text: string, q: string) => React.ReactNode,
-  searchQuery: string
+  searchQuery: string,
+  isMine: boolean
 ) {
   if (!content) return "";
   const parts = content.split(/(\s+)/);
@@ -6657,7 +6658,11 @@ function renderContentWithMentions(
                 e.stopPropagation();
                 onMentionClick(username);
               }}
-              className="text-primary hover:underline font-semibold focus:outline-none"
+              className={`hover:underline font-bold focus:outline-none ${
+                isMine
+                  ? "text-white underline decoration-dashed decoration-white/50"
+                  : "text-primary font-semibold"
+              }`}
             >
               @{username}
             </button>
@@ -6956,7 +6961,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
             ) : (
               <div className={`max-w-[240px] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
                 <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
-                  {m.content ? renderContentWithMentions(m.content, onMentionClick, isMatch, highlight, searchQuery.trim()) : ""}
+                  {m.content ? renderContentWithMentions(m.content, onMentionClick, isMatch, highlight, searchQuery.trim(), mine) : ""}
                   {m.is_edited && (
                     <span className="text-[10px] opacity-60 ml-1.5 select-none font-medium text-inherit italic">
                       (edited)
