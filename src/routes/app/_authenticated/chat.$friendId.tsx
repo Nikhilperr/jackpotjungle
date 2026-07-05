@@ -545,12 +545,18 @@ function ChatView() {
   const [mentionOptionsOpen, setMentionOptionsOpen] = useState(false);
 
   const handleMentionClick = async (username: string) => {
+    console.log("handleMentionClick called in customer chat with username:", username);
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from("profiles")
         .select("id, username, first_name, last_name, avatar_url, online")
-        .eq("username", username)
+        .ilike("username", username)
         .maybeSingle();
+
+      if (error) {
+        console.error("Error querying profiles inside handleMentionClick (customer):", error);
+      }
+      console.log("Query result profile (customer):", profile);
 
       if (profile) {
         setSelectedMentionProfile(profile);
@@ -559,7 +565,7 @@ function ChatView() {
         toast.error(`User @${username} not found.`);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Exception in handleMentionClick (customer):", err);
     }
   };
 
@@ -3520,6 +3526,7 @@ function renderContentWithMentions(
             <button
               type="button"
               onClick={(e) => {
+                console.log("Mention HTML button clicked directly (customer)! username:", username);
                 e.preventDefault();
                 e.stopPropagation();
                 onMentionClick(username);

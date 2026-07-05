@@ -2811,12 +2811,18 @@ function Conversation({
   const [mentionOptionsOpen, setMentionOptionsOpen] = useState(false);
 
   const handleMentionClick = async (username: string) => {
+    console.log("handleMentionClick called with username:", username);
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from("profiles")
         .select("id, username, first_name, last_name, avatar_url, online")
-        .eq("username", username)
+        .ilike("username", username)
         .maybeSingle();
+
+      if (error) {
+        console.error("Error querying profiles inside handleMentionClick:", error);
+      }
+      console.log("Query result profile:", profile);
 
       if (profile) {
         setSelectedMentionProfile(profile);
@@ -2825,7 +2831,7 @@ function Conversation({
         toast.error(`User @${username} not found.`);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Exception in handleMentionClick:", err);
     }
   };
 
@@ -6654,6 +6660,7 @@ function renderContentWithMentions(
             <button
               type="button"
               onClick={(e) => {
+                console.log("Mention HTML button clicked directly! username:", username);
                 e.preventDefault();
                 e.stopPropagation();
                 onMentionClick(username);
