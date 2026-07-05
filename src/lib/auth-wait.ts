@@ -29,7 +29,6 @@ export async function waitInitialSession(timeoutMs = 4000): Promise<Session | nu
     return session;
   }
 
-  // Detect if a saved session token exists in local storage, cookies, or if we are processing a redirect
   let hasTokenInStorage = false;
   try {
     hasTokenInStorage = typeof window !== "undefined" && (
@@ -37,7 +36,8 @@ export async function waitInitialSession(timeoutMs = 4000): Promise<Session | nu
       document.cookie.split(";").some(c => c.trim().startsWith("sb-") && c.includes("-auth-token")) ||
       window.location.hash.includes("access_token=") ||
       window.location.search.includes("code=") ||
-      window.location.hash.includes("id_token=")
+      window.location.hash.includes("id_token=") ||
+      localStorage.getItem("jj_verified") === "true"
     );
   } catch (e) {
     console.warn("Storage/cookie access failed in waitInitialSession:", e);
