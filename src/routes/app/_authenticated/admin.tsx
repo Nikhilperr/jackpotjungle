@@ -2805,6 +2805,81 @@ function Conversation({
   const isInitialLoadRef = useRef(true);
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [text, setText] = useState("");
+
+  const [groupMembers, setGroupMembers] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (isGroup && groupId) {
+      supabase
+        .from("group_members")
+        .select("profiles(id, username, first_name, last_name, avatar_url)")
+        .eq("group_id", groupId)
+        .then(({ data }) => {
+          if (data) {
+            const list = data.map((m: any) => m.profiles).filter(Boolean);
+            setGroupMembers(list);
+          }
+        });
+    } else {
+      setGroupMembers([]);
+    }
+  }, [isGroup, groupId]);
+
+  const [mentionSearch, setMentionSearch] = useState<string | null>(null);
+  const [mentionIdx, setMentionIdx] = useState(0);
+
+  const filteredMembers = useMemo(() => {
+    if (mentionSearch === null) return [];
+    const query = mentionSearch.toLowerCase();
+    const seen = new Set<string>();
+    const uniqueList: any[] = [];
+    groupMembers.forEach((p: any) => {
+      if (!seen.has(p.id)) {
+        seen.add(p.id);
+        uniqueList.push(p);
+      }
+    });
+    return uniqueList.filter((p: any) =>
+      p.username?.toLowerCase().includes(query) ||
+      p.first_name?.toLowerCase().includes(query) ||
+      p.last_name?.toLowerCase().includes(query)
+    );
+  }, [mentionSearch, groupMembers]);
+
+  const handleMentionCheck = (textValue: string, selectionStart: number) => {
+    const beforeCursor = textValue.substring(0, selectionStart);
+    const lastAt = beforeCursor.lastIndexOf("@");
+    if (lastAt !== -1) {
+      const textAfterAt = beforeCursor.substring(lastAt + 1);
+      if (!textAfterAt.includes(" ")) {
+        setMentionSearch(textAfterAt);
+        setMentionIdx(0);
+        return;
+      }
+    }
+    setMentionSearch(null);
+  };
+
+  const insertMention = (selectedUsername: string) => {
+    if (!inputRef.current) return;
+    const el = inputRef.current;
+    const val = el.value;
+    const selectionStart = el.selectionStart || 0;
+    const beforeCursor = val.substring(0, selectionStart);
+    const lastAt = beforeCursor.lastIndexOf("@");
+    if (lastAt !== -1) {
+      const beforeAt = val.substring(0, lastAt);
+      const afterCursor = val.substring(selectionStart);
+      const nextText = `${beforeAt}@${selectedUsername} ${afterCursor}`;
+      setText(nextText);
+      setMentionSearch(null);
+      setTimeout(() => {
+        el.focus();
+        const nextPos = lastAt + selectedUsername.length + 2;
+        el.setSelectionRange(nextPos, nextPos);
+      }, 50);
+    }
+  };
   const [uploading, setUploading] = useState(false);
   const [recUploading, setRecUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -4927,13 +5002,66 @@ function Conversation({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {mentionSearch !== null && filteredMembers.length > 0 && (
+            <div className="absolute left-3 right-3 bottom-full mb-2 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden z-30 max-h-48 overflow-y-auto backdrop-blur-md bg-opacity-95">
+              <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-secondary/50 flex items-center gap-1 border-b border-border">
+                <span>Mention member</span>
+              </div>
+              {filteredMembers.map((member, i) => (
+                <button
+                  key={member.id}
+                  type="button"
+                  onMouseEnter={() => setMentionIdx(i)}
+                  onClick={() => insertMention(member.username)}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-secondary ${i === mentionIdx ? "bg-secondary" : ""}`}
+                >
+                  <Avatar name={member.first_name && member.last_name ? `${member.first_name} ${member.last_name}` : member.username} url={member.avatar_url} size={24} />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-bold">@{member.username}</span>
+                    {member.first_name && (
+                      <span className="text-[10px] text-muted-foreground truncate">{member.first_name} {member.last_name || ""}</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
           <Input
             ref={inputRef}
             autoFocus
             placeholder="Reply as Jackpot Jungle…"
             value={text}
-            onChange={(e) => { setText(e.target.value); setSuggestIdx(0); }}
+            onChange={(e) => {
+              const val = e.target.value;
+              setText(val);
+              setSuggestIdx(0);
+              if (isGroup && inputRef.current) {
+                handleMentionCheck(val, inputRef.current.selectionStart || 0);
+              }
+            }}
             onKeyDown={(e) => {
+              if (mentionSearch !== null && filteredMembers.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setMentionIdx((i) => (i + 1) % filteredMembers.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setMentionIdx((i) => (i - 1 + filteredMembers.length) % filteredMembers.length);
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  insertMention(filteredMembers[mentionIdx].username);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setMentionSearch(null);
+                  return;
+                }
+              }
               if (suggestions.length === 0) return;
               if (e.key === "Tab" || (e.key === "Enter" && suggestions.length > 0 && text.length < suggestions[suggestIdx].content.length)) {
                 e.preventDefault();

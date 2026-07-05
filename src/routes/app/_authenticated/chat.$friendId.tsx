@@ -541,6 +541,63 @@ function ChatView() {
   const { startCall } = useCalls();
   const [draft, setDraft] = useState("");
 
+  const [mentionSearch, setMentionSearch] = useState<string | null>(null);
+  const [mentionIdx, setMentionIdx] = useState(0);
+
+  const filteredMembers = useMemo(() => {
+    if (mentionSearch === null) return [];
+    const query = mentionSearch.toLowerCase();
+    const list = groupMembers.map((m: any) => m.profiles).filter(Boolean);
+    const seen = new Set<string>();
+    const uniqueList: any[] = [];
+    list.forEach((p: any) => {
+      if (!seen.has(p.id)) {
+        seen.add(p.id);
+        uniqueList.push(p);
+      }
+    });
+    return uniqueList.filter((p: any) =>
+      p.username?.toLowerCase().includes(query) ||
+      p.first_name?.toLowerCase().includes(query) ||
+      p.last_name?.toLowerCase().includes(query)
+    );
+  }, [mentionSearch, groupMembers]);
+
+  const handleMentionCheck = (textValue: string, selectionStart: number) => {
+    const beforeCursor = textValue.substring(0, selectionStart);
+    const lastAt = beforeCursor.lastIndexOf("@");
+    if (lastAt !== -1) {
+      const textAfterAt = beforeCursor.substring(lastAt + 1);
+      if (!textAfterAt.includes(" ")) {
+        setMentionSearch(textAfterAt);
+        setMentionIdx(0);
+        return;
+      }
+    }
+    setMentionSearch(null);
+  };
+
+  const insertMention = (selectedUsername: string) => {
+    if (!inputRef.current) return;
+    const el = inputRef.current;
+    const val = el.value;
+    const selectionStart = el.selectionStart || 0;
+    const beforeCursor = val.substring(0, selectionStart);
+    const lastAt = beforeCursor.lastIndexOf("@");
+    if (lastAt !== -1) {
+      const beforeAt = val.substring(0, lastAt);
+      const afterCursor = val.substring(selectionStart);
+      const nextText = `${beforeAt}@${selectedUsername} ${afterCursor}`;
+      setDraft(nextText);
+      setMentionSearch(null);
+      setTimeout(() => {
+        el.focus();
+        const nextPos = lastAt + selectedUsername.length + 2;
+        el.setSelectionRange(nextPos, nextPos);
+      }, 50);
+    }
+  };
+
   const friendDisplayName = friend
     ? (friend.first_name ? (friend.last_name ? `${friend.first_name} ${friend.last_name}` : friend.first_name) : friend.username)
     : (isGroup ? (group?.name || "Group") : "Friend");
@@ -1866,6 +1923,10 @@ function ChatView() {
 
   function onDraftChange(v: string) {
     setDraft(v);
+    if (isGroup && inputRef.current) {
+      const selectionStart = inputRef.current.selectionStart || 0;
+      handleMentionCheck(v, selectionStart);
+    }
     const now = Date.now();
     if (typingChannelRef.current && meId && now - lastTypingSentRef.current > 1500) {
       lastTypingSentRef.current = now;
@@ -2528,7 +2589,50 @@ function ChatView() {
             className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary transition-colors ${showEmoji ? "text-primary" : "text-muted-foreground"}`} aria-label="Emoji">
             <Smile className="h-5 w-5" />
           </button>
-          <Input ref={inputRef} value={draft} onChange={(e) => onDraftChange(e.target.value)} placeholder="Aa"
+          {mentionSearch !== null && filteredMembers.length > 0 && (
+            <div className="absolute left-3 right-3 bottom-full mb-2 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden z-30 max-h-48 overflow-y-auto backdrop-blur-md bg-opacity-95">
+              <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-secondary/50 flex items-center gap-1 border-b border-border">
+                <span>Mention member</span>
+              </div>
+              {filteredMembers.map((member, i) => (
+                <button
+                  key={member.id}
+                  type="button"
+                  onMouseEnter={() => setMentionIdx(i)}
+                  onClick={() => insertMention(member.username)}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-secondary ${i === mentionIdx ? "bg-secondary" : ""}`}
+                >
+                  <Avatar name={member.first_name && member.last_name ? `${member.first_name} ${member.last_name}` : member.username} url={member.avatar_url} size={24} />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-bold">@{member.username}</span>
+                    {member.first_name && (
+                      <span className="text-[10px] text-muted-foreground truncate">{member.first_name} {member.last_name || ""}</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          <Input ref={inputRef} value={draft} 
+            onChange={(e) => onDraftChange(e.target.value)} 
+            onKeyDown={(e) => {
+              if (mentionSearch !== null && filteredMembers.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setMentionIdx((prev) => (prev + 1) % filteredMembers.length);
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setMentionIdx((prev) => (prev - 1 + filteredMembers.length) % filteredMembers.length);
+                } else if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  insertMention(filteredMembers[mentionIdx].username);
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setMentionSearch(null);
+                }
+              }
+            }}
+            placeholder="Aa"
             className="flex-1 min-w-0 h-10 rounded-full bg-secondary border-transparent focus-visible:ring-1 focus-visible:ring-primary/30" />
           <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="h-10 w-10 rounded-full shrink-0 flex items-center justify-center send-btn-active bg-primary text-primary-foreground hover:bg-primary/95 transition-all">
             <Send className="h-4 w-4" />
