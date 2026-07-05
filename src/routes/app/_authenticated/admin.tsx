@@ -249,6 +249,10 @@ function AdminPage() {
   }, [isSuperAdmin]);
 
   async function signOut() {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("profile_complete");
+      localStorage.removeItem("jj_verified");
+    }
     try {
       await supabase
         .from("profiles")
