@@ -76,23 +76,37 @@ function AuthPage() {
   }, [urlMode]);
 
   useEffect(() => {
-    if (loading || roleLoading || isLogoutRequest) return;
+    if (loading || roleLoading || isLogoutRequest) {
+      console.log("[AuthRedirect] Bypassing because loading:", loading, "roleLoading:", roleLoading, "isLogoutRequest:", isLogoutRequest);
+      return;
+    }
     
     const isRecovery = typeof window !== "undefined" && (
       window.location.hash.includes("recovery") ||
       window.location.search.includes("recovery")
     );
-    if (isRecovery) return;
+    if (isRecovery) {
+      console.log("[AuthRedirect] Bypassing because isRecovery: true");
+      return;
+    }
 
     if (user) {
       const isGoogleLogin = user.app_metadata?.provider === "google";
       const isVerified = typeof window !== "undefined" && localStorage.getItem("jj_verified") === "true";
-      if (!isGoogleLogin && !isVerified) return;
+      console.log("[AuthRedirect] User is present. isGoogleLogin:", isGoogleLogin, "isVerified:", isVerified, "localStorage jj_verified:", typeof window !== "undefined" ? localStorage.getItem("jj_verified") : "undefined");
+      
+      if (!isGoogleLogin && !isVerified) {
+        console.log("[AuthRedirect] User is NOT verified and NOT Google. Stopping redirect.");
+        return;
+      }
 
+      console.log("[AuthRedirect] Proceeding to redirect standard timer...");
       const timer = setTimeout(async () => {
         const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
         const isProdDomain = hostname.endsWith("playjackpotjungle.com");
         const isChatOrPrimary = hostname.startsWith("chat.") || hostname === "playjackpotjungle.com" || hostname === "www.playjackpotjungle.com";
+
+        console.log("[AuthRedirect] Timer fired. hostname:", hostname, "isProdDomain:", isProdDomain, "isAdmin:", isAdmin);
 
         if (isProdDomain) {
           const sessionRes = await supabase.auth.getSession();
@@ -100,10 +114,12 @@ function AuthPage() {
           const hashParams = session ? `#access_token=${session.access_token}&refresh_token=${session.refresh_token}` : "";
 
           if (isAdmin && isChatOrPrimary) {
+            console.log("[AuthRedirect] Redirecting admin subdomain:", `https://admin.playjackpotjungle.com/app/admin${hashParams}`);
             window.location.href = `https://admin.playjackpotjungle.com/app/admin${window.location.search}${hashParams}`;
             return;
           }
           if (!isAdmin && hostname.startsWith("admin.")) {
+            console.log("[AuthRedirect] Redirecting non-admin away from admin subdomain to chat:", `https://chat.playjackpotjungle.com/app/chat${hashParams}`);
             window.location.href = `https://chat.playjackpotjungle.com/app/chat${window.location.search}${hashParams}`;
             return;
           }
@@ -111,14 +127,18 @@ function AuthPage() {
 
         const savedRedirect = typeof window !== "undefined" ? sessionStorage.getItem("jj_invite_redirect") : null;
         if (savedRedirect) {
+          console.log("[AuthRedirect] Redirecting to savedRedirect:", savedRedirect);
           sessionStorage.removeItem("jj_invite_redirect");
           window.location.href = savedRedirect;
           return;
         }
 
+        console.log("[AuthRedirect] Standard redirect navigate to:", isAdmin ? "/app/admin" : "/app/chat");
         navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
       }, 100);
       return () => clearTimeout(timer);
+    } else {
+      console.log("[AuthRedirect] No user present.");
     }
   }, [user, loading, isAdmin, roleLoading, navigate]);
 
