@@ -147,9 +147,9 @@ server {
     ssl_certificate     /etc/letsencrypt/live/playjackpotjungle.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/playjackpotjungle.com/privkey.pem;
 
-    # Whitelist of allowed origins for credentialed CORS
+    # Whitelist of allowed origins for credentialed CORS (supports http/https, subdomains, and local dev ports)
     set $cors_origin "";
-    if ($http_origin ~* "^https://(chat|admin|www)?\.?playjackpotjungle\.com$") {
+    if ($http_origin ~* "^https?://(localhost|chat|admin|www)?\.?playjackpotjungle\.com(:\d+)?$") {
         set $cors_origin $http_origin;
     }
 
@@ -171,7 +171,7 @@ server {
         add_header 'Access-Control-Allow-Origin' $cors_origin always;
         add_header 'Access-Control-Allow-Credentials' 'true' always;
         add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE, PATCH' always;
-        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, x-client-info, apikey, X-Supabase-Api-Version, Accept, Range, Content-Range, Prefer' always;
+        add_header 'Access-Control-Allow-Headers' $http_access_control_request_headers always;
         add_header 'Access-Control-Expose-Headers' 'Content-Range, Content-Length' always;
 
         # CORS Preflight
@@ -179,7 +179,7 @@ server {
             add_header 'Access-Control-Allow-Origin' $cors_origin always;
             add_header 'Access-Control-Allow-Credentials' 'true' always;
             add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE, PATCH' always;
-            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, x-client-info, apikey, X-Supabase-Api-Version, Accept, Range, Content-Range, Prefer' always;
+            add_header 'Access-Control-Allow-Headers' $http_access_control_request_headers always;
             add_header 'Access-Control-Max-Age' 1728000;
             return 204;
         }
