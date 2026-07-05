@@ -315,7 +315,9 @@ function LoginForm({
         const session = sessionRes.data.session;
         if (!session?.user) return;
 
-        const isGoogleLogin = session.user.app_metadata?.provider === "google";
+        const isGoogleLogin = session.user.app_metadata?.provider === "google" &&
+                              typeof window !== "undefined" &&
+                              localStorage.getItem("jj_google_session") !== "false";
         if (isGoogleLogin) return;
 
         const isVerified = getVerifiedStatus();
