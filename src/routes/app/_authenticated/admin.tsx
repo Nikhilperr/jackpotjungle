@@ -37,6 +37,7 @@ import {
   Reply,
   Forward,
   Copy,
+  Info,
 
 
 
@@ -2806,6 +2807,28 @@ function Conversation({
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [text, setText] = useState("");
 
+  const [selectedMentionProfile, setSelectedMentionProfile] = useState<any>(null);
+  const [mentionOptionsOpen, setMentionOptionsOpen] = useState(false);
+
+  const handleMentionClick = async (username: string) => {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, username, first_name, last_name, avatar_url, online")
+        .eq("username", username)
+        .maybeSingle();
+
+      if (profile) {
+        setSelectedMentionProfile(profile);
+        setMentionOptionsOpen(true);
+      } else {
+        toast.error(`User @${username} not found.`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
 
   useEffect(() => {
@@ -4863,6 +4886,7 @@ function Conversation({
                 highlight={highlight}
                 matchIds={matchIds}
                 activeMatch={activeMatch}
+                onMentionClick={handleMentionClick}
               />
             );
           });
@@ -6300,6 +6324,67 @@ function AddAdminDialog({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
+      <Dialog open={mentionOptionsOpen} onOpenChange={setMentionOptionsOpen}>
+        <DialogContent className="max-w-xs bg-card border border-border p-6 rounded-2xl shadow-2xl backdrop-blur-md">
+          {selectedMentionProfile && (
+            <div className="flex flex-col items-center text-center gap-4">
+              <Avatar
+                name={selectedMentionProfile.first_name && selectedMentionProfile.last_name
+                  ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
+                  : selectedMentionProfile.username}
+                url={selectedMentionProfile.avatar_url}
+                size={80}
+              />
+              <div className="flex flex-col">
+                <span className="font-bold text-foreground text-lg">
+                  {selectedMentionProfile.first_name && selectedMentionProfile.last_name
+                    ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
+                    : `@${selectedMentionProfile.username}`}
+                </span>
+                <span className="text-xs text-muted-foreground">@{selectedMentionProfile.username}</span>
+              </div>
+              <div className="w-full flex flex-col gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    setMentionOptionsOpen(false);
+                    handleNavigateToUserChat(selectedMentionProfile.id);
+                  }}
+                  className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  <span>Open support chat</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMentionOptionsOpen(false);
+                    navigate({
+                      search: (old: any) => ({
+                        ...old,
+                        c: selectedMentionProfile.id,
+                        profile: true,
+                      })
+                    });
+                  }}
+                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
+                >
+                  <Info className="h-4 w-4 text-primary" />
+                  <span>User details drawer</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMentionOptionsOpen(false);
+                    navigate({ to: "/app/u/$username", params: { username: selectedMentionProfile.username } });
+                  }}
+                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
+                >
+                  <UserIcon className="h-4 w-4 text-primary" />
+                  <span>View public profile</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -6531,6 +6616,42 @@ const printStatementFromMessage = async (content: string, userId: string) => {
   }
 };
 
+function renderContentWithMentions(
+  content: string,
+  onMentionClick: (username: string) => void,
+  isMatch: boolean,
+  highlight: (text: string, q: string) => React.ReactNode,
+  searchQuery: string
+) {
+  if (!content) return "";
+  const parts = content.split(/(\s+)/);
+  return parts.map((part, index) => {
+    if (part.startsWith("@") && part.length > 1) {
+      const match = part.match(/^@([a-zA-Z0-9_\-]+)(.*)$/);
+      if (match) {
+        const [_, username, punctuation] = match;
+        return (
+          <React.Fragment key={index}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onMentionClick(username);
+              }}
+              className="text-primary hover:underline font-semibold focus:outline-none"
+            >
+              @{username}
+            </button>
+            {punctuation}
+          </React.Fragment>
+        );
+      }
+    }
+    return isMatch ? highlight(part, searchQuery) : part;
+  });
+}
+
 interface AdminConversationMessageItemProps {
   m: any;
   meId: string;
@@ -6553,6 +6674,7 @@ interface AdminConversationMessageItemProps {
   highlight: (text: string, query: string) => React.ReactNode;
   matchIds: string[];
   activeMatch: number;
+  onMentionClick: (username: string) => void;
 }
 
 const AdminConversationMessageItem = React.memo(function AdminConversationMessageItem({
@@ -6577,6 +6699,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
   highlight,
   matchIds,
   activeMatch,
+  onMentionClick,
 }: AdminConversationMessageItemProps) {
   const mine = m.from_page;
   const isStatement = m.content?.startsWith("📄 JACKPOT JUNGLE STATEMENT");
@@ -6815,7 +6938,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
             ) : (
               <div className={`max-w-[240px] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
                 <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
-                  {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                  {m.content ? renderContentWithMentions(m.content, onMentionClick, isMatch, highlight, searchQuery.trim()) : ""}
                   {m.is_edited && (
                     <span className="text-[10px] opacity-60 ml-1.5 select-none font-medium text-inherit italic">
                       (edited)

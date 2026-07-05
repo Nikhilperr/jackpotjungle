@@ -4,7 +4,7 @@ import { toCDNUrl } from "@/config";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download, MessageCircle, Edit, Shield, ShieldCheck } from "lucide-react";
+import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download, MessageCircle, Edit, Shield, ShieldCheck, User } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -540,6 +540,28 @@ function ChatView() {
 
   const { startCall } = useCalls();
   const [draft, setDraft] = useState("");
+
+  const [selectedMentionProfile, setSelectedMentionProfile] = useState<any>(null);
+  const [mentionOptionsOpen, setMentionOptionsOpen] = useState(false);
+
+  const handleMentionClick = async (username: string) => {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, username, first_name, last_name, avatar_url, online")
+        .eq("username", username)
+        .maybeSingle();
+
+      if (profile) {
+        setSelectedMentionProfile(profile);
+        setMentionOptionsOpen(true);
+      } else {
+        toast.error(`User @${username} not found.`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
@@ -2466,6 +2488,7 @@ function ChatView() {
                 scrollToMessage={scrollToMessage}
                 isGroup={isGroup}
                 senderRole={senderRole}
+                onMentionClick={handleMentionClick}
               />
             );
           });
@@ -3127,6 +3150,92 @@ function ChatView() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={mentionOptionsOpen} onOpenChange={setMentionOptionsOpen}>
+        <DialogContent className="max-w-xs bg-card border border-border p-6 rounded-2xl shadow-2xl backdrop-blur-md">
+          {selectedMentionProfile && (
+            <div className="flex flex-col items-center text-center gap-4">
+              <Avatar
+                name={selectedMentionProfile.first_name && selectedMentionProfile.last_name
+                  ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
+                  : selectedMentionProfile.username}
+                url={selectedMentionProfile.avatar_url}
+                size={80}
+              />
+              <div className="flex flex-col">
+                <span className="font-bold text-foreground text-lg">
+                  {selectedMentionProfile.first_name && selectedMentionProfile.last_name
+                    ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
+                    : `@${selectedMentionProfile.username}`}
+                </span>
+                <span className="text-xs text-muted-foreground">@{selectedMentionProfile.username}</span>
+              </div>
+              <div className="w-full flex flex-col gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    setMentionOptionsOpen(false);
+                    startCall({
+                      calleeId: selectedMentionProfile.id,
+                      kind: "voice",
+                      peer: {
+                        name: selectedMentionProfile.first_name && selectedMentionProfile.last_name
+                          ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
+                          : selectedMentionProfile.username,
+                        avatar: selectedMentionProfile.avatar_url
+                      },
+                      context: "friend"
+                    });
+                  }}
+                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
+                >
+                  <Phone className="h-4 w-4 text-primary" />
+                  <span>Voice call</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMentionOptionsOpen(false);
+                    startCall({
+                      calleeId: selectedMentionProfile.id,
+                      kind: "video",
+                      peer: {
+                        name: selectedMentionProfile.first_name && selectedMentionProfile.last_name
+                          ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
+                          : selectedMentionProfile.username,
+                        avatar: selectedMentionProfile.avatar_url
+                      },
+                      context: "friend"
+                    });
+                  }}
+                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
+                >
+                  <Video className="h-4 w-4 text-primary" />
+                  <span>Video call</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMentionOptionsOpen(false);
+                    navigate({ to: "/app/u/$username", params: { username: selectedMentionProfile.username } });
+                  }}
+                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
+                >
+                  <User className="h-4 w-4 text-primary" />
+                  <span>View profile</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMentionOptionsOpen(false);
+                    navigate({ to: "/app/chat/$friendId", params: { friendId: selectedMentionProfile.id } });
+                  }}
+                  className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Message</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -3392,6 +3501,42 @@ export function ConversationDetailPanel({
   );
 }
 
+function renderContentWithMentions(
+  content: string,
+  onMentionClick: (username: string) => void,
+  isMatch: boolean,
+  highlight: (text: string, q: string) => React.ReactNode,
+  searchQuery: string
+) {
+  if (!content) return "";
+  const parts = content.split(/(\s+)/);
+  return parts.map((part, index) => {
+    if (part.startsWith("@") && part.length > 1) {
+      const match = part.match(/^@([a-zA-Z0-9_\-]+)(.*)$/);
+      if (match) {
+        const [_, username, punctuation] = match;
+        return (
+          <React.Fragment key={index}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onMentionClick(username);
+              }}
+              className="text-primary hover:underline font-semibold focus:outline-none"
+            >
+              @{username}
+            </button>
+            {punctuation}
+          </React.Fragment>
+        );
+      }
+    }
+    return isMatch ? highlight(part, searchQuery) : part;
+  });
+}
+
 interface MessageItemProps {
   m: any;
   meId: string | null;
@@ -3419,6 +3564,7 @@ interface MessageItemProps {
   scrollToMessage: (id: string) => void;
   isGroup?: boolean;
   senderRole?: "admin" | "super_admin";
+  onMentionClick: (username: string) => void;
 }
 
 const MessageItem = React.memo(function MessageItem({
@@ -3448,6 +3594,7 @@ const MessageItem = React.memo(function MessageItem({
   scrollToMessage,
   isGroup = false,
   senderRole,
+  onMentionClick,
 }: MessageItemProps) {
   const mine = m.sender_id === meId;
   const [showSelfTime, setShowSelfTime] = useState(false);
@@ -3678,7 +3825,7 @@ const MessageItem = React.memo(function MessageItem({
             ) : (
               <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
                 <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
-                  {isMatch && m.content ? highlight(m.content, searchQuery.trim()) : m.content}
+                  {m.content ? renderContentWithMentions(m.content, onMentionClick, isMatch, highlight, searchQuery.trim()) : ""}
                   {m.is_edited && (
                     <span className="text-[10px] opacity-60 ml-1.5 select-none font-medium text-inherit italic">
                       (edited)
