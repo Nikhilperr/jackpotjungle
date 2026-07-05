@@ -230,6 +230,47 @@ function AdminPage() {
       replace: false,
     });
   };
+
+  async function handleNavigateToUserChat(targetUserId: string) {
+    try {
+      const { data: convRow } = await supabase
+        .from("page_conversations")
+        .select("id")
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+        
+      if (convRow) {
+        navigate({
+          search: (prev: any) => ({
+            ...prev,
+            tab: undefined,
+            c: convRow.id,
+            profile: undefined,
+          }),
+        });
+        return;
+      }
+      
+      const { data: newConv } = await supabase
+        .from("page_conversations")
+        .insert({ user_id: targetUserId })
+        .select("id")
+        .single();
+        
+      if (newConv) {
+        navigate({
+          search: (prev: any) => ({
+            ...prev,
+            tab: undefined,
+            c: newConv.id,
+            profile: undefined,
+          }),
+        });
+      }
+    } catch (err) {
+      console.error("Failed to navigate to user chat:", err);
+    }
+  }
   const [confirmOut, setConfirmOut] = useState(false);
 
   useNativePush();
@@ -401,10 +442,10 @@ function AdminPage() {
 
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "inbox" ? "" : "hidden"}`}>
-          <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} />
+          <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} onUserClick={handleNavigateToUserChat} />
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "teamchat" ? "" : "hidden"}`}>
-          <TeamChatView meId={user.id} onOpenNav={() => setNavOpen(true)} />
+          <TeamChatView meId={user.id} onOpenNav={() => setNavOpen(true)} onUserClick={handleNavigateToUserChat} />
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "quickreplies" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Quick Replies"><QuickRepliesView meId={user.id} /></ScrollWrap>
@@ -506,7 +547,7 @@ function NavLink({ to, icon: Icon, label, onClick }: { to: string; icon: typeof 
 
 /* ---------------- PAGE INBOX (all admins share) ---------------- */
 
-function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void }) {
+function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: () => void; onUserClick?: (userId: string) => void }) {
   const navigate = useNavigate();
   const [convs, setConvs] = useState<ConvRow[]>(() => {
     if (typeof window === "undefined") return [];
@@ -554,59 +595,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
     });
   };
 
-  async function handleNavigateToUserChat(targetUserId: string) {
-    try {
-      const existing = convs.find(c => c.userId === targetUserId);
-      if (existing) {
-        navigate({
-          search: (prev: any) => ({
-            ...prev,
-            tab: "inbox",
-            c: existing.conversationId,
-          }),
-        });
-        setDetailOpen(false);
-        return;
-      }
-      
-      const { data: convRow } = await supabase
-        .from("page_conversations")
-        .select("id")
-        .eq("user_id", targetUserId)
-        .maybeSingle();
-        
-      if (convRow) {
-        navigate({
-          search: (prev: any) => ({
-            ...prev,
-            tab: "inbox",
-            c: convRow.id,
-          }),
-        });
-        setDetailOpen(false);
-        return;
-      }
-      
-      const { data: newConv } = await supabase
-        .from("page_conversations")
-        .insert({ user_id: targetUserId })
-        .select("id")
-        .single();
-        
-      if (newConv) {
-        navigate({
-          search: (prev: any) => ({
-            ...prev,
-            tab: "inbox",
-            c: newConv.id,
-          }),
-        });
-        setDetailOpen(false);
-      }
-    } catch (err) {
-      console.error("Failed to navigate to user chat:", err);
-    }
-  }
+
 
   const detailOpen = !!searchParams.profile;
   const setDetailOpen = (val: boolean) => {
@@ -1482,7 +1471,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 loadWalletHistory("all", selectedMemberProfile.id);
                 setWalletHistoryPopupOpen(true);
               }}
-              onUserClick={handleNavigateToUserChat}
+              onUserClick={onUserClick}
             />
           ) : active.isGroup ? (
             <GroupDetailPanel
@@ -1525,7 +1514,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 loadWalletHistory("all", active.userId);
                 setWalletHistoryPopupOpen(true);
               }}
-              onUserClick={handleNavigateToUserChat}
+              onUserClick={onUserClick}
             />
           )}
         </aside>
@@ -1558,7 +1547,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   loadWalletHistory("all", selectedMemberProfile.id);
                   setWalletHistoryPopupOpen(true);
                 }}
-                onUserClick={handleNavigateToUserChat}
+                onUserClick={onUserClick}
               />
             ) : active.isGroup ? (
               <div className="flex-1 overflow-y-auto min-h-0">
@@ -1603,7 +1592,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   loadWalletHistory("all", active.userId);
                   setWalletHistoryPopupOpen(true);
                 }}
-                onUserClick={handleNavigateToUserChat}
+                onUserClick={onUserClick}
               />
             )
           )}
@@ -1717,7 +1706,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
   );
 }
 
-function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void }) {
+function TeamChatView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: () => void; onUserClick?: (userId: string) => void }) {
   const navigate = useNavigate();
   const [convs, setConvs] = useState<ConvRow[]>(() => {
     if (typeof window === "undefined") return [];
@@ -2424,7 +2413,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                 loadWalletHistory("all", selectedMemberProfile.id);
                 setWalletHistoryPopupOpen(true);
               }}
-              onUserClick={handleNavigateToUserChat}
+              onUserClick={onUserClick}
             />
           ) : active.isGroup ? (
             <GroupDetailPanel
@@ -2467,7 +2456,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                 loadWalletHistory("all", active.userId);
                 setWalletHistoryPopupOpen(true);
               }}
-              onUserClick={handleNavigateToUserChat}
+              onUserClick={onUserClick}
             />
           )}
         </aside>
@@ -2499,7 +2488,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                   loadWalletHistory("all", selectedMemberProfile.id);
                   setWalletHistoryPopupOpen(true);
                 }}
-                onUserClick={handleNavigateToUserChat}
+                onUserClick={onUserClick}
               />
             ) : active.isGroup ? (
               <div className="flex-1 overflow-y-auto min-h-0">
@@ -2544,7 +2533,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                   loadWalletHistory("all", active.userId);
                   setWalletHistoryPopupOpen(true);
                 }}
-                onUserClick={handleNavigateToUserChat}
+                onUserClick={onUserClick}
               />
             )
           )}
