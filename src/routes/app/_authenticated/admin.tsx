@@ -2858,6 +2858,7 @@ function Conversation({
   const [mentionIdx, setMentionIdx] = useState(0);
 
   const filteredMembers = useMemo(() => {
+    console.log("filteredMembers hook triggered. mentionSearch:", mentionSearch, "groupMembers count:", groupMembers.length);
     if (mentionSearch === null) return [];
     const query = mentionSearch.toLowerCase();
     const seen = new Set<string>();
@@ -2868,19 +2869,25 @@ function Conversation({
         uniqueList.push(p);
       }
     });
-    return uniqueList.filter((p: any) =>
+    const result = uniqueList.filter((p: any) =>
       p.username?.toLowerCase().includes(query) ||
       p.first_name?.toLowerCase().includes(query) ||
       p.last_name?.toLowerCase().includes(query)
     );
+    console.log("filteredMembers result:", result);
+    return result;
   }, [mentionSearch, groupMembers]);
 
   const handleMentionCheck = (textValue: string, selectionStart: number) => {
+    console.log("handleMentionCheck run. text:", textValue, "selectionStart:", selectionStart);
     const beforeCursor = textValue.substring(0, selectionStart);
     const lastAt = beforeCursor.lastIndexOf("@");
+    console.log("lastAt index:", lastAt);
     if (lastAt !== -1) {
       const textAfterAt = beforeCursor.substring(lastAt + 1);
+      console.log("textAfterAt:", textAfterAt);
       if (!textAfterAt.includes(" ")) {
+        console.log("Setting mentionSearch to:", textAfterAt);
         setMentionSearch(textAfterAt);
         setMentionIdx(0);
         return;
@@ -5065,8 +5072,8 @@ function Conversation({
               const val = e.target.value;
               setText(val);
               setSuggestIdx(0);
-              if (isGroup && inputRef.current) {
-                handleMentionCheck(val, inputRef.current.selectionStart || 0);
+              if (isGroup) {
+                handleMentionCheck(val, e.target.selectionStart || 0);
               }
             }}
             onKeyDown={(e) => {

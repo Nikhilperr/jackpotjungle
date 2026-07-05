@@ -1943,10 +1943,9 @@ function ChatView() {
     setAddMembersOpen(true);
   }
 
-  function onDraftChange(v: string) {
+  function onDraftChange(v: string, selectionStart?: number) {
     setDraft(v);
-    if (isGroup && inputRef.current) {
-      const selectionStart = inputRef.current.selectionStart || 0;
+    if (isGroup && selectionStart !== undefined) {
       handleMentionCheck(v, selectionStart);
     }
     const now = Date.now();
@@ -2637,7 +2636,7 @@ function ChatView() {
             </div>
           )}
           <Input ref={inputRef} value={draft} 
-            onChange={(e) => onDraftChange(e.target.value)} 
+            onChange={(e) => onDraftChange(e.target.value, e.target.selectionStart || 0)} 
             onKeyDown={(e) => {
               if (mentionSearch !== null && filteredMembers.length > 0) {
                 if (e.key === "ArrowDown") {
