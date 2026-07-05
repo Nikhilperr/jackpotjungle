@@ -36,6 +36,40 @@ import {
 } from "@/lib/chat-cache";
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 
+function getCachedGroupDetails(groupId: string) {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem(`jj_group_details_${groupId}`);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedGroupDetails(groupId: string, details: any) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(`jj_group_details_${groupId}`, JSON.stringify(details));
+  } catch {}
+}
+
+function getCachedGroupMessages(groupId: string) {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem(`jj_group_msgs_${groupId}`);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedGroupMessages(groupId: string, messages: any[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(`jj_group_msgs_${groupId}`, JSON.stringify(messages));
+  } catch {}
+}
+
 type CallRow = {
   id: string;
   caller_id: string;
@@ -578,38 +612,76 @@ function ChatView() {
     isInitialLoadRef.current = true;
 
     if (isGroup) {
+      const cachedDetails = getCachedGroupDetails(groupId);
+      const cachedGroupMsgs = getCachedGroupMessages(groupId);
+      if (cachedDetails) {
+        setGroup(cachedDetails);
+        setEditingGroupName(cachedDetails.name);
+        setEditingGroupAvatar(cachedDetails.avatar_url || "");
+      }
+      if (cachedGroupMsgs) {
+        setMessages(cachedGroupMsgs);
+      }
+
       // ── Group Chat Hydration ──────────────────────────────────────
       try {
-        const [{ data: groupData }, { data: membersData }, { data: msgsData }] = await Promise.all([
+        const lastCachedMsg = cachedGroupMsgs && cachedGroupMsgs.length > 0 ? cachedGroupMsgs[cachedGroupMsgs.length - 1] : null;
+
+        const [groupRes, membersRes] = await Promise.all([
           supabase.from("groups").select("*").eq("id", groupId).maybeSingle(),
           supabase.from("group_members").select("role, joined_at, profiles(id, username, first_name, last_name, avatar_url, online, last_seen, vip_status)").eq("group_id", groupId),
-          supabase.from("messages")
-            .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
-            .eq("group_id", groupId)
-            .order("created_at", { ascending: false })
-            .limit(50 + 1)
         ]);
 
         if (!isMountedRef.current) return;
 
-        if (!groupData) {
+        if (groupRes.data) {
+          setGroup(groupRes.data);
+          setEditingGroupName(groupRes.data.name);
+          setEditingGroupAvatar(groupRes.data.avatar_url || "");
+          setCachedGroupDetails(groupId, groupRes.data);
+        } else if (!cachedDetails) {
           toast.error("This group has been dismissed.");
           window.location.href = "/app/chat";
           return;
         }
 
-        setGroup(groupData);
-        setEditingGroupName(groupData.name);
-        setEditingGroupAvatar(groupData.avatar_url || "");
-        if (membersData) {
-          setGroupMembers(membersData);
+        if (membersRes.data) {
+          setGroupMembers(membersRes.data);
         }
 
-        const rawMsgs = (msgsData ?? []) as any[];
-        const hasMore = rawMsgs.length > 50;
-        const pageMsgs = rawMsgs.slice(0, 50).reverse();
-        setHasOlderMessages(hasMore);
-        setMessages(pageMsgs);
+        let finalMsgs: any[] = [];
+        if (lastCachedMsg) {
+          const { data: deltaMsgs } = await supabase
+            .from("messages")
+            .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
+            .eq("group_id", groupId)
+            .gt("created_at", lastCachedMsg.created_at)
+            .order("created_at", { ascending: false });
+
+          const delta = (deltaMsgs ?? []).reverse();
+          const combined = [...(cachedGroupMsgs || [])];
+          delta.forEach((m) => {
+            if (!combined.some((x) => x.id === m.id)) {
+              combined.push(m);
+            }
+          });
+          finalMsgs = combined;
+        } else {
+          const { data: msgsData } = await supabase
+            .from("messages")
+            .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
+            .eq("group_id", groupId)
+            .order("created_at", { ascending: false })
+            .limit(50 + 1);
+
+          const rawMsgs = (msgsData ?? []) as any[];
+          const hasMore = rawMsgs.length > 50;
+          finalMsgs = rawMsgs.slice(0, 50).reverse();
+          setHasOlderMessages(hasMore);
+        }
+
+        setMessages(finalMsgs);
+        setCachedGroupMessages(groupId, finalMsgs);
         setCalls([]); // Group call logs placeholder
 
         // Mark messages as seen for group chat
@@ -754,6 +826,24 @@ function ChatView() {
     load();
     return () => { isMountedRef.current = false; };
   }, [load]);
+
+  useEffect(() => {
+    if (!isGroup && meId && friendId && messages.length > 0) {
+      const persistent = messages.filter(m => m.id && typeof m.id === "string" && !m.id.startsWith("temp-") && !m.failed);
+      if (persistent.length > 0) {
+        setCachedMessages(meId, friendId, persistent);
+      }
+    }
+  }, [messages, isGroup, meId, friendId]);
+
+  useEffect(() => {
+    if (isGroup && groupId && messages.length > 0) {
+      const persistent = messages.filter(m => m.id && typeof m.id === "string" && !m.id.startsWith("temp-") && !m.failed);
+      if (persistent.length > 0) {
+        setCachedGroupMessages(groupId, persistent);
+      }
+    }
+  }, [messages, isGroup, groupId]);
 
   // Load 50 older messages above the current batch
   async function loadOlderMessages() {

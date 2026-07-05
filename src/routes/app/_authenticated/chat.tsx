@@ -672,6 +672,14 @@ function ChatLayout() {
   }, [activeId]);
 
   useEffect(() => {
+    if (conversations.length > 0) {
+      try {
+        localStorage.setItem("jj_cached_conversations", JSON.stringify(conversations));
+      } catch {}
+    }
+  }, [conversations]);
+
+  useEffect(() => {
     if (isPageActive) {
       setPageUnread(0);
     }

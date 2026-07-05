@@ -616,6 +616,15 @@ function PageChatView() {
     }
   }, [replyingTo]);
 
+  useEffect(() => {
+    if (convId && messages.length > 0) {
+      const persistent = messages.filter(m => m.id && typeof m.id === "string" && !m.id.startsWith("temp-") && !m.failed);
+      if (persistent.length > 0) {
+        setCachedPageMessages(`page-chat-${convId}`, persistent);
+      }
+    }
+  }, [messages, convId]);
+
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;

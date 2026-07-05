@@ -1072,6 +1072,14 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
   }
 
   useEffect(() => {
+    if (convs.length > 0) {
+      try {
+        localStorage.setItem("jj_cached_admin_conversations", JSON.stringify(convs));
+      } catch {}
+    }
+  }, [convs]);
+
+  useEffect(() => {
     load();
     let mounted = true;
     const rand = Math.random().toString(36).slice(2, 9);
@@ -2690,6 +2698,20 @@ function Conversation({
       });
     }
   }, [meId]);
+
+  useEffect(() => {
+    if (conv.conversationId && messages.length > 0) {
+      const cacheKey = isTeamChat
+        ? `admin-teamchat-${conv.conversationId}`
+        : isGroup
+        ? `admin-group-${conv.conversationId}`
+        : `admin-page-${conv.conversationId}`;
+      const persistent = messages.filter(m => m.id && typeof m.id === "string" && !m.id.startsWith("temp-") && !m.failed);
+      if (persistent.length > 0) {
+        setCachedPageMessages(cacheKey, persistent);
+      }
+    }
+  }, [messages, conv.conversationId, isGroup, isTeamChat]);
 
   useEffect(() => {
     if (!isGroup || !meId || !groupId) return;
