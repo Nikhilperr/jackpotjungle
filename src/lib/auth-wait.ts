@@ -37,7 +37,7 @@ export async function waitInitialSession(timeoutMs = 4000): Promise<Session | nu
       window.location.hash.includes("access_token=") ||
       window.location.search.includes("code=") ||
       window.location.hash.includes("id_token=") ||
-      localStorage.getItem("jj_verified") === "true"
+      getVerifiedStatus()
     );
   } catch (e) {
     console.warn("Storage/cookie access failed in waitInitialSession:", e);
@@ -78,4 +78,24 @@ export async function waitInitialSession(timeoutMs = 4000): Promise<Session | nu
       }
     });
   });
+}
+
+export function getVerifiedStatus(): boolean {
+  if (typeof window === "undefined" || typeof document === "undefined") return false;
+  const localVal = localStorage.getItem("jj_verified") === "true";
+  const cookieVal = document.cookie.split(";").some(c => c.trim() === "jj_verified=true");
+  return localVal || cookieVal;
+}
+
+export function setVerifiedStatus(val: boolean) {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  const hostname = window.location.hostname.toLowerCase();
+  const domain = hostname.endsWith("playjackpotjungle.com") ? "; domain=.playjackpotjungle.com" : "";
+  if (val) {
+    localStorage.setItem("jj_verified", "true");
+    document.cookie = `jj_verified=true; path=/${domain}; max-age=86400; SameSite=Lax; Secure`;
+  } else {
+    localStorage.removeItem("jj_verified");
+    document.cookie = `jj_verified=; path=/${domain}; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure`;
+  }
 }

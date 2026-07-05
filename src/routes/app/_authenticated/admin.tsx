@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Capacitor } from "@capacitor/core";
 import { useNativePush } from "@/hooks/useNativePush";
 import { useQueryClient } from "@tanstack/react-query";
+import { setVerifiedStatus } from "@/lib/auth-wait";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -251,9 +252,9 @@ function AdminPage() {
   async function signOut() {
     console.log("[SignOut] Initiated.");
     if (typeof window !== "undefined") {
-      console.log("[SignOut] Clearing local storage keys.");
+      console.log("[SignOut] Clearing local storage keys and cookies.");
       localStorage.removeItem("profile_complete");
-      localStorage.removeItem("jj_verified");
+      setVerifiedStatus(false);
     }
     
     // Update database presence in the background so it never hangs sign out

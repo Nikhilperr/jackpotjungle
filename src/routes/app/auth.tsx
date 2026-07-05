@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getVerifiedStatus, setVerifiedStatus } from "@/lib/auth-wait";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { Mail, Lock, User, CheckSquare, Square, Sparkles, Shield } from "lucide-react";
@@ -50,7 +51,7 @@ function AuthPage() {
 
   useEffect(() => {
     if (!loading && !user && typeof window !== "undefined") {
-      localStorage.removeItem("jj_verified");
+      setVerifiedStatus(false);
     }
   }, [user, loading]);
 
@@ -62,6 +63,7 @@ function AuthPage() {
         } catch {}
         try {
           localStorage.clear();
+          setVerifiedStatus(false);
         } catch {}
         navigate({ search: (old: any) => ({ ...old, logout: undefined }), replace: true });
       }
@@ -92,7 +94,7 @@ function AuthPage() {
 
     if (user) {
       const isGoogleLogin = user.app_metadata?.provider === "google";
-      const isVerified = typeof window !== "undefined" && localStorage.getItem("jj_verified") === "true";
+      const isVerified = getVerifiedStatus();
       console.log("[AuthRedirect] User is present. isGoogleLogin:", isGoogleLogin, "isVerified:", isVerified, "localStorage jj_verified:", typeof window !== "undefined" ? localStorage.getItem("jj_verified") : "undefined");
       
       if (!isGoogleLogin && !isVerified) {
@@ -310,7 +312,7 @@ function LoginForm({
         const isGoogleLogin = session.user.app_metadata?.provider === "google";
         if (isGoogleLogin) return;
 
-        const isVerified = typeof window !== "undefined" && localStorage.getItem("jj_verified") === "true";
+        const isVerified = getVerifiedStatus();
         if (isVerified) return;
 
         // Force secondary verification
@@ -367,7 +369,7 @@ function LoginForm({
       
       if (typeof window !== "undefined") {
         localStorage.setItem("jj_google_session", "false");
-        localStorage.removeItem("jj_verified");
+        setVerifiedStatus(false);
       }
 
       const { data: signed, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -386,7 +388,7 @@ function LoginForm({
       }
     } catch (err: any) {
       if (typeof window !== "undefined") {
-        localStorage.removeItem("jj_verified");
+        setVerifiedStatus(false);
       }
       toast.error(err.message ?? "Login failed.");
     } finally {
@@ -417,7 +419,7 @@ function LoginForm({
       if (error) throw error;
 
       if (typeof window !== "undefined") {
-        localStorage.setItem("jj_verified", "true");
+        setVerifiedStatus(true);
       }
 
       // Send recent login notification email!
@@ -479,7 +481,7 @@ function LoginForm({
       if (verifyErr) throw verifyErr;
 
       if (typeof window !== "undefined") {
-        localStorage.setItem("jj_verified", "true");
+        setVerifiedStatus(true);
       }
 
       // Send recent login notification email!

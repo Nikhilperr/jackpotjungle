@@ -3,6 +3,7 @@ import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, 
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { setVerifiedStatus } from "@/lib/auth-wait";
 import { useRole } from "@/hooks/useRole";
 import { usePresence } from "@/hooks/usePresence";
 import { useChatNotifications } from "@/hooks/useChatNotifications";
@@ -81,9 +82,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   async function signOut() {
     console.log("[SignOut] Initiated.");
     if (typeof window !== "undefined") {
-      console.log("[SignOut] Clearing local storage keys.");
+      console.log("[SignOut] Clearing local storage keys and cookies.");
       localStorage.removeItem("profile_complete");
-      localStorage.removeItem("jj_verified");
+      setVerifiedStatus(false);
     }
     
     // Update database presence in the background so it never hangs sign out

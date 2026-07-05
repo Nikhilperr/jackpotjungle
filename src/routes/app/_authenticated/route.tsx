@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { waitInitialSession } from "@/lib/auth-wait";
+import { waitInitialSession, getVerifiedStatus, setVerifiedStatus } from "@/lib/auth-wait";
 import { CallProvider } from "@/components/messenger/CallProvider";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -9,14 +9,14 @@ export const Route = createFileRoute("/app/_authenticated")({
     const session = await waitInitialSession();
     if (!session?.user) {
       if (typeof window !== "undefined") {
-        localStorage.removeItem("jj_verified");
+        setVerifiedStatus(false);
         sessionStorage.setItem("jj_invite_redirect", window.location.href);
       }
       throw redirect({ to: "/app/auth" });
     }
 
     const isGoogleLogin = session?.user?.app_metadata?.provider === "google";
-    const isVerified = typeof window !== "undefined" && localStorage.getItem("jj_verified") === "true";
+    const isVerified = getVerifiedStatus();
 
     if (!isGoogleLogin && !isVerified) {
       throw redirect({ to: "/app/auth" });
