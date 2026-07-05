@@ -65,6 +65,8 @@ import {
   Mail,
   History,
   FileText,
+  PlusCircle,
+  MinusCircle,
 } from "lucide-react";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -2720,6 +2722,13 @@ function Conversation({
   const { isSuperAdmin } = useRole();
   const [walletPopupOpen, setWalletPopupOpen] = useState(false);
   const [walletHistoryPopupOpen, setWalletHistoryPopupOpen] = useState(false);
+
+  // Cash In / Cash Out States
+  const [cashInPopupOpen, setCashInPopupOpen] = useState(false);
+  const [cashOutPopupOpen, setCashOutPopupOpen] = useState(false);
+  const [cashAmount, setCashAmount] = useState("");
+  const [cashNotes, setCashNotes] = useState("");
+  const [performingCashAction, setPerformingCashAction] = useState(false);
   const [walletDetails, setWalletDetails] = useState<any>(null);
   const [walletTransactions, setWalletTransactions] = useState<any[]>([]);
   const [loadingWalletDetails, setLoadingWalletDetails] = useState(false);
@@ -2964,6 +2973,74 @@ function Conversation({
       toast.error(err.message || "Failed to update wallet");
     } finally {
       setPerformingWalletAction(false);
+    }
+  };
+  
+  const submitCashIn = async () => {
+    if (!cashAmount) {
+      return toast.error("Please enter a valid amount.");
+    }
+    const amt = Number(cashAmount);
+    if (isNaN(amt) || amt <= 0) {
+      return toast.error("Amount must be a positive number.");
+    }
+    setPerformingCashAction(true);
+    try {
+      const { performWalletActionAdmin } = await import("@/lib/wallet.functions");
+      const res = await performWalletActionAdmin({
+        data: {
+          targetUserId: conv.userId,
+          action: "cashin",
+          amount: amt,
+          reason: "Cash In",
+          notes: cashNotes || undefined,
+        }
+      });
+      if (res.success) {
+        toast.success("Cash In logged successfully!");
+        setCashAmount("");
+        setCashNotes("");
+        setCashInPopupOpen(false);
+        loadWalletDetails();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to log Cash In");
+    } finally {
+      setPerformingCashAction(false);
+    }
+  };
+
+  const submitCashOut = async () => {
+    if (!cashAmount) {
+      return toast.error("Please enter a valid amount.");
+    }
+    const amt = Number(cashAmount);
+    if (isNaN(amt) || amt <= 0) {
+      return toast.error("Amount must be a positive number.");
+    }
+    setPerformingCashAction(true);
+    try {
+      const { performWalletActionAdmin } = await import("@/lib/wallet.functions");
+      const res = await performWalletActionAdmin({
+        data: {
+          targetUserId: conv.userId,
+          action: "cashout",
+          amount: amt,
+          reason: "Cash Out",
+          notes: cashNotes || undefined,
+        }
+      });
+      if (res.success) {
+        toast.success("Cash Out logged successfully!");
+        setCashAmount("");
+        setCashNotes("");
+        setCashOutPopupOpen(false);
+        loadWalletDetails();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to log Cash Out");
+    } finally {
+      setPerformingCashAction(false);
     }
   };
 
@@ -4688,6 +4765,28 @@ function Conversation({
                   <History className="h-4 w-4 text-amber-500" />
                   <span>Wallet History</span>
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setCashAmount("");
+                    setCashNotes("");
+                    setCashInPopupOpen(true);
+                  }}
+                  className="cursor-pointer gap-2 py-2 font-semibold text-emerald-600 dark:text-emerald-400"
+                >
+                  <PlusCircle className="h-4 w-4 text-emerald-500" />
+                  <span>Cash In</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setCashAmount("");
+                    setCashNotes("");
+                    setCashOutPopupOpen(true);
+                  }}
+                  className="cursor-pointer gap-2 py-2 font-semibold text-red-600 dark:text-red-400"
+                >
+                  <MinusCircle className="h-4 w-4 text-red-500" />
+                  <span>Cash Out</span>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -5211,6 +5310,140 @@ function Conversation({
         </DialogContent>
       </Dialog>
 
+      {/* Cash In Dialog */}
+      <Dialog open={cashInPopupOpen} onOpenChange={setCashInPopupOpen}>
+        <DialogContent className="max-w-md bg-card border border-border text-foreground shadow-2xl rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-emerald-500">
+              <PlusCircle className="h-6 w-6" />
+              <span>Cash In (Deposit)</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Log a Cash In transaction record for customer <strong>{conv.username}</strong>. (Does not affect available or credit balances)
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 my-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground">Amount ($)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Enter amount (e.g. 50.00)"
+                value={cashAmount}
+                onChange={(e) => setCashAmount(e.target.value)}
+                className="h-10 rounded-lg bg-secondary border-transparent text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground">Internal Notes (Optional)</label>
+              <textarea
+                placeholder="Add optional notes..."
+                value={cashNotes}
+                onChange={(e) => setCashNotes(e.target.value)}
+                rows={2}
+                className="w-full p-3 rounded-lg bg-secondary text-sm border-transparent focus:ring-1 focus:ring-primary/40 focus:border-transparent resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex gap-2 justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCashInPopupOpen(false)}
+              className="rounded-xl text-xs font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={submitCashIn}
+              disabled={performingCashAction}
+              className="rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {performingCashAction ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                  Saving...
+                </>
+              ) : (
+                "Log Cash In"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cash Out Dialog */}
+      <Dialog open={cashOutPopupOpen} onOpenChange={setCashOutPopupOpen}>
+        <DialogContent className="max-w-md bg-card border border-border text-foreground shadow-2xl rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-red-500">
+              <MinusCircle className="h-6 w-6" />
+              <span>Cash Out (Wins)</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Log a Cash Out transaction record for customer <strong>{conv.username}</strong>. (Does not affect available or credit balances)
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 my-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground">Amount ($)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Enter amount (e.g. 50.00)"
+                value={cashAmount}
+                onChange={(e) => setCashAmount(e.target.value)}
+                className="h-10 rounded-lg bg-secondary border-transparent text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground">Internal Notes (Optional)</label>
+              <textarea
+                placeholder="Add optional notes..."
+                value={cashNotes}
+                onChange={(e) => setCashNotes(e.target.value)}
+                rows={2}
+                className="w-full p-3 rounded-lg bg-secondary text-sm border-transparent focus:ring-1 focus:ring-primary/40 focus:border-transparent resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex gap-2 justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCashOutPopupOpen(false)}
+              className="rounded-xl text-xs font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={submitCashOut}
+              disabled={performingCashAction}
+              className="rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white"
+            >
+              {performingCashAction ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                  Saving...
+                </>
+              ) : (
+                "Log Cash Out"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 2. Wallet History Dialog */}
       <Dialog open={walletHistoryPopupOpen} onOpenChange={setWalletHistoryPopupOpen}>
         <DialogContent className="max-w-4xl bg-card border border-border text-foreground shadow-2xl rounded-2xl p-6 overflow-hidden flex flex-col h-[85vh]">
@@ -5243,6 +5476,8 @@ function Conversation({
                   <option value="all">All Transactions</option>
                   <option value="wallet">Wallet Balance</option>
                   <option value="credit">Credit Balance</option>
+                  <option value="cashin">Cash In</option>
+                  <option value="cashout">Cash Out</option>
                 </select>
               </div>
               <div className="flex items-center gap-1.5">

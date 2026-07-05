@@ -1478,6 +1478,8 @@ const printStatementFromMessage = async (content: string, userId: string) => {
       .select("*")
       .eq("user_id", userId)
       .eq("deleted", false)
+      .neq("action", "cashin")
+      .neq("action", "cashout")
       .order("created_at", { ascending: false });
 
     if (startDate) {

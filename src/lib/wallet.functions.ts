@@ -93,7 +93,7 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((d: {
     targetUserId: string;
-    action: "deposit" | "credit_added" | "credit_released" | "deduction" | "deduct_credit" | "correction" | "refund" | "bonus" | "transfer" | "reset";
+    action: "deposit" | "credit_added" | "credit_released" | "deduction" | "deduct_credit" | "correction" | "refund" | "bonus" | "transfer" | "reset" | "cashin" | "cashout";
     amount: number;
     reason?: string;
     notes?: string;
@@ -234,6 +234,26 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
         chatText = `Wallet Updated: Your wallet credit balances were reset by a super administrator.`;
         break;
 
+      case "cashin":
+        nextAvail = prevAvail;
+        nextCredit = prevCredit;
+        nextDeposits = prevDeposits;
+        nextReleased = prevReleased;
+        nextUsed = prevUsed;
+        notificationText = "";
+        chatText = "";
+        break;
+
+      case "cashout":
+        nextAvail = prevAvail;
+        nextCredit = prevCredit;
+        nextDeposits = prevDeposits;
+        nextReleased = prevReleased;
+        nextUsed = prevUsed;
+        notificationText = "";
+        chatText = "";
+        break;
+
       default:
         throw new Error("Invalid wallet action.");
     }
@@ -274,32 +294,36 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
     if (txError) throw new Error(txError.message);
 
     // 3. Write in-app user notification
-    await supabaseAdmin
-      .from("user_notifications")
-      .insert({
-        user_id: data.targetUserId,
-        title: "Wallet Credit Update",
-        content: notificationText,
-      });
+    if (notificationText) {
+      await supabaseAdmin
+        .from("user_notifications")
+        .insert({
+          user_id: data.targetUserId,
+          title: "Wallet Credit Update",
+          content: notificationText,
+        });
+    }
 
     // 4. Send chat message warning/update to the support page chat
-    try {
-      const { data: conv } = await supabaseAdmin
-        .from("page_conversations")
-        .select("id")
-        .eq("user_id", data.targetUserId)
-        .maybeSingle();
+    if (chatText) {
+      try {
+        const { data: conv } = await supabaseAdmin
+          .from("page_conversations")
+          .select("id")
+          .eq("user_id", data.targetUserId)
+          .maybeSingle();
 
-      if (conv) {
-        await supabaseAdmin.from("page_messages").insert({
-          conversation_id: conv.id,
-          sender_id: context.userId,
-          from_page: true,
-          content: chatText,
-        });
+        if (conv) {
+          await supabaseAdmin.from("page_messages").insert({
+            conversation_id: conv.id,
+            sender_id: context.userId,
+            from_page: true,
+            content: chatText,
+          });
+        }
+      } catch (chatErr) {
+        console.warn("Failed to notify user in chat:", chatErr);
       }
-    } catch (chatErr) {
-      console.warn("Failed to notify user in chat:", chatErr);
     }
 
     return {
@@ -430,6 +454,8 @@ export const getWalletDetailsUser = createServerFn({ method: "GET" })
       .select("*")
       .eq("user_id", context.userId)
       .eq("deleted", false)
+      .neq("action", "cashin")
+      .neq("action", "cashout")
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -455,6 +481,8 @@ export const getWalletHistoryUser = createServerFn({ method: "GET" })
       .select("*")
       .eq("user_id", context.userId)
       .eq("deleted", false)
+      .neq("action", "cashin")
+      .neq("action", "cashout")
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
