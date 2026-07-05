@@ -422,7 +422,7 @@ function AdminPage() {
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Auto-response"><AutoResponsesView meId={user.id} /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "referrals" ? "" : "hidden"}`}>
-          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Referrals"><ReferralsAdminView /></ScrollWrap>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Referrals"><ReferralsAdminView onUserClick={handleNavigateToUserChat} /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "logs" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Logs"><LogsView /></ScrollWrap>
@@ -553,6 +553,60 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
       replace: false,
     });
   };
+
+  async function handleNavigateToUserChat(targetUserId: string) {
+    try {
+      const existing = convs.find(c => c.userId === targetUserId);
+      if (existing) {
+        navigate({
+          search: (prev: any) => ({
+            ...prev,
+            tab: "inbox",
+            c: existing.conversationId,
+          }),
+        });
+        setDetailOpen(false);
+        return;
+      }
+      
+      const { data: convRow } = await supabase
+        .from("page_conversations")
+        .select("id")
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+        
+      if (convRow) {
+        navigate({
+          search: (prev: any) => ({
+            ...prev,
+            tab: "inbox",
+            c: convRow.id,
+          }),
+        });
+        setDetailOpen(false);
+        return;
+      }
+      
+      const { data: newConv } = await supabase
+        .from("page_conversations")
+        .insert({ user_id: targetUserId })
+        .select("id")
+        .single();
+        
+      if (newConv) {
+        navigate({
+          search: (prev: any) => ({
+            ...prev,
+            tab: "inbox",
+            c: newConv.id,
+          }),
+        });
+        setDetailOpen(false);
+      }
+    } catch (err) {
+      console.error("Failed to navigate to user chat:", err);
+    }
+  }
 
   const detailOpen = !!searchParams.profile;
   const setDetailOpen = (val: boolean) => {
@@ -1428,6 +1482,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 loadWalletHistory("all", selectedMemberProfile.id);
                 setWalletHistoryPopupOpen(true);
               }}
+              onUserClick={handleNavigateToUserChat}
             />
           ) : active.isGroup ? (
             <GroupDetailPanel
@@ -1470,6 +1525,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                 loadWalletHistory("all", active.userId);
                 setWalletHistoryPopupOpen(true);
               }}
+              onUserClick={handleNavigateToUserChat}
             />
           )}
         </aside>
@@ -1502,6 +1558,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   loadWalletHistory("all", selectedMemberProfile.id);
                   setWalletHistoryPopupOpen(true);
                 }}
+                onUserClick={handleNavigateToUserChat}
               />
             ) : active.isGroup ? (
               <div className="flex-1 overflow-y-auto min-h-0">
@@ -1546,6 +1603,7 @@ function InboxView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void })
                   loadWalletHistory("all", active.userId);
                   setWalletHistoryPopupOpen(true);
                 }}
+                onUserClick={handleNavigateToUserChat}
               />
             )
           )}
@@ -2366,6 +2424,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                 loadWalletHistory("all", selectedMemberProfile.id);
                 setWalletHistoryPopupOpen(true);
               }}
+              onUserClick={handleNavigateToUserChat}
             />
           ) : active.isGroup ? (
             <GroupDetailPanel
@@ -2408,6 +2467,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                 loadWalletHistory("all", active.userId);
                 setWalletHistoryPopupOpen(true);
               }}
+              onUserClick={handleNavigateToUserChat}
             />
           )}
         </aside>
@@ -2439,6 +2499,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                   loadWalletHistory("all", selectedMemberProfile.id);
                   setWalletHistoryPopupOpen(true);
                 }}
+                onUserClick={handleNavigateToUserChat}
               />
             ) : active.isGroup ? (
               <div className="flex-1 overflow-y-auto min-h-0">
@@ -2483,6 +2544,7 @@ function TeamChatView({ meId, onOpenNav }: { meId: string; onOpenNav: () => void
                   loadWalletHistory("all", active.userId);
                   setWalletHistoryPopupOpen(true);
                 }}
+                onUserClick={handleNavigateToUserChat}
               />
             )
           )}

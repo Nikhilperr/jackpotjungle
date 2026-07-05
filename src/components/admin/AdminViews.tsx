@@ -446,7 +446,8 @@ export function UserDetailPanel({
   onSearchClick,
   onShareClick,
   onWalletClick,
-  onHistoryClick
+  onHistoryClick,
+  onUserClick
 }: {
   userId: string;
   username: string;
@@ -458,6 +459,7 @@ export function UserDetailPanel({
   onShareClick?: () => void;
   onWalletClick?: () => void;
   onHistoryClick?: () => void;
+  onUserClick?: (userId: string) => void;
 }) {
   const blockFn = useServerFn(setUserBlocked);
   const [tags, setTags] = useState<any[]>([]);
@@ -724,7 +726,13 @@ export function UserDetailPanel({
         <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">Referred by</p>
         {referrer ? (
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-medium truncate">{referrer.username}</span>
+            <button 
+              type="button" 
+              onClick={() => onUserClick?.(referrer.id)}
+              className="text-sm font-semibold text-primary hover:underline truncate cursor-pointer text-left"
+            >
+              {referrer.username}
+            </button>
             <Button size="sm" variant="outline" onClick={() => setPickRef(true)}>Change</Button>
           </div>
         ) : (
@@ -896,7 +904,7 @@ export function SuperAdminView() {
 }
 
 /* ============ REFERRALS (admin view of all) ============ */
-export function ReferralsAdminView() {
+export function ReferralsAdminView({ onUserClick }: { onUserClick?: (userId: string) => void }) {
   const [rows, setRows] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   async function load() {
@@ -928,15 +936,26 @@ export function ReferralsAdminView() {
       <div className="bg-card border border-border rounded-2xl divide-y divide-border">
         {filtered.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No referrals.</p> : filtered.map((r) => (
           <div key={r.id} className="p-4 flex items-center gap-3 flex-wrap text-sm">
-            <div className="flex-1 min-w-0">
-              <p><span className="font-semibold">{r.referrer ?? r.referrer_id.slice(0, 8)}</span> → <span className="font-semibold">{r.referred ?? r.referred_id.slice(0, 8)}</span></p>
+            <div className="flex-1 min-w-0 select-none">
+              <p className="flex items-center gap-1.5 flex-wrap">
+                <button 
+                  type="button" 
+                  onClick={() => onUserClick?.(r.referrer_id)}
+                  className="font-bold text-primary hover:underline cursor-pointer"
+                >
+                  {r.referrer ?? r.referrer_id.slice(0, 8)}
+                </button>
+                <span className="text-muted-foreground">referred</span>
+                <button 
+                  type="button" 
+                  onClick={() => onUserClick?.(r.referred_id)}
+                  className="font-bold text-primary hover:underline cursor-pointer"
+                >
+                  {r.referred ?? r.referred_id.slice(0, 8)}
+                </button>
+              </p>
               <p className="text-xs text-muted-foreground">Bonus: {r.bonus_amount} · {r.status}</p>
             </div>
-            {r.status !== "approved" && (
-              <Button size="sm" onClick={() => {
-                const v = prompt("Bonus amount", "10"); if (v) approve(r.id, parseFloat(v) || 0);
-              }}>Approve</Button>
-            )}
           </div>
         ))}
       </div>
