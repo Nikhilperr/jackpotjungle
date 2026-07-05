@@ -83,14 +83,19 @@ export function AppShell({ children }: { children: ReactNode }) {
       localStorage.removeItem("profile_complete");
       localStorage.removeItem("jj_verified");
     }
-    try {
-      await supabase
-        .from("profiles")
-        .update({ online: false, last_seen: new Date().toISOString() })
-        .eq("id", (await supabase.auth.getUser()).data.user?.id ?? "");
-    } catch (e) {
-      console.error("Failed to update profile presence during sign out:", e);
-    }
+    
+    // Update database presence in the background so it never hangs sign out
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) {
+        supabase
+          .from("profiles")
+          .update({ online: false, last_seen: new Date().toISOString() })
+          .eq("id", session.user.id)
+          .then(() => {})
+          .catch((e) => console.error("Failed to update presence:", e));
+      }
+    }).catch(() => {});
+
     await qc.cancelQueries();
     qc.clear();
 
@@ -103,7 +108,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       }
     }
 
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error("Supabase signOut failed:", e);
+    }
+
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
