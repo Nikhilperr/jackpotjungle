@@ -2832,14 +2832,20 @@ function Conversation({
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
 
   useEffect(() => {
+    console.log("Admin Conversation mounted. isGroup:", isGroup, "groupId:", groupId);
     if (isGroup && groupId) {
       supabase
         .from("group_members")
         .select("profiles:user_id(id, username, first_name, last_name, avatar_url)")
         .eq("group_id", groupId)
-        .then(({ data }) => {
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("Error fetching group members in Admin:", error);
+          }
+          console.log("Raw group members data in Admin:", data);
           if (data) {
             const list = data.map((m: any) => m.profiles || m["profiles:user_id"]).filter(Boolean);
+            console.log("Mapped group members list in Admin:", list);
             setGroupMembers(list);
           }
         });
