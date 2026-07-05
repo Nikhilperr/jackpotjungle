@@ -30,6 +30,33 @@ export function getVipBadgeUrl(status: string | null | undefined): string | null
   return `/${normalized}.png`;
 }
 
+export function getVipBadgeStyles(status: string | null | undefined) {
+  if (!status || status === "none") return null;
+  const normalized = status.toLowerCase();
+  
+  let label = "VIP";
+  let color = "#10b981";
+  
+  if (normalized === "bronze") {
+    label = "Bronze VIP";
+    color = "#b45309";
+  } else if (normalized === "silver") {
+    label = "Silver VIP";
+    color = "#64748b";
+  } else if (normalized === "gold") {
+    label = "Gold VIP";
+    color = "#d97706";
+  } else if (normalized === "platinum") {
+    label = "Platinum VIP";
+    color = "#0891b2";
+  } else if (normalized === "diamond") {
+    label = "Diamond VIP";
+    color = "#2563eb";
+  }
+  
+  return { label, color };
+}
+
 type Profile = {
   id: string;
   username: string;
@@ -726,7 +753,25 @@ function ProfilePage() {
                 />
               )}
             </h1>
-            <p className="text-xs text-muted-foreground font-semibold">@{profile.username}</p>
+            <div className="flex items-center gap-2 mt-1 select-none">
+              <span className="text-xs text-muted-foreground font-semibold">@{profile.username}</span>
+              {(() => {
+                const info = getVipBadgeStyles(profile.vip_status);
+                if (!info) return null;
+                return (
+                  <span 
+                    className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide border inline-block"
+                    style={{
+                      color: info.color,
+                      backgroundColor: `${info.color}15`,
+                      borderColor: `${info.color}30`
+                    }}
+                  >
+                    {info.label}
+                  </span>
+                );
+              })()}
+            </div>
             <p className="text-sm text-muted-foreground mt-0.5">{email}</p>
             <div className="flex gap-2.5 mt-3">
               <button

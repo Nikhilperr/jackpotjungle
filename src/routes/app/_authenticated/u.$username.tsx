@@ -18,6 +18,33 @@ function getVipBadgeUrl(status: string | null | undefined): string | null {
   return `/${normalized}.png`;
 }
 
+function getVipBadgeStyles(status: string | null | undefined) {
+  if (!status || status === "none") return null;
+  const normalized = status.toLowerCase();
+  
+  let label = "VIP";
+  let color = "#10b981";
+  
+  if (normalized === "bronze") {
+    label = "Bronze VIP";
+    color = "#b45309";
+  } else if (normalized === "silver") {
+    label = "Silver VIP";
+    color = "#64748b";
+  } else if (normalized === "gold") {
+    label = "Gold VIP";
+    color = "#d97706";
+  } else if (normalized === "platinum") {
+    label = "Platinum VIP";
+    color = "#0891b2";
+  } else if (normalized === "diamond") {
+    label = "Diamond VIP";
+    color = "#2563eb";
+  }
+  
+  return { label, color };
+}
+
 export const Route = createFileRoute("/app/_authenticated/u/$username")({
   head: ({ params }) => ({
     meta: [
@@ -288,8 +315,27 @@ function UserProfileLandingPage() {
                   />
                 )}
               </h2>
-              <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground font-medium">
+              <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground font-medium select-none">
                 <span>@{profile.username}</span>
+                {(() => {
+                  const info = getVipBadgeStyles(profile?.vip_status);
+                  if (!info) return null;
+                  return (
+                    <>
+                      <span className="text-muted-foreground/30">•</span>
+                      <span 
+                        className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide border inline-block"
+                        style={{
+                          color: info.color,
+                          backgroundColor: `${info.color}15`,
+                          borderColor: `${info.color}30`
+                        }}
+                      >
+                        {info.label}
+                      </span>
+                    </>
+                  );
+                })()}
                 <span className="text-muted-foreground/30">•</span>
                 <span className="bg-secondary/60 px-2 py-0.5 rounded-full text-[10px] font-bold text-primary tracking-wide uppercase">
                   {profile.friend_code}

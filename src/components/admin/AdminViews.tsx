@@ -24,6 +24,33 @@ function getVipBadgeUrl(status: string | null | undefined): string | null {
   return `/${normalized}.png`;
 }
 
+function getVipBadgeStyles(status: string | null | undefined) {
+  if (!status || status === "none") return null;
+  const normalized = status.toLowerCase();
+  
+  let label = "VIP";
+  let color = "#10b981";
+  
+  if (normalized === "bronze") {
+    label = "Bronze VIP";
+    color = "#b45309";
+  } else if (normalized === "silver") {
+    label = "Silver VIP";
+    color = "#64748b";
+  } else if (normalized === "gold") {
+    label = "Gold VIP";
+    color = "#d97706";
+  } else if (normalized === "platinum") {
+    label = "Platinum VIP";
+    color = "#0891b2";
+  } else if (normalized === "diamond") {
+    label = "Diamond VIP";
+    color = "#2563eb";
+  }
+  
+  return { label, color };
+}
+
 /* ============ CONFIRM DIALOG HOOK ============ */
 function useConfirm() {
   const [state, setState] = useState<{ open: boolean; title: string; desc?: string; confirmText?: string; destructive?: boolean; resolve?: (v: boolean) => void }>({ open: false, title: "" });
@@ -558,7 +585,23 @@ export function UserDetailPanel({
             </span>
           )}
         </p>
-        <div className="flex justify-center gap-1.5 mt-2 flex-wrap">
+        <div className="flex justify-center gap-1.5 mt-2 flex-wrap select-none">
+          {(() => {
+            const info = getVipBadgeStyles(profileData?.vip_status);
+            if (!info) return null;
+            return (
+              <span 
+                className="text-[11px] px-2 py-0.5 rounded-full font-bold border"
+                style={{
+                  color: info.color,
+                  backgroundColor: `${info.color}10`,
+                  borderColor: `${info.color}25`
+                }}
+              >
+                {info.label}
+              </span>
+            );
+          })()}
           <button
             onClick={onWalletClick}
             className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold hover:bg-emerald-500/20 transition-colors"
