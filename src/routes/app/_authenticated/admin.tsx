@@ -2854,7 +2854,11 @@ function Conversation({
     }
   }, [isGroup, groupId]);
 
-  const [mentionSearch, setMentionSearch] = useState<string | null>(null);
+  const [mentionSearch, _setMentionSearch] = useState<string | null>(null);
+  const setMentionSearch = (val: string | null) => {
+    console.log("setMentionSearch called with value:", val, "stack:", new Error().stack);
+    _setMentionSearch(val);
+  };
   const [mentionIdx, setMentionIdx] = useState(0);
 
   const filteredMembers = useMemo(() => {
@@ -5077,6 +5081,7 @@ function Conversation({
               }
             }}
             onKeyDown={(e) => {
+              console.log("onKeyDown event key:", e.key, "mentionSearch:", mentionSearch, "filteredMembers count:", filteredMembers.length);
               if (mentionSearch !== null && filteredMembers.length > 0) {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
