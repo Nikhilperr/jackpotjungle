@@ -49,6 +49,12 @@ function AuthPage() {
   const isLogoutRequest = logout === "true" || logout === true;
 
   useEffect(() => {
+    if (!loading && !user && typeof window !== "undefined") {
+      localStorage.removeItem("jj_verified");
+    }
+  }, [user, loading]);
+
+  useEffect(() => {
     if (isLogoutRequest) {
       async function clearAll() {
         try {
