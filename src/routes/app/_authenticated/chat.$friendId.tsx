@@ -551,7 +551,7 @@ function ChatView() {
     const seen = new Set<string>();
     const uniqueList: any[] = [];
     list.forEach((p: any) => {
-      if (!seen.has(p.id)) {
+      if (p && p.id && !seen.has(p.id)) {
         seen.add(p.id);
         uniqueList.push(p);
       }
