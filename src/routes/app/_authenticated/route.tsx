@@ -33,20 +33,22 @@ export const Route = createFileRoute("/app/_authenticated")({
     let profile = null;
 
     if (!isProfileComplete) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("first_name, last_name")
-        .eq("id", session.user.id)
-        .maybeSingle();
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("first_name, last_name")
+          .eq("id", session.user.id)
+          .maybeSingle();
 
-      profile = data;
-      isProfileComplete = !!(profile?.first_name?.trim() && profile?.last_name?.trim());
-      if (isProfileComplete && typeof window !== "undefined") {
-        try {
-          localStorage.setItem("profile_complete", "true");
-        } catch (e) {
-          console.warn("localStorage item write failed:", e);
+        if (data) {
+          profile = data;
+          isProfileComplete = !!(profile?.first_name?.trim() && profile?.last_name?.trim());
+          if (isProfileComplete && typeof window !== "undefined") {
+            localStorage.setItem("profile_complete", "true");
+          }
         }
+      } catch (err) {
+        console.error("Failed to query profile completion in route guard:", err);
       }
     }
     const isOnOnboarding = location.pathname.endsWith("/onboarding");

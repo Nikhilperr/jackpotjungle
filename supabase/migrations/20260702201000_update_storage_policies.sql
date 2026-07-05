@@ -1,5 +1,10 @@
--- Update storage buckets to be public for CDN/public access compatibility
-UPDATE storage.buckets SET public = true WHERE id IN ('avatars', 'chat-images', 'chat-audio');
+-- Ensure storage buckets exist and are public for CDN/public access compatibility
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES 
+  ('avatars', 'avatars', true, 5242880, ARRAY['image/*']),
+  ('chat-images', 'chat-images', true, 10485760, ARRAY['image/*']),
+  ('chat-audio', 'chat-audio', true, 10485760, ARRAY['audio/*'])
+ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- 1. SELECT policy: Allow all authenticated users to read avatars, chat images, and chat audio
 DROP POLICY IF EXISTS "auth read media" ON storage.objects;

@@ -63,7 +63,9 @@ export function AuthLayout({ children, mode = "login", setMode, hideHeader = fal
         initial={{ opacity: 0, filter: "blur(12px)", scale: 0.98 }}
         animate={{ opacity: 1, filter: "blur(0px)", scale: 1 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="relative w-full max-w-sm lg:max-w-4xl z-10 flex flex-col lg:flex-row bg-card/75 backdrop-blur-md border border-border/60 rounded-[32px] overflow-hidden shadow-2xl transition-all duration-300"
+        className={`relative w-full z-10 flex flex-col lg:flex-row bg-card/75 backdrop-blur-md border border-border/60 rounded-[32px] overflow-hidden shadow-2xl transition-all duration-300 ${
+          hideHeader ? "max-w-md" : "max-w-sm lg:max-w-4xl"
+        }`}
       >
         {/* Left Branded Panel (Desktop Only) - Matching user reference image */}
         {!hideHeader && (
@@ -138,7 +140,9 @@ export function AuthLayout({ children, mode = "login", setMode, hideHeader = fal
         )}
 
         {/* Right Form Area (Desktop) / Main Content Area (Mobile) */}
-        <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-6 md:p-12 relative">
+        <div className={`w-full flex flex-col items-center justify-center p-6 md:p-12 relative ${
+          hideHeader ? "lg:w-full" : "lg:w-1/2"
+        }`}>
           {/* Mobile Header Brand (Hidden on Desktop) */}
           {!hideHeader && (
             <div className="text-center select-none flex flex-col items-center mb-6 lg:hidden">
