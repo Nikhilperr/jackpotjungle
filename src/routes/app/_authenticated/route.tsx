@@ -15,7 +15,9 @@ export const Route = createFileRoute("/app/_authenticated")({
       throw redirect({ to: "/app/auth" });
     }
 
-    const isGoogleLogin = session?.user?.app_metadata?.provider === "google";
+    const isGoogleLogin = session?.user?.app_metadata?.provider === "google" &&
+                          typeof window !== "undefined" &&
+                          localStorage.getItem("jj_google_session") !== "false";
     const isVerified = getVerifiedStatus();
 
     if (!isGoogleLogin && !isVerified) {

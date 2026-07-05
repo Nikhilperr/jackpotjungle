@@ -52,6 +52,7 @@ function AuthPage() {
   useEffect(() => {
     if (!loading && !user && typeof window !== "undefined") {
       setVerifiedStatus(false);
+      localStorage.removeItem("jj_google_session");
     }
   }, [user, loading]);
 
@@ -93,7 +94,9 @@ function AuthPage() {
     }
 
     if (user) {
-      const isGoogleLogin = user.app_metadata?.provider === "google";
+      const isGoogleLogin = user.app_metadata?.provider === "google" &&
+                            typeof window !== "undefined" &&
+                            localStorage.getItem("jj_google_session") !== "false";
       const isVerified = getVerifiedStatus();
       console.log("[AuthRedirect] User is present. isGoogleLogin:", isGoogleLogin, "isVerified:", isVerified, "localStorage jj_verified:", typeof window !== "undefined" ? localStorage.getItem("jj_verified") : "undefined");
       
@@ -146,6 +149,9 @@ function AuthPage() {
 
   async function signInWithGoogle() {
     setGoogleBusy(true);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("jj_google_session", "true");
+    }
     try {
       const nativeCheck = Capacitor.isNativePlatform();
 
