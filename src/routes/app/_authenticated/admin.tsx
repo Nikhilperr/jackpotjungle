@@ -2835,11 +2835,11 @@ function Conversation({
     if (isGroup && groupId) {
       supabase
         .from("group_members")
-        .select("profiles(id, username, first_name, last_name, avatar_url)")
+        .select("profiles:user_id(id, username, first_name, last_name, avatar_url)")
         .eq("group_id", groupId)
         .then(({ data }) => {
           if (data) {
-            const list = data.map((m: any) => m.profiles).filter(Boolean);
+            const list = data.map((m: any) => m.profiles || m["profiles:user_id"]).filter(Boolean);
             setGroupMembers(list);
           }
         });
