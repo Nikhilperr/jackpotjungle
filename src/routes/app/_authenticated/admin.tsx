@@ -5466,6 +5466,69 @@ function Conversation({
         );
       })()}
 
+      {/* Mention Options Dialog */}
+      <Dialog open={mentionOptionsOpen} onOpenChange={setMentionOptionsOpen}>
+        <DialogContent className="max-w-xs bg-card border border-border p-6 rounded-2xl shadow-2xl backdrop-blur-md">
+          {selectedMentionProfile && (
+            <div className="flex flex-col items-center text-center gap-4">
+              <Avatar
+                name={selectedMentionProfile.first_name && selectedMentionProfile.last_name
+                  ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
+                  : selectedMentionProfile.username}
+                url={selectedMentionProfile.avatar_url}
+                size={80}
+              />
+              <div className="flex flex-col">
+                <span className="font-bold text-foreground text-lg">
+                  {selectedMentionProfile.first_name && selectedMentionProfile.last_name
+                    ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
+                    : `@${selectedMentionProfile.username}`}
+                </span>
+                <span className="text-xs text-muted-foreground">@{selectedMentionProfile.username}</span>
+              </div>
+              <div className="w-full flex flex-col gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    setMentionOptionsOpen(false);
+                    handleNavigateToUserChat(selectedMentionProfile.id);
+                  }}
+                  className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  <span>Open support chat</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMentionOptionsOpen(false);
+                    navigate({
+                      search: (old: any) => ({
+                        ...old,
+                        c: selectedMentionProfile.id,
+                        profile: true,
+                      })
+                    });
+                  }}
+                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
+                >
+                  <Info className="h-4 w-4 text-primary" />
+                  <span>User details drawer</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMentionOptionsOpen(false);
+                    navigate({ to: "/app/u/$username", params: { username: selectedMentionProfile.username } });
+                  }}
+                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
+                >
+                  <UserIcon className="h-4 w-4 text-primary" />
+                  <span>View public profile</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* 1. Wallet Control Dialog */}
       <Dialog open={walletPopupOpen} onOpenChange={setWalletPopupOpen}>
         <DialogContent className="max-w-md bg-card border border-border text-foreground shadow-2xl rounded-2xl p-6 overflow-y-auto max-h-[90vh]">
@@ -6348,67 +6411,6 @@ function AddAdminDialog({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
-      <Dialog open={mentionOptionsOpen} onOpenChange={setMentionOptionsOpen}>
-        <DialogContent className="max-w-xs bg-card border border-border p-6 rounded-2xl shadow-2xl backdrop-blur-md">
-          {selectedMentionProfile && (
-            <div className="flex flex-col items-center text-center gap-4">
-              <Avatar
-                name={selectedMentionProfile.first_name && selectedMentionProfile.last_name
-                  ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
-                  : selectedMentionProfile.username}
-                url={selectedMentionProfile.avatar_url}
-                size={80}
-              />
-              <div className="flex flex-col">
-                <span className="font-bold text-foreground text-lg">
-                  {selectedMentionProfile.first_name && selectedMentionProfile.last_name
-                    ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
-                    : `@${selectedMentionProfile.username}`}
-                </span>
-                <span className="text-xs text-muted-foreground">@{selectedMentionProfile.username}</span>
-              </div>
-              <div className="w-full flex flex-col gap-2 mt-2">
-                <button
-                  onClick={() => {
-                    setMentionOptionsOpen(false);
-                    handleNavigateToUserChat(selectedMentionProfile.id);
-                  }}
-                  className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  <span>Open support chat</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setMentionOptionsOpen(false);
-                    navigate({
-                      search: (old: any) => ({
-                        ...old,
-                        c: selectedMentionProfile.id,
-                        profile: true,
-                      })
-                    });
-                  }}
-                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
-                >
-                  <Info className="h-4 w-4 text-primary" />
-                  <span>User details drawer</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setMentionOptionsOpen(false);
-                    navigate({ to: "/app/u/$username", params: { username: selectedMentionProfile.username } });
-                  }}
-                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
-                >
-                  <UserIcon className="h-4 w-4 text-primary" />
-                  <span>View public profile</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
