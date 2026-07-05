@@ -287,6 +287,7 @@ function LoginForm({
   googleBusy: boolean;
 }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -408,16 +409,7 @@ function LoginForm({
     e.preventDefault();
     setMfaBusy(true);
     try {
-      let email = identifier.trim();
-      if (!email) {
-        const sessionRes = await supabase.auth.getSession();
-        email = sessionRes.data.session?.user?.email || "";
-      }
-      if (email && !email.includes("@")) {
-        const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
-        const res = await lookupEmailByUsername({ data: { username: email } });
-        email = res.email || email;
-      }
+      const email = user?.email || identifier.trim();
 
       const { error } = await supabase.auth.verifyOtp({
         email,
@@ -493,16 +485,7 @@ function LoginForm({
       }
 
       // Send recent login notification email!
-      let email = identifier.trim();
-      if (!email) {
-        const sessionRes = await supabase.auth.getSession();
-        email = sessionRes.data.session?.user?.email || "";
-      }
-      if (email && !email.includes("@")) {
-        const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
-        const res = await lookupEmailByUsername({ data: { username: email } });
-        email = res.email || email;
-      }
+      const email = user?.email || identifier.trim();
       try {
         const { notifyRecentLogin } = await import("@/lib/email-notification.functions");
         await notifyRecentLogin({ email });
@@ -576,12 +559,7 @@ function LoginForm({
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={async () => {
-                let email = identifier.trim();
-                if (!email.includes("@")) {
-                  const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
-                  const res = await lookupEmailByUsername({ data: { username: email } });
-                  email = res.email || email;
-                }
+                const email = user?.email || identifier.trim();
                 setVerificationMethod("email");
                 await sendEmailOtp(email);
               }}
@@ -653,8 +631,7 @@ function LoginForm({
                 required
                 maxLength={6}
                 autoFocus
-                className="text-center font-mono text-lg font-black tracking-widest bg-secondary"
-                icon={<Shield className="h-4 w-4 text-primary" />}
+                className="text-center font-mono text-2xl font-black tracking-[0.25em] bg-secondary/30 border-primary/20 focus:ring-primary/25 pr-2 pl-2"
               />
             </div>
           </div>
@@ -668,12 +645,7 @@ function LoginForm({
               disabled={resendCountdown > 0}
               onClick={async () => {
                 if (resendCountdown > 0) return;
-                let email = identifier.trim();
-                if (!email.includes("@")) {
-                  const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
-                  const res = await lookupEmailByUsername({ data: { username: email } });
-                  email = res.email || email;
-                }
+                const email = user?.email || identifier.trim();
                 await sendEmailOtp(email);
               }}
               className="text-xs font-semibold text-primary disabled:text-muted-foreground hover:underline disabled:no-underline text-center w-full block transition-all"
@@ -715,8 +687,7 @@ function LoginForm({
                 required
                 maxLength={6}
                 autoFocus
-                className="text-center font-mono text-lg font-black tracking-widest bg-secondary"
-                icon={<Shield className="h-4 w-4 text-primary" />}
+                className="text-center font-mono text-2xl font-black tracking-[0.25em] bg-secondary/30 border-primary/20 focus:ring-primary/25 pr-2 pl-2"
               />
             </div>
           </div>
