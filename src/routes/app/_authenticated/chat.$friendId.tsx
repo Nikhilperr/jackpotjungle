@@ -543,6 +543,28 @@ function ChatView() {
 
   const [selectedMentionProfile, setSelectedMentionProfile] = useState<any>(null);
   const [mentionOptionsOpen, setMentionOptionsOpen] = useState(false);
+  const [isFriendOfMine, setIsFriendOfMine] = useState(false);
+  const [friendRequestSent, setFriendRequestSent] = useState(false);
+  const [checkingFriendship, setCheckingFriendship] = useState(false);
+
+  const handleAddFriend = async () => {
+    if (!meId || !selectedMentionProfile) return;
+    try {
+      const { error } = await supabase.from("friend_requests").insert({
+        sender_id: meId,
+        receiver_id: selectedMentionProfile.id,
+        status: "pending"
+      });
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success("Friend request sent successfully!");
+        setFriendRequestSent(true);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send friend request");
+    }
+  };
 
   const handleMentionClick = async (username: string) => {
     console.log("handleMentionClick called in customer chat with username:", username);
@@ -561,6 +583,20 @@ function ChatView() {
       if (profile) {
         setSelectedMentionProfile(profile);
         setMentionOptionsOpen(true);
+        setFriendRequestSent(false); // Reset sent state
+        
+        if (meId && profile.id !== meId) {
+          setCheckingFriendship(true);
+          const { data } = await supabase
+            .from("friendships")
+            .select("user_a, user_b")
+            .or(`and(user_a.eq.${meId},user_b.eq.${profile.id}),and(user_a.eq.${profile.id},user_b.eq.${meId})`)
+            .maybeSingle();
+          setIsFriendOfMine(!!data);
+          setCheckingFriendship(false);
+        } else {
+          setIsFriendOfMine(false);
+        }
       } else {
         toast.error(`User @${username} not found.`);
       }
@@ -579,7 +615,7 @@ function ChatView() {
     const seen = new Set<string>();
     const uniqueList: any[] = [];
     list.forEach((p: any) => {
-      if (p && p.id && !seen.has(p.id)) {
+      if (p && p.id && p.id !== meId && !seen.has(p.id)) {
         seen.add(p.id);
         uniqueList.push(p);
       }
@@ -3179,42 +3215,12 @@ function ChatView() {
                 <button
                   onClick={() => {
                     setMentionOptionsOpen(false);
-                    startCall({
-                      calleeId: selectedMentionProfile.id,
-                      kind: "voice",
-                      peer: {
-                        name: selectedMentionProfile.first_name && selectedMentionProfile.last_name
-                          ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
-                          : selectedMentionProfile.username,
-                        avatar: selectedMentionProfile.avatar_url
-                      },
-                      context: "friend"
-                    });
+                    navigate({ to: "/app/chat/$friendId", params: { friendId: selectedMentionProfile.id } });
                   }}
-                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
+                  className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
                 >
-                  <Phone className="h-4 w-4 text-primary" />
-                  <span>Voice call</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setMentionOptionsOpen(false);
-                    startCall({
-                      calleeId: selectedMentionProfile.id,
-                      kind: "video",
-                      peer: {
-                        name: selectedMentionProfile.first_name && selectedMentionProfile.last_name
-                          ? `${selectedMentionProfile.first_name} ${selectedMentionProfile.last_name}`
-                          : selectedMentionProfile.username,
-                        avatar: selectedMentionProfile.avatar_url
-                      },
-                      context: "friend"
-                    });
-                  }}
-                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
-                >
-                  <Video className="h-4 w-4 text-primary" />
-                  <span>Video call</span>
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Message</span>
                 </button>
                 <button
                   onClick={() => {
@@ -3226,16 +3232,15 @@ function ChatView() {
                   <User className="h-4 w-4 text-primary" />
                   <span>View profile</span>
                 </button>
-                <button
-                  onClick={() => {
-                    setMentionOptionsOpen(false);
-                    navigate({ to: "/app/chat/$friendId", params: { friendId: selectedMentionProfile.id } });
-                  }}
-                  className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  <span>Message</span>
-                </button>
+                {selectedMentionProfile.id !== meId && !isFriendOfMine && !friendRequestSent && (
+                  <button
+                    onClick={handleAddFriend}
+                    className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
+                  >
+                    <UserPlus className="h-4 w-4 text-primary" />
+                    <span>Add friend</span>
+                  </button>
+                )}
               </div>
             </div>
           )}

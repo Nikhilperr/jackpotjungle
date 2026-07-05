@@ -2684,6 +2684,7 @@ function Conversation({
   isTeamChat?: boolean;
 }) {
   const { startCall } = useCalls();
+  const navigate = useNavigate();
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const isGroup = conv.isGroup || conv.conversationId.startsWith("group-");
@@ -2873,8 +2874,8 @@ function Conversation({
     const query = mentionSearch.toLowerCase();
     const seen = new Set<string>();
     const uniqueList: any[] = [];
-    groupMembers.forEach((p: any) => {
-      if (p && p.id && !seen.has(p.id)) {
+     groupMembers.forEach((p: any) => {
+      if (p && p.id && p.id !== meId && !seen.has(p.id)) {
         seen.add(p.id);
         uniqueList.push(p);
       }
@@ -5490,7 +5491,13 @@ function Conversation({
                 <button
                   onClick={() => {
                     setMentionOptionsOpen(false);
-                    handleNavigateToUserChat(selectedMentionProfile.id);
+                    navigate({
+                      search: (old: any) => ({
+                        ...old,
+                        c: selectedMentionProfile.id,
+                        profile: undefined,
+                      })
+                    });
                   }}
                   className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
                 >
