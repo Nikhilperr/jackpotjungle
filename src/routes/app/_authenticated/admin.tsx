@@ -116,6 +116,7 @@ import {
 import { SystemAnnouncementsAdminView } from "@/components/admin/SystemAnnouncementsAdmin";
 import { UsersManagementView } from "@/components/admin/UsersManagement";
 import { MonitorChatsView } from "@/components/admin/MonitorChatsView";
+import { MonthlyProfitView } from "@/components/admin/MonthlyProfit";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 import { CreateGroupModal } from "./chat";
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
@@ -137,7 +138,8 @@ type Tab =
   | "profile"
   | "rules"
   | "updates"
-  | "monitor";
+  | "monitor"
+  | "monthly_profit";
 
 type AdminSearch = {
   c?: string;
@@ -152,7 +154,7 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
     const validTabs: Tab[] = [
       "inbox", "teamchat", "quickreplies", "tags", "broadcasts", "followups",
       "autoresp", "referrals", "logs", "users", "admins", "super", "profile",
-      "rules", "updates", "monitor"
+      "rules", "updates", "monitor", "monthly_profit"
     ];
     const incomingTab = search.tab as Tab;
     return {
@@ -350,6 +352,7 @@ function AdminPage() {
         <SideBtn active={tab === "referrals"} onClick={() => selectTab("referrals")} icon={Gift} label="Referrals" />
         <SideBtn active={tab === "logs"} onClick={() => selectTab("logs")} icon={Activity} label="Logs" />
         <SideBtn active={tab === "users"} onClick={() => selectTab("users")} icon={UsersIcon} label="Users Management" />
+        <SideBtn active={tab === "monthly_profit"} onClick={() => selectTab("monthly_profit")} icon={Coins} label="Monthly Profit" />
         <SideBtn active={tab === "monitor"} onClick={() => selectTab("monitor")} icon={Eye} label="Monitor Chats" />
         {isSuperAdmin && (
           <>
@@ -418,6 +421,11 @@ function AdminPage() {
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "users" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Users Management">
             <UsersManagementView meId={user.id} />
+          </ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "monthly_profit" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Monthly Profit">
+            <MonthlyProfitView />
           </ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "monitor" ? "" : "hidden"}`}>

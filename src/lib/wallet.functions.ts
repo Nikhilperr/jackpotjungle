@@ -656,3 +656,97 @@ export const deleteWalletTransactionAdmin = createServerFn({ method: "POST" })
       userId: tx.user_id
     };
   });
+
+// Generate dynamic administrative cash flow profit reports
+export const getProfitReportAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { targetUserId?: string; startDate?: string; endDate?: string }) => d)
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    let query = supabaseAdmin
+      .from("wallet_transactions")
+      .select("*, profiles:user_id(username, first_name, last_name)")
+      .eq("deleted", false)
+      .in("action", ["cashin", "cashout"]);
+
+    if (data.targetUserId) {
+      query = query.eq("user_id", data.targetUserId);
+    }
+    if (data.startDate) {
+      query = query.gte("created_at", data.startDate);
+    }
+    if (data.endDate) {
+      query = query.lte("created_at", data.endDate);
+    }
+
+    const { data: txs, error } = await query.order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+
+    // Calculate totals
+    let totalCashIn = 0;
+    let totalCashOut = 0;
+
+    // Group by user
+    const userSummaryMap: Record<string, { userId: string; username: string; first_name: string; last_name: string; cashIn: number; cashOut: number; net: number }> = {};
+
+    const formattedTxs = (txs ?? []).map((tx: any) => {
+      const amt = Number(tx.amount || 0);
+      const isCashIn = tx.action === "cashin";
+      
+      if (isCashIn) {
+        totalCashIn += amt;
+      } else {
+        totalCashOut += amt;
+      }
+
+      const profile = tx.profiles;
+      const username = profile?.username || "Unknown";
+      const first_name = profile?.first_name || "";
+      const last_name = profile?.last_name || "";
+
+      if (tx.user_id) {
+        if (!userSummaryMap[tx.user_id]) {
+          userSummaryMap[tx.user_id] = {
+            userId: tx.user_id,
+            username,
+            first_name,
+            last_name,
+            cashIn: 0,
+            cashOut: 0,
+            net: 0,
+          };
+        }
+        if (isCashIn) {
+          userSummaryMap[tx.user_id].cashIn += amt;
+        } else {
+          userSummaryMap[tx.user_id].cashOut += amt;
+        }
+        userSummaryMap[tx.user_id].net = userSummaryMap[tx.user_id].cashIn - userSummaryMap[tx.user_id].cashOut;
+      }
+
+      return {
+        id: tx.id,
+        created_at: tx.created_at,
+        action: tx.action,
+        amount: amt,
+        reason: tx.reason,
+        notes: tx.notes,
+        admin_name: tx.admin_name,
+        username,
+        user_id: tx.user_id,
+      };
+    });
+
+    const userSummaries = Object.values(userSummaryMap).sort((a, b) => b.net - a.net);
+
+    return {
+      transactions: formattedTxs,
+      userSummaries,
+      totalCashIn,
+      totalCashOut,
+      netProfit: totalCashIn - totalCashOut,
+    };
+  });
+
