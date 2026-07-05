@@ -42,6 +42,7 @@ import {
 
 
   User as UserIcon,
+  UserPlus,
   LogOut,
   Loader2,
   ImageIcon,
@@ -2810,6 +2811,28 @@ function Conversation({
 
   const [selectedMentionProfile, setSelectedMentionProfile] = useState<any>(null);
   const [mentionOptionsOpen, setMentionOptionsOpen] = useState(false);
+  const [isFriendOfMine, setIsFriendOfMine] = useState(false);
+  const [friendRequestSent, setFriendRequestSent] = useState(false);
+  const [checkingFriendship, setCheckingFriendship] = useState(false);
+
+  const handleAddFriend = async () => {
+    if (!meId || !selectedMentionProfile) return;
+    try {
+      const { error } = await supabase.from("friend_requests").insert({
+        sender_id: meId,
+        receiver_id: selectedMentionProfile.id,
+        status: "pending"
+      });
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success("Friend request sent successfully!");
+        setFriendRequestSent(true);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send friend request");
+    }
+  };
 
   const handleMentionClick = async (username: string) => {
     console.log("handleMentionClick called with username:", username);
@@ -2828,6 +2851,20 @@ function Conversation({
       if (profile) {
         setSelectedMentionProfile(profile);
         setMentionOptionsOpen(true);
+        setFriendRequestSent(false); // Reset sent state
+        
+        if (meId && profile.id !== meId) {
+          setCheckingFriendship(true);
+          const { data } = await supabase
+            .from("friendships")
+            .select("user_a, user_b")
+            .or(`and(user_a.eq.${meId},user_b.eq.${profile.id}),and(user_a.eq.${profile.id},user_b.eq.${meId})`)
+            .maybeSingle();
+          setIsFriendOfMine(!!data);
+          setCheckingFriendship(false);
+        } else {
+          setIsFriendOfMine(false);
+        }
       } else {
         toast.error(`User @${username} not found.`);
       }
@@ -5502,23 +5539,7 @@ function Conversation({
                   className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
                 >
                   <MessageSquare className="h-4 w-4" />
-                  <span>Open support chat</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setMentionOptionsOpen(false);
-                    navigate({
-                      search: (old: any) => ({
-                        ...old,
-                        c: selectedMentionProfile.id,
-                        profile: true,
-                      })
-                    });
-                  }}
-                  className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
-                >
-                  <Info className="h-4 w-4 text-primary" />
-                  <span>User details drawer</span>
+                  <span>Message</span>
                 </button>
                 <button
                   onClick={() => {
@@ -5528,8 +5549,17 @@ function Conversation({
                   className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
                 >
                   <UserIcon className="h-4 w-4 text-primary" />
-                  <span>View public profile</span>
+                  <span>View profile</span>
                 </button>
+                {selectedMentionProfile.id !== meId && !isFriendOfMine && !friendRequestSent && (
+                  <button
+                    onClick={handleAddFriend}
+                    className="w-full py-2.5 bg-secondary hover:bg-secondary/80 text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors border border-border/50"
+                  >
+                    <UserPlus className="h-4 w-4 text-primary" />
+                    <span>Add friend</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
