@@ -55,6 +55,8 @@ server {
     listen 443 ssl http2;
     server_name playjackpotjungle.com www.playjackpotjungle.com;
 
+    client_max_body_size 50M;
+
     ssl_certificate     /etc/letsencrypt/live/playjackpotjungle.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/playjackpotjungle.com/privkey.pem;
 
@@ -88,6 +90,8 @@ server {
     listen 443 ssl http2;
     server_name admin.playjackpotjungle.com;
 
+    client_max_body_size 50M;
+
     ssl_certificate     /etc/letsencrypt/live/playjackpotjungle.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/playjackpotjungle.com/privkey.pem;
 
@@ -116,6 +120,8 @@ server {
     listen 443 ssl http2;
     server_name chat.playjackpotjungle.com;
 
+    client_max_body_size 50M;
+
     ssl_certificate     /etc/letsencrypt/live/playjackpotjungle.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/playjackpotjungle.com/privkey.pem;
 
@@ -143,6 +149,8 @@ server {
 server {
     listen 443 ssl http2;
     server_name api.playjackpotjungle.com;
+
+    client_max_body_size 50M;
 
     ssl_certificate     /etc/letsencrypt/live/playjackpotjungle.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/playjackpotjungle.com/privkey.pem;
