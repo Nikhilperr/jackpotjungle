@@ -483,7 +483,11 @@ function OnboardingPage() {
               type="button"
               onClick={async () => {
                 try {
-                  if (Capacitor.isNativePlatform()) {
+                  const sessionRes = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+                  const session = sessionRes?.data?.session;
+                  const isGoogleLogin = session?.user?.app_metadata?.provider === "google";
+
+                  if (Capacitor.isNativePlatform() && isGoogleLogin) {
                     try {
                       const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
                       await GoogleAuth.signOut();

@@ -316,23 +316,25 @@ function AdminPage() {
       setVerifiedStatus(false);
     }
     
+    // Get session to check if Google login before signing out
+    const sessionRes = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+    const session = sessionRes?.data?.session;
+    const isGoogleLogin = session?.user?.app_metadata?.provider === "google";
+
     // Update database presence in the background so it never hangs sign out
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log("[SignOut] Active user ID:", session?.user?.id);
-      if (session?.user?.id) {
-        supabase
-          .from("profiles")
-          .update({ online: false, last_seen: new Date().toISOString() })
-          .eq("id", session.user.id)
-          .then(() => console.log("[SignOut] User presence set to offline."))
-          .catch((e) => console.error("Failed to update presence:", e));
-      }
-    }).catch(() => {});
+    if (session?.user?.id) {
+      supabase
+        .from("profiles")
+        .update({ online: false, last_seen: new Date().toISOString() })
+        .eq("id", session.user.id)
+        .then(() => console.log("[SignOut] User presence set to offline."))
+        .catch((e) => console.error("Failed to update presence:", e));
+    }
 
     await qc.cancelQueries();
     qc.clear();
 
-    if (Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform() && isGoogleLogin) {
       try {
         const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
         await GoogleAuth.signOut();
