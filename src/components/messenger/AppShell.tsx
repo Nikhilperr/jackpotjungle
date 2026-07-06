@@ -128,7 +128,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
     const isProdDomain = hostname.endsWith("playjackpotjungle.com");
     console.log("[SignOut] Hostname:", hostname, "isProdDomain:", isProdDomain);
-    if (isProdDomain && !Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform()) {
+      console.log("[SignOut] Native platform - hard redirect on same origin.");
+      window.location.href = window.location.origin + "/app/auth?logout=true";
+      return;
+    }
+
+    if (isProdDomain) {
       console.log("[SignOut] Redirecting window location to chat domain auth.");
       window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
     } else {

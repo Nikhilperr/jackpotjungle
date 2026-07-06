@@ -503,7 +503,13 @@ function OnboardingPage() {
                   
                   const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
                   const isProdDomain = hostname.endsWith("playjackpotjungle.com");
-                  if (isProdDomain && !Capacitor.isNativePlatform()) {
+                  if (Capacitor.isNativePlatform()) {
+                    console.log("[SignOut] Native platform - hard redirect on same origin.");
+                    window.location.href = window.location.origin + "/app/auth?logout=true";
+                    return;
+                  }
+
+                  if (isProdDomain) {
                     window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
                   } else {
                     navigate({ to: "/app/auth", search: { logout: "true" }, replace: true });
