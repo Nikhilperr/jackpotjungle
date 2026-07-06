@@ -1414,6 +1414,7 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
             convs={convs}
             messages={messages}
             setMessages={setMessages}
+            onUserClick={onUserClick}
             onBack={() => setActiveId(null)}
             onOpenDetail={() => setDetailOpen(true)}
             onToggleSpam={() => setConvSpam(active, !active.isSpam)}
@@ -2355,6 +2356,7 @@ function TeamChatView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNa
             convs={convs}
             messages={messages}
             setMessages={setMessages}
+            onUserClick={onUserClick}
             onBack={() => setActiveId(null)}
             onOpenDetail={() => setDetailOpen(true)}
             onToggleSpam={() => { }}
@@ -2666,6 +2668,7 @@ function Conversation({
   activeMatch,
   setActiveMatch,
   isTeamChat = false,
+  onUserClick,
 }: {
   meId: string;
   conv: ConvRow;
@@ -2683,6 +2686,7 @@ function Conversation({
   activeMatch: number;
   setActiveMatch: React.Dispatch<React.SetStateAction<number>>;
   isTeamChat?: boolean;
+  onUserClick?: (userId: string) => void;
 }) {
   const { startCall } = useCalls();
   const navigate = useNavigate();
@@ -5528,13 +5532,9 @@ function Conversation({
                 <button
                   onClick={() => {
                     setMentionOptionsOpen(false);
-                    navigate({
-                      search: (old: any) => ({
-                        ...old,
-                        c: selectedMentionProfile.id,
-                        profile: undefined,
-                      })
-                    });
+                    if (onUserClick) {
+                      onUserClick(selectedMentionProfile.id);
+                    }
                   }}
                   className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
                 >

@@ -3215,7 +3215,7 @@ function ChatView() {
                 <button
                   onClick={() => {
                     setMentionOptionsOpen(false);
-                    navigate({ to: "/app/chat/$friendId", params: { friendId: selectedMentionProfile.id } });
+                    navigate({ to: "/app/chat/" + selectedMentionProfile.id });
                   }}
                   className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
                 >
