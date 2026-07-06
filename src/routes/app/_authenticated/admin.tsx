@@ -142,7 +142,8 @@ type Tab =
   | "rules"
   | "updates"
   | "monitor"
-  | "monthly_profit";
+  | "monthly_profit"
+  | "push_notifications";
 
 type AdminSearch = {
   c?: string;
@@ -157,7 +158,7 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
     const validTabs: Tab[] = [
       "inbox", "teamchat", "quickreplies", "tags", "broadcasts", "followups",
       "autoresp", "referrals", "logs", "users", "admins", "super", "profile",
-      "rules", "updates", "monitor", "monthly_profit"
+      "rules", "updates", "monitor", "monthly_profit", "push_notifications"
     ];
     const incomingTab = search.tab as Tab;
     return {
