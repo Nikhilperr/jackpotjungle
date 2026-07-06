@@ -114,6 +114,7 @@ import {
   SuperAdminView,
   ReferralsAdminView,
   AdminProfileView,
+  PushNotificationsAdminView,
 } from "@/components/admin/AdminViews";
 import { SystemAnnouncementsAdminView } from "@/components/admin/SystemAnnouncementsAdmin";
 import { UsersManagementView } from "@/components/admin/UsersManagement";
@@ -406,6 +407,7 @@ function AdminPage() {
         <SideBtn active={tab === "users"} onClick={() => selectTab("users")} icon={UsersIcon} label="Users Management" />
         <SideBtn active={tab === "monthly_profit"} onClick={() => selectTab("monthly_profit")} icon={Coins} label="Monthly Profit" />
         <SideBtn active={tab === "monitor"} onClick={() => selectTab("monitor")} icon={Eye} label="Monitor Chats" />
+        <SideBtn active={tab === "push_notifications"} onClick={() => selectTab("push_notifications")} icon={Bell} label="Push Notification" />
         {isSuperAdmin && (
           <>
             <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Pinned Chats</p>
@@ -482,6 +484,11 @@ function AdminPage() {
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "monitor" ? "" : "hidden"}`}>
           <MonitorChatsView meId={user.id} onOpenNav={() => setNavOpen(true)} />
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "push_notifications" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Push Notification">
+            <PushNotificationsAdminView />
+          </ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "rules" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Rules"><SystemAnnouncementsAdminView channelType="rules" meId={user.id} /></ScrollWrap>

@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff, ArrowLeft, Users, Search, Share, Shield, ShieldCheck, History, Smartphone, Laptop, Globe, User, CheckCircle } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
-import { sendBroadcast, deleteAdminUser, setUserBlocked, resetUserPassword, getActiveSessionsUser, terminateSessionUser } from "@/lib/admin-super.functions";
+import { sendBroadcast, deleteAdminUser, setUserBlocked, resetUserPassword, getActiveSessionsUser, terminateSessionUser, getPushNotificationTargetCount, sendCustomPushNotificationAllUsers } from "@/lib/admin-super.functions";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -1619,6 +1619,181 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
       <p className="text-xs text-center text-muted-foreground">
         Member since {new Date(profile.created_at).toLocaleDateString()}
       </p>
+    </div>
+  );
+}
+
+export function PushNotificationsAdminView() {
+  const getTargetCountFn = useServerFn(getPushNotificationTargetCount);
+  const sendPushFn = useServerFn(sendCustomPushNotificationAllUsers);
+
+  const [title, setTitle] = useState("Jackpot Jungle 🎉");
+  const [message, setMessage] = useState("");
+  const [targetCount, setTargetCount] = useState<number | null>(null);
+  const [loadingCount, setLoadingCount] = useState(false);
+  const [sending, setSending] = useState(false);
+  
+  // Track currently active input field for inserting emojis
+  const [activeField, setActiveField] = useState<"title" | "message">("message");
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  const popularEmojis = ["🎉", "🚀", "🔥", "💎", "🎰", "🎁", "📢", "✨", "🔔", "🤑", "👑", "🍀"];
+
+  const loadTargetCount = async () => {
+    setLoadingCount(true);
+    try {
+      const res = await getTargetCountFn();
+      setTargetCount(res.count ?? 0);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setLoadingCount(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTargetCount();
+  }, []);
+
+  const insertEmoji = (emoji: string) => {
+    if (activeField === "title") {
+      setTitle(prev => prev + emoji);
+      titleInputRef.current?.focus();
+    } else {
+      setMessage(prev => prev + emoji);
+      messageInputRef.current?.focus();
+    }
+  };
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      toast.error("Please enter a title");
+      return;
+    }
+    if (!message.trim()) {
+      toast.error("Please enter a message");
+      return;
+    }
+
+    setSending(true);
+    try {
+      const res = await sendPushFn({ data: { title: title.trim(), message: message.trim() } });
+      if (res.success) {
+        toast.success(`Successfully sent push notification to ${res.sentCount} devices!`);
+        setMessage("");
+      } else {
+        toast.error(res.error || "Failed to send push notifications");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send push notifications");
+    } finally {
+      setSending(false);
+      loadTargetCount();
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-xl mx-auto space-y-6 animate-fade-in">
+      <div className="space-y-1.5">
+        <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+          <Megaphone className="h-5 w-5 text-primary" />
+          <span>Push Notification Broadcast</span>
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Send a push notification with custom text and emojis directly to all registered non-admin customer devices (APKs).
+        </p>
+      </div>
+
+      <div className="bg-secondary/40 border border-border/80 rounded-2xl p-5 space-y-4">
+        {/* Target Audience Device Count */}
+        <div className="flex items-center justify-between pb-3.5 border-b border-border/60 text-xs">
+          <span className="font-semibold text-muted-foreground">Target Audience:</span>
+          {loadingCount ? (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>Calculating devices...</span>
+            </span>
+          ) : (
+            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+              <Smartphone className="h-3.5 w-3.5" />
+              <span>{targetCount !== null ? `${targetCount} registered device(s)` : "0 devices"}</span>
+            </span>
+          )}
+        </div>
+
+        <form onSubmit={handleSend} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+              Notification Title
+            </label>
+            <Input
+              ref={titleInputRef}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onFocus={() => setActiveField("title")}
+              placeholder="e.g., Jackpot Jungle Announcement! 🎉"
+              className="bg-card font-medium"
+              disabled={sending}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+              Notification Message (Body)
+            </label>
+            <Textarea
+              ref={messageInputRef}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onFocus={() => setActiveField("message")}
+              placeholder="e.g., New promotion available! Click to play now and double your credit! 🚀"
+              rows={4}
+              className="bg-card text-sm leading-relaxed"
+              disabled={sending}
+            />
+          </div>
+
+          {/* Emoji Quick Insert Tray */}
+          <div className="space-y-2">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">
+              Quick insert emoji ({activeField === "title" ? "Title" : "Message"})
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {popularEmojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => insertEmoji(emoji)}
+                  disabled={sending}
+                  className="h-8 w-8 text-lg flex items-center justify-center bg-card hover:bg-secondary border border-border/80 rounded-lg transition-all active:scale-95"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={sending || !title.trim() || !message.trim()}
+            className="w-full h-11 rounded-xl font-bold bg-primary text-primary-foreground hover:bg-primary/95 transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2"
+          >
+            {sending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Sending Push Broadcast...</span>
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" />
+                <span>Send Push Notification</span>
+              </>
+            )}
+          </Button>
+        </form>
+      </div>
     </div>
   );
 }

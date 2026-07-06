@@ -1748,5 +1748,95 @@ export const terminateSessionUser = createServerFn({ method: "POST" })
     }
   });
 
+export const getPushNotificationTargetCount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    try {
+      const { data: roleRows, error: rolesErr } = await context.supabase
+        .from("user_roles").select("role").eq("user_id", context.userId);
+      if (rolesErr) throw new Error(rolesErr.message);
+      const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
+      if (!isAdmin) throw new Error("Admins only");
+
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+      // Fetch all admin/super-admin IDs from user_roles
+      const { data: adminRoleRows } = await supabaseAdmin
+        .from("user_roles")
+        .select("user_id")
+        .in("role", ["admin", "super_admin"]);
+      const adminIds = (adminRoleRows ?? []).map((r: any) => r.user_id);
+
+      // Query push_tokens count where user_id is not in adminIds
+      let query = supabaseAdmin
+        .from("push_tokens")
+        .select("id", { count: "exact", head: true });
+
+      if (adminIds.length > 0) {
+        query = query.not("user_id", "in", `(${adminIds.join(",")})`);
+      }
+
+      const { count, error } = await query;
+      if (error) throw new Error(error.message);
+
+      return { count: count ?? 0 };
+    } catch (e: any) {
+      console.error("[getPushNotificationTargetCount Error]:", e);
+      return { count: 0, error: e.message };
+    }
+  });
+
+export const sendCustomPushNotificationAllUsers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { title: string; message: string }) => {
+    if (!d.title?.trim()) throw new Error("Title is required");
+    if (!d.message?.trim()) throw new Error("Message is required");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    try {
+      const { data: roleRows, error: rolesErr } = await context.supabase
+        .from("user_roles").select("role").eq("user_id", context.userId);
+      if (rolesErr) throw new Error(rolesErr.message);
+      const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
+      if (!isAdmin) throw new Error("Admins only");
+
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+      // Fetch all admin/super-admin IDs from user_roles
+      const { data: adminRoleRows } = await supabaseAdmin
+        .from("user_roles")
+        .select("user_id")
+        .in("role", ["admin", "super_admin"]);
+      const adminIds = (adminRoleRows ?? []).map((r: any) => r.user_id);
+
+      // Query push_tokens where user_id is not in adminIds
+      let query = supabaseAdmin
+        .from("push_tokens")
+        .select("token");
+
+      if (adminIds.length > 0) {
+        query = query.not("user_id", "in", `(${adminIds.join(",")})`);
+      }
+
+      const { data: tokenRows, error: tokenError } = await query;
+      if (tokenError) throw new Error(tokenError.message);
+
+      const tokens = (tokenRows ?? []).map((t: any) => t.token);
+
+      if (tokens.length > 0) {
+        const { sendPushNotification } = await import("@/lib/fcm.server");
+        await sendPushNotification(tokens, data.title, data.message, {
+          type: "custom_announcement",
+        });
+      }
+
+      return { success: true, sentCount: tokens.length };
+    } catch (e: any) {
+      console.error("[sendCustomPushNotificationAllUsers Error]:", e);
+      return { success: false, error: e.message };
+    }
+  });
+
 
 
