@@ -196,18 +196,19 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void handleIncomingIntent(Intent intent) {
-        if (intent != null && intent.hasExtra("url")) {
-            String url = intent.getStringExtra("url");
-            if (url != null && !url.isEmpty()) {
-                Log.d("MainActivity", "Found url extra in intent: " + url);
+        if (intent != null && (intent.hasExtra("routePath") || intent.hasExtra("url"))) {
+            String path = intent.hasExtra("routePath") ? intent.getStringExtra("routePath") : intent.getStringExtra("url");
+            if (path != null && !path.isEmpty()) {
+                Log.d("MainActivity", "Found path extra in intent: " + path);
                 if (getBridge() != null && getBridge().getWebView() != null) {
+                    final String finalPath = path;
                     getBridge().getWebView().post(new Runnable() {
                         @Override
                         public void run() {
                             String serverUrl = getBridge().getServerUrl();
                             String finalUrl;
-                            if (url.startsWith("http://") || url.startsWith("https://")) {
-                                finalUrl = url;
+                            if (finalPath.startsWith("http://") || finalPath.startsWith("https://")) {
+                                finalUrl = finalPath;
                             } else {
                                 try {
                                     java.net.URI uri = new java.net.URI(serverUrl);
@@ -215,9 +216,9 @@ public class MainActivity extends BridgeActivity {
                                     if (uri.getPort() != -1) {
                                         origin += ":" + uri.getPort();
                                     }
-                                    finalUrl = origin + (url.startsWith("/") ? url : "/" + url);
+                                    finalUrl = origin + (finalPath.startsWith("/") ? finalPath : "/" + finalPath);
                                 } catch (Exception e) {
-                                    finalUrl = serverUrl + url;
+                                    finalUrl = serverUrl + finalPath;
                                 }
                             }
                             Log.d("MainActivity", "Loading URL in webview: " + finalUrl);

@@ -8,6 +8,7 @@ const config: CapacitorConfig = {
     // Points directly to the production VPS web server.
     url: "https://chat.playjackpotjungle.com/app/auth",
     cleartext: false,
+    allowNavigation: ["chat.playjackpotjungle.com", "admin.playjackpotjungle.com", "*.playjackpotjungle.com"],
   },
   android: {
     allowMixedContent: false,

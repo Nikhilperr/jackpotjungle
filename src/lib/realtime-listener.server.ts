@@ -132,7 +132,7 @@ export async function initRealtimeListeners() {
               await sendPushNotification(tokens, notificationTitle, notificationBody, {
                 type: "group_chat",
                 group_id: m.group_id,
-                url: `/app/chat/${m.group_id}`,
+                routePath: `/app/chat/${m.group_id}`,
               });
 
             } else if (m.receiver_id) {
@@ -173,7 +173,7 @@ export async function initRealtimeListeners() {
               await sendPushNotification(tokens, senderName, bodyText, {
                 type: "chat",
                 sender_id: m.sender_id,
-                url: `/app/chat/${m.sender_id}`,
+                routePath: `/app/chat/${m.sender_id}`,
               });
             }
           } catch (err) {
@@ -251,7 +251,7 @@ export async function initRealtimeListeners() {
 
               await sendPushNotification(tokens, "Jackpot Jungle Support", bodyText, {
                 type: "page_chat",
-                url: "/app/chat/page",
+                routePath: "/app/chat/page",
               });
             } else {
               // User sending to Page -> Send to all Admins & Super Admins (EXCLUDING the sender themselves)
@@ -293,7 +293,7 @@ export async function initRealtimeListeners() {
 
               await sendPushNotification(tokens, `Support from ${senderName}`, bodyText, {
                 type: "admin_support",
-                url: `/app/admin`,
+                routePath: `/app/admin`,
               });
             }
           } catch (err) {
@@ -357,7 +357,7 @@ export async function initRealtimeListeners() {
               await sendPushNotification(tokens, "Support Call Inquiry", `${callerName} is requesting a support call`, {
                 type: "call",
                 call_id: c.id,
-                url: supportCallUrl,
+                routePath: supportCallUrl,
               });
             } else if (c.callee_id) {
               // Direct user-to-user or admin-to-user call -> Notify callee
@@ -389,7 +389,7 @@ export async function initRealtimeListeners() {
               await sendPushNotification(tokens, title, callDesc, {
                 type: "call",
                 call_id: c.id,
-                url: callUrl,
+                routePath: callUrl,
               });
             }
           } catch (err) {

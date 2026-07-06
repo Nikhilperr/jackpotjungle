@@ -112,17 +112,17 @@ export function useNativePush() {
           // Register tapped action listener
           await PushNotifications.addListener("pushNotificationActionPerformed", (action: any) => {
             console.log("[Push Debug] Action performed:", action);
-            let url = action.notification?.data?.url;
-            if (url) {
+            let path = action.notification?.data?.routePath || action.notification?.data?.url;
+            if (path) {
               const callAction = action.notification?.data?.action;
               const callId = action.notification?.data?.call_id;
               if (callAction && callId) {
-                url = url.includes("?") 
-                  ? `${url}&action=${callAction}&call_id=${callId}` 
-                  : `${url}?action=${callAction}&call_id=${callId}`;
+                path = path.includes("?") 
+                  ? `${path}&action=${callAction}&call_id=${callId}` 
+                  : `${path}?action=${callAction}&call_id=${callId}`;
               }
-              console.log(`[Push Debug] Tapped notification. Redirecting to URL: ${url}`);
-              navigate({ to: url });
+              console.log(`[Push Debug] Tapped notification. Redirecting to: ${path}`);
+              navigate({ to: path });
             }
           });
 
