@@ -204,7 +204,22 @@ public class MainActivity extends BridgeActivity {
                     getBridge().getWebView().post(new Runnable() {
                         @Override
                         public void run() {
-                            String finalUrl = getBridge().getServerUrl() + url;
+                            String serverUrl = getBridge().getServerUrl();
+                            String finalUrl;
+                            if (url.startsWith("http://") || url.startsWith("https://")) {
+                                finalUrl = url;
+                            } else {
+                                try {
+                                    java.net.URI uri = new java.net.URI(serverUrl);
+                                    String origin = uri.getScheme() + "://" + uri.getHost();
+                                    if (uri.getPort() != -1) {
+                                        origin += ":" + uri.getPort();
+                                    }
+                                    finalUrl = origin + (url.startsWith("/") ? url : "/" + url);
+                                } catch (Exception e) {
+                                    finalUrl = serverUrl + url;
+                                }
+                            }
                             Log.d("MainActivity", "Loading URL in webview: " + finalUrl);
                             getBridge().getWebView().loadUrl(finalUrl);
                         }

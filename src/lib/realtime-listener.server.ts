@@ -132,7 +132,7 @@ export async function initRealtimeListeners() {
               await sendPushNotification(tokens, notificationTitle, notificationBody, {
                 type: "group_chat",
                 group_id: m.group_id,
-                url: `/chat/${m.group_id}`,
+                url: `/app/chat/${m.group_id}`,
               });
 
             } else if (m.receiver_id) {
@@ -173,7 +173,7 @@ export async function initRealtimeListeners() {
               await sendPushNotification(tokens, senderName, bodyText, {
                 type: "chat",
                 sender_id: m.sender_id,
-                url: `/chat/${m.sender_id}`,
+                url: `/app/chat/${m.sender_id}`,
               });
             }
           } catch (err) {
@@ -251,7 +251,7 @@ export async function initRealtimeListeners() {
 
               await sendPushNotification(tokens, "Jackpot Jungle Support", bodyText, {
                 type: "page_chat",
-                url: "/chat/page",
+                url: "/app/chat/page",
               });
             } else {
               // User sending to Page -> Send to all Admins & Super Admins (EXCLUDING the sender themselves)
@@ -293,7 +293,7 @@ export async function initRealtimeListeners() {
 
               await sendPushNotification(tokens, `Support from ${senderName}`, bodyText, {
                 type: "admin_support",
-                url: `/admin`,
+                url: `/app/admin`,
               });
             }
           } catch (err) {
@@ -353,7 +353,7 @@ export async function initRealtimeListeners() {
               if (tokens.length === 0) return;
 
               const avatarParam = callerAvatar ? encodeURIComponent(callerAvatar) : "";
-              const supportCallUrl = `/admin?call_id=${c.id}&caller_name=${encodeURIComponent(callerName)}&caller_avatar=${avatarParam}&call_type=${c.call_type}`;
+              const supportCallUrl = `/app/admin?call_id=${c.id}&caller_name=${encodeURIComponent(callerName)}&caller_avatar=${avatarParam}&call_type=${c.call_type}`;
               await sendPushNotification(tokens, "Support Call Inquiry", `${callerName} is requesting a support call`, {
                 type: "call",
                 call_id: c.id,
@@ -384,7 +384,7 @@ export async function initRealtimeListeners() {
               const displayAvatar = (c.context === "page" || callerIsAdmin) ? "/icons/icon-256.webp" : callerAvatar;
 
               const avatarParam = displayAvatar ? encodeURIComponent(displayAvatar) : "";
-              const callUrl = ((c.context === "page" || callerIsAdmin) ? "/chat/page" : "/chat") + 
+              const callUrl = ((c.context === "page" || callerIsAdmin) ? "/app/chat/page" : "/app/chat") + 
                 `?call_id=${c.id}&caller_name=${encodeURIComponent(title)}&caller_avatar=${avatarParam}&call_type=${c.call_type}`;
               await sendPushNotification(tokens, title, callDesc, {
                 type: "call",

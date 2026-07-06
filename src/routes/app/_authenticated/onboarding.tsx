@@ -505,7 +505,7 @@ function OnboardingPage() {
                   const isProdDomain = hostname.endsWith("playjackpotjungle.com");
                   if (Capacitor.isNativePlatform()) {
                     console.log("[SignOut] Native platform - hard redirect on same origin.");
-                    window.location.href = window.location.origin + "/app/auth?logout=true";
+                    window.location.href = window.location.origin + "/app/auth";
                     return;
                   }
 

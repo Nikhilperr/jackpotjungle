@@ -358,7 +358,7 @@ function AdminPage() {
     console.log("[SignOut] Hostname:", hostname, "isProdDomain:", isProdDomain);
     if (Capacitor.isNativePlatform()) {
       console.log("[SignOut] Native platform - hard redirect on same origin.");
-      window.location.href = window.location.origin + "/app/auth?logout=true";
+      window.location.href = window.location.origin + "/app/auth";
       return;
     }
 
