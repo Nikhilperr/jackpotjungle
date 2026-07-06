@@ -312,6 +312,7 @@ function AdminPage() {
     if (typeof window !== "undefined") {
       console.log("[SignOut] Clearing local storage keys and cookies.");
       localStorage.removeItem("profile_complete");
+      localStorage.removeItem("jj_temp_auth_verification");
       setVerifiedStatus(false);
     }
     

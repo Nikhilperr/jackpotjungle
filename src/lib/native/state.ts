@@ -50,7 +50,7 @@ export function initLifecycleMonitoring(router: any) {
   router.subscribe((state: any) => {
     const path = state.location.pathname;
     // Don't restore auth pages or root redirects
-    if (path && !path.startsWith("/auth") && path !== "/") {
+    if (path && !path.includes("/auth") && !path.includes("/reset-password") && path !== "/") {
       localStorage.setItem(LAST_ROUTE_KEY, path);
     }
   });

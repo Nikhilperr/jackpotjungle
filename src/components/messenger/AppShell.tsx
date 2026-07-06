@@ -84,6 +84,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined") {
       console.log("[SignOut] Clearing local storage keys and cookies.");
       localStorage.removeItem("profile_complete");
+      localStorage.removeItem("jj_temp_auth_verification");
       setVerifiedStatus(false);
     }
     
@@ -125,7 +126,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
     const isProdDomain = hostname.endsWith("playjackpotjungle.com");
     console.log("[SignOut] Hostname:", hostname, "isProdDomain:", isProdDomain);
-    if (isProdDomain) {
+    if (isProdDomain && !Capacitor.isNativePlatform()) {
       console.log("[SignOut] Redirecting window location to chat domain auth.");
       window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
     } else {

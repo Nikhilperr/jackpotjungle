@@ -194,10 +194,10 @@ function AuthPage() {
       console.error("Google Auth error details:", err);
       // Suppress user cancellation crashes so they do not show ugly errors
       if (err.message?.includes("cancel") || err.message?.includes("12501")) {
-        setGoogleBusy(false);
         return;
       }
       toast.error(err.message ?? "Google authentication failed.");
+    } finally {
       setGoogleBusy(false);
     }
   }
@@ -300,6 +300,47 @@ function LoginForm({
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [resendCountdown, setResendCountdown] = useState(0);
+
+  // Load state on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("jj_temp_auth_verification");
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.verificationRequired) {
+          setIdentifier(data.identifier || "");
+          setVerificationRequired(true);
+          setVerificationMethod(data.verificationMethod || null);
+          setHas2FaFactor(!!data.has2FaFactor);
+          setEmailOtpSent(!!data.emailOtpSent);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load temporary auth verification state:", e);
+    }
+  }, []);
+
+  // Save state on change
+  useEffect(() => {
+    try {
+      if (verificationRequired) {
+        localStorage.setItem(
+          "jj_temp_auth_verification",
+          JSON.stringify({
+            identifier,
+            verificationRequired,
+            verificationMethod,
+            has2FaFactor,
+            emailOtpSent,
+          })
+        );
+      } else {
+        localStorage.removeItem("jj_temp_auth_verification");
+      }
+    } catch (e) {
+      console.warn("Failed to save temporary auth verification state:", e);
+    }
+  }, [identifier, verificationRequired, verificationMethod, has2FaFactor, emailOtpSent]);
 
   useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -442,6 +483,9 @@ function LoginForm({
       } catch {}
 
       toast.success("Welcome back!");
+      try {
+        localStorage.removeItem("jj_temp_auth_verification");
+      } catch {}
       
       // Redirect
       const sessionRes = await supabase.auth.getSession();
@@ -505,6 +549,9 @@ function LoginForm({
       } catch {}
 
       toast.success("Verified. Welcome back!");
+      try {
+        localStorage.removeItem("jj_temp_auth_verification");
+      } catch {}
       
       // Redirect
       const sessionRes = await supabase.auth.getSession();

@@ -492,6 +492,9 @@ function OnboardingPage() {
                     }
                   }
                   await supabase.auth.signOut();
+                  try {
+                    localStorage.removeItem("jj_temp_auth_verification");
+                  } catch {}
                   await new Promise((resolve) => setTimeout(resolve, 150));
                   
                   const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
