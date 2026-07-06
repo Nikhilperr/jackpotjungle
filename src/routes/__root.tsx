@@ -218,13 +218,28 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+    let lastUserId: string | null = null;
+
+    // Set initial lastUserId from current session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      lastUserId = session?.user?.id ?? null;
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
         toast.info("Password recovery link detected. Set your new password.");
         navigate({ to: "/reset-password" });
         return;
       }
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
+
+      const currentUserId = session?.user?.id ?? null;
+      if (currentUserId === lastUserId && event !== "SIGNED_OUT") {
+        // Skip invalidation if the user session has not actually changed
+        return;
+      }
+
+      lastUserId = currentUserId;
       router.invalidate();
       if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
     });

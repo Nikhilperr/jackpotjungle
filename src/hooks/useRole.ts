@@ -9,21 +9,46 @@ export function useRole() {
 
   useEffect(() => {
     let mounted = true;
-    async function load(showLoading = false) {
+    let lastUserId: string | null = null;
+    let hasLoaded = false;
+
+    async function load(userId: string | null, showLoading = false) {
+      if (userId === lastUserId && hasLoaded) return;
+      lastUserId = userId;
+      hasLoaded = true;
+
       if (showLoading && mounted) setLoading(true);
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) { if (mounted) { setRoles([]); setLoading(false); } return; }
+
+      if (!userId) { 
+        if (mounted) { 
+          setRoles([]); 
+          setLoading(false); 
+        } 
+        return; 
+      }
+
       const { data } = await supabase
         .from("user_roles")
         .select("role")
-        .eq("user_id", u.user.id);
+        .eq("user_id", userId);
       if (!mounted) return;
       setRoles((data ?? []).map((r) => r.role as AppRole));
       setLoading(false);
     }
-    load(true);
-    const { data: sub } = supabase.auth.onAuthStateChange((e) => {
-      if (e === "SIGNED_IN" || e === "SIGNED_OUT") load(true);
+
+    // Initial load
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (mounted) {
+        load(session?.user?.id ?? null, true);
+      }
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((e, session) => {
+      if (e === "SIGNED_IN" || e === "SIGNED_OUT" || e === "USER_UPDATED") {
+        if (mounted) {
+          load(session?.user?.id ?? null, false);
+        }
+      }
     });
     return () => { mounted = false; sub.subscription.unsubscribe(); };
   }, []);
