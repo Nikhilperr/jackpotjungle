@@ -13,6 +13,7 @@ import { AuthInput } from "@/components/auth/AuthInput";
 import { AuthButton } from "@/components/auth/AuthButton";
 import { PasswordStrength } from "@/components/auth/PasswordStrength";
 import { Capacitor } from "@capacitor/core";
+import { registerBackAction } from "@/lib/native";
 
 import { z } from "zod";
 
@@ -48,6 +49,18 @@ function AuthPage() {
   const [googleBusy, setGoogleBusy] = useState(false);
 
   const isLogoutRequest = logout === "true" || logout === true;
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const unregister = registerBackAction(() => {
+      if (mode === "login" || mode === "signup") {
+        setMode("welcome");
+        return true;
+      }
+      return false;
+    }, 10);
+    return () => unregister();
+  }, [mode]);
 
   useEffect(() => {
     if (!loading && !user && typeof window !== "undefined") {
@@ -341,6 +354,21 @@ function LoginForm({
       console.warn("Failed to save temporary auth verification state:", e);
     }
   }, [identifier, verificationRequired, verificationMethod, has2FaFactor, emailOtpSent]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const unregister = registerBackAction(() => {
+      if (verificationRequired) {
+        supabase.auth.signOut().catch(() => {});
+        setVerificationRequired(false);
+        setVerificationMethod(null);
+        setOtpCode("");
+        return true;
+      }
+      return false;
+    }, 20);
+    return () => unregister();
+  }, [verificationRequired]);
 
   useEffect(() => {
     if (resendCountdown <= 0) return;

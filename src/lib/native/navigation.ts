@@ -63,12 +63,12 @@ export function initBackButtonHandler(router: any) {
     // 2. Check TanStack Router route state. If nested, navigate back.
     const currentPath = router.state.location.pathname;
     
-    if (currentPath.startsWith("/friends") || currentPath.startsWith("/profile")) {
-      router.navigate({ to: "/chat" });
+    if (currentPath.startsWith("/app/friends") || currentPath.startsWith("/app/profile") || currentPath.startsWith("/friends") || currentPath.startsWith("/profile")) {
+      router.navigate({ to: "/app/chat" });
       return;
     }
 
-    const isRootRoute = ["/", "/chat", "/auth"].includes(currentPath);
+    const isRootRoute = ["/", "/chat", "/app/chat", "/auth", "/app/auth"].includes(currentPath);
 
     if (!isRootRoute) {
       router.history.back();

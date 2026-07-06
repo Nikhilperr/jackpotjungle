@@ -2,6 +2,8 @@ import { isNative, getSafePlugin } from "./utils";
 import { initBackButtonHandler } from "./navigation";
 import { initNetworkMonitoring } from "./network";
 import { initLifecycleMonitoring } from "./state";
+export { registerBackAction } from "./navigation";
+export { isNative } from "./utils";
 
 // Stub implementation for SplashScreen plugin
 const SplashScreenStub = {
