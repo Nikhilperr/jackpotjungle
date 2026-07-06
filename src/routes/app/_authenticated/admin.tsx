@@ -353,7 +353,7 @@ function AdminPage() {
     const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
     const isProdDomain = hostname.endsWith("playjackpotjungle.com");
     console.log("[SignOut] Hostname:", hostname, "isProdDomain:", isProdDomain);
-    if (isProdDomain) {
+    if (isProdDomain && !Capacitor.isNativePlatform()) {
       console.log("[SignOut] Redirecting window location to chat domain auth.");
       window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
     } else {

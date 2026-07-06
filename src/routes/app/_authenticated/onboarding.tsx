@@ -496,7 +496,7 @@ function OnboardingPage() {
                   
                   const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
                   const isProdDomain = hostname.endsWith("playjackpotjungle.com");
-                  if (isProdDomain) {
+                  if (isProdDomain && !Capacitor.isNativePlatform()) {
                     window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
                   } else {
                     navigate({ to: "/app/auth", search: { logout: "true" }, replace: true });

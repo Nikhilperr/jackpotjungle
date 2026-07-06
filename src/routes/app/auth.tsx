@@ -113,7 +113,7 @@ function AuthPage() {
 
         console.log("[AuthRedirect] Timer fired. hostname:", hostname, "isProdDomain:", isProdDomain, "isAdmin:", isAdmin);
 
-        if (isProdDomain) {
+        if (isProdDomain && !Capacitor.isNativePlatform()) {
           const sessionRes = await supabase.auth.getSession();
           const session = sessionRes.data.session;
           const hashParams = session ? `#access_token=${session.access_token}&refresh_token=${session.refresh_token}` : "";

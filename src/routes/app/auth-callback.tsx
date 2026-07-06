@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { Capacitor } from "@capacitor/core";
 
 export const Route = createFileRoute("/app/auth-callback")({
   component: AuthCallbackPage,
@@ -13,7 +14,8 @@ function AuthCallbackPage() {
 
   useEffect(() => {
     // 1. Mobile App Deep Link Redirection Check
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isNative = Capacitor.isNativePlatform();
+    const isMobile = !isNative && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     if (isMobile) {
       const searchAndHash = window.location.search + window.location.hash;
       const isAndroid = /Android/i.test(navigator.userAgent);

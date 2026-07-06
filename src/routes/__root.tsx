@@ -17,6 +17,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { runAutoDatabaseMigrations } from "@/lib/admin-super.functions";
+import { Capacitor } from "@capacitor/core";
 
 function NotFoundComponent() {
   return (
@@ -96,6 +97,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     const sessionRes = await supabase.auth.getSession();
     const session = sessionRes.data.session;
     const hashParams = session ? `#access_token=${session.access_token}&refresh_token=${session.refresh_token}` : "";
+
+    if (Capacitor.isNativePlatform()) {
+      if (pathname === "/" || (!pathname.startsWith("/app/") && !isFrameworkOrAssetPath(pathname))) {
+        if (session?.user) {
+          const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id);
+          const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+          throw redirect({ to: isAdmin ? "/app/admin" : "/app/chat", search: location.search });
+        } else {
+          throw redirect({ to: "/app/auth", search: location.search });
+        }
+      }
+      return;
+    }
 
     // Subdomain routing rules
     if (host.startsWith("admin.")) {
