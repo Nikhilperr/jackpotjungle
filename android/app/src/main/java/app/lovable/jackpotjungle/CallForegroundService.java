@@ -69,7 +69,10 @@ public class CallForegroundService extends Service {
         if (body == null || body.isEmpty()) {
             body = "Someone is calling you";
         }
-        String url = extras.getString("url");
+        String url = extras.getString("routePath");
+        if (url == null || url.isEmpty()) {
+            url = extras.getString("url");
+        }
 
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
@@ -112,7 +115,7 @@ public class CallForegroundService extends Service {
         mainIntent.putExtras(extras);
         mainIntent.putExtra("google.message_id", "call_" + System.currentTimeMillis());
         if (url != null) {
-            mainIntent.putExtra("url", url);
+            mainIntent.putExtra("routePath", url);
         }
         PendingIntent pendingIntent = PendingIntent.getActivity(this, requestID, mainIntent, pendingIntentFlags);
 
@@ -123,7 +126,7 @@ public class CallForegroundService extends Service {
         answerIntent.putExtra("google.message_id", "call_answer_" + System.currentTimeMillis());
         answerIntent.putExtra("action", "accept");
         if (url != null) {
-            answerIntent.putExtra("url", url);
+            answerIntent.putExtra("routePath", url);
         }
         PendingIntent answerPendingIntent = PendingIntent.getActivity(this, requestID + 1, answerIntent, pendingIntentFlags);
 
@@ -134,7 +137,7 @@ public class CallForegroundService extends Service {
         declineIntent.putExtra("google.message_id", "call_decline_" + System.currentTimeMillis());
         declineIntent.putExtra("action", "decline");
         if (url != null) {
-            declineIntent.putExtra("url", url);
+            declineIntent.putExtra("routePath", url);
         }
         PendingIntent declinePendingIntent = PendingIntent.getActivity(this, requestID + 2, declineIntent, pendingIntentFlags);
 
