@@ -519,6 +519,27 @@ function ChatView() {
     return [];
   });
   const [calls, setCalls] = useState<CallRow[]>([]);
+  const [prevFriendId, setPrevFriendId] = useState(friendId);
+  if (friendId !== prevFriendId) {
+    setPrevFriendId(friendId);
+    const myId = localStorage.getItem("jj_me_id") || meId;
+    if (friendId.startsWith("group-")) {
+      const gId = friendId.substring(6);
+      const cachedDetails = getCachedGroupDetails(gId);
+      const cachedGroupMsgs = getCachedGroupMessages(gId);
+      setGroup(cachedDetails || null);
+      setFriend(null);
+      setMessages(cachedGroupMsgs || []);
+    } else {
+      const cachedProfile = getCachedProfile(friendId);
+      const cachedMsgs = myId ? getCachedMessages(myId, friendId) : [];
+      setFriend(cachedProfile || null);
+      setGroup(null);
+      setMessages(cachedMsgs || []);
+    }
+    setCalls([]);
+    setHasOlderMessages(false);
+  }
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);

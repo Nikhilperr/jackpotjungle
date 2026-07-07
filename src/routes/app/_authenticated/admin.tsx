@@ -642,6 +642,17 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
   const [shareOpen, setShareOpen] = useState(false);
 
   const [messages, setMessages] = useState<any[]>([]);
+  const [prevActiveId, setPrevActiveId] = useState<string | null>(activeId);
+  if (activeId !== prevActiveId) {
+    setPrevActiveId(activeId);
+    if (activeId) {
+      const cacheKey = `admin-page-${activeId}`;
+      const cached = getCachedPageMessages(cacheKey);
+      setMessages(cached || []);
+    } else {
+      setMessages([]);
+    }
+  }
   const [selectedMemberProfile, setSelectedMemberProfile] = useState<{ id: string; username: string; avatar_url: string | null } | null>(null);
 
   const [shareProfileOpen, setShareProfileOpen] = useState(false);
@@ -1787,6 +1798,20 @@ function TeamChatView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNa
   const [shareOpen, setShareOpen] = useState(false);
 
   const [messages, setMessages] = useState<any[]>([]);
+  const [prevActiveId, setPrevActiveId] = useState<string | null>(activeId);
+  if (activeId !== prevActiveId) {
+    setPrevActiveId(activeId);
+    if (activeId) {
+      const isGroup = activeId.startsWith("group-");
+      const cacheKey = isGroup
+        ? `admin-group-${activeId}`
+        : `admin-teamchat-${activeId}`;
+      const cached = getCachedPageMessages(cacheKey);
+      setMessages(cached || []);
+    } else {
+      setMessages([]);
+    }
+  }
   const [selectedMemberProfile, setSelectedMemberProfile] = useState<{ id: string; username: string; avatar_url: string | null } | null>(null);
 
   const [shareProfileOpen, setShareProfileOpen] = useState(false);
