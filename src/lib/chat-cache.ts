@@ -210,3 +210,37 @@ export function prefetchConversation(meId: string, friendId: string) {
       .catch(() => inflight.delete(key));
   }
 }
+
+// ─── Draft message persistence ────────────────────────────────────────────────
+/**
+ * Returns the persisted unsent draft for the given conversation (friendId or
+ * group-<id>). Returns empty string when no draft exists.
+ */
+export function getDraft(conversationId: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(`jj_draft_${conversationId}`) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** Persist the current draft for a conversation. */
+export function setDraft(conversationId: string, text: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (text) {
+      localStorage.setItem(`jj_draft_${conversationId}`, text);
+    } else {
+      localStorage.removeItem(`jj_draft_${conversationId}`);
+    }
+  } catch {}
+}
+
+/** Remove the draft after a message is successfully sent. */
+export function clearDraft(conversationId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(`jj_draft_${conversationId}`);
+  } catch {}
+}

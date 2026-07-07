@@ -98,7 +98,17 @@ function parseUserAgent(ua: string | null): string {
 
 function ProfilePage() {
   const { user, loading: authLoading } = useAuth();
-  const [profile, setProfile] = useState<Profile | null>(null);
+  // Load profile instantly from cache; the useEffect below will refresh from the server.
+  const [profile, setProfile] = useState<Profile | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = localStorage.getItem("jj_cached_my_profile");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [username, setUsername] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -381,11 +391,17 @@ function ProfilePage() {
       .eq("id", user.id).maybeSingle()
       .then(({ data }) => {
         if (!mounted || !data) return;
-        setProfile(data as unknown as Profile);
+        const profileData = data as unknown as Profile;
+        setProfile(profileData);
         setUsername((data as any).username);
         setFirstName((data as any).first_name ?? "");
         setLastName((data as any).last_name ?? "");
         setNotifEnabled((data as any).notif_enabled ?? true);
+        // Persist to localStorage so the Profile tab renders instantly next visit
+        try {
+          localStorage.setItem("jj_cached_my_profile", JSON.stringify(profileData));
+        } catch {}
+
       });
 
     // Realtime listener for balance adjustments from admin panel
@@ -702,7 +718,7 @@ function ProfilePage() {
     printWindow.document.close();
   };
 
-  if (authLoading || !profile) {
+  if (authLoading && !profile) {
     return (
       <AppShell>
         <div className="h-full flex items-center justify-center">

@@ -1,8 +1,31 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Session } from "@supabase/supabase-js";
 
+// ─── Shared startup session cache ────────────────────────────────────────────
+// On cold boot multiple callers (useAuth, useRole, route guards) previously
+// each called supabase.auth.getSession() in parallel, causing 4-5 redundant
+// WebView storage reads and JWT validation round-trips. This shared Promise
+// resolves exactly once and is reused by every caller.
+let _sharedSessionPromise: Promise<Session | null> | null = null;
+
+export function getSharedInitialSession(): Promise<Session | null> {
+  if (!_sharedSessionPromise) {
+    _sharedSessionPromise = supabase.auth
+      .getSession()
+      .then(({ data }) => data.session ?? null)
+      .catch(() => null);
+  }
+  return _sharedSessionPromise;
+}
+
+/** Call on SIGNED_OUT so the next login triggers a fresh lookup. */
+export function clearSharedSessionCache() {
+  _sharedSessionPromise = null;
+}
+
 export async function waitInitialSession(timeoutMs = 4000): Promise<Session | null> {
   if (typeof window !== "undefined") {
+
     const hash = window.location.hash;
     if (hash.includes("access_token=") && hash.includes("refresh_token=")) {
       const cleanHash = hash.startsWith("#") ? hash.substring(1) : hash;

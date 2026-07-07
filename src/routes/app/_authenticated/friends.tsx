@@ -24,13 +24,36 @@ type RequestRow = {
   direction: "in" | "out";
 };
 
+const FRIENDS_CACHE_KEY = "jj_cached_friends";
+const REQUESTS_CACHE_KEY = "jj_cached_friend_requests";
+
+function readCache<T>(key: string): T | null {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
 function FriendsPage() {
   const [meId, setMeId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<Profile | null>(null);
-  const [requests, setRequests] = useState<RequestRow[]>([]);
-  const [friends, setFriends] = useState<Profile[]>([]);
+  // Initialise from cache so the page renders instantly without a spinner
+  const [requests, setRequests] = useState<RequestRow[]>(() =>
+    typeof window !== "undefined" ? readCache<RequestRow[]>(REQUESTS_CACHE_KEY) ?? [] : []
+  );
+  const [friends, setFriends] = useState<Profile[]>(() =>
+    typeof window !== "undefined" ? readCache<Profile[]>(FRIENDS_CACHE_KEY) ?? [] : []
+  );
   const navigate = useNavigate();
 
   async function load(myId: string) {
@@ -48,20 +71,28 @@ function FriendsPage() {
         .in("id", ids);
       (profs ?? []).forEach((p) => profMap.set(p.id, p as Profile));
     }
-    setRequests((reqs ?? []).map((r) => ({
+    const mappedRequests = (reqs ?? []).map((r) => ({
       ...r,
       direction: r.sender_id === myId ? "out" : "in",
       profile: profMap.get(r.sender_id === myId ? r.receiver_id : r.sender_id) ?? null,
-    })));
+    })) as RequestRow[];
+    setRequests(mappedRequests);
+    writeCache(REQUESTS_CACHE_KEY, mappedRequests);
 
     const { data: fr } = await supabase.from("friendships").select("user_a, user_b");
     const fids = (fr ?? []).map((f) => (f.user_a === myId ? f.user_b : f.user_a));
     if (fids.length > 0) {
       const { data: fprofs } = await supabase
         .from("profiles").select("id, username, avatar_url, friend_code").in("id", fids);
-      setFriends((fprofs as Profile[]) ?? []);
-    } else setFriends([]);
+      const friendList = (fprofs as Profile[]) ?? [];
+      setFriends(friendList);
+      writeCache(FRIENDS_CACHE_KEY, friendList);
+    } else {
+      setFriends([]);
+      writeCache(FRIENDS_CACHE_KEY, []);
+    }
   }
+
 
   useEffect(() => {
     let mounted = true;

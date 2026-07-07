@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getSharedInitialSession } from "@/lib/auth-wait";
 
 export type AppRole = "user" | "admin" | "super_admin";
 
@@ -36,12 +37,14 @@ export function useRole() {
       setLoading(false);
     }
 
-    // Initial load
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Re-use the shared initial session Promise to avoid a duplicate getSession()
+    // network/storage read during cold boot.
+    getSharedInitialSession().then((session) => {
       if (mounted) {
         load(session?.user?.id ?? null, true);
       }
     });
+
 
     const { data: sub } = supabase.auth.onAuthStateChange((e, session) => {
       if (e === "SIGNED_IN" || e === "SIGNED_OUT" || e === "USER_UPDATED") {

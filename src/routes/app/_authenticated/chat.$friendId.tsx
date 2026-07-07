@@ -33,7 +33,11 @@ import {
   getCachedMessages,
   setCachedProfile,
   setCachedMessages,
+  getDraft,
+  setDraft,
+  clearDraft,
 } from "@/lib/chat-cache";
+
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 
 function getCachedGroupDetails(groupId: string) {
@@ -539,7 +543,19 @@ function ChatView() {
   const myUsername = user?.user_metadata?.username || user?.email?.split("@")[0] || "Someone";
 
   const { startCall } = useCalls();
-  const [draft, setDraft] = useState("");
+  // Restore any unsent draft from localStorage so users don't lose their text
+  // when they navigate away and come back.
+  const [draft, setDraftState] = useState(() =>
+    typeof window !== "undefined" ? getDraft(friendId) : ""
+  );
+
+  // Wrapper: keep state and localStorage in sync
+  const handleDraftChange = (val: string) => {
+    setDraftState(val);
+    setDraft(friendId, val);
+  };
+
+
 
   const [selectedMentionProfile, setSelectedMentionProfile] = useState<any>(null);
   const [mentionOptionsOpen, setMentionOptionsOpen] = useState(false);
@@ -652,7 +668,7 @@ function ChatView() {
       const beforeAt = val.substring(0, lastAt);
       const afterCursor = val.substring(selectionStart);
       const nextText = `${beforeAt}@${selectedUsername} ${afterCursor}`;
-      setDraft(nextText);
+      handleDraftChange(nextText);
       setMentionSearch(null);
       setTimeout(() => {
         el.focus();
@@ -1986,7 +2002,7 @@ function ChatView() {
   }
 
   function onDraftChange(v: string, selectionStart?: number) {
-    setDraft(v);
+    handleDraftChange(v);
     if (isGroup && selectionStart !== undefined) {
       handleMentionCheck(v, selectionStart);
     }
@@ -2037,7 +2053,8 @@ function ChatView() {
     e.preventDefault();
     if (!draft.trim() || !meId) return;
     const content = draft.trim();
-    setDraft("");
+    setDraftState("");
+    clearDraft(friendId);
     setShowEmoji(false);
 
     if (editingMessageId) {
