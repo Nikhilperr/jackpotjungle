@@ -1080,11 +1080,12 @@ function ChatView() {
         (m.sender_id === currentFriendId && m.receiver_id === meId)
       );
     };
-
     const msgChannel = supabase
       .channel(`chat-active-friend-global-${rand}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
         const m = payload.new as any;
+        if (!m) return;
+        if (!m.group_id && m.sender_id !== meId && m.receiver_id !== meId) return;
         const involves = involvesGroupMsg(m);
 
         if (involves) {
@@ -1142,6 +1143,8 @@ function ChatView() {
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
         const m = payload.new as any;
+        if (!m) return;
+        if (!m.group_id && m.sender_id !== meId && m.receiver_id !== meId) return;
         const involves = involvesGroupMsg(m);
 
         if (involves) {

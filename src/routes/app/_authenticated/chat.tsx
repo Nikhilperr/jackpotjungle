@@ -489,6 +489,7 @@ function ChatLayout() {
         if (!mounted) return;
         const m = payload.new as any;
         if (!m || !m.sender_id || (!m.receiver_id && !m.group_id)) return;
+        if (!m.group_id && m.sender_id !== meId && m.receiver_id !== meId) return;
         const isGroup = !!m.group_id;
         const isMine = m.sender_id === meId;
         const convoKey = isGroup ? `group-${m.group_id}` : (isMine ? m.receiver_id : m.sender_id);
