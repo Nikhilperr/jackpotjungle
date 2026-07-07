@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getAIResponse } from "@/lib/ai.functions";
 
 interface AIMessage {
   id: string;
@@ -205,7 +206,7 @@ Type a message below to test the instant conversation history and interface feed
   };
 
   // 6. Actions: Send User Message
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim() || !activeConvId) return;
 
@@ -216,13 +217,18 @@ Type a message below to test the instant conversation history and interface feed
       createdAt: new Date().toISOString(),
     };
 
-    // Update active conversation
+    const currentConv = conversations.find((c) => c.id === activeConvId);
+    if (!currentConv) return;
+
+    const updatedMessages = [...currentConv.messages, userMsg];
+
+    // Update active conversation locally
     const nextConvs = conversations.map((c) => {
       if (c.id === activeConvId) {
         return {
           ...c,
           title: c.messages.length === 0 ? userMsg.content.substring(0, 30) : c.title,
-          messages: [...c.messages, userMsg],
+          messages: updatedMessages,
         };
       }
       return c;
@@ -232,68 +238,75 @@ Type a message below to test the instant conversation history and interface feed
     setInputMessage("");
     setIsGenerating(true);
 
-    // Simulate AI response (Mock Generation)
-    setTimeout(() => {
-      const answers = [
-        `I have parsed your request. Because we are in **Phase 2 (UI Foundation Only)**, I am outputting this placeholder response. 
+    try {
+      const result = await getAIResponse({ messages: updatedMessages });
 
-Once Phase 3 is approved, I will connect directly to OpenAI/Gemini models and expose specific dashboard audit tools:
-- Wallet ledger reconciliation
-- Support queue summaries
-- Anomalous deposit flags
-- Broadcast composition helper
+      if (result.error) {
+        const errorMsg: AIMessage = {
+          id: `assistant-msg-${Date.now()}`,
+          role: "assistant",
+          content: `⚠️ **System Error:** ${result.error}`,
+          createdAt: new Date().toISOString(),
+        };
 
-Here is a demo code block of how system health logs will be inspected:
-\`\`\`json
-{
-  "status": "healthy",
-  "realtime": "connected",
-  "supabase_channels": 4,
-  "push_notifications": "active"
-}
-\`\`\`
-Let me know if you would like me to draft a mock report template.`,
-        `Understood. I am prepared to act as your administrative assistant. Here is an overview of the tools that will be integrated in Phase 3:
+        const errorConvs = nextConvs.map((c) => {
+          if (c.id === activeConvId) {
+            return {
+              ...c,
+              messages: [...c.messages, errorMsg],
+            };
+          }
+          return c;
+        });
+        saveConversations(errorConvs);
+      } else if (result.content) {
+        const assistantMsg: AIMessage = {
+          id: `assistant-msg-${Date.now()}`,
+          role: "assistant",
+          content: result.content,
+          createdAt: new Date().toISOString(),
+        };
 
-| Tool Identifier | Action Target | Security Level |
-| :--- | :--- | :--- |
-| \`audit_wallet\` | User Transactions | Admin |
-| \`send_broadcast\` | Marketing Lists | Admin |
-| \`block_user\` | Profile States | Super Admin |
-| \`generate_csv\` | Profit Tables | Super Admin |
+        const finalConvs = nextConvs.map((c) => {
+          if (c.id === activeConvId) {
+            return {
+              ...c,
+              messages: [...c.messages, assistantMsg],
+            };
+          }
+          return c;
+        });
+        saveConversations(finalConvs);
 
-Let me know what you would like to test next!`,
-      ];
-
-      const chosen = answers[Math.floor(Math.random() * answers.length)];
-      const assistantMsg: AIMessage = {
+        const estPromptTokens = Math.ceil(updatedMessages.reduce((acc, m) => acc + m.content.length, 0) / 4);
+        const estCompletionTokens = Math.ceil(result.content.length / 4);
+        setTokenUsage((prev) => ({
+          promptTokens: prev.promptTokens + estPromptTokens,
+          completionTokens: prev.completionTokens + estCompletionTokens,
+          total: prev.total + estPromptTokens + estCompletionTokens,
+        }));
+      }
+    } catch (err: any) {
+      const networkErrorMsg: AIMessage = {
         id: `assistant-msg-${Date.now()}`,
         role: "assistant",
-        content: chosen,
+        content: `⚠️ **Network Error:** Failed to query server endpoint. ${err.message || "Please check your network connection."}`,
         createdAt: new Date().toISOString(),
       };
 
-      // Add to conversations
-      const updatedConvs = nextConvs.map((c) => {
+      const errorConvs = nextConvs.map((c) => {
         if (c.id === activeConvId) {
           return {
             ...c,
-            messages: [...c.messages, assistantMsg],
+            messages: [...c.messages, networkErrorMsg],
           };
         }
         return c;
       });
-
-      saveConversations(updatedConvs);
+      saveConversations(errorConvs);
+    } finally {
       setIsGenerating(false);
-
-      // Add mock tokens
-      setTokenUsage((prev) => ({
-        promptTokens: prev.promptTokens + 12,
-        completionTokens: prev.completionTokens + 85,
-        total: prev.total + 97,
-      }));
-    }, 1200);
+    }
   };
 
   // Copy to clipboard helper
