@@ -69,7 +69,9 @@ import {
   FileText,
   PlusCircle,
   MinusCircle,
+  Sparkles,
 } from "lucide-react";
+import { AIWorkspace } from "@/components/admin/AIWorkspace";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -143,7 +145,8 @@ type Tab =
   | "updates"
   | "monitor"
   | "monthly_profit"
-  | "push_notifications";
+  | "push_notifications"
+  | "aichat";
 
 type AdminSearch = {
   c?: string;
@@ -158,7 +161,8 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
     const validTabs: Tab[] = [
       "inbox", "teamchat", "quickreplies", "tags", "broadcasts", "followups",
       "autoresp", "referrals", "logs", "users", "admins", "super", "profile",
-      "rules", "updates", "monitor", "monthly_profit", "push_notifications"
+      "rules", "updates", "monitor", "monthly_profit", "push_notifications",
+      "aichat"
     ];
     const incomingTab = search.tab as Tab;
     return {
@@ -202,6 +206,21 @@ function AdminPage() {
   const { isAdmin, isSuperAdmin, loading } = useRole();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [adminName, setAdminName] = useState("Admin");
+  useEffect(() => {
+    if (user?.id) {
+      supabase
+        .from("profiles")
+        .select("first_name, username")
+        .eq("id", user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            setAdminName(data.first_name || data.username || "Admin");
+          }
+        });
+    }
+  }, [user]);
   const searchParams = Route.useSearch();
   const tab = searchParams.tab || "inbox";
   const setTab = (newTab: Tab) => {
@@ -406,6 +425,7 @@ function AdminPage() {
       <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
         <p className="px-3 pt-1 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Business</p>
         <SideBtn active={tab === "inbox"} onClick={() => selectTab("inbox")} icon={Inbox} label="Page Inbox" />
+        <SideBtn active={tab === "aichat"} onClick={() => selectTab("aichat")} icon={Sparkles} label="AI Chat" />
         <SideBtn active={tab === "teamchat"} onClick={() => selectTab("teamchat")} icon={MessageSquare} label="Admin Team Chat" />
         <SideBtn active={tab === "quickreplies"} onClick={() => selectTab("quickreplies")} icon={MessageSquareQuote} label="Quick Replies" />
         <SideBtn active={tab === "tags"} onClick={() => selectTab("tags")} icon={TagIcon} label="Tags" />
@@ -514,6 +534,13 @@ function AdminPage() {
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "profile" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={user.id} email={user.email ?? null} /></ScrollWrap>
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "aichat" ? "" : "hidden"}`}>
+          <AIWorkspace
+            onBackToDashboard={() => selectTab("inbox")}
+            onBackToPageChats={() => selectTab("inbox")}
+            adminName={adminName}
+          />
         </div>
       </main>
 
