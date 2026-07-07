@@ -33,6 +33,7 @@ import {
   getCachedMessages,
   setCachedProfile,
   setCachedMessages,
+  invalidateMessageCache,
   getDraft,
   setDraft,
   clearDraft,
@@ -749,8 +750,14 @@ function ChatView() {
     isInitialLoadRef.current = true;
 
     if (isGroup) {
-      const cachedDetails = getCachedGroupDetails(groupId);
-      const cachedGroupMsgs = getCachedGroupMessages(groupId);
+      let cachedGroupMsgs = getCachedGroupMessages(groupId);
+      if (cachedGroupMsgs) {
+        const sample = cachedGroupMsgs[0];
+        if (sample && sample.group_id !== groupId) {
+          localStorage.removeItem(`jj_group_msgs_${groupId}`);
+          cachedGroupMsgs = null;
+        }
+      }
       if (cachedDetails) {
         setGroup(cachedDetails);
         setEditingGroupName(cachedDetails.name);
@@ -890,7 +897,23 @@ function ChatView() {
 
     // ── Direct Chat Hydration (unchanged direct chat flow) ───────────
     const cachedProfile = getCachedProfile(friendId);
-    const cachedMsgs = getCachedMessages(meId, friendId);
+    let cachedMsgs = getCachedMessages(meId, friendId);
+    if (cachedMsgs) {
+      const sample = cachedMsgs[0];
+      if (sample) {
+        if (sample.group_id) {
+          invalidateMessageCache(meId, friendId);
+          cachedMsgs = null;
+        } else {
+          const involvesMe = sample.sender_id === meId || sample.receiver_id === meId;
+          const involvesFriend = sample.sender_id === friendId || sample.receiver_id === friendId;
+          if (!involvesMe || !involvesFriend) {
+            invalidateMessageCache(meId, friendId);
+            cachedMsgs = null;
+          }
+        }
+      }
+    }
     setFriend(cachedProfile || null);
     setMessages(cachedMsgs || []);
 
@@ -972,6 +995,13 @@ function ChatView() {
 
   useEffect(() => {
     if (!isGroup && meId && friendId && messages.length > 0) {
+      const sample = messages[0];
+      if (sample) {
+        if (sample.group_id) return;
+        const involvesMe = sample.sender_id === meId || sample.receiver_id === meId;
+        const involvesFriend = sample.sender_id === friendId || sample.receiver_id === friendId;
+        if (!involvesMe || !involvesFriend) return;
+      }
       const persistent = messages.filter(m => m.id && typeof m.id === "string" && !m.id.startsWith("temp-") && !m.failed);
       if (persistent.length > 0) {
         setCachedMessages(meId, friendId, persistent);
@@ -981,6 +1011,8 @@ function ChatView() {
 
   useEffect(() => {
     if (isGroup && groupId && messages.length > 0) {
+      const sample = messages[0];
+      if (sample && sample.group_id !== groupId) return;
       const persistent = messages.filter(m => m.id && typeof m.id === "string" && !m.id.startsWith("temp-") && !m.failed);
       if (persistent.length > 0) {
         setCachedGroupMessages(groupId, persistent);

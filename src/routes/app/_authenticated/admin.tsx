@@ -84,7 +84,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { toast } from "sonner";
 import { unsendPageMessagesServer, unsendMessagesServer } from "@/lib/messages.functions";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
-import { getCachedPageMessages, setCachedPageMessages } from "@/lib/chat-cache";
+import { getCachedPageMessages, setCachedPageMessages, invalidatePageMessageCache } from "@/lib/chat-cache";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -2725,6 +2725,24 @@ function Conversation({
 
   useEffect(() => {
     if (conv.conversationId && messages.length > 0) {
+      // Validate that the messages actually belong to the current active conversation
+      const sample = messages[0];
+      if (sample) {
+        if (isGroup) {
+          const sampleGroupId = sample.group_id;
+          const targetGroupId = conv.conversationId.startsWith("group-") ? conv.conversationId.replace("group-", "") : null;
+          if (sampleGroupId !== targetGroupId) return;
+        } else if (isTeamChat) {
+          if (sample.group_id) return;
+          const involvesMe = sample.sender_id === meId || sample.receiver_id === meId;
+          const involvesUser = sample.sender_id === conv.userId || sample.receiver_id === conv.userId;
+          if (!involvesMe || !involvesUser) return;
+        } else {
+          // Page message
+          if (sample.conversation_id !== conv.conversationId) return;
+        }
+      }
+
       const cacheKey = isTeamChat
         ? `admin-teamchat-${conv.conversationId}`
         : isGroup
@@ -2735,7 +2753,7 @@ function Conversation({
         setCachedPageMessages(cacheKey, persistent);
       }
     }
-  }, [messages, conv.conversationId, isGroup, isTeamChat]);
+  }, [messages, conv.conversationId, isGroup, isTeamChat, meId, conv.userId]);
 
   useEffect(() => {
     if (!isGroup || !meId || !groupId) return;
@@ -3804,7 +3822,14 @@ function Conversation({
     }
 
     const cacheKey = `admin-page-${conv.conversationId}`;
-    const cached = getCachedPageMessages(cacheKey);
+    let cached = getCachedPageMessages(cacheKey);
+    if (cached) {
+      const sample = cached[0];
+      if (sample && sample.conversation_id !== conv.conversationId) {
+        invalidatePageMessageCache(cacheKey);
+        cached = null;
+      }
+    }
     if (cached && messages.length === 0) {
       setMessages(cached);
     }
@@ -3871,7 +3896,14 @@ function Conversation({
     activeIdRef.current = conv.conversationId;
     if (!isGroup && !isTeamChat) {
       const cacheKey = `admin-page-${conv.conversationId}`;
-      const cached = getCachedPageMessages(cacheKey);
+      let cached = getCachedPageMessages(cacheKey);
+      if (cached) {
+        const sample = cached[0];
+        if (sample && sample.conversation_id !== conv.conversationId) {
+          invalidatePageMessageCache(cacheKey);
+          cached = null;
+        }
+      }
       setMessages(cached || []);
     } else {
       setMessages([]);
