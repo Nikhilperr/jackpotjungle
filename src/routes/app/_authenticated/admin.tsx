@@ -3761,6 +3761,7 @@ function Conversation({
         .eq("group_id", groupId)
         .order("created_at", { ascending: false })
         .limit(100);
+      if (activeIdRef.current !== conv.conversationId) return;
       const reversed = ((data as any[]) ?? []).slice().reverse();
       const mapped = reversed.map((m: any) => ({
         ...m,
@@ -3789,6 +3790,7 @@ function Conversation({
           .order("created_at", { ascending: true })
           .limit(200),
       ]);
+      if (activeIdRef.current !== conv.conversationId) return;
       const fresh = (msgsData as any[]) ?? [];
       const reversed = [...fresh].reverse().map((m: any) => ({
         ...m,
@@ -3825,6 +3827,7 @@ function Conversation({
           .order("created_at", { ascending: true })
           .limit(200),
       ]);
+      if (activeIdRef.current !== conv.conversationId) return;
       const delta = (deltaMsgs ?? []) as PageMsg[];
       const combined = [...(cached || [])];
       delta.forEach((m) => {
@@ -3851,6 +3854,7 @@ function Conversation({
           .order("created_at", { ascending: true })
           .limit(200),
       ]);
+      if (activeIdRef.current !== conv.conversationId) return;
       const fresh = (data as PageMsg[]) ?? [];
       const reversed = [...fresh].reverse();
       setMessages(reversed);

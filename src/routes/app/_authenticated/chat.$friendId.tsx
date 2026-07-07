@@ -770,6 +770,7 @@ function ChatView() {
         ]);
 
         if (!isMountedRef.current) return;
+        if (activeFriendIdRef.current !== friendId) return;
 
         if (groupRes.data) {
           setGroup(groupRes.data);
@@ -795,6 +796,7 @@ function ChatView() {
             .gt("created_at", lastCachedMsg.created_at)
             .order("created_at", { ascending: false });
 
+          if (activeFriendIdRef.current !== friendId) return;
           const delta = (deltaMsgs ?? []).reverse();
           const combined = [...(cachedGroupMsgs || [])];
           delta.forEach((m) => {
@@ -811,6 +813,7 @@ function ChatView() {
             .order("created_at", { ascending: false })
             .limit(50 + 1);
 
+          if (activeFriendIdRef.current !== friendId) return;
           const rawMsgs = (msgsData ?? []) as any[];
           const hasMore = rawMsgs.length > 50;
           finalMsgs = rawMsgs.slice(0, 50).reverse();
@@ -859,6 +862,7 @@ function ChatView() {
         
         if (error) throw error;
         if (!isMountedRef.current) return;
+        if (activeFriendIdRef.current !== friendId) return;
 
         const converted = (anns ?? []).map(ann => ({
           id: ann.id,
@@ -908,6 +912,7 @@ function ChatView() {
             .order("created_at", { ascending: true }).limit(200),
         ]);
         if (!isMountedRef.current) return;
+        if (activeFriendIdRef.current !== friendId) return;
 
         const profile = prof as Profile | null;
         if (profile && spamRow) profile.online = false;
@@ -937,6 +942,7 @@ function ChatView() {
             .order("created_at", { ascending: true }).limit(200),
         ]);
         if (!isMountedRef.current) return;
+        if (activeFriendIdRef.current !== friendId) return;
 
         const profile = prof as Profile | null;
         if (profile && spamRow) profile.online = false;
