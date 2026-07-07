@@ -392,7 +392,7 @@ Let me know what you would like to test next!`,
       if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
         const content = line.trim().substring(2);
         renderedLine = (
-          <li className="list-disc ml-5 text-sm my-0.5 text-muted-foreground">
+          <li className="list-disc ml-5 text-sm my-0.5 text-foreground/90">
             {formatInlineMarkdown(content)}
           </li>
         );
@@ -413,7 +413,7 @@ Let me know what you would like to test next!`,
       // Normal paragraphs
       if (line.trim().length > 0) {
         parsedElements.push(
-          <p key={`p-${index}`} className="text-sm text-muted-foreground leading-relaxed my-1.5">
+          <p key={`p-${index}`} className="text-sm text-foreground/90 leading-relaxed my-1.5">
             {formatInlineMarkdown(line)}
           </p>
         );
@@ -485,9 +485,9 @@ Let me know what you would like to test next!`,
   return (
     <div className="flex h-full w-full bg-background text-foreground overflow-hidden">
       {/* ── LEFT SIDEBAR ────────────────────────────────────────────────── */}
-      <aside className="w-80 border-r border-border bg-[#0e0e12]/80 backdrop-blur-md flex flex-col shrink-0">
+      <aside className="w-80 border-r border-border bg-card/90 backdrop-blur-md flex flex-col shrink-0">
         {/* Workspace Brand / Header */}
-        <div className="px-4 py-4 flex items-center justify-between border-b border-border bg-[#13131a]/60 shrink-0">
+        <div className="px-4 py-4 flex items-center justify-between border-b border-border bg-secondary/15 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.2)]">
               <Sparkles className="h-5 w-5 text-white" />
@@ -522,7 +522,7 @@ Let me know what you would like to test next!`,
               placeholder="Search chats..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-9 bg-[#171721]/50 border border-white/5 focus:border-primary/20 rounded-lg pl-9 pr-3 text-xs text-foreground placeholder-muted-foreground/60 transition-all outline-none"
+              className="w-full h-9 bg-secondary/30 border border-border focus:border-primary/20 rounded-lg pl-9 pr-3 text-xs text-foreground placeholder-muted-foreground/60 transition-all outline-none"
             />
           </div>
         </div>
@@ -593,7 +593,7 @@ Let me know what you would like to test next!`,
         </div>
 
         {/* Action Controls: Clear History & Back Routing */}
-        <div className="p-3 border-t border-border bg-[#13131a]/60 space-y-2 shrink-0">
+        <div className="p-3 border-t border-border bg-secondary/15 space-y-2 shrink-0">
           <button
             onClick={handleClearAllHistory}
             className="w-full h-9 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive text-xs font-semibold transition-colors flex items-center justify-center gap-2 select-none"
@@ -624,7 +624,7 @@ Let me know what you would like to test next!`,
       {/* ── MAIN AI PANEL ──────────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col bg-background relative overflow-hidden">
         {/* Workspace Top Header Panel */}
-        <header className="px-4 py-3 bg-[#13131a]/60 border-b border-border flex items-center justify-between shrink-0 z-10">
+        <header className="px-4 py-3 bg-secondary/15 border-b border-border flex items-center justify-between shrink-0 z-10">
           <div>
             <h2 className="text-sm font-black text-foreground">AI Workspace Panel</h2>
             <p className="text-[10px] text-muted-foreground">Local UI Simulation Mode</p>
@@ -664,7 +664,7 @@ Let me know what you would like to test next!`,
                     className={`max-w-[85%] rounded-2xl p-4 flex gap-3 shadow-md border ${
                       isUser
                         ? "bg-primary text-primary-foreground border-primary/20 rounded-tr-sm"
-                        : "bg-[#181822]/80 backdrop-blur-md text-foreground border-border rounded-tl-sm"
+                        : "bg-card text-foreground border-border rounded-tl-sm"
                     }`}
                   >
                     {/* Icon Column */}
@@ -741,7 +741,7 @@ Let me know what you would like to test next!`,
           {/* Streaming Indicator */}
           {isGenerating && (
             <div className="flex justify-start">
-              <div className="bg-[#181822]/80 backdrop-blur-md text-foreground border border-border rounded-2xl p-4 flex gap-3 shadow-md rounded-tl-sm animate-pulse">
+              <div className="bg-card text-foreground border border-border rounded-2xl p-4 flex gap-3 shadow-md rounded-tl-sm animate-pulse">
                 <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center shrink-0 shadow-sm mt-0.5">
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
@@ -757,7 +757,7 @@ Let me know what you would like to test next!`,
         </div>
 
         {/* Input Form Bar */}
-        <div className="p-4 border-t border-border bg-[#0e0e12]/60 shrink-0">
+        <div className="p-4 border-t border-border bg-secondary/15 shrink-0">
           <form onSubmit={handleSendMessage} className="relative flex items-center gap-2 max-w-4xl mx-auto">
             <input
               type="text"
@@ -769,7 +769,7 @@ Let me know what you would like to test next!`,
                   ? "Create or select a chat in the sidebar to begin..."
                   : "Ask Super AI (e.g. 'audit user ledger')..."
               }
-              className="w-full h-12 bg-[#171721]/80 border border-border focus:border-primary/30 rounded-2xl pl-4 pr-12 text-sm text-foreground outline-none transition-all placeholder-muted-foreground/60 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)] disabled:opacity-50"
+              className="w-full h-12 bg-secondary/30 border border-border focus:border-primary/30 rounded-2xl pl-4 pr-12 text-sm text-foreground outline-none transition-all placeholder-muted-foreground/60 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)] disabled:opacity-50"
             />
             <button
               type="submit"
