@@ -16,6 +16,8 @@ import {
   Search,
   Database,
   LineChart,
+  Menu,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -63,8 +65,12 @@ export function AIWorkspace({ onBackToDashboard, onBackToPageChats, adminName }:
       if (stored) {
         const parsed = JSON.parse(stored) as AIConversation[];
         setConversations(parsed);
-        if (parsed.length > 0) {
+        const storedActiveId = localStorage.getItem("jj_active_ai_chat_id");
+        if (storedActiveId && parsed.some((c) => c.id === storedActiveId)) {
+          setActiveConvId(storedActiveId);
+        } else if (parsed.length > 0) {
           setActiveConvId(parsed[0].id);
+          localStorage.setItem("jj_active_ai_chat_id", parsed[0].id);
         }
       } else {
         // Seed with a welcome conversation if empty
@@ -113,6 +119,7 @@ Type a message below to test the instant conversation history and interface feed
         setConversations([welcomeConv]);
         setActiveConvId(welcomeConv.id);
         localStorage.setItem("jj_ai_conversations", JSON.stringify([welcomeConv]));
+        localStorage.setItem("jj_active_ai_chat_id", welcomeConv.id);
       }
     } catch (e) {
       console.warn("Failed to load AI conversations:", e);
@@ -149,6 +156,8 @@ Type a message below to test the instant conversation history and interface feed
     const nextConvs = [newChat, ...conversations];
     saveConversations(nextConvs);
     setActiveConvId(newId);
+    localStorage.setItem("jj_active_ai_chat_id", newId);
+    setSidebarOpen(false);
     toast.success("New AI conversation created!");
   };
 
@@ -158,7 +167,13 @@ Type a message below to test the instant conversation history and interface feed
     const nextConvs = conversations.filter((c) => c.id !== id);
     saveConversations(nextConvs);
     if (activeConvId === id) {
-      setActiveConvId(nextConvs.length > 0 ? nextConvs[0].id : null);
+      const nextActiveId = nextConvs.length > 0 ? nextConvs[0].id : null;
+      setActiveConvId(nextActiveId);
+      if (nextActiveId) {
+        localStorage.setItem("jj_active_ai_chat_id", nextActiveId);
+      } else {
+        localStorage.removeItem("jj_active_ai_chat_id");
+      }
     }
     toast.success("AI conversation deleted.");
   };
@@ -477,157 +492,201 @@ Let me know what you would like to test next!`,
     return parts;
   };
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   // Filter conversations based on query
   const filteredConversations = conversations.filter((c) =>
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  return (
-    <div className="flex h-full w-full bg-background text-foreground overflow-hidden">
-      {/* ── LEFT SIDEBAR ────────────────────────────────────────────────── */}
-      <aside className="w-80 border-r border-border bg-card/90 backdrop-blur-md flex flex-col shrink-0">
-        {/* Workspace Brand / Header */}
-        <div className="px-4 py-4 flex items-center justify-between border-b border-border bg-secondary/15 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-              <Sparkles className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="font-black text-sm tracking-wide bg-gradient-to-r from-amber-400 to-amber-200 bg-clip-text text-transparent">
-                Super AI
-              </p>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                Admin Assistant
-              </p>
-            </div>
+  const renderSidebarContent = () => (
+    <>
+      {/* Workspace Brand / Header */}
+      <div className="px-4 py-4 flex items-center justify-between border-b border-border bg-secondary/15 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+            <Sparkles className="h-5 w-5 text-white" />
           </div>
+          <div>
+            <p className="font-black text-sm tracking-wide bg-gradient-to-r from-amber-400 to-amber-200 bg-clip-text text-transparent">
+              Super AI
+            </p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+              Admin Assistant
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" title="Engine Standby" />
-        </div>
-
-        {/* Action Controls: New Chat */}
-        <div className="p-3 space-y-2 shrink-0">
+          {/* Mobile close button */}
           <button
-            onClick={handleCreateNewChat}
-            className="w-full h-11 rounded-xl bg-primary hover:bg-primary/95 text-primary-foreground font-semibold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(var(--primary-rgb),0.25)]"
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-secondary"
+            aria-label="Close menu"
           >
-            <Plus className="h-4 w-4" />
-            <span>New Chat</span>
+            <X className="h-4 w-4" />
           </button>
-
-          {/* Local search filtering conversations */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search chats..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-9 bg-secondary/30 border border-border focus:border-primary/20 rounded-lg pl-9 pr-3 text-xs text-foreground placeholder-muted-foreground/60 transition-all outline-none"
-            />
-          </div>
         </div>
+      </div>
 
-        {/* Conversation List (Scrollable Area) */}
-        <div className="flex-1 overflow-y-auto px-2 py-1 space-y-1 scrollbar-thin">
-          {filteredConversations.length > 0 ? (
-            filteredConversations.map((conv) => {
-              const isActive = conv.id === activeConvId;
-              const isEditing = conv.id === editingConvId;
+      {/* Action Controls: New Chat */}
+      <div className="p-3 space-y-2 shrink-0">
+        <button
+          onClick={handleCreateNewChat}
+          className="w-full h-11 rounded-xl bg-primary hover:bg-primary/95 text-primary-foreground font-semibold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(var(--primary-rgb),0.25)]"
+        >
+          <Plus className="h-4 w-4" />
+          <span>New Chat</span>
+        </button>
 
-              return (
-                <div
-                  key={conv.id}
-                  onClick={() => !isEditing && setActiveConvId(conv.id)}
-                  className={`w-full group rounded-xl p-2.5 flex items-center justify-between transition-all border text-left cursor-pointer ${
-                    isActive
-                      ? "bg-primary/10 border-primary/20 text-foreground"
-                      : "bg-transparent border-transparent text-muted-foreground hover:bg-[#1b1b26]/50 hover:text-foreground"
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <MessageSquare className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        onBlur={() => handleSaveRename(conv.id)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSaveRename(conv.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        autoFocus
-                        className="w-full bg-secondary/80 text-foreground border border-primary/20 rounded px-1.5 py-0.5 text-xs focus:outline-none"
-                      />
-                    ) : (
-                      <span className="text-xs font-semibold truncate flex-1">{conv.title}</span>
-                    )}
-                  </div>
+        {/* Local search filtering conversations */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search chats..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-9 bg-secondary/30 border border-border focus:border-primary/20 rounded-lg pl-9 pr-3 text-xs text-foreground placeholder-muted-foreground/60 transition-all outline-none"
+          />
+        </div>
+      </div>
 
-                  {!isEditing && (
-                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                      <button
-                        onClick={(e) => handleStartRename(conv, e)}
-                        className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-secondary text-muted-foreground hover:text-foreground"
-                        title="Rename Chat"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </button>
-                      <button
-                        onClick={(e) => handleDeleteConversation(conv.id, e)}
-                        className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                        title="Delete Chat"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
+      {/* Conversation List (Scrollable Area) */}
+      <div className="flex-1 overflow-y-auto px-2 py-1 space-y-1 scrollbar-thin">
+        {filteredConversations.length > 0 ? (
+          filteredConversations.map((conv) => {
+            const isActive = conv.id === activeConvId;
+            const isEditing = conv.id === editingConvId;
+
+            return (
+              <div
+                key={conv.id}
+                onClick={() => {
+                  if (!isEditing) {
+                    setActiveConvId(conv.id);
+                    localStorage.setItem("jj_active_ai_chat_id", conv.id);
+                    setSidebarOpen(false);
+                  }
+                }}
+                className={`w-full group rounded-xl p-2.5 flex items-center justify-between transition-all border text-left cursor-pointer ${
+                  isActive
+                    ? "bg-primary/10 border-primary/20 text-foreground"
+                    : "bg-transparent border-transparent text-muted-foreground hover:bg-[#1b1b26]/50 hover:text-foreground"
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <MessageSquare className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onBlur={() => handleSaveRename(conv.id)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSaveRename(conv.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      autoFocus
+                      className="w-full bg-secondary/80 text-foreground border border-primary/20 rounded px-1.5 py-0.5 text-xs focus:outline-none"
+                    />
+                  ) : (
+                    <span className="text-xs font-semibold truncate flex-1">{conv.title}</span>
                   )}
                 </div>
-              );
-            })
-          ) : (
-            <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-              <MessageSquare className="h-8 w-8 text-muted-foreground/35 mb-2 animate-bounce" />
-              <p className="text-xs font-bold text-muted-foreground/60">No AI chats found</p>
-              <p className="text-[10px] text-muted-foreground/40 mt-1">Create a new chat to begin.</p>
-            </div>
-          )}
-        </div>
 
-        {/* Action Controls: Clear History & Back Routing */}
-        <div className="p-3 border-t border-border bg-secondary/15 space-y-2 shrink-0">
-          <button
-            onClick={handleClearAllHistory}
-            className="w-full h-9 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive text-xs font-semibold transition-colors flex items-center justify-center gap-2 select-none"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            <span>Clear Chat History</span>
-          </button>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={onBackToDashboard}
-              className="h-9 rounded-lg border border-border hover:bg-secondary text-muted-foreground hover:text-foreground text-xs font-bold transition-all flex items-center justify-center gap-1.5 select-none"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Dashboard</span>
-            </button>
-            <button
-              onClick={onBackToPageChats}
-              className="h-9 rounded-lg border border-border hover:bg-secondary text-muted-foreground hover:text-foreground text-xs font-bold transition-all flex items-center justify-center gap-1.5 select-none"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-              <span>Inbox</span>
-            </button>
+                {!isEditing && (
+                  <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                    <button
+                      onClick={(e) => handleStartRename(conv, e)}
+                      className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-secondary text-muted-foreground hover:text-foreground"
+                      title="Rename Chat"
+                    >
+                      <Edit className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteConversation(conv.id, e)}
+                      className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      title="Delete Chat"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+            <MessageSquare className="h-8 w-8 text-muted-foreground/35 mb-2 animate-bounce" />
+            <p className="text-xs font-bold text-muted-foreground/60">No AI chats found</p>
+            <p className="text-[10px] text-muted-foreground/40 mt-1">Create a new chat to begin.</p>
           </div>
+        )}
+      </div>
+
+      {/* Action Controls: Clear History & Back Routing */}
+      <div className="p-3 border-t border-border bg-secondary/15 space-y-2 shrink-0">
+        <button
+          onClick={handleClearAllHistory}
+          className="w-full h-9 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive text-xs font-semibold transition-colors flex items-center justify-center gap-2 select-none"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          <span>Clear Chat History</span>
+        </button>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={onBackToDashboard}
+            className="h-9 rounded-lg border border-border hover:bg-secondary text-muted-foreground hover:text-foreground text-xs font-bold transition-all flex items-center justify-center gap-1.5 select-none"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Dashboard</span>
+          </button>
+          <button
+            onClick={onBackToPageChats}
+            className="h-9 rounded-lg border border-border hover:bg-secondary text-muted-foreground hover:text-foreground text-xs font-bold transition-all flex items-center justify-center gap-1.5 select-none"
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            <span>Inbox</span>
+          </button>
         </div>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="flex h-full w-full bg-background text-foreground overflow-hidden">
+      {/* ── DESKTOP SIDEBAR ────────────────────────────────────────────────── */}
+      <aside className="hidden lg:flex w-80 border-r border-border bg-card/90 flex-col shrink-0">
+        {renderSidebarContent()}
       </aside>
+
+      {/* ── MOBILE SIDEBAR DRAWER ─────────────────────────────────────────── */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50 flex lg:hidden animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
+          <aside className="relative z-10 w-80 h-full border-r border-border bg-card flex flex-col animate-in slide-in-from-left duration-200">
+            {renderSidebarContent()}
+          </aside>
+        </div>
+      )}
 
       {/* ── MAIN AI PANEL ──────────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col bg-background relative overflow-hidden">
         {/* Workspace Top Header Panel */}
         <header className="px-4 py-3 bg-secondary/15 border-b border-border flex items-center justify-between shrink-0 z-10">
-          <div>
-            <h2 className="text-sm font-black text-foreground">AI Workspace Panel</h2>
-            <p className="text-[10px] text-muted-foreground">Local UI Simulation Mode</p>
+          <div className="flex items-center gap-3">
+            {/* Hamburger menu button for mobile */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-secondary"
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div>
+              <h2 className="text-sm font-black text-foreground">AI Workspace Panel</h2>
+              <p className="text-[10px] text-muted-foreground">Local UI Simulation Mode</p>
+            </div>
           </div>
 
           {/* Configuration Placeholders for Future Agent */}
