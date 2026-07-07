@@ -246,6 +246,16 @@ function RootComponent() {
       }
 
       lastUserId = currentUserId;
+
+      // On SIGNED_IN: auth.tsx already calls navigate() explicitly after verifying the user.
+      // Triggering router.invalidate() here races with that navigation and causes the
+      // authenticated route guard to re-run before setVerifiedStatus(true) has settled,
+      // which bounces the user back to /app/auth and forces a second login attempt.
+      if (event === "SIGNED_IN") {
+        queryClient.invalidateQueries();
+        return;
+      }
+
       router.invalidate();
       if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
     });
