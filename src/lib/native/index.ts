@@ -12,6 +12,8 @@ const SplashScreenStub = {
 
 const SplashScreen = getSafePlugin("SplashScreen", SplashScreenStub);
 
+let isInitialized = false;
+
 /**
  * Initializes all native-specific bridge services when running inside
  * the Android/iOS Capacitor wrapper.
@@ -20,6 +22,12 @@ export function initializeNativeBridge(router: any) {
   if (!isNative()) {
     return;
   }
+
+  if (isInitialized) {
+    console.log("[NativeBridge] Native bridge already initialized. Skipping.");
+    return;
+  }
+  isInitialized = true;
 
   console.log("[NativeBridge] Initializing native integration layer...");
 
@@ -38,7 +46,7 @@ export function initializeNativeBridge(router: any) {
       SplashScreen.hide()
         .then(() => console.log("[NativeBridge] SplashScreen dismissed successfully."))
         .catch((err) => console.warn("[NativeBridge] SplashScreen hide failed:", err));
-    }, 500); // 500ms grace period for initial rendering to settle
+    }, 50); // 50ms grace period for initial rendering to settle
   } catch (error) {
     console.error("[NativeBridge] Critical error during bridge initialization:", error);
   }

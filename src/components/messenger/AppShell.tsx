@@ -8,7 +8,7 @@ import { useRole } from "@/hooks/useRole";
 import { usePresence } from "@/hooks/usePresence";
 import { useChatNotifications } from "@/hooks/useChatNotifications";
 import { useNativePush } from "@/hooks/useNativePush";
-import { initializeNativeBridge } from "@/lib/native";
+
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 import { Capacitor } from "@capacitor/core";
@@ -75,9 +75,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   useChatNotifications();
   useNativePush();
 
-  useEffect(() => {
-    initializeNativeBridge(router);
-  }, [router]);
 
   async function signOut() {
     console.log("[SignOut] Initiated.");

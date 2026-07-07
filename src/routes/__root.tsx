@@ -18,6 +18,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { runAutoDatabaseMigrations } from "@/lib/admin-super.functions";
 import { Capacitor } from "@capacitor/core";
+import { initializeNativeBridge } from "@/lib/native";
+
 
 function NotFoundComponent() {
   return (
@@ -216,6 +218,10 @@ function RootComponent() {
         console.error("[AutoMigration Error]:", err.message || err);
       });
   }, []);
+
+  useEffect(() => {
+    initializeNativeBridge(router);
+  }, [router]);
 
   useEffect(() => {
     let lastUserId: string | null = null;
