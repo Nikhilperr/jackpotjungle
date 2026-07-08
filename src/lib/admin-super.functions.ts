@@ -59,7 +59,14 @@ export const resetUserPassword = createServerFn({ method: "POST" })
 
 export const sendBroadcast = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((d: { content: string; targetType: "all" | "tag" | "selected"; tagId?: string; userIds?: string[] }) => {
+  .validator((d: {
+    content: string;
+    targetType: "all" | "tag" | "selected";
+    tagId?: string;
+    userIds?: string[];
+    skipUserIds?: string[];
+    skipVipStatuses?: string[];
+  }) => {
     if (!d.content?.trim()) throw new Error("Empty broadcast");
     return d;
   })
@@ -108,6 +115,21 @@ export const sendBroadcast = createServerFn({ method: "POST" })
       console.log("[sendBroadcast] <- user_tags fetched:", targetIds.length);
     } else if (data.targetType === "selected") {
       targetIds = data.userIds ?? [];
+    }
+    if (data.skipUserIds && data.skipUserIds.length > 0) {
+      targetIds = targetIds.filter((id) => !data.skipUserIds!.includes(id));
+    }
+    if (data.skipVipStatuses && data.skipVipStatuses.length > 0) {
+      const { data: vips } = await supabaseAdmin
+        .from("profiles")
+        .select("id, vip_status")
+        .in("id", targetIds);
+      if (vips) {
+        const skippedIds = vips
+          .filter((v: any) => data.skipVipStatuses!.includes(v.vip_status))
+          .map((v: any) => v.id);
+        targetIds = targetIds.filter((id) => !skippedIds.includes(id));
+      }
     }
     targetIds = targetIds.filter((id) => id !== context.userId);
     console.log("[sendBroadcast] number of target users:", targetIds.length);

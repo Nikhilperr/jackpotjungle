@@ -1144,6 +1144,10 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
       .channel(`admin-page-inbox-${rand}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, (payload) => {
         if (!mounted) return;
+        if (payload.eventType === "DELETE") {
+          load();
+          return;
+        }
         const m = payload.new as any;
         if (!m) return;
         if (payload.eventType === "INSERT") {

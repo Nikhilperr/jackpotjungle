@@ -49,6 +49,8 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
             targetType: card.targetType,
             tagId: card.tagId || undefined,
             userIds: card.userIds || undefined,
+            skipUserIds: card.skipUserIds || undefined,
+            skipVipStatuses: card.skipVipStatuses || undefined,
           }
         });
         setExecuted(true);
@@ -181,6 +183,18 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
               <div className="flex justify-between">
                 <span className="text-muted-foreground font-semibold">Tag ID:</span>
                 <span className="font-mono text-[10px] text-foreground">{card.tagId}</span>
+              </div>
+            )}
+            {card.skipUserIds && card.skipUserIds.length > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-semibold">Skipping Users:</span>
+                <span className="font-mono text-[10px] text-destructive">{card.skipUserIds.length} user(s)</span>
+              </div>
+            )}
+            {card.skipVipStatuses && card.skipVipStatuses.length > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-semibold">Skipping VIP Tiers:</span>
+                <span className="font-bold text-destructive uppercase">{card.skipVipStatuses.join(", ")}</span>
               </div>
             )}
             <div className="space-y-1">
