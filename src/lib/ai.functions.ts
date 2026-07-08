@@ -2,6 +2,42 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import process from "node:process";
+import fs from "node:fs";
+import path from "node:path";
+
+function loadEnvFile() {
+  try {
+    let dir = process.cwd();
+    for (let i = 0; i < 5; i++) {
+      const envPath = path.join(dir, ".env");
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, "utf-8");
+        content.split("\n").forEach((line) => {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) return;
+          const index = trimmed.indexOf("=");
+          if (index === -1) return;
+          const key = trimmed.substring(0, index).trim();
+          let val = trimmed.substring(index + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.substring(1, val.length - 1);
+          }
+          if (!process.env[key]) {
+            process.env[key] = val;
+          }
+        });
+        console.log(`[Super AI] Successfully loaded env variables from: ${envPath}`);
+        return;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  } catch (e) {
+    console.error("[Super AI Warning] Failed to read .env file from disk:", e);
+  }
+}
+
 
 const SystemPrompt = `You are "Jackpot Jungle AI", a professional internal administrative assistant for the Jackpot Jungle online casino platform.
 Your role is to help administrators and moderators analyze game logs, support threads, VIP metrics, wallet ledgers, and other backend operations.
@@ -26,6 +62,9 @@ export const getAIResponse = createServerFn({ method: "POST" })
     messages: z.array(MessageSchema),
   }))
   .handler(async ({ data, context }) => {
+    // Load local environment variables dynamically if not present
+    loadEnvFile();
+
     // 1. Authenticate that the user has admin/super_admin role permissions
     const { data: roleRows, error: roleError } = await context.supabase
       .from("user_roles")
