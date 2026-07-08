@@ -4,6 +4,136 @@ import { sendPushNotification } from "./fcm.server";
 export async function initRealtimeListeners() {
   console.log("[Realtime Listener] Initializing server-side database change listeners...");
 
+  // Start background interval runner for scheduled follow-ups and auto re-engagement
+  // Avoid double-intervals in dev hot-reloading
+  if (!(globalThis as any).__backgroundSchedulerActive) {
+    (globalThis as any).__backgroundSchedulerActive = true;
+    
+    setInterval(async () => {
+      try {
+        // --- TASK 1: PROCESS SCHEDULED FOLLOW-UPS ---
+        const nowStr = new Date().toISOString();
+        const { data: pendingFollowups, error: errFollowups } = await supabaseAdmin
+          .from("followups")
+          .select("*")
+          .eq("sent", false)
+          .lte("scheduled_at", nowStr);
+
+        if (errFollowups) {
+          console.error("[Scheduler Error] Failed to fetch pending followups:", errFollowups.message);
+        } else if (pendingFollowups && pendingFollowups.length > 0) {
+          console.log(`[Scheduler] Found ${pendingFollowups.length} pending followups to process.`);
+          for (const f of pendingFollowups) {
+            try {
+              // 1. Upsert page conversation
+              const upsertRes = await supabaseAdmin
+                .from("page_conversations")
+                .upsert({ user_id: f.user_id }, { onConflict: "user_id" })
+                .select("id")
+                .single();
+
+              if (upsertRes.error) throw new Error(`page_conversations upsert failed: ${upsertRes.error.message}`);
+              const conv = upsertRes.data;
+              if (!conv) throw new Error("page_conversations upsert returned no row");
+
+              // 2. Insert page message from the scheduling admin
+              const msgRes = await supabaseAdmin.from("page_messages").insert({
+                conversation_id: conv.id,
+                sender_id: f.admin_id,
+                from_page: true,
+                content: f.message,
+              });
+
+              if (msgRes.error) throw new Error(`page_messages insert failed: ${msgRes.error.message}`);
+
+              // 3. Mark followup as sent
+              await supabaseAdmin
+                .from("followups")
+                .update({ sent: true })
+                .eq("id", f.id);
+
+              console.log(`[Scheduler] Successfully processed followup ID ${f.id} for user ${f.user_id}`);
+            } catch (e: any) {
+              console.error(`[Scheduler Error] Failed processing followup ID ${f.id}:`, e.message || e);
+            }
+          }
+        }
+
+        // --- TASK 2: RUN AUTOMATIC RE-ENGAGEMENT SCANS ---
+        const { data: settingsRow, error: errSettings } = await supabaseAdmin
+          .from("system_settings")
+          .select("value")
+          .eq("key", "reengagement_campaign")
+          .maybeSingle();
+
+        if (!errSettings && settingsRow) {
+          const config = settingsRow.value as { enabled: boolean; inactivity_days: number; message_template: string };
+          if (config && config.enabled) {
+            const inactivityDays = config.inactivity_days || 3;
+            const threshold = new Date(Date.now() - inactivityDays * 24 * 60 * 60 * 1000).toISOString();
+
+            // Fetch profiles that haven't been seen since the threshold and aren't blocked
+            const { data: inactiveUsers, error: errUsers } = await supabaseAdmin
+              .from("profiles")
+              .select("id, username, last_seen")
+              .lt("last_seen", threshold)
+              .eq("is_blocked", false);
+
+            if (errUsers) {
+              console.error("[Scheduler Error] Failed to fetch inactive users:", errUsers.message);
+            } else if (inactiveUsers && inactiveUsers.length > 0) {
+              // Fetch first admin/super_admin user ID to act as sender
+              const { data: adminRows } = await supabaseAdmin
+                .from("user_roles")
+                .select("user_id")
+                .in("role", ["super_admin", "admin"])
+                .limit(1);
+              
+              const adminId = adminRows && adminRows.length > 0 ? adminRows[0].user_id : null;
+
+              if (adminId) {
+                for (const user of inactiveUsers) {
+                  try {
+                    // Check if a followup message has already been scheduled/sent in the inactivity window
+                    // to avoid double campaigns
+                    const { data: existingFollowup } = await supabaseAdmin
+                      .from("followups")
+                      .select("id")
+                      .eq("user_id", user.id)
+                      .eq("days_after", 999) // 999 is our re-engagement campaign identifier
+                      .gt("created_at", threshold)
+                      .maybeSingle();
+
+                    if (!existingFollowup) {
+                      const parsedMessage = config.message_template.replace(/{PlayerName}/g, user.username);
+                      const scheduledTime = new Date().toISOString();
+
+                      // Schedule immediately by inserting into followups
+                      await supabaseAdmin.from("followups").insert({
+                        user_id: user.id,
+                        admin_id: adminId,
+                        days_after: 999, // re-engagement marker
+                        scheduled_at: scheduledTime,
+                        message: parsedMessage,
+                        sent: false,
+                      });
+
+                      console.log(`[Scheduler] Queued re-engagement followup for inactive user ${user.username}`);
+                    }
+                  } catch (e: any) {
+                    console.error(`[Scheduler Error] Auto re-engagement check failed for user ${user.id}:`, e.message || e);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (e: any) {
+        console.error("[Scheduler Error] Background runner iteration failed:", e.message || e);
+      }
+    }, 60000); // Check once every 60 seconds
+  }
+
   try {
     const channel = supabaseAdmin
       .channel("server-push-notifications", { config: { broadcast: { self: false } } })

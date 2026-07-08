@@ -18,9 +18,282 @@ import {
   LineChart,
   Menu,
   X,
+  Megaphone,
+  Smartphone,
+  Mail,
+  Calendar,
+  Settings,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getAIResponse } from "@/lib/ai.functions";
+import { useServerFn } from "@tanstack/react-start";
+import { sendBroadcast, sendCustomPushNotificationAllUsers } from "@/lib/admin-super.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+
+function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess: (msg: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [executed, setExecuted] = useState(false);
+  const [execMessage, setExecMessage] = useState("");
+  const executeBroadcast = useServerFn(sendBroadcast);
+  const executePush = useServerFn(sendCustomPushNotificationAllUsers);
+
+  const handleConfirm = async () => {
+    setBusy(true);
+    try {
+      if (card.action === "send_broadcast") {
+        const res = await executeBroadcast({
+          data: {
+            content: card.content,
+            targetType: card.targetType,
+            tagId: card.tagId || undefined,
+            userIds: card.userIds || undefined,
+          }
+        });
+        setExecuted(true);
+        setExecMessage(`✓ Broadcast announcement successfully sent to ${res.sent} players.`);
+        onExecuteSuccess(`Broadcast sent to ${res.sent} players.`);
+      } else if (card.action === "send_push") {
+        const res = await executePush({
+          data: {
+            title: card.title,
+            message: card.message,
+          }
+        });
+        setExecuted(true);
+        setExecMessage(`✓ Custom push notification successfully sent to ${res.sentCount} active devices.`);
+        onExecuteSuccess(`Push notification sent to ${res.sentCount} devices.`);
+      } else if (card.action === "send_message") {
+        // Find or create page conversation
+        const { data: conv, error: convErr } = await supabase
+          .from("page_conversations")
+          .upsert({ user_id: card.userId }, { onConflict: "user_id" })
+          .select("id")
+          .single();
+
+        if (convErr) throw new Error(convErr.message);
+
+        const { error: msgErr } = await supabase
+          .from("page_messages")
+          .insert({
+            conversation_id: conv.id,
+            from_page: true,
+            content: card.content,
+          });
+
+        if (msgErr) throw new Error(msgErr.message);
+
+        setExecuted(true);
+        setExecMessage(`✓ Direct message successfully sent to @${card.username}.`);
+        onExecuteSuccess(`Message sent to @${card.username}.`);
+      } else if (card.action === "schedule_followup") {
+        const meId = (await supabase.auth.getUser()).data.user?.id;
+        if (!meId) throw new Error("No active admin session found.");
+
+        const scheduledTime = new Date(Date.now() + card.days * 24 * 60 * 60 * 1000).toISOString();
+        const { error } = await supabase
+          .from("followups")
+          .insert({
+            user_id: card.userId,
+            admin_id: meId,
+            days_after: card.days,
+            scheduled_at: scheduledTime,
+            message: card.message,
+            sent: false,
+          });
+
+        if (error) throw new Error(error.message);
+
+        setExecuted(true);
+        setExecMessage(`✓ Follow-up reminder successfully scheduled for @${card.username} in ${card.days} day(s).`);
+        onExecuteSuccess(`Scheduled follow-up for @${card.username}.`);
+      } else if (card.action === "configure_reengagement") {
+        const { error } = await supabase
+          .from("system_settings")
+          .upsert({
+            key: "reengagement_campaign",
+            value: {
+              enabled: card.enabled,
+              inactivity_days: card.inactivity_days,
+              message_template: card.message_template,
+            }
+          });
+
+        if (error) throw new Error(error.message);
+
+        setExecuted(true);
+        setExecMessage(`✓ Re-engagement campaign settings successfully updated.`);
+        onExecuteSuccess(`Updated re-engagement rules.`);
+      } else {
+        throw new Error(`Unsupported action type: ${card.action}`);
+      }
+    } catch (e: any) {
+      console.error("[Action Execution Failure]:", e);
+      toast.error(e.message || "Failed to execute action.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const getActionTitle = () => {
+    switch (card.action) {
+      case "send_broadcast": return "Prepare Broadcast Announcement";
+      case "send_push": return "Prepare Custom Push Notification";
+      case "send_message": return "Prepare Single User Message";
+      case "schedule_followup": return "Schedule User Follow-up Reminder";
+      case "configure_reengagement": return "Configure Auto Re-engagement Rules";
+      default: return "Administrative Action Request";
+    }
+  };
+
+  const getActionIcon = () => {
+    switch (card.action) {
+      case "send_broadcast": return <Megaphone className="h-4 w-4 text-emerald-500" />;
+      case "send_push": return <Smartphone className="h-4 w-4 text-amber-500" />;
+      case "send_message": return <Mail className="h-4 w-4 text-blue-500" />;
+      case "schedule_followup": return <Calendar className="h-4 w-4 text-purple-500" />;
+      case "configure_reengagement": return <Settings className="h-4 w-4 text-pink-500" />;
+      default: return <Brain className="h-4 w-4 text-primary" />;
+    }
+  };
+
+  return (
+    <div className="my-4 rounded-xl border border-amber-500/30 bg-amber-500/5 backdrop-blur-md overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20">
+        <div className="flex items-center gap-2">
+          {getActionIcon()}
+          <span className="text-xs font-bold text-foreground">{getActionTitle()}</span>
+        </div>
+        <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded bg-amber-500/20 text-amber-500">Review Required</span>
+      </div>
+
+      {/* Detail Preview */}
+      <div className="p-4 space-y-3 text-xs">
+        {card.action === "send_broadcast" && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Target Type:</span>
+              <span className="font-bold text-foreground uppercase">{card.targetType}</span>
+            </div>
+            {card.tagId && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-semibold">Tag ID:</span>
+                <span className="font-mono text-[10px] text-foreground">{card.tagId}</span>
+              </div>
+            )}
+            <div className="space-y-1">
+              <span className="text-muted-foreground font-semibold">Broadcast Content:</span>
+              <div className="p-2.5 bg-[#0f0f12] rounded-lg border border-white/5 font-sans whitespace-pre-wrap text-foreground/90">
+                {card.content}
+              </div>
+            </div>
+          </>
+        )}
+
+        {card.action === "send_push" && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Notification Title:</span>
+              <span className="font-bold text-foreground">{card.title}</span>
+            </div>
+            <div className="space-y-1">
+              <span className="text-muted-foreground font-semibold">Message Text:</span>
+              <div className="p-2.5 bg-[#0f0f12] rounded-lg border border-white/5 whitespace-pre-wrap text-foreground/90">
+                {card.message}
+              </div>
+            </div>
+          </>
+        )}
+
+        {card.action === "send_message" && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Recipient:</span>
+              <span className="font-bold text-foreground">@{card.username}</span>
+            </div>
+            <div className="space-y-1">
+              <span className="text-muted-foreground font-semibold">Direct Message Content:</span>
+              <div className="p-2.5 bg-[#0f0f12] rounded-lg border border-white/5 whitespace-pre-wrap text-foreground/90 font-sans">
+                {card.content}
+              </div>
+            </div>
+          </>
+        )}
+
+        {card.action === "schedule_followup" && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">User:</span>
+              <span className="font-bold text-foreground">@{card.username}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Scheduled For:</span>
+              <span className="font-bold text-[#d97706]">In {card.days} day(s)</span>
+            </div>
+            <div className="space-y-1">
+              <span className="text-muted-foreground font-semibold">Follow-up Message:</span>
+              <div className="p-2.5 bg-[#0f0f12] rounded-lg border border-white/5 whitespace-pre-wrap text-foreground/90 font-sans">
+                {card.message}
+              </div>
+            </div>
+          </>
+        )}
+
+        {card.action === "configure_reengagement" && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Status:</span>
+              <span className={`font-bold uppercase ${card.enabled ? "text-emerald-500" : "text-destructive"}`}>
+                {card.enabled ? "Enabled" : "Disabled"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Inactivity Limit:</span>
+              <span className="font-bold text-foreground">{card.inactivity_days} day(s)</span>
+            </div>
+            <div className="space-y-1">
+              <span className="text-muted-foreground font-semibold">Re-engagement Message Template:</span>
+              <div className="p-2.5 bg-[#0f0f12] rounded-lg border border-white/5 whitespace-pre-wrap text-foreground/90 font-mono text-[10px]">
+                {card.message_template}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Footer Buttons */}
+        <div className="pt-2 border-t border-amber-500/10 flex justify-end">
+          {executed ? (
+            <div className="w-full flex items-center gap-1.5 p-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-lg font-bold select-none text-[11px]">
+              <Check className="h-4 w-4 shrink-0" />
+              <span>{execMessage}</span>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              onClick={handleConfirm}
+              disabled={busy}
+              className="bg-amber-600 hover:bg-amber-500 text-white font-bold px-4 py-1.5 h-8 text-[11px]"
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                  <span>Executing Campaign...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="h-3.5 w-3.5 mr-1.5" />
+                  <span>Confirm & Launch Action</span>
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface AIMessage {
   id: string;
@@ -335,23 +608,46 @@ Type a message below to test the instant conversation history and interface feed
           // close code block
           inCodeBlock = false;
           const codeString = codeContent.join("\n");
-          parsedElements.push(
-            <div key={`code-${index}`} className="relative my-3 rounded-xl overflow-hidden border border-amber-500/20 bg-[#0f0f12]">
-              <div className="flex items-center justify-between px-4 py-1.5 bg-[#1b1b22] border-b border-white/5">
-                <span className="text-[10px] uppercase font-bold text-amber-500/90 tracking-wider">code snippet</span>
-                <button
-                  onClick={() => handleCopyMessage(`code-${index}`, codeString)}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  <span>Copy</span>
-                </button>
+
+          let actionCard: any = null;
+          try {
+            const parsed = JSON.parse(codeString.trim());
+            if (parsed && typeof parsed === "object" && parsed.action) {
+              actionCard = parsed;
+            }
+          } catch (e) {
+            // Not a valid action card JSON
+          }
+
+          if (actionCard) {
+            parsedElements.push(
+              <AIActionCard
+                key={`action-card-${index}`}
+                card={actionCard}
+                onExecuteSuccess={(msg) => {
+                  toast.success(msg);
+                }}
+              />
+            );
+          } else {
+            parsedElements.push(
+              <div key={`code-${index}`} className="relative my-3 rounded-xl overflow-hidden border border-amber-500/20 bg-[#0f0f12]">
+                <div className="flex items-center justify-between px-4 py-1.5 bg-[#1b1b22] border-b border-white/5">
+                  <span className="text-[10px] uppercase font-bold text-amber-500/90 tracking-wider">code snippet</span>
+                  <button
+                    onClick={() => handleCopyMessage(`code-${index}`, codeString)}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    <span>Copy</span>
+                  </button>
+                </div>
+                <pre className="p-4 text-xs font-mono overflow-x-auto text-[#e2e8f0] leading-relaxed">
+                  <code>{codeString}</code>
+                </pre>
               </div>
-              <pre className="p-4 text-xs font-mono overflow-x-auto text-[#e2e8f0] leading-relaxed">
-                <code>{codeString}</code>
-              </pre>
-            </div>
-          );
+            );
+          }
           codeContent = [];
         } else {
           // open code block
