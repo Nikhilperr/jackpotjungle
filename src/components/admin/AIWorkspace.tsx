@@ -239,7 +239,7 @@ Type a message below to test the instant conversation history and interface feed
     setIsGenerating(true);
 
     try {
-      const result = await getAIResponse({ messages: updatedMessages });
+      const result = await getAIResponse({ data: { messages: updatedMessages } });
 
       if (result.error) {
         const errorMsg: AIMessage = {
@@ -704,17 +704,9 @@ Type a message below to test the instant conversation history and interface feed
 
           {/* Configuration Placeholders for Future Agent */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-secondary/50 rounded-lg border border-white/5">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-secondary/50 rounded-lg border border-white/5 text-[11px] font-bold text-foreground">
               <Cpu className="h-3.5 w-3.5 text-amber-500" />
-              <select
-                value={selectedProvider}
-                onChange={(e) => setSelectedProvider(e.target.value as any)}
-                className="bg-transparent text-[11px] font-bold text-foreground outline-none cursor-pointer"
-              >
-                <option value="openai">OpenAI GPT-4o</option>
-                <option value="gemini">Gemini Pro 1.5</option>
-                <option value="anthropic">Claude 3.5 Sonnet</option>
-              </select>
+              <span>Jackpot Jungle AI</span>
             </div>
 
             <div className="hidden lg:flex items-center gap-1 text-[10px] text-muted-foreground">
