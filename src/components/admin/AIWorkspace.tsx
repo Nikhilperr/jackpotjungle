@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { getAIResponse } from "@/lib/ai.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { sendBroadcast, sendCustomPushNotificationAllUsers } from "@/lib/admin-super.functions";
+import { fetchReportData, createScheduledReport } from "@/lib/reports.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 
@@ -38,6 +39,8 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
   const [execMessage, setExecMessage] = useState("");
   const executeBroadcast = useServerFn(sendBroadcast);
   const executePush = useServerFn(sendCustomPushNotificationAllUsers);
+  const executeFetchReport = useServerFn(fetchReportData);
+  const executeCreateScheduledReport = useServerFn(createScheduledReport);
 
   const handleConfirm = async () => {
     setBusy(true);
@@ -127,6 +130,186 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
         setExecuted(true);
         setExecMessage(`✓ Re-engagement campaign settings successfully updated.`);
         onExecuteSuccess(`Updated re-engagement rules.`);
+      } else if (card.action === "generate_report") {
+        const stats = await executeFetchReport({
+          data: {
+            reportType: card.reportType,
+            startDate: card.startDate || undefined,
+            endDate: card.endDate || undefined,
+          }
+        });
+
+        if (card.format === "csv") {
+          let csvContent = "";
+          if (card.reportType === "revenue" || card.reportType === "deposit" || card.reportType === "withdrawal") {
+            const headers = ["Date & Time", "Customer", "Action", "Amount", "Reason", "Admin", "Notes"];
+            const rows = (stats.transactions || []).map((t: any) => [
+              new Date(t.created_at).toLocaleString(),
+              t.username,
+              t.action,
+              `$${t.amount.toFixed(2)}`,
+              t.reason,
+              t.admin_name,
+              t.notes
+            ]);
+            rows.push([]);
+            rows.push(["TOTAL CASH IN", "", "", `$${(stats.cashInTotal || 0).toFixed(2)}`]);
+            rows.push(["TOTAL CASH OUT", "", "", `$${(stats.cashOutTotal || 0).toFixed(2)}`]);
+            rows.push(["NET PROFIT", "", "", `$${(stats.netProfit || 0).toFixed(2)}`]);
+            csvContent = [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+          } else if (card.reportType === "vip") {
+            const headers = ["Username", "Display Name", "VIP Level", "Wallet Balance", "Credit Balance", "Total Deposits"];
+            const rows = (stats.players || []).map((p: any) => [
+              p.username,
+              p.displayName,
+              p.vipStatus,
+              `$${p.walletBalance.toFixed(2)}`,
+              `$${p.creditBalance.toFixed(2)}`,
+              `$${p.totalDeposits.toFixed(2)}`
+            ]);
+            csvContent = [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+          } else {
+            const headers = ["Metric Key", "Metric Value"];
+            const rows = Object.entries(stats).map(([k, v]) => [k, JSON.stringify(v)]);
+            csvContent = [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+          }
+
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", `JJ_${card.reportType.toUpperCase()}_Report_${new Date().toISOString().split("T")[0]}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          setExecuted(true);
+          setExecMessage(`✓ ${card.reportType.toUpperCase()} CSV report generated and downloaded successfully.`);
+          onExecuteSuccess(`Generated CSV report.`);
+        } else {
+          const printWindow = window.open("", "_blank");
+          if (!printWindow) throw new Error("Pop-up blocked: Please allow pop-ups to print the report.");
+
+          let contentHtml = "";
+          if (card.reportType === "revenue" || card.reportType === "deposit" || card.reportType === "withdrawal") {
+            const rowsHtml = (stats.transactions || []).map((t: any) => `
+              <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${new Date(t.created_at).toLocaleString()}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">${t.username}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold; text-transform: uppercase;">${t.action}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right; font-weight: bold;">$${t.amount.toFixed(2)}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${t.reason}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${t.admin_name}</td>
+              </tr>
+            `).join("");
+
+            contentHtml = `
+              <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between;">
+                <div>
+                  <p style="margin: 3px 0;"><strong>Total Cash In:</strong> <span style="color: #10b981; font-weight: bold;">$${(stats.cashInTotal || 0).toFixed(2)}</span></p>
+                  <p style="margin: 3px 0;"><strong>Total Cash Out:</strong> <span style="color: #ef4444; font-weight: bold;">$${(stats.cashOutTotal || 0).toFixed(2)}</span></p>
+                </div>
+                <div style="text-align: right;">
+                  <h2 style="margin: 0; color: #10b981;">$${(stats.netProfit || 0).toFixed(2)}</h2>
+                  <p style="margin: 2px 0; font-size: 11px; color: #666; text-transform: uppercase; font-weight: bold;">Net Profit Flow</p>
+                </div>
+              </div>
+              <h3>Detailed Transaction Ledger</h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                <thead>
+                  <tr style="background: #f5f5f5;">
+                    <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd;">Date & Time</th>
+                    <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd;">Customer</th>
+                    <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd;">Action</th>
+                    <th style="padding: 8px; text-align: right; border-bottom: 2px solid #ddd;">Amount</th>
+                    <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd;">Reason</th>
+                    <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd;">Admin</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml || '<tr><td colspan="6" style="text-align: center; padding: 10px;">No detailed records found</td></tr>'}
+                </tbody>
+              </table>
+            `;
+          } else if (card.reportType === "vip") {
+            const rowsHtml = (stats.players || []).map((p: any) => `
+              <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${p.username}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${p.displayName}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold; color: #d97706;">${p.vipStatus}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${p.walletBalance.toFixed(2)}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${p.creditBalance.toFixed(2)}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right; font-weight: bold; color: #10b981;">$${p.totalDeposits.toFixed(2)}</td>
+              </tr>
+            `).join("");
+
+            contentHtml = `
+              <h3>Active VIP Customer Rosters</h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                <thead>
+                  <tr style="background: #f5f5f5;">
+                    <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd;">Username</th>
+                    <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd;">Display Name</th>
+                    <th style="padding: 8px; text-align: left; border-bottom: 2px solid #ddd;">VIP Tier</th>
+                    <th style="padding: 8px; text-align: right; border-bottom: 2px solid #ddd;">Wallet Bal</th>
+                    <th style="padding: 8px; text-align: right; border-bottom: 2px solid #ddd;">Credit Bal</th>
+                    <th style="padding: 8px; text-align: right; border-bottom: 2px solid #ddd;">Deposits</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml || '<tr><td colspan="6" style="text-align: center; padding: 10px;">No VIP users registered</td></tr>'}
+                </tbody>
+              </table>
+            `;
+          } else {
+            contentHtml = `
+              <h3>Operational Parameters Overview</h3>
+              <pre style="background: #f4f4f4; padding: 15px; border-radius: 8px; font-family: monospace; white-space: pre-wrap; font-size: 11px;">${JSON.stringify(stats, null, 2)}</pre>
+            `;
+          }
+
+          printWindow.document.write(`
+            <html>
+              <head>
+                <title>Jackpot Jungle - AI Operational Summary Report</title>
+                <style>
+                  body { font-family: sans-serif; padding: 24px; color: #333; }
+                  .header { border-bottom: 3px solid #f59e0b; padding-bottom: 10px; margin-bottom: 20px; }
+                </style>
+              </head>
+              <body>
+                <div class="header">
+                  <h1 style="margin: 0; color: #f59e0b;">JACKPOT JUNGLE</h1>
+                  <p style="margin: 4px 0 0 0; font-size: 14px; text-transform: uppercase; font-weight: bold;">Super AI Operational ${card.reportType.toUpperCase()} Report</p>
+                </div>
+                <p><strong>Report Period:</strong> ${card.startDate || "Beginning"} to ${card.endDate || "Now"}</p>
+                <p><strong>Report Format:</strong> Printable PDF | <strong>Generated:</strong> ${new Date().toLocaleString()}</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+                ${contentHtml}
+              </body>
+            </html>
+          `);
+          printWindow.document.close();
+          printWindow.print();
+          
+          setExecuted(true);
+          setExecMessage(`✓ ${card.reportType.toUpperCase()} printable PDF window compiled successfully.`);
+          onExecuteSuccess(`Generated printable PDF report.`);
+        }
+      } else if (card.action === "schedule_report") {
+        await executeCreateScheduledReport({
+          data: {
+            reportType: card.reportType,
+            frequency: card.frequency,
+            timeOfDay: card.timeOfDay || "09:00",
+            email: card.email || undefined,
+          }
+        });
+
+        setExecuted(true);
+        setExecMessage(`✓ Automated ${card.reportType.toUpperCase()} report successfully scheduled for delivery (${card.frequency.toUpperCase()} at ${card.timeOfDay || "09:00"}).`);
+        onExecuteSuccess(`Scheduled report cron for ${card.reportType}.`);
       } else {
         throw new Error(`Unsupported action type: ${card.action}`);
       }
@@ -145,6 +328,8 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
       case "send_message": return "Prepare Single User Message";
       case "schedule_followup": return "Schedule User Follow-up Reminder";
       case "configure_reengagement": return "Configure Auto Re-engagement Rules";
+      case "generate_report": return "Compile Business Performance Report";
+      case "schedule_report": return "Schedule Recurring Report Delivery";
       default: return "Administrative Action Request";
     }
   };
@@ -156,6 +341,8 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
       case "send_message": return <Mail className="h-4 w-4 text-blue-500" />;
       case "schedule_followup": return <Calendar className="h-4 w-4 text-purple-500" />;
       case "configure_reengagement": return <Settings className="h-4 w-4 text-pink-500" />;
+      case "generate_report": return <LineChart className="h-4 w-4 text-orange-500" />;
+      case "schedule_report": return <Calendar className="h-4 w-4 text-indigo-500" />;
       default: return <Brain className="h-4 w-4 text-primary" />;
     }
   };
@@ -273,6 +460,50 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
                 {card.message_template}
               </div>
             </div>
+          </>
+        )}
+
+        {card.action === "generate_report" && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Report Category:</span>
+              <span className="font-bold text-foreground uppercase">{card.reportType}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Export Format:</span>
+              <span className="font-bold text-primary uppercase">{card.format}</span>
+            </div>
+            {(card.startDate || card.endDate) && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-semibold">Report Period:</span>
+                <span className="font-bold text-foreground">
+                  {card.startDate || "Beginning"} to {card.endDate || "Present"}
+                </span>
+              </div>
+            )}
+          </>
+        )}
+
+        {card.action === "schedule_report" && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Report Category:</span>
+              <span className="font-bold text-foreground uppercase">{card.reportType}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Delivery Frequency:</span>
+              <span className="font-bold text-primary uppercase">{card.frequency}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground font-semibold">Time of Day:</span>
+              <span className="font-mono text-foreground">{card.timeOfDay || "09:00"}</span>
+            </div>
+            {card.email && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-semibold">Send To Email:</span>
+                <span className="font-mono text-foreground">{card.email}</span>
+              </div>
+            )}
           </>
         )}
 

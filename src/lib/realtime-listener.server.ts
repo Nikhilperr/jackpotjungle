@@ -128,6 +128,123 @@ export async function initRealtimeListeners() {
             }
           }
         }
+
+        // --- TASK 3: PROCESS SCHEDULED REPORTS ---
+        const { data: pendingReports, error: errReports } = await supabaseAdmin
+          .from("scheduled_reports")
+          .select("*")
+          .lte("next_run_at", nowStr);
+
+        if (errReports) {
+          console.error("[Scheduler Error] Failed to fetch pending scheduled reports:", errReports.message);
+        } else if (pendingReports && pendingReports.length > 0) {
+          console.log(`[Scheduler] Found ${pendingReports.length} pending scheduled reports to process.`);
+          const { fetchReportData, calculateNextRun } = await import("./reports.functions");
+
+          for (const r of pendingReports) {
+            try {
+              // 1. Fetch the report content
+              const stats = await fetchReportData({
+                data: {
+                  reportType: r.report_type as any,
+                }
+              });
+
+              // 2. Format a text summary for the report
+              let reportSummary = `📄 AUTO-GENERATED ${r.report_type.toUpperCase()} REPORT\n`;
+              reportSummary += `Frequency: ${r.frequency.toUpperCase()} | Generated: ${new Date().toLocaleString()}\n\n`;
+
+              if (r.report_type === "revenue") {
+                reportSummary += `• Total Cash In: $${Number(stats.cashInTotal || 0).toFixed(2)}\n`;
+                reportSummary += `• Total Cash Out: $${Number(stats.cashOutTotal || 0).toFixed(2)}\n`;
+                reportSummary += `• Net Profit: $${Number(stats.netProfit || 0).toFixed(2)}\n`;
+              } else if (r.report_type === "vip") {
+                reportSummary += `• Active VIPs: ${(stats.players || []).length}\n`;
+                if (stats.players && stats.players.length > 0) {
+                  reportSummary += `• Top VIP Player: ${stats.players[0].username} (Balance: $${stats.players[0].walletBalance.toFixed(2)})\n`;
+                }
+              } else if (r.report_type === "support") {
+                reportSummary += `• Total Support Chats: ${stats.totalChats}\n`;
+                reportSummary += `• Active Requests: ${stats.activeSupportRequests}\n`;
+                reportSummary += `• Total Chat Messages: ${stats.totalMessagesInPeriod}\n`;
+              } else if (r.report_type === "user_growth") {
+                reportSummary += `• Total New Registrations: ${stats.totalRegistrations}\n`;
+              } else {
+                reportSummary += `• General overview fetched successfully. Data rows ready.\n`;
+              }
+
+              // 3. Post to system inbox
+              const { data: conv } = await supabaseAdmin
+                .from("page_conversations")
+                .select("id")
+                .eq("user_id", r.admin_id)
+                .maybeSingle();
+
+              if (conv) {
+                await supabaseAdmin.from("page_messages").insert({
+                  conversation_id: conv.id,
+                  sender_id: r.admin_id,
+                  from_page: true,
+                  content: `🤖 **System Job Scheduler:** ${reportSummary}`,
+                });
+              }
+
+              // 4. Send Email if delivery_email is configured
+              if (r.delivery_email) {
+                try {
+                  console.log(`[Scheduler Email] Sending Report Email to ${r.delivery_email}:\n`, reportSummary);
+                  
+                  const nodemailer = (await import("nodemailer")).default;
+                  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+                  const port = parseInt(process.env.SMTP_PORT || "587", 10);
+                  const user = process.env.SMTP_USER || "";
+                  const pass = process.env.SMTP_PASS || "";
+                  const from = process.env.SMTP_FROM || user || "reports@playjackpotjungle.com";
+
+                  if (user && pass) {
+                    const transporter = nodemailer.createTransport({
+                      host,
+                      port,
+                      secure: port === 465,
+                      auth: { user, pass },
+                    });
+
+                    await transporter.sendMail({
+                      from: `"Jackpot Jungle Automated Reports" <${from}>`,
+                      to: r.delivery_email,
+                      subject: `📊 Automated ${r.report_type.toUpperCase()} Report - ${r.frequency.toUpperCase()}`,
+                      text: reportSummary,
+                      html: `<div style="font-family: sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px; max-width: 600px;">
+                        <h2 style="color: #10b981; margin-top: 0;">📊 Automated Platform Report</h2>
+                        <p style="font-size: 13px; color: #666;">This is an automated operational intelligence report scheduled by the Jackpot Jungle administrator team.</p>
+                        <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;"/>
+                        <pre style="background: #f8f9fa; padding: 15px; border-radius: 6px; font-family: monospace; font-size: 13px; line-height: 1.5; border: 1px solid #e9ecef; white-space: pre-wrap;">${reportSummary}</pre>
+                        <p style="font-size: 11px; color: #999; margin-top: 25px;">Please do not reply directly to this automated service email.</p>
+                      </div>`,
+                    });
+                    console.log(`[Scheduler Email] Report email sent to ${r.delivery_email}`);
+                  }
+                } catch (emailErr: any) {
+                  console.error(`[Scheduler Error] Failed sending report email to ${r.delivery_email}:`, emailErr.message);
+                }
+              }
+
+              // 5. Update next_run_at and last_run_at
+              const nextRunStr = calculateNextRun(r.frequency, r.time_of_day || "09:00");
+              await supabaseAdmin
+                .from("scheduled_reports")
+                .update({
+                  last_run_at: nowStr,
+                  next_run_at: nextRunStr,
+                })
+                .eq("id", r.id);
+
+              console.log(`[Scheduler] Processed and rescheduled report ID ${r.id} to ${nextRunStr}`);
+            } catch (rErr: any) {
+              console.error(`[Scheduler Error] Failed to process report ID ${r.id}:`, rErr.message || rErr);
+            }
+          }
+        }
       } catch (e: any) {
         console.error("[Scheduler Error] Background runner iteration failed:", e.message || e);
       }

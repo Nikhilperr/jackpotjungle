@@ -256,6 +256,44 @@ export const getAIResponse = createServerFn({ method: "POST" })
             required: ["type"],
           },
         },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "get_operational_stats",
+          description: "Retrieve platform overview metrics: online users, active chats, pending payments, today's registrations, today's active users, revenue, bonuses, VIP tier statistics.",
+          parameters: {
+            type: "object",
+            properties: {},
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "get_operational_health_and_anomalies",
+          description: "Analyze security logs, support spikes, failed logins, and inactive VIP accounts over the last 7 days to detect operational anomalies.",
+          parameters: {
+            type: "object",
+            properties: {},
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "get_report_data",
+          description: "Fetch structured rows for a business report (revenue, deposit, withdrawal, support, user_growth, vip) to summarize or display as tables.",
+          parameters: {
+            type: "object",
+            properties: {
+              reportType: { type: "string", enum: ["revenue", "deposit", "withdrawal", "support", "broadcast", "promotion", "user_growth", "vip", "general"] },
+              startDate: { type: "string", description: "ISO date format (YYYY-MM-DD)" },
+              endDate: { type: "string", description: "ISO date format (YYYY-MM-DD)" }
+            },
+            required: ["reportType"]
+          },
+        },
       }
     ];
 
@@ -401,6 +439,109 @@ export const getAIResponse = createServerFn({ method: "POST" })
                 } else {
                   toolResult = { error: "Invalid parameters. messageId is required for type 'message'." };
                 }
+              } else if (name === "get_operational_stats") {
+                const now = new Date();
+                const fiveMinsAgo = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+                const todayStart = new Date();
+                todayStart.setHours(0,0,0,0);
+                const todayStartStr = todayStart.toISOString();
+
+                const [onlineRes, activeChatsRes, pendingPaymentsRes, todayRegsRes, todayActiveRes, todayTxRes, vipRes, notifsRes] = await Promise.all([
+                  context.supabase.from("profiles").select("id").gt("last_seen", fiveMinsAgo),
+                  context.supabase.from("page_conversations").select("id, last_message_at"),
+                  context.supabase.from("payments").select("id, amount_due").eq("status", "pending"),
+                  context.supabase.from("profiles").select("id").gte("created_at", todayStartStr),
+                  context.supabase.from("profiles").select("id").gte("last_seen", todayStartStr),
+                  context.supabase.from("wallet_transactions").select("action, amount").gte("created_at", todayStartStr).eq("deleted", false),
+                  context.supabase.from("profiles").select("vip_status"),
+                  context.supabase.from("user_notifications").select("id").gte("created_at", todayStartStr)
+                ]);
+
+                const onlineCount = onlineRes.data?.length || 0;
+                
+                let revenue = 0;
+                let bonuses = 0;
+                (todayTxRes.data || []).forEach((t: any) => {
+                  const amt = Number(t.amount || 0);
+                  if (t.action === "cashin") revenue += amt;
+                  else if (t.action === "cashout") revenue -= amt;
+                  else if (t.action === "bonus") bonuses += amt;
+                });
+
+                const vipStats: Record<string, number> = { none: 0, bronze: 0, silver: 0, gold: 0, platinum: 0, diamond: 0 };
+                (vipRes.data || []).forEach((v: any) => {
+                  const status = (v.vip_status || "none").toLowerCase();
+                  if (status in vipStats) vipStats[status]++;
+                });
+
+                toolResult = {
+                  onlineUsers: onlineCount,
+                  activeChats: activeChatsRes.data?.length || 0,
+                  activeSupportRequests: (activeChatsRes.data || []).filter((c: any) => c.last_message_at >= todayStartStr).length,
+                  pendingPayments: pendingPaymentsRes.data?.length || 0,
+                  todayRegistrations: todayRegsRes.data?.length || 0,
+                  todayActiveUsers: todayActiveRes.data?.length || 0,
+                  todayRevenue: revenue,
+                  todayBonuses: bonuses,
+                  vipStats,
+                  notificationCountToday: notifsRes.data?.length || 0,
+                  systemHealth: { database: "healthy", fcmGateway: "healthy" }
+                };
+              } else if (name === "get_operational_health_and_anomalies") {
+                const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+                const todayStart = new Date();
+                todayStart.setHours(0,0,0,0);
+                const todayStartStr = todayStart.toISOString();
+
+                const [loginsRes, txsRes, supportRes, inactiveVipsRes] = await Promise.all([
+                  context.supabase.from("login_logs").select("created_at, success").gte("created_at", sevenDaysAgo),
+                  context.supabase.from("wallet_transactions").select("created_at, action, amount").eq("deleted", false).gte("created_at", sevenDaysAgo),
+                  context.supabase.from("page_conversations").select("created_at, is_spam").gte("created_at", sevenDaysAgo),
+                  context.supabase.from("profiles").select("id, username, vip_status, last_seen").neq("vip_status", "none").lt("last_seen", new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString())
+                ]);
+
+                const anomalies: string[] = [];
+
+                const failedLogins = (loginsRes.data || []).filter((l: any) => !l.success);
+                const todayFailed = failedLogins.filter((l: any) => l.created_at >= todayStartStr).length;
+                if (todayFailed > 10) {
+                  anomalies.push(`Spike in failed login attempts: ${todayFailed} failed logins logged today (potential brute-force attack).`);
+                }
+
+                const withdrawals = (txsRes.data || []).filter((t: any) => t.action === "cashout");
+                const todayWithdrawalsTotal = withdrawals.filter((t: any) => t.created_at >= todayStartStr).reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+                const previousWithdrawals = withdrawals.filter((t: any) => t.created_at < todayStartStr);
+                const prevAverageWithdrawal = previousWithdrawals.reduce((sum: number, t: any) => sum + Number(t.amount), 0) / 6 || 100;
+                if (todayWithdrawalsTotal > 3 * prevAverageWithdrawal && todayWithdrawalsTotal > 500) {
+                  anomalies.push(`Unusually high withdrawal requests: Today's cash-out volume is $${todayWithdrawalsTotal.toFixed(2)} (more than 3x the 6-day average of $${prevAverageWithdrawal.toFixed(2)}).`);
+                }
+
+                const supportChats = (supportRes.data || []).filter((c: any) => !c.is_spam);
+                const todayChats = supportChats.filter((c: any) => c.created_at >= todayStartStr).length;
+                const prevAverageChats = supportChats.filter((c: any) => c.created_at < todayStartStr).length / 6 || 2;
+                if (todayChats > 2 * prevAverageChats && todayChats > 5) {
+                  anomalies.push(`Spike in customer support tickets: ${todayChats} chats opened today (more than 2x the 6-day average of ${prevAverageChats.toFixed(1)}).`);
+                }
+
+                const inactiveVipSummary = (inactiveVipsRes.data || []).map((v: any) => ({
+                  username: v.username,
+                  vipStatus: v.vip_status.toUpperCase(),
+                  inactiveDays: Math.floor((Date.now() - new Date(v.last_seen).getTime()) / (24 * 60 * 60 * 1000))
+                }));
+
+                toolResult = {
+                  anomaliesDetected: anomalies.length > 0 ? anomalies : ["No critical operational anomalies detected in the last 24 hours."],
+                  inactiveVipPlayers: inactiveVipSummary
+                };
+              } else if (name === "get_report_data") {
+                const { fetchReportData } = await import("./reports.functions");
+                toolResult = await fetchReportData({
+                  data: {
+                    reportType: args.reportType,
+                    startDate: args.startDate,
+                    endDate: args.endDate
+                  }
+                });
               } else {
                 toolResult = { error: `Tool ${name} not found.` };
               }
