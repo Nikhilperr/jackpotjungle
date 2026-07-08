@@ -331,6 +331,16 @@ export function AIWorkspace({ onBackToDashboard, onBackToPageChats, adminName }:
   const [tokenUsage, setTokenUsage] = useState({ promptTokens: 0, completionTokens: 0, total: 0 });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus input field when active chat changes
+  useEffect(() => {
+    if (activeConvId) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [activeConvId]);
 
   // 1. Local storage load
   useEffect(() => {
@@ -510,6 +520,7 @@ Type a message below to test the instant conversation history and interface feed
     saveConversations(nextConvs);
     setInputMessage("");
     setIsGenerating(true);
+    inputRef.current?.focus();
 
     try {
       const result = await getAIResponse({ data: { messages: updatedMessages } });
@@ -579,6 +590,9 @@ Type a message below to test the instant conversation history and interface feed
       saveConversations(errorConvs);
     } finally {
       setIsGenerating(false);
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -1120,6 +1134,7 @@ Type a message below to test the instant conversation history and interface feed
         <div className="p-4 border-t border-border bg-secondary/15 shrink-0">
           <form onSubmit={handleSendMessage} className="relative flex items-center gap-2 max-w-4xl mx-auto">
             <input
+              ref={inputRef}
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}

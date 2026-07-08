@@ -98,7 +98,8 @@ If the administrator requests an action that affects players (e.g. sending a bro
      }
      \`\`\`
 
-Always wrap templates in casino-themed aesthetics and tasteful emojis. Respect existing administrator permissions.`;
+Always wrap templates in casino-themed aesthetics and tasteful emojis. Respect existing administrator permissions.
+If the administrator requests to send a broadcast, campaign, message, or notification, ALWAYS draft the promotional content immediately and output the corresponding action JSON block. Do not write warning explanations or troubleshoot unless there is a database query error.`;
 
 const MessageSchema = z.object({
   id: z.string().optional(),
