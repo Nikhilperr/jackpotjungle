@@ -106,7 +106,10 @@ Split Broadcasts & Player Segmentation / A/B Testing:
   1. Call the \`get_users_list\` tool to retrieve the active player base.
   2. Segment the list according to their attributes (e.g. VIP levels, inactivity) or split them randomly.
   3. Generate multiple JSON action cards, one for each group/cohort.
-  4. For each cohort, set \`"targetType": "selected"\` and list the array of targeted UUIDs under \`"userIds": ["...", "..."]\` (which you get from the get_users_list query). Summarize the cohort details in the text response above the cards.`;
+  4. For each cohort, set \`"targetType": "selected"\` and list the array of targeted UUIDs under \`"userIds": ["...", "..."]\` (which you get from the get_users_list query). Summarize the cohort details in the text response above the cards.
+
+Retracting / Unsending Messages:
+- If the administrator asks to unsend, recall, retract, or delete a message or the most recent broadcast, call the \`unsend_messages\` tool with the appropriate parameters. Do not explain that it is unsupported; directly use the tool to fulfill the request.`;
 
 const MessageSchema = z.object({
   id: z.string().optional(),
@@ -228,6 +231,21 @@ export const getAIResponse = createServerFn({ method: "POST" })
             properties: {},
           },
         },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "unsend_messages",
+          description: "Recall/unsend/delete a recently sent broadcast campaign or a specific customer support page message.",
+          parameters: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: ["broadcast", "message"], description: "Whether to unsend a broadcast campaign or a single message bubble" },
+              messageId: { type: "string", description: "The UUID of the specific page message (required if type is 'message')" },
+            },
+            required: ["type"],
+          },
+        },
       }
     ];
 
@@ -333,6 +351,46 @@ export const getAIResponse = createServerFn({ method: "POST" })
                   .from("system_settings")
                   .select("*");
                 toolResult = error ? { error: error.message } : data;
+              } else if (name === "unsend_messages") {
+                if (args.type === "broadcast") {
+                  // Find the most recent broadcast
+                  const { data: recentBroadcast, error: fetchErr } = await context.supabase
+                    .from("broadcasts")
+                    .select("id, content")
+                    .order("created_at", { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                  if (fetchErr) throw new Error(fetchErr.message);
+                  if (!recentBroadcast) {
+                    toolResult = { error: "No recent broadcasts found to unsend." };
+                  } else {
+                    // Delete page messages matching the broadcast's exact content sent in the last 2 hours
+                    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+                    const { data: deletedMsgs, error: delErr } = await context.supabase
+                      .from("page_messages")
+                      .delete()
+                      .eq("content", recentBroadcast.content)
+                      .eq("from_page", true)
+                      .gt("created_at", twoHoursAgo);
+
+                    if (delErr) throw new Error(delErr.message);
+
+                    // Delete the broadcast log entry itself
+                    await context.supabase.from("broadcasts").delete().eq("id", recentBroadcast.id);
+
+                    toolResult = { success: true, message: `Successfully retracted the recent broadcast containing: "${recentBroadcast.content.substring(0, 50)}..."` };
+                  }
+                } else if (args.type === "message" && args.messageId) {
+                  const { error } = await context.supabase
+                    .from("page_messages")
+                    .delete()
+                    .eq("id", args.messageId);
+
+                  toolResult = error ? { error: error.message } : { success: true, message: `Successfully deleted page message ID ${args.messageId}` };
+                } else {
+                  toolResult = { error: "Invalid parameters. messageId is required for type 'message'." };
+                }
               } else {
                 toolResult = { error: `Tool ${name} not found.` };
               }

@@ -596,6 +596,102 @@ Type a message below to test the instant conversation history and interface feed
     }
   };
 
+  const handleStopGeneration = () => {
+    setIsGenerating(false);
+    toast.info("Generation stopped by administrator.");
+  };
+
+  const handleRegenerateMessage = async (msgId: string) => {
+    if (isGenerating || !activeConvId) return;
+
+    const currentConv = conversations.find((c) => c.id === activeConvId);
+    if (!currentConv) return;
+
+    const msgIndex = currentConv.messages.findIndex((m) => m.id === msgId);
+    if (msgIndex === -1) return;
+
+    const truncatedMessages = currentConv.messages.slice(0, msgIndex);
+
+    const nextConvs = conversations.map((c) => {
+      if (c.id === activeConvId) {
+        return {
+          ...c,
+          messages: truncatedMessages,
+        };
+      }
+      return c;
+    });
+
+    saveConversations(nextConvs);
+    setIsGenerating(true);
+    inputRef.current?.focus();
+
+    try {
+      const result = await getAIResponse({ data: { messages: truncatedMessages } });
+
+      if (result.error) {
+        const errorMsg: AIMessage = {
+          id: `assistant-msg-${Date.now()}`,
+          role: "assistant",
+          content: `⚠️ **System Error:** ${result.error}`,
+          createdAt: new Date().toISOString(),
+        };
+
+        const errorConvs = nextConvs.map((c) => {
+          if (c.id === activeConvId) {
+            return {
+              ...c,
+              messages: [...c.messages, errorMsg],
+            };
+          }
+          return c;
+        });
+        saveConversations(errorConvs);
+      } else if (result.content) {
+        const assistantMsg: AIMessage = {
+          id: `assistant-msg-${Date.now()}`,
+          role: "assistant",
+          content: result.content,
+          createdAt: new Date().toISOString(),
+        };
+
+        const finalConvs = nextConvs.map((c) => {
+          if (c.id === activeConvId) {
+            return {
+              ...c,
+              messages: [...c.messages, assistantMsg],
+            };
+          }
+          return c;
+        });
+        saveConversations(finalConvs);
+      }
+    } catch (err: any) {
+      const networkErrorMsg: AIMessage = {
+        id: `assistant-msg-${Date.now()}`,
+        role: "assistant",
+        content: `⚠️ **Network Error:** Failed to query server endpoint. ${err.message || "Please check your network connection."}`,
+        createdAt: new Date().toISOString(),
+      };
+
+      const errorConvs = nextConvs.map((c) => {
+        if (c.id === activeConvId) {
+          return {
+            ...c,
+            messages: [...c.messages, networkErrorMsg],
+          };
+        }
+        return c;
+      });
+      saveConversations(errorConvs);
+    } finally {
+      setIsGenerating(false);
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  };
+
   // Copy to clipboard helper
   const handleCopyMessage = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -1034,44 +1130,59 @@ Type a message below to test the instant conversation history and interface feed
 
               return (
                 <div key={msg.id} className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[85%] rounded-2xl p-4 flex gap-3 shadow-md border ${
-                      isUser
-                        ? "bg-primary text-primary-foreground border-primary/20 rounded-tr-sm"
-                        : "bg-card text-foreground border-border rounded-tl-sm"
-                    }`}
-                  >
-                    {/* Icon Column */}
-                    {!isUser && (
-                      <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-                        <Sparkles className="h-4 w-4 text-white" />
-                      </div>
-                    )}
+                  <div className="flex flex-col gap-1.5 max-w-[85%]">
+                    <div
+                      className={`rounded-2xl p-4 flex gap-3 shadow-md border ${
+                        isUser
+                          ? "bg-primary text-primary-foreground border-primary/20 rounded-tr-sm"
+                          : "bg-card text-foreground border-border rounded-tl-sm"
+                      }`}
+                    >
+                      {/* Icon Column */}
+                      {!isUser && (
+                        <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                          <Sparkles className="h-4 w-4 text-white" />
+                        </div>
+                      )}
 
-                    {/* Content Column */}
-                    <div className="flex-1 space-y-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-black text-muted-foreground/80 tracking-wide">
-                          {isUser ? `${adminName} (Admin)` : "Super AI Assistant"}
-                        </span>
-                        {!isUser && (
-                          <button
-                            onClick={() => handleCopyMessage(msg.id, msg.content)}
-                            className="text-muted-foreground hover:text-foreground hover:bg-secondary p-1 rounded-md transition-colors"
-                            title="Copy Response"
-                          >
-                            {copiedId === msg.id ? (
-                              <Check className="h-3.5 w-3.5 text-green-500" />
-                            ) : (
-                              <Copy className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        )}
-                      </div>
-                      <div className="text-sm select-text whitespace-pre-wrap leading-relaxed">
-                        {isUser ? msg.content : parseMarkdown(msg.content)}
+                      {/* Content Column */}
+                      <div className="flex-1 space-y-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] uppercase font-black text-muted-foreground/80 tracking-wide">
+                            {isUser ? `${adminName} (Admin)` : "Super AI Assistant"}
+                          </span>
+                          {!isUser && (
+                            <button
+                              onClick={() => handleCopyMessage(msg.id, msg.content)}
+                              className="text-muted-foreground hover:text-foreground hover:bg-secondary p-1 rounded-md transition-colors"
+                              title="Copy Response"
+                            >
+                              {copiedId === msg.id ? (
+                                <Check className="h-3.5 w-3.5 text-green-500" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-sm select-text whitespace-pre-wrap leading-relaxed">
+                          {isUser ? msg.content : parseMarkdown(msg.content)}
+                        </div>
                       </div>
                     </div>
+
+                    {/* Regenerate Action Row below AI message */}
+                    {!isUser && (
+                      <div className="flex items-center gap-2 pl-10 text-[10px]">
+                        <button
+                          onClick={() => handleRegenerateMessage(msg.id)}
+                          className="flex items-center gap-1.5 text-muted-foreground hover:text-amber-500 font-bold px-2 py-1 rounded-lg border border-border bg-secondary/15 hover:bg-amber-500/5 transition-all shadow-sm cursor-pointer"
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          <span>Regenerate</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -1147,33 +1258,22 @@ Type a message below to test the instant conversation history and interface feed
               className="w-full h-12 bg-secondary/30 border border-border focus:border-primary/30 rounded-2xl pl-4 pr-12 text-sm text-foreground outline-none transition-all placeholder-muted-foreground/60 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)] disabled:opacity-50"
             />
             <button
-              type="submit"
-              disabled={!inputMessage.trim() || isGenerating || !activeConvId}
-              className="absolute right-2.5 h-8.5 w-8.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/95 disabled:bg-secondary disabled:text-muted-foreground transition-all flex items-center justify-center shadow-md cursor-pointer"
+              type={isGenerating ? "button" : "submit"}
+              onClick={isGenerating ? handleStopGeneration : undefined}
+              disabled={(!isGenerating && !inputMessage.trim()) || !activeConvId}
+              className={`absolute right-2.5 h-8.5 w-8.5 rounded-xl transition-all flex items-center justify-center shadow-md cursor-pointer ${
+                isGenerating
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/95 animate-pulse"
+                  : "bg-primary text-primary-foreground hover:bg-primary/95 disabled:bg-secondary disabled:text-muted-foreground"
+              }`}
             >
-              <Send className="h-4 w-4" />
+              {isGenerating ? (
+                <XCircle className="h-4 w-4" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
             </button>
           </form>
-
-          {/* Placeholders for Regenerate / Stop Generation Buttons */}
-          <div className="flex items-center justify-center gap-4 mt-3">
-            <button
-              type="button"
-              disabled
-              className="h-7 px-3 rounded-lg border border-border bg-card/40 opacity-55 text-[10px] font-bold text-muted-foreground flex items-center gap-1.5"
-            >
-              <RefreshCw className="h-3 w-3" />
-              <span>Regenerate (Standby)</span>
-            </button>
-            <button
-              type="button"
-              disabled
-              className="h-7 px-3 rounded-lg border border-border bg-card/40 opacity-55 text-[10px] font-bold text-muted-foreground flex items-center gap-1.5"
-            >
-              <XCircle className="h-3 w-3" />
-              <span>Stop Generating</span>
-            </button>
-          </div>
         </div>
       </main>
     </div>
