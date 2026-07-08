@@ -99,7 +99,14 @@ If the administrator requests an action that affects players (e.g. sending a bro
      \`\`\`
 
 Always wrap templates in casino-themed aesthetics and tasteful emojis. Respect existing administrator permissions.
-If the administrator requests to send a broadcast, campaign, message, or notification, ALWAYS draft the promotional content immediately and output the corresponding action JSON block. Do not write warning explanations or troubleshoot unless there is a database query error.`;
+If the administrator requests to send a broadcast, campaign, message, or notification, ALWAYS draft the promotional content immediately and output the corresponding action JSON block. Do not write warning explanations or troubleshoot unless there is a database query error.
+
+Split Broadcasts & Player Segmentation / A/B Testing:
+- If the administrator asks to send split campaigns or divide promotions (e.g. A/B testing, target a percentage like 10% of players with message A, and another 10% with message B):
+  1. Call the \`get_users_list\` tool to retrieve the active player base.
+  2. Segment the list according to their attributes (e.g. VIP levels, inactivity) or split them randomly.
+  3. Generate multiple JSON action cards, one for each group/cohort.
+  4. For each cohort, set \`"targetType": "selected"\` and list the array of targeted UUIDs under \`"userIds": ["...", "..."]\` (which you get from the get_users_list query). Summarize the cohort details in the text response above the cards.`;
 
 const MessageSchema = z.object({
   id: z.string().optional(),

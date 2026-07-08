@@ -185,7 +185,7 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
             )}
             <div className="space-y-1">
               <span className="text-muted-foreground font-semibold">Broadcast Content:</span>
-              <div className="p-2.5 bg-[#0f0f12] rounded-lg border border-white/5 font-sans whitespace-pre-wrap text-foreground/90">
+              <div className="p-2.5 bg-secondary/35 rounded-lg border border-border font-sans whitespace-pre-wrap text-foreground">
                 {card.content}
               </div>
             </div>
@@ -200,7 +200,7 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
             </div>
             <div className="space-y-1">
               <span className="text-muted-foreground font-semibold">Message Text:</span>
-              <div className="p-2.5 bg-[#0f0f12] rounded-lg border border-white/5 whitespace-pre-wrap text-foreground/90">
+              <div className="p-2.5 bg-secondary/35 rounded-lg border border-border whitespace-pre-wrap text-foreground">
                 {card.message}
               </div>
             </div>
@@ -215,7 +215,7 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
             </div>
             <div className="space-y-1">
               <span className="text-muted-foreground font-semibold">Direct Message Content:</span>
-              <div className="p-2.5 bg-[#0f0f12] rounded-lg border border-white/5 whitespace-pre-wrap text-foreground/90 font-sans">
+              <div className="p-2.5 bg-secondary/35 rounded-lg border border-border whitespace-pre-wrap text-foreground font-sans">
                 {card.content}
               </div>
             </div>
@@ -234,7 +234,7 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
             </div>
             <div className="space-y-1">
               <span className="text-muted-foreground font-semibold">Follow-up Message:</span>
-              <div className="p-2.5 bg-[#0f0f12] rounded-lg border border-white/5 whitespace-pre-wrap text-foreground/90 font-sans">
+              <div className="p-2.5 bg-secondary/35 rounded-lg border border-border whitespace-pre-wrap text-foreground font-sans">
                 {card.message}
               </div>
             </div>
@@ -255,7 +255,7 @@ function AIActionCard({ card, onExecuteSuccess }: { card: any; onExecuteSuccess:
             </div>
             <div className="space-y-1">
               <span className="text-muted-foreground font-semibold">Re-engagement Message Template:</span>
-              <div className="p-2.5 bg-[#0f0f12] rounded-lg border border-white/5 whitespace-pre-wrap text-foreground/90 font-mono text-[10px]">
+              <div className="p-2.5 bg-secondary/35 rounded-lg border border-border whitespace-pre-wrap text-foreground font-mono text-[10px]">
                 {card.message_template}
               </div>
             </div>
