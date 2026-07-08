@@ -70,12 +70,18 @@ export const getAIResponse = createServerFn({ method: "POST" })
 
     // 3. Make fetch request to OpenAI API
     try {
+      const orgId = process.env.OPENAI_ORGANIZATION;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      };
+      if (orgId) {
+        headers["OpenAI-Organization"] = orgId;
+      }
+
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers,
         body: JSON.stringify({
           model: modelName,
           messages: apiMessages,
