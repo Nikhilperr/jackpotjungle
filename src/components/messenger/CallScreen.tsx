@@ -53,7 +53,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
     if ((window as any).AndroidBridge?.setSpeakerphoneOn) {
       (window as any).AndroidBridge.setSpeakerphoneOn(speakerOn);
     }
-  }, [speakerOn, connected, localStream, remoteStream]);
+  }, [speakerOn, connected, active, localStream, remoteStream]);
 
   // Reset audio natively when CallScreen unmounts
   useEffect(() => {

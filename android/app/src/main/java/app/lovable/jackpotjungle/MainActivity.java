@@ -152,8 +152,61 @@ public class MainActivity extends BridgeActivity {
                                 android.media.AudioManager audioManager = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
                                 if (audioManager != null) {
                                     audioManager.setMode(android.media.AudioManager.MODE_IN_COMMUNICATION);
-                                    audioManager.setSpeakerphoneOn(on);
-                                    Log.d("MainActivity", "Speakerphone set to: " + on);
+                                    
+                                    // Check if wired or bluetooth headset is connected
+                                    boolean hasHeadset = false;
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                        android.media.AudioDeviceInfo[] devicesArr = audioManager.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS);
+                                        for (android.media.AudioDeviceInfo device : devicesArr) {
+                                            int type = device.getType();
+                                            if (type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                                                type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                                                type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONE ||
+                                                type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                                                type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET) {
+                                                hasHeadset = true;
+                                                break;
+                                            }
+                                        }
+                                    } else {
+                                        hasHeadset = audioManager.isWiredHeadsetOn() || audioManager.isBluetoothA2dpOn();
+                                    }
+                                    
+                                    Log.d("MainActivity", "setSpeakerphoneOn(" + on + ") - Headset detected: " + hasHeadset);
+
+                                    if (hasHeadset) {
+                                        // Let Android handle headset routing natively by clearing overrides
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                            audioManager.clearCommunicationDevice();
+                                        }
+                                        audioManager.setSpeakerphoneOn(false);
+                                    } else {
+                                        // Explicitly route to speaker or earpiece
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) { // API 31+
+                                            java.util.List<android.media.AudioDeviceInfo> devices = audioManager.getAvailableCommunicationDevices();
+                                            android.media.AudioDeviceInfo targetDevice = null;
+                                            int targetType = on ? android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER : android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+                                            
+                                            for (android.media.AudioDeviceInfo device : devices) {
+                                                if (device.getType() == targetType) {
+                                                    targetDevice = device;
+                                                    break;
+                                                }
+                                            }
+                                            
+                                            if (targetDevice != null) {
+                                                audioManager.clearCommunicationDevice();
+                                                boolean success = audioManager.setCommunicationDevice(targetDevice);
+                                                Log.d("MainActivity", "setCommunicationDevice type " + targetType + " success: " + success);
+                                            } else {
+                                                audioManager.setSpeakerphoneOn(on);
+                                                Log.w("MainActivity", "Target communication device not found, falling back to setSpeakerphoneOn");
+                                            }
+                                        } else {
+                                            // Legacy fallback
+                                            audioManager.setSpeakerphoneOn(on);
+                                        }
+                                    }
                                 }
                             } catch (Exception e) {
                                 Log.e("MainActivity", "Failed to toggle speakerphone natively", e);
@@ -170,6 +223,9 @@ public class MainActivity extends BridgeActivity {
                             try {
                                 android.media.AudioManager audioManager = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
                                 if (audioManager != null) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        audioManager.clearCommunicationDevice();
+                                    }
                                     audioManager.setSpeakerphoneOn(false);
                                     audioManager.setMode(android.media.AudioManager.MODE_NORMAL);
                                     Log.d("MainActivity", "Audio mode reset to MODE_NORMAL");
