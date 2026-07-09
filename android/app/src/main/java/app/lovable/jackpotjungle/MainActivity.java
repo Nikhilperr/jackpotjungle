@@ -17,6 +17,8 @@ import com.getcapacitor.BridgeActivity;
 import com.codetrixstudio.capacitor.GoogleAuth.GoogleAuth;
 
 public class MainActivity extends BridgeActivity {
+    private boolean isCallActive = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -236,6 +238,12 @@ public class MainActivity extends BridgeActivity {
                         }
                     });
                 }
+
+                @android.webkit.JavascriptInterface
+                public void setCallActive(boolean active) {
+                    isCallActive = active;
+                    Log.d("MainActivity", "Call active state updated to: " + active);
+                }
             }, "AndroidBridge");
         }
 
@@ -318,5 +326,44 @@ public class MainActivity extends BridgeActivity {
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             );
         }
+    }
+
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (isCallActive) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    android.app.PictureInPictureParams.Builder builder = new android.app.PictureInPictureParams.Builder();
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        // 9:16 aspect ratio
+                        android.util.Rational aspectRatio = new android.util.Rational(9, 16);
+                        builder.setAspectRatio(aspectRatio);
+                    }
+                    enterPictureInPictureMode(builder.build());
+                    Log.d("MainActivity", "Entered Picture-in-Picture mode on user leave hint.");
+                } catch (Exception e) {
+                    Log.e("MainActivity", "Failed to enter Picture-in-Picture mode", e);
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, android.content.res.Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        Log.d("MainActivity", "Picture-in-Picture mode changed: " + isInPictureInPictureMode);
+        
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (getBridge() != null && getBridge().getWebView() != null) {
+                    getBridge().getWebView().evaluateJavascript(
+                        "if (window.onPictureInPictureModeChanged) { window.onPictureInPictureModeChanged(" + isInPictureInPictureMode + "); }", 
+                        null
+                    );
+                }
+            }
+        });
     }
 }

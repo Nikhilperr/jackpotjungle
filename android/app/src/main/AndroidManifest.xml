@@ -17,6 +17,8 @@
             android:showWhenLocked="true"
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
             android:windowSoftInputMode="stateAlwaysHidden|adjustResize"
             android:exported="true">
             <intent-filter>
