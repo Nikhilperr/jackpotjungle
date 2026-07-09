@@ -40,6 +40,7 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const haveRemoteDescRef = useRef(false);
   const calleeReadyRef = useRef(false);
+  const facingModeRef = useRef<"user" | "environment">("user");
 
   // teardown
   const stopAll = useCallback(() => {
@@ -225,22 +226,44 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
   const switchCamera = useCallback(async () => {
     if (!localStream || !pcRef.current) return;
     const cur = localStream.getVideoTracks()[0];
-    const curFacing = (cur?.getSettings?.().facingMode as string | undefined) ?? "user";
-    const next = curFacing === "user" ? "environment" : "user";
+    const next = facingModeRef.current === "user" ? "environment" : "user";
     try {
       const newStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: { ideal: next } },
+        video: { facingMode: { exact: next } },
       });
       const newTrack = newStream.getVideoTracks()[0];
       const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
-      if (sender && newTrack) await sender.replaceTrack(newTrack);
-      cur?.stop();
-      localStream.removeTrack(cur);
-      localStream.addTrack(newTrack);
-      setLocalStream(new MediaStream(localStream.getTracks()));
+      if (sender && newTrack) {
+        await sender.replaceTrack(newTrack);
+        cur?.stop();
+        localStream.removeTrack(cur);
+        localStream.addTrack(newTrack);
+        setLocalStream(new MediaStream(localStream.getTracks()));
+        facingModeRef.current = next;
+        console.log("[WebRTC] Successfully switched camera to:", next);
+      }
     } catch (e) {
-      console.warn("switchCamera failed", e);
+      console.warn("switchCamera failed, attempting ideal constraint fallback", e);
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: next } },
+        });
+        const newTrack = newStream.getVideoTracks()[0];
+        const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
+        if (sender && newTrack) {
+          await sender.replaceTrack(newTrack);
+          cur?.stop();
+          localStream.removeTrack(cur);
+          localStream.addTrack(newTrack);
+          setLocalStream(new MediaStream(localStream.getTracks()));
+          facingModeRef.current = next;
+          console.log("[WebRTC] Successfully switched camera (fallback) to:", next);
+        }
+      } catch (err) {
+        console.error("switchCamera fallback failed", err);
+      }
     }
   }, [localStream]);
 

@@ -251,7 +251,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
         )}
         
         {/* always play remote audio */}
-        <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+        <audio ref={remoteAudioRef} autoPlay playsInline style={{ position: "absolute", width: "1px", height: "1px", opacity: 0, pointerEvents: "none" }} />
       </div>
 
       {/* Local video PIP - always in DOM so ref is stable, mirrors front camera preview, draggable */}
