@@ -718,7 +718,7 @@ function ProfilePage() {
     printWindow.document.close();
   };
 
-  if (authLoading && !profile) {
+  if (authLoading || !profile) {
     return (
       <AppShell>
         <div className="h-full flex items-center justify-center">
