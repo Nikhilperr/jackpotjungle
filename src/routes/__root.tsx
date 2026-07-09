@@ -93,8 +93,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   beforeLoad: async ({ location }) => {
     if (typeof window === "undefined") return;
 
-    const host = window.location.hostname.toLowerCase();
     const pathname = location.pathname;
+    if (pathname.startsWith("/app/") && pathname !== "/app/") {
+      return;
+    }
+
+    const host = window.location.hostname.toLowerCase();
 
     const sessionRes = await supabase.auth.getSession();
     const session = sessionRes.data.session;
@@ -103,8 +107,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     if (Capacitor.isNativePlatform()) {
       if (pathname === "/" || (!pathname.startsWith("/app/") && !isFrameworkOrAssetPath(pathname))) {
         if (session?.user) {
+          if (typeof window !== "undefined") {
+            const cachedRole = localStorage.getItem("jj_user_role");
+            if (cachedRole) {
+              const isAdmin = cachedRole === "admin" || cachedRole === "super_admin";
+              throw redirect({ to: isAdmin ? "/app/admin" : "/app/chat", search: location.search });
+            }
+          }
           const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id);
-          const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+          const userRole = roles?.[0]?.role || "user";
+          if (typeof window !== "undefined") {
+            localStorage.setItem("jj_user_role", userRole);
+          }
+          const isAdmin = userRole === "admin" || userRole === "super_admin";
           throw redirect({ to: isAdmin ? "/app/admin" : "/app/chat", search: location.search });
         } else {
           throw redirect({ to: "/app/auth", search: location.search });
@@ -236,6 +251,11 @@ function RootComponent() {
         toast.info("Password recovery link detected. Set your new password.");
         navigate({ to: "/reset-password" });
         return;
+      }
+      if (event === "SIGNED_OUT") {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("jj_user_role");
+        }
       }
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
 

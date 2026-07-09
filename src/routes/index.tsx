@@ -23,9 +23,23 @@ export const Route = createFileRoute("/")({
 
     if (session?.user) {
       const uid = session.user.id;
-      // Fetch user role to route them correctly
+      
+      // Try resolving role synchronously from local cache first to open instantly
+      if (typeof window !== "undefined") {
+        const cachedRole = localStorage.getItem("jj_user_role");
+        if (cachedRole) {
+          const isAdmin = cachedRole === "admin" || cachedRole === "super_admin";
+          throw redirect({ to: isAdmin ? "/app/admin" : "/app/chat" });
+        }
+      }
+
+      // Fetch user role from database if not cached
       const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", uid);
-      const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+      const userRole = roles?.[0]?.role || "user";
+      if (typeof window !== "undefined") {
+        localStorage.setItem("jj_user_role", userRole);
+      }
+      const isAdmin = userRole === "admin" || userRole === "super_admin";
       throw redirect({ to: isAdmin ? "/app/admin" : "/app/chat" });
     } else if (Capacitor.isNativePlatform()) {
       throw redirect({ to: "/app/auth" });

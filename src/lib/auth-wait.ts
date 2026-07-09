@@ -25,7 +25,6 @@ export function clearSharedSessionCache() {
 
 export async function waitInitialSession(timeoutMs = 4000): Promise<Session | null> {
   if (typeof window !== "undefined") {
-
     const hash = window.location.hash;
     if (hash.includes("access_token=") && hash.includes("refresh_token=")) {
       const cleanHash = hash.startsWith("#") ? hash.substring(1) : hash;
@@ -47,11 +46,6 @@ export async function waitInitialSession(timeoutMs = 4000): Promise<Session | nu
     }
   }
 
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    return session;
-  }
-
   let hasTokenInStorage = false;
   try {
     hasTokenInStorage = typeof window !== "undefined" && (
@@ -64,6 +58,15 @@ export async function waitInitialSession(timeoutMs = 4000): Promise<Session | nu
     );
   } catch (e) {
     console.warn("Storage/cookie access failed in waitInitialSession:", e);
+  }
+
+  if (!hasTokenInStorage) {
+    return null;
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    return session;
   }
 
   return new Promise((resolve) => {
@@ -86,12 +89,6 @@ export async function waitInitialSession(timeoutMs = 4000): Promise<Session | nu
           resolve(currentSession);
         }
       } else if (event === "INITIAL_SESSION" || event === "SIGNED_OUT") {
-        // If local storage has a token, do not resolve null prematurely on INITIAL_SESSION.
-        // Wait for Supabase to resolve the session or fallback to the timeout.
-        if (event === "INITIAL_SESSION" && hasTokenInStorage) {
-          return;
-        }
-
         if (!resolved) {
           resolved = true;
           clearTimeout(timer);

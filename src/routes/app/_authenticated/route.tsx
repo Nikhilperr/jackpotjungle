@@ -64,7 +64,11 @@ export const Route = createFileRoute("/app/_authenticated")({
         .from("user_roles")
         .select("role")
         .eq("user_id", session.user.id);
-      const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+      const userRole = roles?.[0]?.role || "user";
+      if (typeof window !== "undefined") {
+        localStorage.setItem("jj_user_role", userRole);
+      }
+      const isAdmin = userRole === "admin" || userRole === "super_admin";
       const savedRedirect = typeof window !== "undefined" ? sessionStorage.getItem("jj_invite_redirect") : null;
       if (savedRedirect) {
         sessionStorage.removeItem("jj_invite_redirect");
