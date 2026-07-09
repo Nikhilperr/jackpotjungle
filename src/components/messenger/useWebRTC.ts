@@ -165,8 +165,7 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
 
     (async () => {
       try {
-        const isCurrentParticipantAdmin = (context === "page" && role === "caller") || (context === "page_broadcast" && role === "callee");
-        const wantVideo = kind === "video" && !isCurrentParticipantAdmin;
+        const wantVideo = kind === "video";
 
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },

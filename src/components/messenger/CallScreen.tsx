@@ -174,8 +174,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   }
 
   const isVideo = kind === "video";
-  const isCurrentParticipantAdmin = (context === "page" && role === "caller") || (context === "page_broadcast" && role === "callee");
-  const showLocalVideo = isVideo && !isCurrentParticipantAdmin;
+  const showLocalVideo = isVideo;
   const hasRemoteVideo = isVideo && active && remoteStream && remoteStream.getVideoTracks().length > 0;
 
   return (
