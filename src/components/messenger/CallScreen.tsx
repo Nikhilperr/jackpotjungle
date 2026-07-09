@@ -53,7 +53,16 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
     if ((window as any).AndroidBridge?.setSpeakerphoneOn) {
       (window as any).AndroidBridge.setSpeakerphoneOn(speakerOn);
     }
-  }, [speakerOn, connected]);
+  }, [speakerOn, connected, localStream, remoteStream]);
+
+  // Reset audio natively when CallScreen unmounts
+  useEffect(() => {
+    return () => {
+      if ((window as any).AndroidBridge?.resetAudio) {
+        (window as any).AndroidBridge.resetAudio();
+      }
+    };
+  }, []);
 
   // Subscribe to status changes (for caller: when callee answers -> status=active)
   useEffect(() => {
@@ -113,11 +122,18 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
 
   // Attach streams
   useEffect(() => {
-    if (localVideoRef.current && localStream) localVideoRef.current.srcObject = localStream;
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
   }, [localStream]);
+
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) remoteVideoRef.current.srcObject = remoteStream;
-    if (remoteAudioRef.current && remoteStream) remoteAudioRef.current.srcObject = remoteStream;
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream;
+    }
   }, [remoteStream]);
 
   async function endCall(reason: "local" | "remote") {
@@ -166,10 +182,19 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
     <div className="fixed inset-0 z-[100] bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white flex flex-col animate-in fade-in duration-200">
       {/* Remote video / avatar */}
       <div className="absolute inset-0">
-        {hasRemoteVideo && !noAnswer ? (
-          <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-5">
+        {/* Remote video element - always in DOM so ref is stable */}
+        <video 
+          ref={remoteVideoRef} 
+          autoPlay 
+          playsInline 
+          className={`w-full h-full object-cover transition-opacity duration-200 ${
+            hasRemoteVideo && !noAnswer ? "opacity-100" : "opacity-0 pointer-events-none"
+          }`} 
+        />
+        
+        {/* Avatar/Calling Overlay - shown when there is no remote video */}
+        {(!hasRemoteVideo || noAnswer) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-gradient-to-br from-slate-900 via-slate-950 to-black">
             <div className="relative">
               {!noAnswer && (
                 <div className="absolute inset-0 rounded-full bg-primary/30 animate-ping" style={{ animationDuration: "2s" }} />
@@ -199,21 +224,31 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
             </div>
           </div>
         )}
+        
         {/* always play remote audio */}
         <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
       </div>
 
-      {/* Local video PIP */}
-      {showLocalVideo && !noAnswer && (
-        <div className="absolute top-4 right-4 w-28 h-40 sm:w-36 sm:h-52 rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-black z-10">
-          <video ref={localVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${cameraOff ? "opacity-0" : ""}`} />
-          {cameraOff && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
-              <VideoOff className="h-6 w-6 text-white/70" />
-            </div>
-          )}
-        </div>
-      )}
+      {/* Local video PIP - always in DOM so ref is stable, mirrors front camera preview */}
+      <div 
+        className={`absolute top-4 right-4 w-28 h-40 sm:w-36 sm:h-52 rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-black z-10 transition-opacity duration-200 ${
+          showLocalVideo && !noAnswer ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+      >
+        <video 
+          ref={localVideoRef} 
+          autoPlay 
+          playsInline 
+          muted 
+          style={{ transform: "scaleX(-1)" }}
+          className={`w-full h-full object-cover transition-opacity duration-150 ${cameraOff ? "opacity-0" : "opacity-100"}`} 
+        />
+        {cameraOff && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
+            <VideoOff className="h-6 w-6 text-white/70" />
+          </div>
+        )}
+      </div>
 
       {/* Top bar */}
       <div className="relative z-10 p-4 flex items-center justify-between">
