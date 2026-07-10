@@ -146,7 +146,8 @@ type Tab =
   | "monitor"
   | "monthly_profit"
   | "push_notifications"
-  | "aichat";
+  | "aichat"
+  | "user_ai_knowledge";
 
 type AdminSearch = {
   c?: string;
@@ -162,7 +163,7 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
       "inbox", "teamchat", "quickreplies", "tags", "broadcasts", "followups",
       "autoresp", "referrals", "logs", "users", "admins", "super", "profile",
       "rules", "updates", "monitor", "monthly_profit", "push_notifications",
-      "aichat"
+      "aichat", "user_ai_knowledge"
     ];
     const incomingTab = search.tab as Tab;
     return {
@@ -426,6 +427,7 @@ function AdminPage() {
         <p className="px-3 pt-1 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Business</p>
         <SideBtn active={tab === "inbox"} onClick={() => selectTab("inbox")} icon={Inbox} label="Page Inbox" />
         <SideBtn active={tab === "aichat"} onClick={() => selectTab("aichat")} icon={Sparkles} label="AI Chat" />
+        <SideBtn active={tab === "user_ai_knowledge"} onClick={() => selectTab("user_ai_knowledge")} icon={Bot} label="User AI Knowledge" />
         <SideBtn active={tab === "teamchat"} onClick={() => selectTab("teamchat")} icon={MessageSquare} label="Admin Team Chat" />
         <SideBtn active={tab === "quickreplies"} onClick={() => selectTab("quickreplies")} icon={MessageSquareQuote} label="Quick Replies" />
         <SideBtn active={tab === "tags"} onClick={() => selectTab("tags")} icon={TagIcon} label="Tags" />
@@ -541,6 +543,11 @@ function AdminPage() {
             onBackToPageChats={() => selectTab("inbox")}
             adminName={adminName}
           />
+        </div>
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "user_ai_knowledge" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="User AI Knowledge Base">
+            <UserAiKnowledgeView />
+          </ScrollWrap>
         </div>
       </main>
 
@@ -7186,4 +7193,279 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
     </div>
   );
 });
+
+interface KnowledgeItem {
+  id: string;
+  title: string;
+  content: string;
+  updated_at: string;
+}
+
+export function UserAiKnowledgeView() {
+  const [items, setItems] = useState<KnowledgeItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+
+  // Form states
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("system_settings")
+        .select("value")
+        .eq("key", "user_ai_knowledge")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data && Array.isArray(data.value)) {
+        setItems(data.value as KnowledgeItem[]);
+      } else {
+        setItems([]);
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to load knowledge topics");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const saveItems = async (newItems: KnowledgeItem[]) => {
+    try {
+      const { error } = await supabase
+        .from("system_settings")
+        .upsert({
+          key: "user_ai_knowledge",
+          value: newItems as any,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) throw error;
+      setItems(newItems);
+      toast.success("Knowledge base updated successfully!");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save knowledge items");
+    }
+  };
+
+  const handleOpenAdd = () => {
+    setEditingId(null);
+    setTitle("");
+    setContent("");
+    setIsOpen(true);
+  };
+
+  const handleOpenEdit = (item: KnowledgeItem) => {
+    setEditingId(item.id);
+    setTitle(item.title);
+    setContent(item.content);
+    setIsOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !content.trim()) {
+      toast.error("Please fill in both title and content fields.");
+      return;
+    }
+
+    let updatedList: KnowledgeItem[] = [];
+    if (editingId) {
+      updatedList = items.map((item) =>
+        item.id === editingId
+          ? { ...item, title: title.trim(), content: content.trim(), updated_at: new Date().toISOString() }
+          : item
+      );
+    } else {
+      const newItem: KnowledgeItem = {
+        id: `k-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: title.trim(),
+        content: content.trim(),
+        updated_at: new Date().toISOString(),
+      };
+      updatedList = [...items, newItem];
+    }
+
+    setIsOpen(false);
+    await saveItems(updatedList);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!isDeleting) return;
+    const updatedList = items.filter((item) => item.id !== isDeleting);
+    setIsDeleting(null);
+    await saveItems(updatedList);
+  };
+
+  const filteredItems = items.filter((item) => {
+    const q = searchQuery.toLowerCase();
+    return item.title.toLowerCase().includes(q) || item.content.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="p-4 md:p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch sm:items-center">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search knowledge topics..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 bg-card border-border"
+          />
+        </div>
+        <Button onClick={handleOpenAdd} className="font-bold flex items-center gap-1.5 shrink-0 rounded-xl">
+          <Plus className="h-4 w-4" />
+          Add Topic
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="text-center py-16 border border-dashed border-border rounded-3xl bg-card/40">
+          <Bot className="h-10 w-10 mx-auto text-muted-foreground/60 mb-3" />
+          <h3 className="font-bold text-sm text-foreground">No knowledge topics found</h3>
+          <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+            {searchQuery ? "No topics match your search criteria." : "Create topics here to feed platform details into the Player AI Assistant."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredItems.map((item) => (
+            <div key={item.id} className="bg-card border border-border rounded-2xl p-4 flex flex-col justify-between hover:shadow-xs transition-shadow">
+              <div>
+                <div className="flex justify-between items-start gap-4">
+                  <h3 className="font-bold text-sm text-foreground leading-snug">{item.title}</h3>
+                  <span className="text-[9px] text-muted-foreground bg-secondary px-2 py-0.5 rounded-full shrink-0 font-medium">
+                    Updated {formatDistanceToNow(new Date(item.updated_at), { addSuffix: true })}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed mt-2.5 break-words">
+                  {item.content}
+                </p>
+              </div>
+              <div className="flex gap-2 justify-end mt-4 pt-3 border-t border-border/40 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleOpenEdit(item)}
+                  className="rounded-lg text-xs font-semibold h-8"
+                >
+                  <Edit className="h-3.5 w-3.5 mr-1" />
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsDeleting(item.id)}
+                  className="rounded-lg text-xs font-semibold h-8 text-destructive hover:bg-destructive/10 hover:text-destructive border-border"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  Delete
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add / Edit Dialog */}
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="w-full max-w-md p-6 bg-card border border-border rounded-3xl shadow-2xl flex flex-col gap-4 animate-in zoom-in-95 duration-200">
+          <DialogHeader>
+            <DialogTitle className="font-bold text-base leading-snug">
+              {editingId ? "Edit Knowledge Topic" : "Add Knowledge Topic"}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+              Specify clear details about the platform. The Player AI Assistant will fetch and quote this information dynamically.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSave} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <label htmlFor="topic-title" className="text-xs font-bold text-foreground">Topic Title</label>
+              <Input
+                id="topic-title"
+                placeholder="e.g. Welcome Bonus, Deposit limits"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="bg-secondary/40 border-border h-10 rounded-xl"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="topic-content" className="text-xs font-bold text-foreground">Topic Details / Rules</label>
+              <textarea
+                id="topic-content"
+                rows={5}
+                placeholder="Write clear instructions, lists, or platform details. Use markdown bullet points if helpful."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="w-full bg-secondary/40 border border-border rounded-xl text-xs p-3 focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none font-medium leading-relaxed"
+              />
+            </div>
+            <DialogFooter className="flex gap-2 sm:gap-0 mt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setIsOpen(false)}
+                className="flex-1 rounded-xl h-11 text-xs font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1 rounded-xl h-11 text-xs font-bold"
+              >
+                Save Topic
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={isDeleting !== null} onOpenChange={(val) => { if (!val) setIsDeleting(null); }}>
+        <DialogContent className="w-full max-w-sm p-6 bg-card border border-border rounded-3xl shadow-2xl flex flex-col gap-4 text-foreground text-center animate-in zoom-in-95 duration-200">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-12 w-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center">
+              <Trash2 className="h-6 w-6" />
+            </div>
+            <h3 className="font-bold text-lg">Delete Topic?</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed px-4">
+              Are you sure you want to delete this topic? The Player AI Assistant will no longer refer to it when answering customer queries.
+            </p>
+          </div>
+          <div className="flex gap-3 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleting(null)}
+              className="flex-1 rounded-xl h-11 text-xs font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteConfirm}
+              className="flex-1 bg-red-600 hover:bg-red-500 text-white rounded-xl h-11 text-xs font-bold"
+            >
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 

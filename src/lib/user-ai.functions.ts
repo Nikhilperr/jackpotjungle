@@ -70,7 +70,7 @@ export const getUserAIResponse = createServerFn({ method: "POST" })
   .validator(z.object({
     messages: z.array(MessageSchema),
   }))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     // Load local environment variables dynamically if not present
     loadEnvFile();
 
@@ -85,9 +85,36 @@ export const getUserAIResponse = createServerFn({ method: "POST" })
       };
     }
 
+    // Retrieve live user AI knowledge base setting
+    let knowledgeBaseText = "";
+    try {
+      const { data: settingData } = await context.supabase
+        .from("system_settings")
+        .select("value")
+        .eq("key", "user_ai_knowledge")
+        .maybeSingle();
+
+      if (settingData && Array.isArray(settingData.value)) {
+        knowledgeBaseText = settingData.value
+          .map((item: any) => {
+            return `Topic: ${item.title}\nContent: ${item.content}\nLast Updated: ${item.updated_at || new Date().toISOString()}`;
+          })
+          .join("\n\n");
+      }
+    } catch (dbErr: any) {
+      console.warn("[User AI Warning] Failed to query user_ai_knowledge from database:", dbErr.message || dbErr);
+    }
+
+    const systemPromptWithKnowledge = `${UserAISystemPrompt}
+
+---
+KNOWLEDGE BASE TOPICS:
+${knowledgeBaseText || "No custom knowledge items configured yet."}
+---`;
+
     // Prepare conversational history payload (role & content)
     const apiMessages: any[] = [
-      { role: "system", content: UserAISystemPrompt },
+      { role: "system", content: systemPromptWithKnowledge },
       ...data.messages.map((m) => ({
         role: m.role,
         content: m.content,
