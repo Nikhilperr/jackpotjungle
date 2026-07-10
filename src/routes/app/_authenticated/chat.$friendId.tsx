@@ -867,6 +867,46 @@ function ChatView() {
 
     const isSystem = friendId.startsWith("system-");
     if (isSystem) {
+      if (friendId === "system-user-ai-chat") {
+        const virtualFriend = {
+          id: "system-user-ai-chat",
+          username: "jackpotjungle_ai",
+          first_name: "✨ Jackpot Jungle AI",
+          last_name: "",
+          avatar_url: null,
+          online: true,
+          last_seen: new Date().toISOString()
+        } as any;
+        setFriend(virtualFriend);
+        if (typeof window !== "undefined") {
+          try {
+            const stored = localStorage.getItem("jj_ai_messages");
+            if (stored) {
+              setMessages(JSON.parse(stored));
+            } else {
+              const welcomeMsg = {
+                id: "welcome-ai",
+                sender_id: "system-user-ai-chat",
+                receiver_id: meId || "user",
+                content: "👋 Welcome to Jackpot Jungle!\n\nI'm your personal Jackpot Jungle Assistant.\n\nI can help you with bonuses, games, promotions, VIP rewards, deposits, withdrawals and anything related to the platform.",
+                created_at: new Date().toISOString(),
+                seen: true,
+                delivered: true
+              };
+              setMessages([welcomeMsg]);
+              localStorage.setItem("jj_ai_messages", JSON.stringify([welcomeMsg]));
+              localStorage.setItem("jj_ai_last_msg", welcomeMsg.content);
+              localStorage.setItem("jj_ai_last_at", welcomeMsg.created_at);
+            }
+          } catch {
+            setMessages([]);
+          }
+        }
+        setHasOlderMessages(false);
+        setCalls([]);
+        return;
+      }
+
       const isRules = friendId === "system-rules-chat";
       const virtualFriend = {
         id: friendId,
@@ -2111,6 +2151,168 @@ function ChatView() {
     return tempId;
   }
 
+  const streamAIResponse = (assistantText: string, assistantId: string) => {
+    let currentText = "";
+    const words = assistantText.split(/(\s+)/);
+    let index = 0;
+    
+    const interval = setInterval(() => {
+      if (index >= words.length) {
+        clearInterval(interval);
+        return;
+      }
+      
+      currentText += words[index];
+      index++;
+      
+      setMessages((prev) => {
+        const updated = prev.map((msg) => {
+          if (msg.id === assistantId) {
+            return { ...msg, content: currentText };
+          }
+          return msg;
+        });
+        localStorage.setItem("jj_ai_messages", JSON.stringify(updated));
+        localStorage.setItem("jj_ai_last_msg", currentText);
+        return updated;
+      });
+
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    }, 25);
+  };
+
+  const submitToAI = useCallback(async (content: string) => {
+    if (!meId) return;
+    
+    const userMsg = {
+      id: `user-msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      sender_id: meId,
+      receiver_id: "system-user-ai-chat",
+      content: content,
+      image_url: null,
+      audio_url: null,
+      seen: true,
+      delivered: true,
+      created_at: new Date().toISOString()
+    };
+    
+    let currentMsgs: Message[] = [];
+    setMessages((prev) => {
+      currentMsgs = [...prev, userMsg];
+      localStorage.setItem("jj_ai_messages", JSON.stringify(currentMsgs));
+      localStorage.setItem("jj_ai_last_msg", content);
+      localStorage.setItem("jj_ai_last_at", userMsg.created_at);
+      return currentMsgs;
+    });
+
+    setTimeout(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    }, 50);
+
+    const typingId = "ai-typing-indicator";
+    const typingMsg = {
+      id: typingId,
+      sender_id: "system-user-ai-chat",
+      receiver_id: meId,
+      content: "[typing]",
+      image_url: null,
+      audio_url: null,
+      seen: true,
+      delivered: true,
+      created_at: new Date().toISOString()
+    };
+    
+    setMessages((prev) => [...prev, typingMsg]);
+    setTimeout(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    }, 50);
+
+    try {
+      const { getUserAIResponse } = await import("@/lib/user-ai.functions");
+      const apiHistory = currentMsgs.filter(m => m.id !== "welcome-ai").map(m => ({
+        role: (m.sender_id === meId ? "user" : "assistant") as "user" | "assistant",
+        content: m.content || "",
+      }));
+
+      const result = await getUserAIResponse({ data: { messages: apiHistory } });
+      
+      setMessages((prev) => {
+        const filtered = prev.filter(x => x.id !== typingId);
+        if (result.error) {
+          const errId = `ai-err-${Date.now()}`;
+          const errText = `❌ Error: ${result.error}`;
+          const errMsg = {
+            id: errId,
+            sender_id: "system-user-ai-chat",
+            receiver_id: meId,
+            content: errText,
+            image_url: null,
+            audio_url: null,
+            seen: true,
+            delivered: true,
+            created_at: new Date().toISOString()
+          };
+          const updated = [...filtered, errMsg];
+          localStorage.setItem("jj_ai_messages", JSON.stringify(updated));
+          localStorage.setItem("jj_ai_last_msg", errText);
+          localStorage.setItem("jj_ai_last_at", errMsg.created_at);
+          return updated;
+        }
+
+        const assistantText = result.content || "";
+        const assistantId = `assistant-msg-${Date.now()}`;
+        const assistantMsg = {
+          id: assistantId,
+          sender_id: "system-user-ai-chat",
+          receiver_id: meId,
+          content: "",
+          image_url: null,
+          audio_url: null,
+          seen: true,
+          delivered: true,
+          created_at: new Date().toISOString()
+        };
+        const updated = [...filtered, assistantMsg];
+        localStorage.setItem("jj_ai_messages", JSON.stringify(updated));
+        localStorage.setItem("jj_ai_last_at", assistantMsg.created_at);
+        
+        setTimeout(() => {
+          streamAIResponse(assistantText, assistantId);
+        }, 50);
+
+        return updated;
+      });
+    } catch (err) {
+      setMessages((prev) => {
+        const filtered = prev.filter(x => x.id !== typingId);
+        const errId = `ai-err-${Date.now()}`;
+        const errText = `❌ Network Error: Failed to connect to Jackpot Jungle AI.`;
+        const errMsg = {
+          id: errId,
+          sender_id: "system-user-ai-chat",
+          receiver_id: meId,
+          content: errText,
+          image_url: null,
+          audio_url: null,
+          seen: true,
+          delivered: true,
+          created_at: new Date().toISOString()
+        };
+        const updated = [...filtered, errMsg];
+        localStorage.setItem("jj_ai_messages", JSON.stringify(updated));
+        localStorage.setItem("jj_ai_last_msg", errText);
+        localStorage.setItem("jj_ai_last_at", errMsg.created_at);
+        return updated;
+      });
+    }
+  }, [meId]);
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     if (!draft.trim() || !meId) return;
@@ -2118,6 +2320,11 @@ function ChatView() {
     setDraftState("");
     clearDraft(friendId);
     setShowEmoji(false);
+
+    if (friendId === "system-user-ai-chat") {
+      submitToAI(content);
+      return;
+    }
 
     if (editingMessageId) {
       const msgId = editingMessageId;
@@ -2578,38 +2785,72 @@ function ChatView() {
                   ? (isSuperAdmin ? "super_admin" : (isAdmin ? "admin" : undefined))
                   : (friendRole === "admin" || friendRole === "super_admin" ? friendRole : undefined)
                 );
+            if (m.content === "[typing]") {
+              return (
+                <div key={m.id} className="flex justify-start py-1 pl-2">
+                  <div className="bg-bubble-them text-bubble-them-foreground px-4 py-2.5 rounded-3xl flex items-center gap-2 shadow-xs border border-border/20">
+                    <span className="text-[12px] text-muted-foreground/80 italic font-semibold flex items-center gap-1.5 select-none animate-pulse">
+                      <Sparkles className="h-3.5 w-3.5 text-purple-500 animate-bounce" />
+                      <span>AI is composing</span>
+                    </span>
+                    <span className="inline-flex gap-0.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
+            const welcomeChipLayout = m.id === "welcome-ai" ? (
+              <div key="welcome-chips" className="flex flex-wrap gap-2 pl-12 pr-4 py-1.5 justify-start select-none">
+                {["🎁 Bonuses", "👑 VIP Club", "🎮 Games", "💰 Deposit", "💸 Withdraw", "📞 Support"].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => submitToAI(chip)}
+                    className="text-xs font-semibold px-3.5 py-1.5 rounded-full border border-primary/25 bg-primary/5 hover:bg-primary/10 text-primary transition-all shadow-xs shrink-0"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            ) : null;
 
             return (
-              <MessageItem
-                key={m.id}
-                m={m}
-                meId={meId}
-                friend={friend}
-                friendDisplayName={friendDisplayName}
-                isLastMine={isLastMine}
-                isMatch={isMatch}
-                isActiveMatch={isActiveMatch}
-                selectionMode={selectionMode}
-                isSelected={selectedMsgs.has(m.id)}
-                showTime={showTime}
-                msgRefs={msgRefs}
-                onSelect={handleSelect}
-                onReact={handleReact}
-                onPin={handlePin}
-                onUnpin={handleUnpin}
-                onReply={handleReply}
-                onCopy={handleCopy}
-                onDelete={handleDelete}
-                onForward={handleForward}
-                onPreviewImage={handlePreviewImage}
-                onMenuOpen={handleMenuOpen}
-                highlight={highlight}
-                searchQuery={searchQuery}
-                scrollToMessage={scrollToMessage}
-                isGroup={isGroup}
-                senderRole={senderRole}
-                onMentionClick={handleMentionClick}
-              />
+              <React.Fragment key={m.id}>
+                <MessageItem
+                  m={m}
+                  meId={meId}
+                  friend={friend}
+                  friendDisplayName={friendDisplayName}
+                  isLastMine={isLastMine}
+                  isMatch={isMatch}
+                  isActiveMatch={isActiveMatch}
+                  selectionMode={selectionMode}
+                  isSelected={selectedMsgs.has(m.id)}
+                  showTime={showTime}
+                  msgRefs={msgRefs}
+                  onSelect={handleSelect}
+                  onReact={handleReact}
+                  onPin={handlePin}
+                  onUnpin={handleUnpin}
+                  onReply={handleReply}
+                  onCopy={handleCopy}
+                  onDelete={handleDelete}
+                  onForward={handleForward}
+                  onPreviewImage={handlePreviewImage}
+                  onMenuOpen={handleMenuOpen}
+                  highlight={highlight}
+                  searchQuery={searchQuery}
+                  scrollToMessage={scrollToMessage}
+                  isGroup={isGroup}
+                  senderRole={senderRole}
+                  onMentionClick={handleMentionClick}
+                />
+                {welcomeChipLayout}
+              </React.Fragment>
             );
           });
         })()}
@@ -2697,7 +2938,7 @@ function ChatView() {
         );
       })()}
 
-      {friendId.startsWith("system-") ? (
+      {(friendId.startsWith("system-") && friendId !== "system-user-ai-chat") ? (
         <div className="relative px-4 py-4 border-t border-border flex flex-col gap-2 bg-card shrink-0 text-center items-center" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
           <div className="bg-secondary/40 border border-border/60 rounded-xl p-4 w-full max-w-lg text-xs text-muted-foreground flex flex-col items-center gap-2 shadow-xs">
             <Megaphone className="h-5 w-5 text-primary" />

@@ -763,6 +763,25 @@ function ChatLayout() {
   const unreadRules = lastRules && rulesLastRead < lastRules.created_at ? 1 : 0;
   const unreadUpdates = lastUpdates && updatesLastRead < lastUpdates.created_at ? 1 : 0;
 
+  const aiLastMessage = typeof window !== "undefined" ? localStorage.getItem("jj_ai_last_msg") : null;
+  const aiLastAt = typeof window !== "undefined" ? localStorage.getItem("jj_ai_last_at") : null;
+
+  const virtualAI = {
+    friendId: "system-user-ai-chat",
+    displayName: "✨ Jackpot Jungle AI",
+    username: "jackpotjungle_ai",
+    avatar_url: null,
+    online: true,
+    lastMessage: aiLastMessage || "Welcome to Jackpot Jungle! I'm your assistant...",
+    lastAt: aiLastAt || new Date().toISOString(),
+    unread: 0,
+    credit: 0,
+    isSpam: false,
+    allText: "ai assistant help bot jackpot jungle bonuses games vip deposit withdraw support",
+    isSystem: true,
+    isAi: true
+  };
+
   const virtualRules = {
     friendId: "system-rules-chat",
     displayName: "Rules",
@@ -793,7 +812,7 @@ function ChatLayout() {
     isSystem: true
   };
 
-  const systemConvs = [virtualRules, virtualUpdates].filter(c =>
+  const systemConvs = [virtualAI, virtualRules, virtualUpdates].filter(c =>
     !q || c.displayName.toLowerCase().includes(q) || c.username.toLowerCase().includes(q) || c.allText.includes(q)
   );
 
@@ -1560,6 +1579,10 @@ const ConversationItem = React.memo(function ConversationItem({
           ) : c.friendId === "system-updates-chat" ? (
             <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
               <Megaphone className="h-5.5 w-5.5 animate-pulse" />
+            </div>
+          ) : c.friendId === "system-user-ai-chat" ? (
+            <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-purple-500 to-pink-600 flex items-center justify-center text-white shadow-md">
+              <Sparkles className="h-5.5 w-5.5" />
             </div>
           ) : (
             <Avatar name={c.displayName} url={c.avatar_url} isGroup={c.friendId.startsWith("group-")} />
