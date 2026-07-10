@@ -1046,7 +1046,7 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
         if (lastMessage && isSystemMessage(lastMessage)) {
           lastMessage = formatSystemMessage(lastMessage);
         }
-        let lastAt = lastMsg?.created_at ?? null;
+        let lastAt = lastMsg?.created_at ?? c.last_message_at;
 
         if (lastCall && (!lastAt || new Date(lastCall.created_at) > new Date(lastAt))) {
           lastMessage = lastCall.call_type === "video" ? "📹 Video call" : "📞 Voice call";

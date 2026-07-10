@@ -490,6 +490,9 @@ function ChatView() {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("jj_me_id");
   });
+  const aiMessagesKey = meId ? `jj_ai_messages_${meId}` : "jj_ai_messages";
+  const aiLastMsgKey = meId ? `jj_ai_last_msg_${meId}` : "jj_ai_last_msg";
+  const aiLastAtKey = meId ? `jj_ai_last_at_${meId}` : "jj_ai_last_at";
 
   useEffect(() => {
     if (user?.id) {
@@ -881,7 +884,7 @@ function ChatView() {
         setFriend(virtualFriend);
         if (typeof window !== "undefined") {
           try {
-            const stored = localStorage.getItem("jj_ai_messages");
+            const stored = localStorage.getItem(aiMessagesKey);
             if (stored) {
               setMessages(JSON.parse(stored));
             } else {
@@ -895,9 +898,9 @@ function ChatView() {
                 delivered: true
               };
               setMessages([welcomeMsg]);
-              localStorage.setItem("jj_ai_messages", JSON.stringify([welcomeMsg]));
-              localStorage.setItem("jj_ai_last_msg", welcomeMsg.content);
-              localStorage.setItem("jj_ai_last_at", welcomeMsg.created_at);
+              localStorage.setItem(aiMessagesKey, JSON.stringify([welcomeMsg]));
+              localStorage.setItem(aiLastMsgKey, welcomeMsg.content);
+              localStorage.setItem(aiLastAtKey, welcomeMsg.created_at);
             }
           } catch {
             setMessages([]);
@@ -2173,8 +2176,8 @@ function ChatView() {
           }
           return msg;
         });
-        localStorage.setItem("jj_ai_messages", JSON.stringify(updated));
-        localStorage.setItem("jj_ai_last_msg", currentText);
+        localStorage.setItem(aiMessagesKey, JSON.stringify(updated));
+        localStorage.setItem(aiLastMsgKey, currentText);
         return updated;
       });
 
@@ -2202,9 +2205,9 @@ function ChatView() {
     let currentMsgs: Message[] = [];
     setMessages((prev) => {
       currentMsgs = [...prev, userMsg];
-      localStorage.setItem("jj_ai_messages", JSON.stringify(currentMsgs));
-      localStorage.setItem("jj_ai_last_msg", content);
-      localStorage.setItem("jj_ai_last_at", userMsg.created_at);
+      localStorage.setItem(aiMessagesKey, JSON.stringify(currentMsgs));
+      localStorage.setItem(aiLastMsgKey, content);
+      localStorage.setItem(aiLastAtKey, userMsg.created_at);
       return currentMsgs;
     });
 
@@ -2235,10 +2238,30 @@ function ChatView() {
     }, 50);
 
     try {
-      const apiHistory = currentMsgs.filter(m => m.id !== "welcome-ai").map(m => ({
-        role: (m.sender_id === meId ? "user" : "assistant") as "user" | "assistant",
-        content: m.content || "",
-      }));
+      let historyList: Message[] = [];
+      try {
+        const stored = localStorage.getItem(aiMessagesKey);
+        if (stored) {
+          historyList = JSON.parse(stored);
+        }
+      } catch (e) {
+        console.warn("Failed to parse stored user AI messages:", e);
+      }
+      
+      if (historyList.length === 0) {
+        historyList = [...currentMsgs];
+      } else {
+        if (!historyList.some(m => m.id === userMsg.id)) {
+          historyList = [...historyList, userMsg];
+        }
+      }
+
+      const apiHistory = historyList
+        .filter(m => m.id !== "welcome-ai" && m.id !== "ai-typing-indicator")
+        .map(m => ({
+          role: (m.sender_id === meId ? "user" : "assistant") as "user" | "assistant",
+          content: m.content || "",
+        }));
 
       const result = await getUserAIResponse({ data: { messages: apiHistory } });
       
@@ -2259,9 +2282,9 @@ function ChatView() {
             created_at: new Date().toISOString()
           };
           const updated = [...filtered, errMsg];
-          localStorage.setItem("jj_ai_messages", JSON.stringify(updated));
-          localStorage.setItem("jj_ai_last_msg", errText);
-          localStorage.setItem("jj_ai_last_at", errMsg.created_at);
+          localStorage.setItem(aiMessagesKey, JSON.stringify(updated));
+          localStorage.setItem(aiLastMsgKey, errText);
+          localStorage.setItem(aiLastAtKey, errMsg.created_at);
           return updated;
         }
 
@@ -2279,8 +2302,8 @@ function ChatView() {
           created_at: new Date().toISOString()
         };
         const updated = [...filtered, assistantMsg];
-        localStorage.setItem("jj_ai_messages", JSON.stringify(updated));
-        localStorage.setItem("jj_ai_last_at", assistantMsg.created_at);
+        localStorage.setItem(aiMessagesKey, JSON.stringify(updated));
+        localStorage.setItem(aiLastAtKey, assistantMsg.created_at);
         
         setTimeout(() => {
           streamAIResponse(assistantText, assistantId);
@@ -2305,9 +2328,9 @@ function ChatView() {
           created_at: new Date().toISOString()
         };
         const updated = [...filtered, errMsg];
-        localStorage.setItem("jj_ai_messages", JSON.stringify(updated));
-        localStorage.setItem("jj_ai_last_msg", errText);
-        localStorage.setItem("jj_ai_last_at", errMsg.created_at);
+        localStorage.setItem(aiMessagesKey, JSON.stringify(updated));
+        localStorage.setItem(aiLastMsgKey, errText);
+        localStorage.setItem(aiLastAtKey, errMsg.created_at);
         return updated;
       });
     }

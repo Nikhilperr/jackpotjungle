@@ -76,7 +76,13 @@ function AuthPage() {
           await supabase.auth.signOut();
         } catch {}
         try {
-          localStorage.clear();
+          // Clear all keys except AI chat history keys so histories are persisted across sessions
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && !key.startsWith("jj_ai_")) {
+              localStorage.removeItem(key);
+            }
+          }
           setVerifiedStatus(false);
         } catch {}
         navigate({ search: (old: any) => ({ ...old, logout: undefined }), replace: true });
