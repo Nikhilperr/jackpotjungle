@@ -24,6 +24,7 @@ function getVipBadgeUrl(status: string | null | undefined): string | null {
   return `/${normalized}.png`;
 }
 import { unsendMessagesServer } from "@/lib/messages.functions";
+import { getUserAIResponse } from "@/lib/user-ai.functions";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { downloadQRCode } from "@/lib/chat-helpers";
@@ -2234,7 +2235,6 @@ function ChatView() {
     }, 50);
 
     try {
-      const { getUserAIResponse } = await import("@/lib/user-ai.functions");
       const apiHistory = currentMsgs.filter(m => m.id !== "welcome-ai").map(m => ({
         role: (m.sender_id === meId ? "user" : "assistant") as "user" | "assistant",
         content: m.content || "",
@@ -2963,16 +2963,20 @@ function ChatView() {
           className="relative px-4 py-3 border-t border-border flex items-center gap-2 bg-card shrink-0"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 transition-colors" aria-label="Send image">
-            {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
-          <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
-          <button type="button" onClick={() => setShowEmoji((v) => !v)}
-            className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary transition-colors ${showEmoji ? "text-primary" : "text-muted-foreground"}`} aria-label="Emoji">
-            <Smile className="h-5 w-5" />
-          </button>
+          {friendId !== "system-user-ai-chat" && (
+            <>
+              <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+                className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 transition-colors" aria-label="Send image">
+                {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
+              <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
+              <button type="button" onClick={() => setShowEmoji((v) => !v)}
+                className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary transition-colors ${showEmoji ? "text-primary" : "text-muted-foreground"}`} aria-label="Emoji">
+                <Smile className="h-5 w-5" />
+              </button>
+            </>
+          )}
           {mentionSearch !== null && filteredMembers.length > 0 && (
             <div className="absolute left-3 right-3 bottom-full mb-2 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden z-30 max-h-48 overflow-y-auto backdrop-blur-md bg-opacity-95">
               <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-secondary/50 flex items-center gap-1 border-b border-border">
