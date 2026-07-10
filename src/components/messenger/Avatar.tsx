@@ -16,8 +16,16 @@ export function Avatar({
   const hasValidUrl = url && url !== "null" && url !== "undefined" && url.trim() !== "";
   const finalUrl = hasValidUrl ? toCDNUrl(url) : (isGroup ? "/groop.png" : null);
 
-  return finalUrl ? (
-    <img src={finalUrl} alt={safeName} className="rounded-full object-cover" style={{ width: size, height: size }} />
+  let displayUrl = finalUrl;
+  if (displayUrl && (displayUrl.includes("cdn.playjackpotjungle.com") || displayUrl.includes("db.chancerealm.casino"))) {
+    const resizeWidth = size * 2;
+    const resizeHeight = size * 2;
+    const separator = displayUrl.includes("?") ? "&" : "?";
+    displayUrl = `${displayUrl}${separator}width=${resizeWidth}&height=${resizeHeight}&resize=contain`;
+  }
+
+  return displayUrl ? (
+    <img src={displayUrl} alt={safeName} className="rounded-full object-cover" style={{ width: size, height: size }} />
   ) : (
     <div
       className="rounded-full bg-primary text-primary-foreground flex items-center justify-center font-semibold"

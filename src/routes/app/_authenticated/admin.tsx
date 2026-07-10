@@ -1395,79 +1395,20 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
             </div>
           ) : sorted.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">{viewGroups ? "No groups yet." : viewSpam ? "No spam conversations." : "No conversations."}</p>
-          ) : sorted.map((u) => {
-            const startPress = () => {
-              if (pressTimer.current) clearTimeout(pressTimer.current);
-              pressTimer.current = setTimeout(() => setContextMenuTarget(u.conversationId), 600);
-            };
-            const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
-            const isPinned = pinnedConvs.includes(u.conversationId);
-            return (
-              <div key={u.conversationId} className="group relative">
-                <button
-                  onClick={() => setActiveId(u.conversationId)}
-                  onPointerDown={startPress}
-                  onPointerUp={cancelPress}
-                  onPointerMove={cancelPress}
-                  onPointerLeave={cancelPress}
-                  onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(u.conversationId); }}
-                  className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${activeId === u.conversationId ? "bg-secondary" : ""}`}
-                >
-                  <div className="relative shrink-0">
-                    <Avatar name={u.username} url={u.avatar_url} size={44} />
-                    {u.online && !u.isSpam && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
-                  </div>
-                  <div className="flex-1 min-w-0 pr-9">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p className={`truncate text-sm flex items-center gap-1.5 ${u.unread ? "font-bold" : "font-semibold"}`}>
-                        {u.username}
-                        {u.vip_status && u.vip_status !== "none" && (
-                          <img 
-                            src={getVipBadgeUrl(u.vip_status) || undefined} 
-                            alt={`${u.vip_status} VIP`} 
-                            className="h-4 w-auto object-contain select-none shrink-0"
-                            title={`${u.vip_status.toUpperCase()} VIP`}
-                          />
-                        )}
-                        {u.isAdmin && (
-                          <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
-                        )}
-                        {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
-                      </p>
-                      {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
-                    </div>
-                    <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                      {u.lastMessage ?? "No messages yet"}
-                    </p>
-                    <div className="flex gap-1 mt-1 flex-wrap items-center">
-                      {u.credit > 0 && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
-                          Credit ${u.credit.toFixed(2)}
-                        </span>
-                      )}
-                      {!u.isGroup && (userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
-                        const t = allTags.find((x) => x.id === tid);
-                        if (!t) return null;
-                        return <span key={tid} className="text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>;
-                      })}
-                    </div>
-                  </div>
-                  {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
-                </button>
-                {!u.isGroup && (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvSpam(u, !u.isSpam); }}
-                    title={u.isSpam ? "Remove from spam" : "Move to spam"}
-                    aria-label={u.isSpam ? "Remove from spam" : "Move to spam"}
-                    className={`absolute right-4 top-3 h-7 w-7 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-opacity flex ${u.isSpam ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
-                  >
-                    {u.isSpam ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
-                  </button>
-                )}
-              </div>
-            );
-          })}
+          ) : sorted.map((u) => (
+            <AdminConversationItem
+              key={u.conversationId}
+              u={u}
+              isActive={activeId === u.conversationId}
+              isPinned={pinnedConvs.includes(u.conversationId)}
+              userTagMap={userTagMap}
+              allTags={allTags}
+              setContextMenuTarget={setContextMenuTarget}
+              togglePin={togglePin}
+              setConvSpam={setConvSpam}
+              setActiveId={setActiveId}
+            />
+          ))}
         </PullToRefresh>
       </div>
 
@@ -2380,50 +2321,16 @@ function TeamChatView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNa
             </div>
           ) : sorted.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">{viewGroups ? "No groups yet." : "No staff members found."}</p>
-          ) : sorted.map((u) => {
-            const startPress = () => {
-              if (pressTimer.current) clearTimeout(pressTimer.current);
-              pressTimer.current = setTimeout(() => setContextMenuTarget(u.conversationId), 600);
-            };
-            const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
-            const isPinned = pinnedConvs.includes(u.conversationId);
-            return (
-              <div key={u.conversationId} className="group relative">
-                <button
-                  onClick={() => setActiveId(u.conversationId)}
-                  onPointerDown={startPress}
-                  onPointerUp={cancelPress}
-                  onPointerMove={cancelPress}
-                  onPointerLeave={cancelPress}
-                  onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(u.conversationId); }}
-                  className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${activeId === u.conversationId ? "bg-secondary" : ""}`}
-                >
-                  <div className="relative shrink-0">
-                    <Avatar name={u.username} url={u.avatar_url} size={44} />
-                    {u.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
-                  </div>
-                  <div className="flex-1 min-w-0 pr-9">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p className={`truncate text-sm flex items-center gap-1.5 ${u.unread ? "font-bold" : "font-semibold"}`}>
-                        {u.username}
-                        {u.isSuperAdmin ? (
-                          <ShieldCheck className="h-3.5 w-3.5 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
-                        ) : u.isAdmin ? (
-                          <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin" />
-                        ) : null}
-                        {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
-                      </p>
-                      {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
-                    </div>
-                    <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                      {u.lastMessage ?? "No messages yet"}
-                    </p>
-                  </div>
-                  {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
-                </button>
-              </div>
-            );
-          })}
+          ) : sorted.map((u) => (
+            <AdminTeamConversationItem
+              key={u.conversationId}
+              u={u}
+              isActive={activeId === u.conversationId}
+              isPinned={pinnedConvs.includes(u.conversationId)}
+              setContextMenuTarget={setContextMenuTarget}
+              setActiveId={setActiveId}
+            />
+          ))}
         </PullToRefresh>
       </div>
 
@@ -7467,5 +7374,172 @@ export function UserAiKnowledgeView() {
       </Dialog>
     </div>
   );
+
 }
+
+const AdminConversationItem = React.memo(function AdminConversationItem({
+  u,
+  isActive,
+  isPinned,
+  userTagMap,
+  allTags,
+  setContextMenuTarget,
+  togglePin,
+  setConvSpam,
+  setActiveId,
+}: {
+  u: ConvRow;
+  isActive: boolean;
+  isPinned: boolean;
+  userTagMap: Record<string, string[]>;
+  allTags: any[];
+  setContextMenuTarget: (id: string | null) => void;
+  togglePin: (id: string) => void;
+  setConvSpam: (conv: ConvRow, next: boolean) => void;
+  setActiveId: (id: string | null) => void;
+}) {
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startPress = () => {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+    pressTimer.current = setTimeout(() => setContextMenuTarget(u.conversationId), 600);
+  };
+  const cancelPress = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  return (
+    <div className="group relative">
+      <button
+        onClick={() => setActiveId(u.conversationId)}
+        onPointerDown={startPress}
+        onPointerUp={cancelPress}
+        onPointerMove={cancelPress}
+        onPointerLeave={cancelPress}
+        onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(u.conversationId); }}
+        className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${isActive ? "bg-secondary" : ""}`}
+      >
+        <div className="relative shrink-0">
+          <Avatar name={u.username} url={u.avatar_url} size={44} />
+          {u.online && !u.isSpam && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+        </div>
+        <div className="flex-1 min-w-0 pr-9">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className={`truncate text-sm flex items-center gap-1.5 ${u.unread ? "font-bold" : "font-semibold"}`}>
+              {u.username}
+              {u.vip_status && u.vip_status !== "none" && (
+                <img 
+                  src={getVipBadgeUrl(u.vip_status) || undefined} 
+                  alt={`${u.vip_status} VIP`} 
+                  className="h-4 w-auto object-contain select-none shrink-0"
+                  title={`${u.vip_status.toUpperCase()} VIP`}
+                />
+              )}
+              {u.isAdmin && (
+                <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin User" />
+              )}
+              {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
+            </p>
+            {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
+          </div>
+          <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+            {u.lastMessage ?? "No messages yet"}
+          </p>
+          <div className="flex gap-1 mt-1 flex-wrap items-center">
+            {u.credit > 0 && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
+                Credit ${u.credit.toFixed(2)}
+              </span>
+            )}
+            {!u.isGroup && (userTagMap[u.userId] ?? []).slice(0, 3).map((tid) => {
+              const t = allTags.find((x) => x.id === tid);
+              if (!t) return null;
+              return <span key={tid} className="text-[9px] px-1.5 py-0.5 rounded-full text-white font-semibold" style={{ background: t.color }}>{t.name}</span>;
+            })}
+          </div>
+        </div>
+        {/* unread badge */}
+        {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
+      </button>
+      {!u.isGroup && (
+        <button
+          type="button"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvSpam(u, !u.isSpam); }}
+          title={u.isSpam ? "Remove from spam" : "Move to spam"}
+          aria-label={u.isSpam ? "Remove from spam" : "Move to spam"}
+          className={`absolute right-4 top-3 h-7 w-7 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-opacity flex ${u.isSpam ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
+        >
+          {u.isSpam ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+        </button>
+      )}
+    </div>
+  );
+});
+
+const AdminTeamConversationItem = React.memo(function AdminTeamConversationItem({
+  u,
+  isActive,
+  isPinned,
+  setContextMenuTarget,
+  setActiveId,
+}: {
+  u: ConvRow;
+  isActive: boolean;
+  isPinned: boolean;
+  setContextMenuTarget: (id: string | null) => void;
+  setActiveId: (id: string | null) => void;
+}) {
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startPress = () => {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+    pressTimer.current = setTimeout(() => setContextMenuTarget(u.conversationId), 600);
+  };
+  const cancelPress = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  return (
+    <div className="group relative">
+      <button
+        onClick={() => setActiveId(u.conversationId)}
+        onPointerDown={startPress}
+        onPointerUp={cancelPress}
+        onPointerMove={cancelPress}
+        onPointerLeave={cancelPress}
+        onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(u.conversationId); }}
+        className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${isActive ? "bg-secondary" : ""}`}
+      >
+        <div className="relative shrink-0">
+          <Avatar name={u.username} url={u.avatar_url} size={44} />
+          {u.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-card" />}
+        </div>
+        <div className="flex-1 min-w-0 pr-9">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className={`truncate text-sm flex items-center gap-1.5 ${u.unread ? "font-bold" : "font-semibold"}`}>
+              {u.username}
+              {u.isSuperAdmin ? (
+                <ShieldCheck className="h-3.5 w-3.5 text-amber-500 fill-amber-500/10 shrink-0" title="Super Admin" />
+              ) : u.isAdmin ? (
+                <Shield className="h-3.5 w-3.5 text-blue-500 fill-blue-500/10 shrink-0" title="Admin" />
+              ) : null}
+              {isPinned && <Pin className="h-3.5 w-3.5 text-primary rotate-45 fill-primary shrink-0" />}
+            </p>
+            {u.lastAt && <span className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(u.lastAt), { addSuffix: false })}</span>}
+          </div>
+          <p className={`text-xs truncate ${u.unread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+            {u.lastMessage ?? "No messages yet"}
+          </p>
+        </div>
+        {/* unread count */}
+        {!!u.unread && <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-[10px] text-primary-foreground font-bold flex items-center justify-center shrink-0">{u.unread}</span>}
+      </button>
+    </div>
+  );
+});
+
 
