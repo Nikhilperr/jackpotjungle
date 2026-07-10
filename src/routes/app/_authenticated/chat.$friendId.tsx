@@ -2791,7 +2791,7 @@ function ChatView() {
                   <div className="bg-bubble-them text-bubble-them-foreground px-4 py-2.5 rounded-3xl flex items-center gap-2 shadow-xs border border-border/20">
                     <span className="text-[12px] text-muted-foreground/80 italic font-semibold flex items-center gap-1.5 select-none animate-pulse">
                       <Sparkles className="h-3.5 w-3.5 text-purple-500 animate-bounce" />
-                      <span>AI is composing</span>
+                      <span>AI is typing</span>
                     </span>
                     <span className="inline-flex gap-0.5">
                       <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce" style={{ animationDelay: "0ms" }} />
