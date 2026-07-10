@@ -524,26 +524,7 @@ function ChatView() {
   });
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [prevFriendId, setPrevFriendId] = useState(friendId);
-  if (friendId !== prevFriendId) {
-    setPrevFriendId(friendId);
-    const myId = localStorage.getItem("jj_me_id") || meId;
-    if (friendId.startsWith("group-")) {
-      const gId = friendId.substring(6);
-      const cachedDetails = getCachedGroupDetails(gId);
-      const cachedGroupMsgs = getCachedGroupMessages(gId);
-      setGroup(cachedDetails || null);
-      setFriend(null);
-      setMessages(cachedGroupMsgs || []);
-    } else {
-      const cachedProfile = getCachedProfile(friendId);
-      const cachedMsgs = myId ? getCachedMessages(myId, friendId) : [];
-      setFriend(cachedProfile || null);
-      setGroup(null);
-      setMessages(cachedMsgs || []);
-    }
-    setCalls([]);
-    setHasOlderMessages(false);
-  }
+
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -770,6 +751,28 @@ function ChatView() {
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isMountedRef = useRef(true);
+
+  if (friendId !== prevFriendId) {
+    setPrevFriendId(friendId);
+    const myId = (typeof window !== "undefined" ? localStorage.getItem("jj_me_id") : null) || meId;
+    if (friendId.startsWith("group-")) {
+      const gId = friendId.substring(6);
+      const cachedDetails = getCachedGroupDetails(gId);
+      const cachedGroupMsgs = getCachedGroupMessages(gId);
+      setGroup(cachedDetails || null);
+      setFriend(null);
+      setMessages(cachedGroupMsgs || []);
+    } else {
+      const cachedProfile = getCachedProfile(friendId);
+      const cachedMsgs = myId ? getCachedMessages(myId, friendId) : [];
+      setFriend(cachedProfile || null);
+      setGroup(null);
+      setMessages(cachedMsgs || []);
+    }
+    setCalls([]);
+    setHasOlderMessages(false);
+  }
+
   const load = useCallback(async () => {
     if (!meId) return;
     isInitialLoadRef.current = true;
