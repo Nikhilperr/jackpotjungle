@@ -12,8 +12,18 @@ export function getSharedInitialSession(): Promise<Session | null> {
   if (!_sharedSessionPromise) {
     _sharedSessionPromise = supabase.auth
       .getSession()
-      .then(({ data }) => data.session ?? null)
-      .catch(() => null);
+      .then(({ data }) => {
+        if (!data.session) {
+          // If no session found, clear cached promise so subsequent lookups re-query
+          clearSharedSessionCache();
+        }
+        return data.session ?? null;
+      })
+      .catch(() => {
+        // If lookup failed, immediately clear cached promise
+        clearSharedSessionCache();
+        return null;
+      });
   }
   return _sharedSessionPromise;
 }
@@ -21,6 +31,21 @@ export function getSharedInitialSession(): Promise<Session | null> {
 /** Call on SIGNED_OUT so the next login triggers a fresh lookup. */
 export function clearSharedSessionCache() {
   _sharedSessionPromise = null;
+}
+
+// Invalidate cached initial session immediately on state changes
+if (typeof window !== "undefined") {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (
+      event === "SIGNED_OUT" ||
+      event === "TOKEN_REFRESHED" ||
+      event === "USER_UPDATED" ||
+      event === "USER_DELETED" ||
+      !session
+    ) {
+      clearSharedSessionCache();
+    }
+  });
 }
 
 export async function waitInitialSession(timeoutMs = 4000): Promise<Session | null> {
@@ -64,7 +89,7 @@ export async function waitInitialSession(timeoutMs = 4000): Promise<Session | nu
     return null;
   }
 
-  const { data: { session } } = await supabase.auth.getSession();
+  const session = await getSharedInitialSession();
   if (session) {
     return session;
   }

@@ -19,6 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { runAutoDatabaseMigrations } from "@/lib/admin-super.functions";
 import { Capacitor } from "@capacitor/core";
 import { initializeNativeBridge } from "@/lib/native";
+import { getSharedInitialSession, clearSharedSessionCache } from "@/lib/auth-wait";
 
 
 function NotFoundComponent() {
@@ -100,8 +101,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
     const host = window.location.hostname.toLowerCase();
 
-    const sessionRes = await supabase.auth.getSession();
-    const session = sessionRes.data.session;
+    const session = await getSharedInitialSession();
     const hashParams = session ? `#access_token=${session.access_token}&refresh_token=${session.refresh_token}` : "";
 
     if (Capacitor.isNativePlatform()) {
@@ -242,7 +242,7 @@ function RootComponent() {
     let lastUserId: string | null = null;
 
     // Set initial lastUserId from current session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    getSharedInitialSession().then((session) => {
       lastUserId = session?.user?.id ?? null;
     });
 
@@ -253,9 +253,12 @@ function RootComponent() {
         return;
       }
       if (event === "SIGNED_OUT") {
+        clearSharedSessionCache();
         if (typeof window !== "undefined") {
           localStorage.removeItem("jj_user_role");
         }
+      } else if (event === "TOKEN_REFRESHED") {
+        clearSharedSessionCache();
       }
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
 
