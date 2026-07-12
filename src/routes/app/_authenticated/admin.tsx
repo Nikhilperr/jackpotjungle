@@ -3726,6 +3726,17 @@ function Conversation({
 
   useEffect(() => {
     supabase.from("quick_replies").select("id, title, content").then(({ data }) => setQuickReplies(data ?? []));
+
+    const channel = supabase
+      .channel("quick_replies_realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "quick_replies" }, () => {
+        supabase.from("quick_replies").select("id, title, content").then(({ data }) => setQuickReplies(data ?? []));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   function parseQuickReplyContent(contentStr: string): { text: string; imageUrl: string | null } {
