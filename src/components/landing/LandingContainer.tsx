@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { 
@@ -17,7 +17,10 @@ import {
   Dices,
   Flame,
   RotateCcw,
-  Award
+  Award,
+  Info,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { PublicLayout } from "@/components/landing/PublicLayout";
 
@@ -74,6 +77,19 @@ const VIP_LEVELS = [
   },
 ];
 
+const PAYLINE_PATHS = [
+  // Line 0: Center horizontal row
+  [{ r: 1, c: 0 }, { r: 1, c: 1 }, { r: 1, c: 2 }, { r: 1, c: 3 }, { r: 1, c: 4 }],
+  // Line 1: Top horizontal row
+  [{ r: 0, c: 0 }, { r: 0, c: 1 }, { r: 0, c: 2 }, { r: 0, c: 3 }, { r: 0, c: 4 }],
+  // Line 2: Bottom horizontal row
+  [{ r: 2, c: 0 }, { r: 2, c: 1 }, { r: 2, c: 2 }, { r: 2, c: 3 }, { r: 2, c: 4 }],
+  // Line 3: V-shape
+  [{ r: 0, c: 0 }, { r: 1, c: 1 }, { r: 2, c: 2 }, { r: 1, c: 3 }, { r: 0, c: 4 }],
+  // Line 4: Inverted V
+  [{ r: 2, c: 0 }, { r: 1, c: 1 }, { r: 0, c: 2 }, { r: 1, c: 3 }, { r: 2, c: 4 }]
+];
+
 export function LandingContainer() {
   const [jackpot, setJackpot] = useState(8742510.45);
 
@@ -92,79 +108,240 @@ export function LandingContainer() {
     }).format(num);
   };
 
-  // Fun Slot Machine Game state
+  // Website Active Theme Observer
+  const [activeTheme, setActiveTheme] = useState<"dark" | "light" | "jackpot" | "amoled" | "glass">("jackpot");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    const getTheme = () => {
+      const cl = document.documentElement.classList;
+      if (cl.contains("light")) return "light";
+      if (cl.contains("amoled")) return "amoled";
+      if (cl.contains("dark")) return "dark";
+      if (cl.contains("glass")) return "glass";
+      return "jackpot";
+    };
+    
+    setActiveTheme(getTheme());
+
+    const observer = new MutationObserver(() => {
+      setActiveTheme(getTheme());
+    });
+    
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  // Theme based Slot Machine styles
+  const themeStyles = {
+    jackpot: {
+      cabinet: "bg-zinc-900 border-4 border-amber-500/50 shadow-amber-500/20 text-foreground",
+      button: "from-amber-500 via-yellow-400 to-amber-500 text-black hover:brightness-110",
+      accentText: "text-amber-400",
+      borderGlow: "border-amber-500/20",
+      badge: "bg-amber-500/10 text-amber-400 border-amber-500/30"
+    },
+    amoled: {
+      cabinet: "bg-black border-4 border-indigo-500/50 shadow-indigo-500/20 text-foreground",
+      button: "from-indigo-600 via-purple-500 to-indigo-600 text-white hover:brightness-110",
+      accentText: "text-indigo-400",
+      borderGlow: "border-indigo-500/20",
+      badge: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"
+    },
+    dark: {
+      cabinet: "bg-slate-900 border-4 border-blue-500/50 shadow-blue-500/20 text-foreground",
+      button: "from-blue-600 via-cyan-500 to-blue-600 text-white hover:brightness-110",
+      accentText: "text-blue-400",
+      borderGlow: "border-blue-500/20",
+      badge: "bg-blue-500/10 text-blue-400 border-blue-500/30"
+    },
+    light: {
+      cabinet: "bg-white border-4 border-zinc-300 shadow-zinc-300/10 text-zinc-900",
+      button: "from-zinc-800 to-zinc-950 text-white hover:bg-zinc-700",
+      accentText: "text-zinc-800",
+      borderGlow: "border-zinc-200",
+      badge: "bg-zinc-100 text-zinc-800 border-zinc-300"
+    },
+    glass: {
+      cabinet: "bg-white/10 backdrop-blur-xl border-4 border-white/20 shadow-white/5 text-foreground",
+      button: "from-cyan-500 via-teal-400 to-cyan-500 text-black hover:brightness-110",
+      accentText: "text-cyan-400",
+      borderGlow: "border-white/10",
+      badge: "bg-white/10 text-cyan-400 border-white/20"
+    }
+  }[activeTheme] || {
+    cabinet: "bg-zinc-900 border-4 border-amber-500/50 shadow-amber-500/20 text-foreground",
+    button: "from-amber-500 via-yellow-400 to-amber-500 text-black hover:brightness-110",
+    accentText: "text-amber-400",
+    borderGlow: "border-amber-500/20",
+    badge: "bg-amber-500/10 text-amber-400 border-amber-500/30"
+  };
+
+  // Fun Slot Machine Game state (5 Columns x 3 Rows)
   const [balance, setBalance] = useState(10000);
   const [bet, setBet] = useState(100);
   
-  // Staggered Reel States
-  const [r1, setR1] = useState({ symbol: "💎", spinning: false });
-  const [r2, setR2] = useState({ symbol: "👑", spinning: false });
-  const [r3, setR3] = useState({ symbol: "7️⃣", spinning: false });
+  // Reels 2D state: reels[colIndex][rowIndex]
+  const [reels, setReels] = useState<string[][]>([
+    ["💎", "🔔", "🍒"], // Reel 1
+    ["👑", "🍋", "🍀"], // Reel 2
+    ["7️⃣", "🍊", "🍒"], // Reel 3
+    ["💎", "🔔", "👑"], // Reel 4
+    ["👑", "🍋", "7️⃣"], // Reel 5
+  ]);
 
+  const [reelSpinning, setReelSpinning] = useState([false, false, false, false, false]);
   const [winAmount, setWinAmount] = useState<number | null>(null);
   const [winType, setWinType] = useState<string | null>(null);
+  const [winningLines, setWinningLines] = useState<number[]>([]);
+  const [autoSpin, setAutoSpin] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
+
+  // Auto spin timer reference
+  const autoSpinTimeoutRef = useRef<any>(null);
 
   // Reset balance on mount / page refresh
   useEffect(() => {
     setBalance(10000);
+    return () => {
+      if (autoSpinTimeoutRef.current) clearTimeout(autoSpinTimeoutRef.current);
+    };
   }, []);
 
-  const isSpinning = r1.spinning || r2.spinning || r3.spinning;
+  const isSpinning = reelSpinning.some(v => v);
 
   const handleSpin = () => {
-    if (isSpinning || balance < bet) return;
+    if (isSpinning || balance < bet) {
+      setAutoSpin(false);
+      return;
+    }
 
-    // Deduct bet and trigger spin
+    // Deduct bet and reset states
     setBalance((prev) => prev - bet);
     setWinAmount(null);
     setWinType(null);
+    setWinningLines([]);
 
-    setR1(prev => ({ ...prev, spinning: true }));
-    setR2(prev => ({ ...prev, spinning: true }));
-    setR3(prev => ({ ...prev, spinning: true }));
+    // Trigger spin state on all reels
+    setReelSpinning([true, true, true, true, true]);
 
-    // Pick final target symbols
-    const final1 = SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)];
-    const final2 = SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)];
-    const final3 = SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)];
+    // Choose final target symbols for all 5 reels (3 symbols each)
+    const targetReels = Array.from({ length: 5 }, () => 
+      Array.from({ length: 3 }, () => SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)].char)
+    );
 
     // Staggered stop Reel 1
     setTimeout(() => {
-      setR1({ symbol: final1.char, spinning: false });
-    }, 900);
+      setRIndex(0, targetReels[0]);
+    }, 600);
 
     // Staggered stop Reel 2
     setTimeout(() => {
-      setR2({ symbol: final2.char, spinning: false });
-    }, 1500);
+      setRIndex(1, targetReels[1]);
+    }, 1100);
 
-    // Staggered stop Reel 3 & Calculate Payouts
+    // Staggered stop Reel 3
     setTimeout(() => {
-      setR3({ symbol: final3.char, spinning: false });
+      setRIndex(2, targetReels[2]);
+    }, 1600);
 
-      let win = 0;
-      let payoutMsg = "";
-
-      if (final1.char === final2.char && final2.char === final3.char) {
-        // 3 of a kind
-        win = bet * final1.multiplier;
-        payoutMsg = final1.multiplier >= 15 ? "🏆 MEGA WIN!" : "🔥 BIG WIN!";
-      } else if (final1.char === final2.char || final2.char === final3.char || final1.char === final3.char) {
-        // 2 of a kind
-        const matchingSymbol = final1.char === final2.char ? final1 : final3;
-        win = bet * Math.max(1, Math.round(matchingSymbol.multiplier / 2));
-        payoutMsg = "🎉 WIN!";
-      }
-
-      if (win > 0) {
-        setWinAmount(win);
-        setWinType(payoutMsg);
-        setBalance((prev) => prev + win);
-      }
+    // Staggered stop Reel 4
+    setTimeout(() => {
+      setRIndex(3, targetReels[3]);
     }, 2100);
+
+    // Staggered stop Reel 5 & Payout Calculations
+    setTimeout(() => {
+      setRIndex(4, targetReels[4]);
+
+      // Calculate payline matches
+      let totalWin = 0;
+      const matchedLines: number[] = [];
+
+      PAYLINE_PATHS.forEach((path, lineIdx) => {
+        const s1 = targetReels[0][path[0].r];
+        const s2 = targetReels[1][path[1].r];
+        const s3 = targetReels[2][path[2].r];
+        const s4 = targetReels[3][path[3].r];
+        const s5 = targetReels[4][path[4].r];
+
+        const symbolInfo = SLOT_SYMBOLS.find(s => s.char === s1);
+        if (!symbolInfo) return;
+
+        if (s1 === s2 && s2 === s3) {
+          matchedLines.push(lineIdx);
+          if (s3 === s4 && s4 === s5) {
+            totalWin += bet * symbolInfo.multiplier * 2.5; // 5 matched
+          } else if (s3 === s4) {
+            totalWin += bet * symbolInfo.multiplier * 1.5; // 4 matched
+          } else {
+            totalWin += bet * symbolInfo.multiplier; // 3 matched
+          }
+        }
+      });
+
+      if (totalWin > 0) {
+        const payout = Math.round(totalWin);
+        setWinAmount(payout);
+        setWinningLines(matchedLines);
+        setBalance((prev) => prev + payout);
+
+        if (payout >= bet * 10) {
+          setWinType("🏆 MEGA JACKPOT WIN!");
+        } else if (payout >= bet * 4) {
+          setWinType("🔥 BIG CASINO WIN!");
+        } else {
+          setWinType("🎉 WINNER!");
+        }
+      }
+
+      // Handle next Auto Spin
+      if (autoSpin) {
+        autoSpinTimeoutRef.current = setTimeout(() => {
+          handleSpin();
+        }, 2200);
+      }
+
+    }, 2600);
   };
 
-  // Scroll parallax effects for background elements
+  // Toggle Auto Spin
+  useEffect(() => {
+    if (autoSpin && !isSpinning && winAmount === null) {
+      handleSpin();
+    }
+    if (!autoSpin && autoSpinTimeoutRef.current) {
+      clearTimeout(autoSpinTimeoutRef.current);
+    }
+  }, [autoSpin]);
+
+  const setRIndex = (colIdx: number, symbols: string[]) => {
+    setReels(prev => {
+      const copy = [...prev];
+      copy[colIdx] = symbols;
+      return copy;
+    });
+    setReelSpinning(prev => {
+      const copy = [...prev];
+      copy[colIdx] = false;
+      return copy;
+    });
+  };
+
+  // Adjust Bet helper
+  const adjustBet = (dir: "up" | "down") => {
+    if (isSpinning) return;
+    const bets = [100, 250, 500, 1000, 2500];
+    const currentIdx = bets.indexOf(bet);
+    if (dir === "up" && currentIdx < bets.length - 1) {
+      setBet(bets[currentIdx + 1]);
+    } else if (dir === "down" && currentIdx > 0) {
+      setBet(bets[currentIdx - 1]);
+    }
+  };
+
+  // Scroll animations
   const { scrollY } = useScroll();
   const yBg = useTransform(scrollY, [0, 1000], [0, 150]);
   const rotateBg = useTransform(scrollY, [0, 2000], [0, 45]);
@@ -189,58 +366,80 @@ export function LandingContainer() {
     }
   };
 
-  // Sub-component for a high-fidelity staggered scroll reel
-  const RenderReel = ({ reelState }: { reelState: { symbol: string; spinning: boolean } }) => {
-    // Generate a long vertical strip of symbols to loop scroll
+  // Sub-component for individual staggering reels
+  const RenderReel = ({ 
+    colIndex, 
+    symbols, 
+    spinning 
+  }: { 
+    colIndex: number; 
+    symbols: string[]; 
+    spinning: boolean 
+  }) => {
     const duplicateSymbols = [...SLOT_SYMBOLS, ...SLOT_SYMBOLS, ...SLOT_SYMBOLS];
-    const matchedSymbol = SLOT_SYMBOLS.find(s => s.char === reelState.symbol);
 
     return (
-      <div className="w-24 h-40 overflow-hidden relative bg-black rounded-2xl border-2 border-zinc-800 shadow-inner flex justify-center items-center">
-        {/* vignette overlay */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-black pointer-events-none z-10 rounded-xl" />
+      <div className="w-full h-[220px] sm:h-[280px] overflow-hidden relative bg-black/95 rounded-2xl border border-zinc-800 flex justify-center items-center shadow-inner">
+        {/* vignette shading */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-black pointer-events-none z-10" />
         
-        {reelState.spinning ? (
+        {spinning ? (
           <div 
-            style={{ animation: "slotScroll 0.15s linear infinite" }}
+            style={{ animation: `slotScroll 0.12s linear infinite` }}
             className="flex flex-col gap-4 absolute"
           >
             {duplicateSymbols.map((s, i) => (
-              <div key={i} className="h-16 w-16 flex items-center justify-center text-4xl select-none">
+              <div 
+                key={i} 
+                className="h-16 w-16 sm:h-20 sm:w-20 flex items-center justify-center text-3xl sm:text-4xl select-none"
+              >
                 {s.char}
               </div>
             ))}
           </div>
         ) : (
-          <motion.div
-            initial={{ scale: 0.5, y: -20, opacity: 0 }}
-            animate={{ scale: [1, 1.25, 1], y: [0, 8, 0], opacity: 1 }}
-            transition={{ type: "spring", stiffness: 220, damping: 12 }}
-            className={`h-24 w-[72px] rounded-2xl border flex flex-col items-center justify-center gap-1 shadow-md ${matchedSymbol?.color || ""}`}
-          >
-            <span className="text-4xl select-none">{reelState.symbol}</span>
-            <span className="text-[8px] font-black tracking-widest uppercase opacity-75 font-mono select-none">
-              {matchedSymbol?.label}
-            </span>
-          </motion.div>
+          <div className="flex flex-col h-full justify-around items-center py-2 relative z-0 w-full">
+            {symbols.map((symbol, rowIdx) => {
+              const matched = SLOT_SYMBOLS.find(s => s.char === symbol);
+              return (
+                <motion.div
+                  key={rowIdx}
+                  initial={{ scale: 0.7, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 260, damping: 14 }}
+                  className={`h-14 w-14 sm:h-18 sm:w-18 rounded-xl border flex flex-col items-center justify-center shadow-md ${matched?.color || ""}`}
+                >
+                  <span className="text-2xl sm:text-3xl select-none">{symbol}</span>
+                  <span className="text-[7px] font-black tracking-widest uppercase opacity-75 font-mono select-none">
+                    {matched?.label}
+                  </span>
+                </motion.div>
+              );
+            })}
+          </div>
         )}
       </div>
     );
   };
 
+  // Helper to map grid coordinates to SVG percentages
+  const getLinePoints = (line: { r: number; c: number }[]) => {
+    return line.map(pt => `${pt.c * 20 + 10}%, ${pt.r * 33.3 + 16.6}%`).join(" L ");
+  };
+
   return (
     <PublicLayout>
+      
+      {/* Dynamic Keyframes */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes slotScroll {
+          0% { transform: translateY(0); }
+          100% { transform: translateY(-50%); }
+        }
+      `}} />
+
       {/* 1. HERO SECTION */}
       <section className="relative min-h-[90vh] flex items-center overflow-hidden pt-16 pb-24 lg:pt-28 lg:pb-36 bg-background">
-        
-        {/* CSS Animation Keyframes injected dynamically */}
-        <style dangerouslySetInnerHTML={{ __html: `
-          @keyframes slotScroll {
-            0% { transform: translateY(0); }
-            100% { transform: translateY(-50%); }
-          }
-        `}} />
-
         <motion.div 
           style={{ y: yBg, rotate: rotateBg }}
           className="absolute inset-0 pointer-events-none z-0 overflow-hidden"
@@ -268,7 +467,7 @@ export function LandingContainer() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
             
-            {/* Hero Left Content */}
+            {/* Hero Left */}
             <div className="lg:col-span-7 space-y-6 text-left">
               <motion.div 
                 initial={{ opacity: 0, x: -30 }}
@@ -326,7 +525,7 @@ export function LandingContainer() {
               </motion.div>
             </div>
 
-            {/* Hero Right - Progressive Jackpot Shield */}
+            {/* Hero Right - Jackpot Panel */}
             <motion.div 
               initial={{ opacity: 0, scale: 0.85, rotateY: 20 }}
               animate={{ opacity: 1, scale: 1, rotateY: 0 }}
@@ -366,131 +565,235 @@ export function LandingContainer() {
         </div>
       </section>
 
-      {/* INTERACTIVE SLOT MACHINE MINI-GAME */}
-      <section className="py-20 relative bg-zinc-950 overflow-hidden border-y border-amber-500/25">
+      {/* INTERACTIVE 5x3 SLOT MACHINE MINI-GAME */}
+      <section className="py-20 relative bg-zinc-950 overflow-hidden border-y border-border/40 select-none">
         <div className="absolute inset-0 bg-radial-gradient from-amber-500/5 to-transparent pointer-events-none" />
 
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 relative z-10">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 relative z-10">
           
           <div className="text-center space-y-3 mb-10">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-400 text-xs font-bold border border-amber-500/30 uppercase tracking-widest">
-              <Flame className="h-3.5 w-3.5 fill-amber-400" /> Fun Mode Slots
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${themeStyles.badge}`}>
+              <Flame className="h-3.5 w-3.5 fill-current" /> Fun Mode Slots
             </div>
             <h2 className="text-3xl sm:text-5xl font-black text-foreground">Jungle Spin & Win</h2>
             <p className="text-muted-foreground text-sm max-w-md mx-auto">
-              Feel the heat! Hit the reels with virtual funds. Balance resets back to **$10,000.00** on page refresh.
+              Real casino action! Balance starts at **$10,000.00** and resets on refresh. Connect matching symbols across paylines to win big!
             </p>
           </div>
 
-          <div className="relative mx-auto max-w-lg bg-zinc-900 border-4 border-amber-500/40 rounded-3xl p-5 sm:p-8 shadow-2xl flex flex-col gap-6">
+          {/* Slot Machine Bezel Cabinet */}
+          <div className={`relative mx-auto max-w-3xl rounded-3xl p-4 sm:p-6 flex flex-col gap-5 border-4 transition-all duration-300 ${themeStyles.cabinet}`}>
             
             {/* Header board */}
-            <div className="text-center bg-black/80 py-3 rounded-xl border border-zinc-800 shadow-inner flex items-center justify-center gap-2">
-              <Sparkles className="h-4 w-4 text-amber-400 animate-pulse" />
-              <span className="font-extrabold text-sm tracking-wider uppercase text-amber-400 font-mono">
-                Jungle Deluxe Reels
-              </span>
-              <Sparkles className="h-4 w-4 text-amber-400 animate-pulse" />
+            <div className="flex justify-between items-center bg-black/85 px-4 py-3 rounded-xl border border-zinc-800 shadow-inner">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-400 animate-pulse" />
+                <span className="font-extrabold text-[10px] sm:text-xs tracking-widest uppercase font-mono text-zinc-400">
+                  GRAND JACKPOT: <span className={themeStyles.accentText}>$2,000.00</span>
+                </span>
+              </div>
+              <button 
+                onClick={() => setShowInfo(true)}
+                className="text-zinc-400 hover:text-foreground p-1 rounded-md transition-colors cursor-pointer"
+                title="Payout Information"
+              >
+                <Info className="h-4 w-4" />
+              </button>
             </div>
 
-            {/* Reels Grid (High-Fidelity staggered scroll reels) */}
-            <div className="grid grid-cols-3 gap-3 sm:gap-4 bg-black p-4 sm:p-6 rounded-2xl border border-zinc-800 shadow-inner relative overflow-hidden">
-              <RenderReel reelState={r1} />
-              <RenderReel reelState={r2} />
-              <RenderReel reelState={r3} />
+            {/* 5x3 Reels Container */}
+            <div className="relative bg-zinc-950 p-2 sm:p-4 rounded-2xl border border-zinc-800 shadow-inner">
+              <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
+                {reels.map((symbols, colIdx) => (
+                  <RenderReel 
+                    key={colIdx} 
+                    colIndex={colIdx} 
+                    symbols={symbols} 
+                    spinning={reelSpinning[colIdx]} 
+                  />
+                ))}
+              </div>
+
+              {/* Glowing SVG Winning Paylines Overlay */}
+              <svg className="absolute inset-0 z-20 pointer-events-none w-full h-full p-2 sm:p-4">
+                {winningLines.map((lineIdx) => {
+                  const line = PAYLINE_PATHS[lineIdx];
+                  const colors = ["#ec4899", "#22c55e", "#eab308", "#06b6d4", "#a855f7"];
+                  return (
+                    <motion.path
+                      key={lineIdx}
+                      initial={{ pathLength: 0 }}
+                      animate={{ pathLength: 1 }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                      d={`M ${getLinePoints(line)}`}
+                      stroke={colors[lineIdx % colors.length]}
+                      strokeWidth="4"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
+                    />
+                  );
+                })}
+              </svg>
             </div>
 
-            {/* Status Messages */}
-            <div className="h-14 flex items-center justify-center text-center">
-              <AnimatePresence mode="wait">
-                {winAmount !== null && winType && (
-                  <motion.div
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.8, opacity: 0 }}
-                    className="space-y-0.5"
-                  >
-                    <p className="text-amber-400 font-black text-xl tracking-wider animate-bounce">
-                      {winType}
-                    </p>
-                    <p className="text-green-400 font-bold text-sm">
-                      Payout: +${winAmount.toLocaleString()}
-                    </p>
-                  </motion.div>
+            {/* Cabinet HUD - Bet/Win Board */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 bg-black/90 p-4 rounded-xl border border-zinc-800 font-mono text-center shadow-inner">
+              <div className="space-y-0.5">
+                <span className="text-[9px] sm:text-[10px] text-muted-foreground uppercase tracking-wider block">Fun Balance</span>
+                <span className={`font-black text-sm sm:text-lg block ${themeStyles.accentText}`}>
+                  ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              
+              <div className="space-y-0.5 border-x border-zinc-800">
+                <span className="text-[9px] sm:text-[10px] text-muted-foreground uppercase tracking-wider block">Win Display</span>
+                <AnimatePresence mode="wait">
+                  {winAmount !== null ? (
+                    <motion.span 
+                      key={winAmount}
+                      initial={{ scale: 0.7, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="font-black text-sm sm:text-lg text-green-400 block animate-pulse"
+                    >
+                      ${winAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </motion.span>
+                  ) : (
+                    <span className="font-black text-sm sm:text-lg text-zinc-600 block">
+                      $0.00
+                    </span>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div className="space-y-0.5">
+                <span className="text-[9px] sm:text-[10px] text-muted-foreground uppercase tracking-wider block">Total Bet</span>
+                <span className="font-black text-sm sm:text-lg text-foreground block">
+                  ${bet.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            {/* Cabinet Action Dashboard Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-zinc-950 p-3 rounded-2xl border border-zinc-800/80">
+              
+              {/* Bet Controls */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => adjustBet("down")}
+                  disabled={isSpinning}
+                  className="h-10 w-10 rounded-lg bg-zinc-800 border border-zinc-700 text-foreground font-black text-base flex items-center justify-center hover:bg-zinc-700 disabled:opacity-50 cursor-pointer active:scale-90 transition-transform"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <div className="px-3 text-center min-w-[70px]">
+                  <span className="text-[9px] text-muted-foreground uppercase block font-semibold">BET SIZE</span>
+                  <span className="font-bold text-xs sm:text-sm font-mono">${bet}</span>
+                </div>
+                <button
+                  onClick={() => adjustBet("up")}
+                  disabled={isSpinning}
+                  className="h-10 w-10 rounded-lg bg-zinc-800 border border-zinc-700 text-foreground font-black text-base flex items-center justify-center hover:bg-zinc-700 disabled:opacity-50 cursor-pointer active:scale-90 transition-transform"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Status Win Text Banner */}
+              <div className="flex-1 text-center min-w-[120px] h-8 flex items-center justify-center">
+                {winType && winAmount !== null && (
+                  <span className="text-[11px] sm:text-xs font-black tracking-wider text-green-400 animate-pulse bg-green-500/10 border border-green-500/25 px-2.5 py-1 rounded-full uppercase">
+                    {winType}
+                  </span>
                 )}
                 {isSpinning && (
-                  <motion.p
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: [0.5, 1, 0.5], transition: { repeat: Infinity, duration: 0.8 } }}
-                    className="text-amber-500 font-extrabold text-sm uppercase tracking-widest font-mono"
-                  >
-                    🎲 Reels rolling... 🎰
-                  </motion.p>
+                  <span className="text-[10px] font-bold tracking-widest text-zinc-500 animate-pulse uppercase">
+                    Rolling reels...
+                  </span>
                 )}
-                {!isSpinning && winAmount === null && (
-                  <motion.p 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="text-muted-foreground text-xs font-semibold"
-                  >
-                    Select your bet amount and hit SPIN!
-                  </motion.p>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* HUD */}
-            <div className="grid grid-cols-2 gap-4 bg-zinc-950 p-4 rounded-xl border border-zinc-800/80 font-mono text-center shadow-inner">
-              <div className="space-y-0.5">
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider block">Balance</span>
-                <span className="text-amber-400 font-black text-lg sm:text-xl">
-                  ${balance.toLocaleString()}
-                </span>
-              </div>
-              <div className="space-y-0.5 border-l border-zinc-800">
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider block">Bet Size</span>
-                <span className="text-foreground font-black text-lg sm:text-xl">
-                  ${bet.toLocaleString()}
-                </span>
-              </div>
-            </div>
-
-            {/* HUD Controls */}
-            <div className="space-y-4 pt-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest font-mono select-none">
-                  Set Bet:
-                </span>
-                <div className="flex gap-1.5">
-                  {[100, 250, 500, 1000].map((val) => (
-                    <button
-                      key={val}
-                      onClick={() => !isSpinning && setBet(val)}
-                      disabled={isSpinning}
-                      className={`h-9 px-3 rounded-lg font-mono text-xs font-extrabold transition-all active:scale-95 cursor-pointer ${
-                        bet === val 
-                          ? "bg-amber-500 text-black border border-amber-300 shadow-md shadow-amber-500/20" 
-                          : "bg-zinc-800 text-muted-foreground border border-zinc-700 hover:text-foreground hover:bg-zinc-700"
-                      }`}
-                    >
-                      ${val}
-                    </button>
-                  ))}
-                </div>
               </div>
 
-              <button
-                onClick={handleSpin}
-                disabled={isSpinning || balance < bet}
-                className="w-full h-14 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-black font-extrabold text-base sm:text-lg tracking-wider uppercase border border-amber-300/40 shadow-xl shadow-amber-500/10 hover:brightness-105 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none cursor-pointer flex items-center justify-center gap-2"
-              >
-                <RotateCcw className={`h-5 w-5 ${isSpinning ? "animate-spin" : ""}`} />
-                <span>{balance < bet ? "Insufficient Funds" : "Spin Reels"}</span>
-              </button>
+              {/* Spin & Auto Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setAutoSpin(!autoSpin)}
+                  className={`h-11 px-4 rounded-xl font-bold text-xs tracking-wider uppercase border transition-all cursor-pointer active:scale-95 ${
+                    autoSpin 
+                      ? "bg-red-500 text-white border-red-400" 
+                      : "bg-zinc-800 text-muted-foreground border-zinc-700 hover:text-foreground hover:bg-zinc-700"
+                  }`}
+                >
+                  {autoSpin ? "Stop Auto" : "Auto Spin"}
+                </button>
+
+                <button
+                  onClick={handleSpin}
+                  disabled={isSpinning || balance < bet}
+                  className={`h-11 px-8 rounded-xl font-black text-xs sm:text-sm tracking-wider uppercase border shadow-md active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none bg-gradient-to-r ${themeStyles.button}`}
+                >
+                  <RotateCcw className={`h-4 w-4 ${isSpinning ? "animate-spin" : ""}`} />
+                  <span>Spin</span>
+                </button>
+              </div>
+
             </div>
 
           </div>
         </div>
+
+        {/* Payout Information Modal Pop */}
+        <AnimatePresence>
+          {showInfo && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div 
+                className="absolute inset-0 bg-black/60 backdrop-blur-xs" 
+                onClick={() => setShowInfo(false)} 
+              />
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="relative bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-sm w-full text-foreground shadow-2xl z-10 space-y-4"
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                  <h3 className="font-extrabold text-base flex items-center gap-1.5">
+                    <Trophy className="h-5 w-5 text-amber-400" /> Symbol Payout Guide
+                  </h3>
+                  <button 
+                    onClick={() => setShowInfo(false)}
+                    className="p-1 rounded-full hover:bg-zinc-800 text-zinc-400 hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  {SLOT_SYMBOLS.map((symbol) => (
+                    <div 
+                      key={symbol.label}
+                      className="flex items-center justify-between p-2 rounded-xl bg-zinc-950 border border-zinc-800/80 text-xs font-mono"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{symbol.char}</span>
+                        <span className="font-bold text-zinc-400">{symbol.label}</span>
+                      </div>
+                      <div className="space-y-0.5 text-right text-[10px]">
+                        <p><span className="text-zinc-500">5 symbols:</span> <span className="text-green-400 font-bold">{(symbol.multiplier * 2.5)}x</span></p>
+                        <p><span className="text-zinc-500">4 symbols:</span> <span className="text-amber-400">{(symbol.multiplier * 1.5)}x</span></p>
+                        <p><span className="text-zinc-500">3 symbols:</span> <span className="text-foreground">{(symbol.multiplier)}x</span></p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-[10px] text-muted-foreground leading-relaxed text-center italic">
+                  Wins pay consecutively starting from leftmost Reel 1 across the active horizontal or V-shaped paylines.
+                </p>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </section>
 
       {/* 2. CASINO FEATURES */}
@@ -608,7 +911,7 @@ export function LandingContainer() {
             </div>
             <h2 className="text-3xl sm:text-5xl font-black text-foreground">Jackpot Canopy VIP Ranks</h2>
             <p className="text-muted-foreground text-sm sm:text-base leading-relaxed font-medium max-w-lg mx-auto">
-              Progress through the tiers by making deposits to unlock permanent cashback rates and instant free reward payouts!
+              Progress through the tiers by making deposits to unlock permanent cashback rates and claim free welcome rewards!
             </p>
           </motion.div>
 
@@ -620,7 +923,7 @@ export function LandingContainer() {
                 variants={card3DVariants}
                 initial="rest"
                 whileHover="hover"
-                className={`p-6 rounded-3xl bg-gradient-to-br from-card to-background border-2 shadow-xl relative overflow-hidden flex flex-col justify-between items-center text-center gap-6 ${level.color} ${level.glow}`}
+                className={`p-6 rounded-3xl bg-gradient-to-br from-card to-background border-2 shadow-xl relative overflow-hidden flex flex-col justify-between items-center text-center gap-6 ${level.color}`}
                 style={{ transformStyle: "preserve-3d" }}
               >
                 <div className="space-y-1">
@@ -712,7 +1015,7 @@ export function LandingContainer() {
                     onClick={(e) => { e.preventDefault(); alert("Downloading Jackpot Jungle Android APK!"); }}
                     className="px-6 py-3.5 rounded-full font-semibold text-sm bg-secondary text-foreground hover:bg-accent border border-border/60 transition-all flex items-center gap-2 active:scale-95"
                   >
-                    <Download className="h-4 w-4 text-emerald-400" /> Download APK
+                    <Download className="h-4.5 w-4.5 text-emerald-400" /> Download APK
                   </a>
                 </div>
               </div>
