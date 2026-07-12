@@ -3728,16 +3728,79 @@ function Conversation({
     supabase.from("quick_replies").select("id, title, content").then(({ data }) => setQuickReplies(data ?? []));
   }, []);
 
+  function parseQuickReplyContent(contentStr: string): { text: string; imageUrl: string | null } {
+    if (contentStr.startsWith("{") && contentStr.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(contentStr);
+        return {
+          text: parsed.text ?? "",
+          imageUrl: parsed.image_url ?? null
+        };
+      } catch {}
+    }
+    return { text: contentStr, imageUrl: null };
+  }
+
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
-  const trimmed = text.trim().toLowerCase();
-  const suggestions = trimmed && !text.includes("\n") && text !== dismissedFor
-    ? quickReplies.filter((q) => q.title.toLowerCase().includes(trimmed)).slice(0, 5)
+  
+  const isSlash = text.startsWith("/");
+  const query = isSlash ? text.slice(1).trim().toLowerCase() : text.trim().toLowerCase();
+  
+  const triggerSuggestions = (isSlash && text !== dismissedFor) || (query.length >= 2 && text !== dismissedFor && !text.includes("\n"));
+  
+  const suggestions = triggerSuggestions
+    ? quickReplies.filter((q) => {
+        const parsed = parseQuickReplyContent(q.content);
+        const titleMatch = q.title.toLowerCase().includes(query);
+        const contentMatch = parsed.text.toLowerCase().includes(query);
+        return titleMatch || contentMatch;
+      }).slice(0, 5)
     : [];
 
-  function applyReply(q: { content: string }) {
-    setText(q.content);
+  async function applyReply(q: { title: string; content: string }) {
+    const parsed = parseQuickReplyContent(q.content);
+    
+    // Clear input if it was just slash or match, set it to the parsed reply text
+    setText(parsed.text);
     setSuggestIdx(0);
-    setDismissedFor(q.content);
+    setDismissedFor(parsed.text);
+
+    if (parsed.imageUrl) {
+      try {
+        const tempId = addOptimistic({ image_url: parsed.imageUrl });
+        onLastMessageUpdate(null, parsed.imageUrl, null, new Date().toISOString());
+        
+        if (isGroup) {
+          const { data, error } = await supabase
+            .from("messages")
+            .insert({ group_id: groupId, sender_id: meId, content: null, image_url: parsed.imageUrl } as any)
+            .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
+            .single();
+          if (error) throw error;
+          if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? ({ ...data, from_page: true } as any) : x)));
+        } else if (isTeamChat) {
+          const { data, error } = await supabase
+            .from("messages")
+            .insert({ sender_id: meId, receiver_id: conv.userId, content: null, image_url: parsed.imageUrl } as any)
+            .select()
+            .single();
+          if (error) throw error;
+          if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? ({ ...data, from_page: true } as any) : x)));
+        } else {
+          const { data, error } = await supabase
+            .from("page_messages")
+            .insert({ conversation_id: conv.conversationId, sender_id: meId, from_page: true, content: null, image_url: parsed.imageUrl } as any)
+            .select()
+            .single();
+          if (error) throw error;
+          if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as PageMsg) : x)));
+        }
+        toast.success("Quick reply image sent.");
+      } catch (err: any) {
+        toast.error(err.message || "Failed to send image");
+      }
+    }
+
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
@@ -5037,18 +5100,29 @@ function Conversation({
               <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-secondary/50 flex items-center gap-1">
                 <MessageSquareQuote className="h-3 w-3" /> Saved replies · Tab to insert
               </div>
-              {suggestions.map((q, i) => (
-                <button
-                  key={q.id}
-                  type="button"
-                  onMouseEnter={() => setSuggestIdx(i)}
-                  onClick={() => applyReply(q)}
-                  className={`w-full text-left px-3 py-2 hover:bg-secondary ${i === suggestIdx ? "bg-secondary" : ""}`}
-                >
-                  <p className="text-xs font-bold">{q.title}</p>
-                  <p className="text-xs text-muted-foreground truncate">{q.content}</p>
-                </button>
-              ))}
+              {suggestions.map((q, i) => {
+                const parsed = parseQuickReplyContent(q.content);
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onMouseEnter={() => setSuggestIdx(i)}
+                    onClick={() => applyReply(q)}
+                    className={`w-full text-left px-3 py-2 hover:bg-secondary flex items-center justify-between gap-3 ${i === suggestIdx ? "bg-secondary" : ""}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold flex items-center gap-1.5">
+                        <span>{q.title}</span>
+                        {parsed.imageUrl && <span className="text-[9px] px-1 bg-primary/10 text-primary rounded font-bold">Image</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{parsed.text || "[Image only]"}</p>
+                    </div>
+                    {parsed.imageUrl && (
+                      <img src={parsed.imageUrl} alt="" className="h-8 w-8 rounded object-cover border border-border shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
           <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
@@ -5176,7 +5250,8 @@ function Conversation({
                 }
               }
               if (suggestions.length === 0) return;
-              if (e.key === "Tab" || (e.key === "Enter" && suggestions.length > 0 && text.length < suggestions[suggestIdx].content.length)) {
+              const activeSuggestionText = parseQuickReplyContent(suggestions[suggestIdx].content).text;
+              if (e.key === "Tab" || (e.key === "Enter" && suggestions.length > 0 && text.length < activeSuggestionText.length)) {
                 e.preventDefault();
                 applyReply(suggestions[suggestIdx]);
               } else if (e.key === "ArrowDown") { e.preventDefault(); setSuggestIdx((i) => (i + 1) % suggestions.length); }

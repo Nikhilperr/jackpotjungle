@@ -127,44 +127,160 @@ export function QuickRepliesView({ meId }: { meId: string }) {
   const [items, setItems] = useState<any[]>([]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { ask, node: confirmNode } = useConfirm();
+
+  function parseQuickReply(content: string): { text: string; imageUrl: string | null } {
+    if (content.startsWith("{") && content.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(content);
+        return {
+          text: parsed.text ?? "",
+          imageUrl: parsed.image_url ?? null
+        };
+      } catch {}
+    }
+    return { text: content, imageUrl: null };
+  }
+
   async function load() {
     const { data } = await sb.from("quick_replies").select("*").order("created_at", { ascending: false });
     setItems(data ?? []);
   }
+
   useEffect(() => { load(); }, []);
-  async function add() {
-    if (!title.trim() || !content.trim()) return;
-    const { error } = await sb.from("quick_replies").insert({ admin_id: meId, title: title.trim(), content: content.trim() });
-    if (error) toast.error(error.message); else { setTitle(""); setContent(""); load(); }
+
+  async function handlePickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    setUploading(true);
+    try {
+      const { uploadAndSign } = await import("@/lib/chat-media");
+      const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
+      setImageUrl(url);
+      toast.success("Image uploaded successfully!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload image");
+    } finally {
+      setUploading(false);
+    }
   }
+
+  async function add() {
+    if (!title.trim()) return;
+    if (!content.trim() && !imageUrl) return;
+
+    const finalContent = imageUrl
+      ? JSON.stringify({ text: content.trim(), image_url: imageUrl })
+      : content.trim();
+
+    const { error } = await sb.from("quick_replies").insert({ admin_id: meId, title: title.trim(), content: finalContent });
+    if (error) {
+      toast.error(error.message);
+    } else {
+      setTitle("");
+      setContent("");
+      setImageUrl(null);
+      load();
+      toast.success("Quick reply saved!");
+    }
+  }
+
   async function del(id: string, label: string) {
     if (!(await ask({ title: "Delete quick reply?", desc: `“${label}” will be permanently removed.`, confirmText: "Delete", destructive: true }))) return;
     await sb.from("quick_replies").delete().eq("id", id);
     load();
   }
+
   return (
     <div className="p-6 max-w-3xl mx-auto">
       {confirmNode}
       <h2 className="text-xl font-bold mb-1">Quick reply templates</h2>
       <p className="text-sm text-muted-foreground mb-4">Reusable canned messages, shared across admins.</p>
-      <div className="bg-card border border-border rounded-2xl p-4 mb-6 space-y-2">
+      
+      <div className="bg-card border border-border rounded-2xl p-4 mb-6 space-y-3">
         <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (e.g. Greeting)" />
         <Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Message…" rows={3} />
-        <Button onClick={add} className="w-full"><Plus className="h-4 w-4 mr-2" /> Save reply</Button>
-      </div>
-      <div className="space-y-2">
-        {items.map((q) => (
-          <div key={q.id} className="p-3 bg-card border border-border rounded-lg">
-            <div className="flex items-start gap-2">
-              <div className="flex-1">
-                <p className="font-semibold text-sm">{q.title}</p>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{q.content}</p>
-              </div>
-              <button onClick={() => del(q.id, q.title)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+        
+        <div className="flex items-center gap-3">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handlePickImage} 
+            accept="image/*" 
+            className="hidden" 
+          />
+          <Button 
+            type="button" 
+            variant="outline" 
+            size="sm" 
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="text-xs font-semibold"
+          >
+            {uploading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+            ) : (
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Attach Image
+          </Button>
+          {imageUrl && (
+            <div className="flex items-center gap-2 bg-secondary/60 rounded-lg pl-2 pr-1 py-1 border border-border">
+              <span className="text-xs text-muted-foreground truncate max-w-[150px]">Image attached</span>
+              <button 
+                type="button" 
+                onClick={() => setImageUrl(null)} 
+                className="h-5 w-5 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
+          )}
+        </div>
+        
+        {imageUrl && (
+          <div className="relative h-20 w-20 rounded border border-border overflow-hidden bg-secondary">
+            <img src={imageUrl} alt="Attached Preview" className="h-full w-full object-cover" />
+            <button 
+              type="button" 
+              onClick={() => setImageUrl(null)}
+              className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-        ))}
+        )}
+        
+        <Button onClick={add} disabled={!title.trim() || uploading} className="w-full">
+          <Plus className="h-4 w-4 mr-2" /> Save reply
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        {items.map((q) => {
+          const parsed = parseQuickReply(q.content);
+          return (
+            <div key={q.id} className="p-3 bg-card border border-border rounded-lg flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0 flex items-start gap-3">
+                {parsed.imageUrl && (
+                  <img src={parsed.imageUrl} alt="" className="h-12 w-12 rounded object-cover border border-border shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm flex items-center gap-1.5">
+                    <span>{q.title}</span>
+                    {parsed.imageUrl && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold">Image Attached</span>}
+                  </p>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{parsed.text || "[Image message only]"}</p>
+                </div>
+              </div>
+              <button onClick={() => del(q.id, q.title)} className="text-muted-foreground hover:text-destructive shrink-0"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          );
+        })}
         {items.length === 0 && <p className="text-sm text-center text-muted-foreground py-6">No quick replies yet.</p>}
       </div>
     </div>
