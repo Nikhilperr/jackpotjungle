@@ -4,11 +4,9 @@ import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
 import { 
   Sparkles, 
   MessageCircle, 
-  Trophy, 
   Gift, 
   ShieldCheck, 
   Smartphone, 
-  Zap, 
   Users, 
   Crown, 
   ArrowRight, 
@@ -19,67 +17,60 @@ import {
   Dices,
   Flame,
   RotateCcw,
-  Volume2,
-  DollarSign,
   Award
 } from "lucide-react";
 import { PublicLayout } from "@/components/landing/PublicLayout";
 
 const SLOT_SYMBOLS = [
-  { char: "🍒", label: "Cherry", multiplier: 3, color: "from-red-500 to-rose-600" },
-  { char: "🍋", label: "Lemon", multiplier: 4, color: "from-yellow-400 to-amber-500" },
-  { char: "🍊", label: "Orange", multiplier: 5, color: "from-orange-400 to-amber-600" },
-  { char: "🔔", label: "Bell", multiplier: 8, color: "from-yellow-500 to-yellow-300" },
-  { char: "💎", label: "Diamond", multiplier: 15, color: "from-cyan-400 to-blue-500" },
-  { char: "👑", label: "Crown", multiplier: 25, color: "from-yellow-600 to-amber-400" },
-  { char: "7️⃣", label: "Seven", multiplier: 50, color: "from-red-600 to-rose-800" },
+  { char: "🍒", label: "Cherry", multiplier: 3, color: "bg-red-500/10 border-red-500/30 text-red-500" },
+  { char: "🍋", label: "Lemon", multiplier: 4, color: "bg-yellow-500/10 border-yellow-500/30 text-yellow-500" },
+  { char: "🍊", label: "Orange", multiplier: 5, color: "bg-orange-500/10 border-orange-500/30 text-orange-500" },
+  { char: "🔔", label: "Bell", multiplier: 8, color: "bg-amber-500/10 border-amber-500/30 text-amber-500" },
+  { char: "💎", label: "Diamond", multiplier: 15, color: "bg-cyan-500/10 border-cyan-500/30 text-cyan-400" },
+  { char: "👑", label: "Crown", multiplier: 25, color: "bg-yellow-500/20 border-yellow-500/40 text-yellow-400" },
+  { char: "7️⃣", label: "Seven", multiplier: 50, color: "bg-red-600/20 border-red-500/40 text-red-400" },
 ];
 
 const VIP_LEVELS = [
   {
     name: "Bronze Medallion",
     img: "/bronze.png",
+    deposit: "$100",
+    reward: "$15",
     cashback: "5%",
-    welcome: "$1,000",
-    req: "Level 1+",
-    color: "from-amber-700 to-amber-900 border-amber-700/50",
-    glow: "shadow-amber-500/10",
+    color: "from-amber-700 to-amber-900 border-amber-700/50 shadow-amber-500/5",
   },
   {
     name: "Silver Medallion",
     img: "/silver.png",
+    deposit: "$250",
+    reward: "$10",
     cashback: "8%",
-    welcome: "$5,000",
-    req: "Level 10+",
-    color: "from-slate-400 to-slate-600 border-slate-400/50",
-    glow: "shadow-slate-500/10",
+    color: "from-slate-400 to-slate-600 border-slate-400/50 shadow-slate-500/5",
   },
   {
     name: "Gold Medallion",
     img: "/gold.png",
+    deposit: "$500",
+    reward: "$40",
     cashback: "12%",
-    welcome: "$15,000",
-    req: "Level 25+",
-    color: "from-yellow-500 to-amber-500 border-yellow-500/50",
-    glow: "shadow-yellow-500/10",
+    color: "from-yellow-500 to-amber-500 border-yellow-500/50 shadow-yellow-500/5",
   },
   {
     name: "Platinum Medallion",
     img: "/platium.png",
+    deposit: "$1,000",
+    reward: "$75",
     cashback: "18%",
-    welcome: "$50,000",
-    req: "Level 50+",
-    color: "from-cyan-400 to-blue-500 border-cyan-400/50",
-    glow: "shadow-cyan-500/10",
+    color: "from-cyan-400 to-blue-500 border-cyan-400/50 shadow-cyan-500/5",
   },
   {
     name: "Diamond Medallion",
     img: "/dimond.png",
+    deposit: "$5,000",
+    reward: "$100",
     cashback: "25%",
-    welcome: "$200,000",
-    req: "Level 100+",
-    color: "from-purple-500 to-indigo-600 border-purple-500/50",
-    glow: "shadow-purple-500/10",
+    color: "from-purple-500 to-indigo-600 border-purple-500/50 shadow-purple-500/5",
   },
 ];
 
@@ -104,72 +95,76 @@ export function LandingContainer() {
   // Fun Slot Machine Game state
   const [balance, setBalance] = useState(10000);
   const [bet, setBet] = useState(100);
-  const [reels, setReels] = useState(["💎", "👑", "7️⃣"]);
-  const [isSpinning, setIsSpinning] = useState(false);
+  
+  // Staggered Reel States
+  const [r1, setR1] = useState({ symbol: "💎", spinning: false });
+  const [r2, setR2] = useState({ symbol: "👑", spinning: false });
+  const [r3, setR3] = useState({ symbol: "7️⃣", spinning: false });
+
   const [winAmount, setWinAmount] = useState<number | null>(null);
   const [winType, setWinType] = useState<string | null>(null);
 
-  // Reset balance on page refresh/mount
+  // Reset balance on mount / page refresh
   useEffect(() => {
     setBalance(10000);
   }, []);
 
+  const isSpinning = r1.spinning || r2.spinning || r3.spinning;
+
   const handleSpin = () => {
     if (isSpinning || balance < bet) return;
 
+    // Deduct bet and trigger spin
     setBalance((prev) => prev - bet);
-    setIsSpinning(true);
     setWinAmount(null);
     setWinType(null);
 
-    let startTime = Date.now();
-    const duration = 1800; // spin duration in ms
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      
-      // Animate reels randomly while spinning
-      setReels([
-        SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)].char,
-        SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)].char,
-        SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)].char,
-      ]);
+    setR1(prev => ({ ...prev, spinning: true }));
+    setR2(prev => ({ ...prev, spinning: true }));
+    setR3(prev => ({ ...prev, spinning: true }));
 
-      if (elapsed > duration) {
-        clearInterval(interval);
-        
-        // Pick final result
-        const r1 = SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)];
-        const r2 = SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)];
-        const r3 = SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)];
-        
-        setReels([r1.char, r2.char, r3.char]);
-        setIsSpinning(false);
-        
-        // Check payout
-        let win = 0;
-        let payoutMsg = "";
+    // Pick final target symbols
+    const final1 = SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)];
+    const final2 = SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)];
+    const final3 = SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)];
 
-        if (r1.char === r2.char && r2.char === r3.char) {
-          // 3 of a kind
-          win = bet * r1.multiplier;
-          payoutMsg = r1.multiplier >= 15 ? "🏆 MEGA WIN!" : "🔥 BIG WIN!";
-        } else if (r1.char === r2.char || r2.char === r3.char || r1.char === r3.char) {
-          // 2 of a kind
-          const matchingSymbol = r1.char === r2.char ? r1 : r3;
-          win = bet * Math.max(1, Math.round(matchingSymbol.multiplier / 2));
-          payoutMsg = "🎉 WIN!";
-        }
+    // Staggered stop Reel 1
+    setTimeout(() => {
+      setR1({ symbol: final1.char, spinning: false });
+    }, 900);
 
-        if (win > 0) {
-          setWinAmount(win);
-          setWinType(payoutMsg);
-          setBalance((prev) => prev + win);
-        }
+    // Staggered stop Reel 2
+    setTimeout(() => {
+      setR2({ symbol: final2.char, spinning: false });
+    }, 1500);
+
+    // Staggered stop Reel 3 & Calculate Payouts
+    setTimeout(() => {
+      setR3({ symbol: final3.char, spinning: false });
+
+      let win = 0;
+      let payoutMsg = "";
+
+      if (final1.char === final2.char && final2.char === final3.char) {
+        // 3 of a kind
+        win = bet * final1.multiplier;
+        payoutMsg = final1.multiplier >= 15 ? "🏆 MEGA WIN!" : "🔥 BIG WIN!";
+      } else if (final1.char === final2.char || final2.char === final3.char || final1.char === final3.char) {
+        // 2 of a kind
+        const matchingSymbol = final1.char === final2.char ? final1 : final3;
+        win = bet * Math.max(1, Math.round(matchingSymbol.multiplier / 2));
+        payoutMsg = "🎉 WIN!";
       }
-    }, 60);
+
+      if (win > 0) {
+        setWinAmount(win);
+        setWinType(payoutMsg);
+        setBalance((prev) => prev + win);
+      }
+    }, 2100);
   };
 
-  // Scroll parallax effects for subtle background depth
+  // Scroll parallax effects for background elements
   const { scrollY } = useScroll();
   const yBg = useTransform(scrollY, [0, 1000], [0, 150]);
   const rotateBg = useTransform(scrollY, [0, 2000], [0, 45]);
@@ -194,12 +189,58 @@ export function LandingContainer() {
     }
   };
 
+  // Sub-component for a high-fidelity staggered scroll reel
+  const RenderReel = ({ reelState }: { reelState: { symbol: string; spinning: boolean } }) => {
+    // Generate a long vertical strip of symbols to loop scroll
+    const duplicateSymbols = [...SLOT_SYMBOLS, ...SLOT_SYMBOLS, ...SLOT_SYMBOLS];
+    const matchedSymbol = SLOT_SYMBOLS.find(s => s.char === reelState.symbol);
+
+    return (
+      <div className="w-24 h-40 overflow-hidden relative bg-black rounded-2xl border-2 border-zinc-800 shadow-inner flex justify-center items-center">
+        {/* vignette overlay */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-black pointer-events-none z-10 rounded-xl" />
+        
+        {reelState.spinning ? (
+          <div 
+            style={{ animation: "slotScroll 0.15s linear infinite" }}
+            className="flex flex-col gap-4 absolute"
+          >
+            {duplicateSymbols.map((s, i) => (
+              <div key={i} className="h-16 w-16 flex items-center justify-center text-4xl select-none">
+                {s.char}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <motion.div
+            initial={{ scale: 0.5, y: -20, opacity: 0 }}
+            animate={{ scale: [1, 1.25, 1], y: [0, 8, 0], opacity: 1 }}
+            transition={{ type: "spring", stiffness: 220, damping: 12 }}
+            className={`h-24 w-[72px] rounded-2xl border flex flex-col items-center justify-center gap-1 shadow-md ${matchedSymbol?.color || ""}`}
+          >
+            <span className="text-4xl select-none">{reelState.symbol}</span>
+            <span className="text-[8px] font-black tracking-widest uppercase opacity-75 font-mono select-none">
+              {matchedSymbol?.label}
+            </span>
+          </motion.div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <PublicLayout>
-      {/* 1. HERO SECTION WITH 3D PERSPECTIVE */}
+      {/* 1. HERO SECTION */}
       <section className="relative min-h-[90vh] flex items-center overflow-hidden pt-16 pb-24 lg:pt-28 lg:pb-36 bg-background">
         
-        {/* Dynamic 3D Parallax Background elements */}
+        {/* CSS Animation Keyframes injected dynamically */}
+        <style dangerouslySetInnerHTML={{ __html: `
+          @keyframes slotScroll {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-50%); }
+          }
+        `}} />
+
         <motion.div 
           style={{ y: yBg, rotate: rotateBg }}
           className="absolute inset-0 pointer-events-none z-0 overflow-hidden"
@@ -207,7 +248,6 @@ export function LandingContainer() {
           <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-amber-500/10 rounded-full blur-[140px] opacity-80" />
           <div className="absolute top-1/3 right-1/4 w-[450px] h-[450px] bg-primary/10 rounded-full blur-[130px]" />
           
-          {/* Floating 3D Casino Chips / Dices in background */}
           <motion.div 
             animate={{ y: [0, -25, 0], rotate: [0, 360] }}
             transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
@@ -230,7 +270,6 @@ export function LandingContainer() {
             
             {/* Hero Left Content */}
             <div className="lg:col-span-7 space-y-6 text-left">
-              {/* Tag Badge */}
               <motion.div 
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -241,7 +280,6 @@ export function LandingContainer() {
                 <span>🎰 PROGRESSIVE SWEEPSTAKES & SOCIAL CASINO</span>
               </motion.div>
 
-              {/* Headline */}
               <motion.h1 
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -254,7 +292,6 @@ export function LandingContainer() {
                 </span>
               </motion.h1>
 
-              {/* Subtitle */}
               <motion.p 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -264,7 +301,6 @@ export function LandingContainer() {
                 Spin progressive slots, compete in sweeps tournaments, build your referral network, and chat live in our dedicated gaming messenger!
               </motion.p>
 
-              {/* Action Call To Actions */}
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -290,7 +326,7 @@ export function LandingContainer() {
               </motion.div>
             </div>
 
-            {/* Hero Right - 3D Progressive Jackpot Shield & Live Counters */}
+            {/* Hero Right - Progressive Jackpot Shield */}
             <motion.div 
               initial={{ opacity: 0, scale: 0.85, rotateY: 20 }}
               animate={{ opacity: 1, scale: 1, rotateY: 0 }}
@@ -306,7 +342,6 @@ export function LandingContainer() {
               >
                 <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-amber-500/20 rounded-full blur-2xl pointer-events-none" />
                 
-                {/* Gold Crown */}
                 <div className="mx-auto h-16 w-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
                   <Crown className="h-8 w-8 animate-bounce" />
                 </div>
@@ -331,9 +366,8 @@ export function LandingContainer() {
         </div>
       </section>
 
-      {/* NEW SECTION: INTERACTIVE SLOT MACHINE MINI-GAME */}
+      {/* INTERACTIVE SLOT MACHINE MINI-GAME */}
       <section className="py-20 relative bg-zinc-950 overflow-hidden border-y border-amber-500/25">
-        {/* Glowing aura */}
         <div className="absolute inset-0 bg-radial-gradient from-amber-500/5 to-transparent pointer-events-none" />
 
         <div className="max-w-4xl mx-auto px-4 sm:px-6 relative z-10">
@@ -348,10 +382,9 @@ export function LandingContainer() {
             </p>
           </div>
 
-          {/* Slot Cabinet Wrapper */}
           <div className="relative mx-auto max-w-lg bg-zinc-900 border-4 border-amber-500/40 rounded-3xl p-5 sm:p-8 shadow-2xl flex flex-col gap-6">
             
-            {/* Cabinet Top Header */}
+            {/* Header board */}
             <div className="text-center bg-black/80 py-3 rounded-xl border border-zinc-800 shadow-inner flex items-center justify-center gap-2">
               <Sparkles className="h-4 w-4 text-amber-400 animate-pulse" />
               <span className="font-extrabold text-sm tracking-wider uppercase text-amber-400 font-mono">
@@ -360,40 +393,14 @@ export function LandingContainer() {
               <Sparkles className="h-4 w-4 text-amber-400 animate-pulse" />
             </div>
 
-            {/* The Reels Block */}
+            {/* Reels Grid (High-Fidelity staggered scroll reels) */}
             <div className="grid grid-cols-3 gap-3 sm:gap-4 bg-black p-4 sm:p-6 rounded-2xl border border-zinc-800 shadow-inner relative overflow-hidden">
-              {reels.map((symbol, idx) => {
-                const matchedSymbol = SLOT_SYMBOLS.find(s => s.char === symbol);
-                return (
-                  <div 
-                    key={idx} 
-                    className="relative aspect-[3/4] bg-gradient-to-b from-zinc-800 to-zinc-900 border-2 border-zinc-700/80 rounded-xl flex flex-col items-center justify-center shadow-lg transition-all"
-                  >
-                    <div className="absolute inset-0 bg-radial-gradient from-white/5 to-transparent rounded-xl pointer-events-none" />
-                    
-                    {/* Symbol Display */}
-                    <motion.span 
-                      key={symbol + (isSpinning ? "-spin" : "-stop")}
-                      initial={isSpinning ? { y: -80, opacity: 0 } : { y: 0, opacity: 1, scale: 1 }}
-                      animate={isSpinning ? { y: 80, opacity: [0, 1, 0] } : { scale: [0.9, 1.05, 1] }}
-                      transition={isSpinning ? { repeat: Infinity, duration: 0.12, ease: "linear" } : { duration: 0.2 }}
-                      className="text-4xl sm:text-6xl select-none"
-                    >
-                      {symbol}
-                    </motion.span>
-
-                    {/* Symbol Indicator text */}
-                    {!isSpinning && matchedSymbol && (
-                      <span className="absolute bottom-2 text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
-                        {matchedSymbol.label}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+              <RenderReel reelState={r1} />
+              <RenderReel reelState={r2} />
+              <RenderReel reelState={r3} />
             </div>
 
-            {/* Status Messages Panel */}
+            {/* Status Messages */}
             <div className="h-14 flex items-center justify-center text-center">
               <AnimatePresence mode="wait">
                 {winAmount !== null && winType && (
@@ -432,7 +439,7 @@ export function LandingContainer() {
               </AnimatePresence>
             </div>
 
-            {/* HUD / Display Counter */}
+            {/* HUD */}
             <div className="grid grid-cols-2 gap-4 bg-zinc-950 p-4 rounded-xl border border-zinc-800/80 font-mono text-center shadow-inner">
               <div className="space-y-0.5">
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider block">Balance</span>
@@ -448,9 +455,8 @@ export function LandingContainer() {
               </div>
             </div>
 
-            {/* Interactive HUD Controls */}
+            {/* HUD Controls */}
             <div className="space-y-4 pt-2">
-              {/* Quick Bet Picker */}
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest font-mono select-none">
                   Set Bet:
@@ -461,7 +467,7 @@ export function LandingContainer() {
                       key={val}
                       onClick={() => !isSpinning && setBet(val)}
                       disabled={isSpinning}
-                      className={`h-9 px-3 rounded-lg font-mono text-xs font-extrabold transition-all active:scale-95 ${
+                      className={`h-9 px-3 rounded-lg font-mono text-xs font-extrabold transition-all active:scale-95 cursor-pointer ${
                         bet === val 
                           ? "bg-amber-500 text-black border border-amber-300 shadow-md shadow-amber-500/20" 
                           : "bg-zinc-800 text-muted-foreground border border-zinc-700 hover:text-foreground hover:bg-zinc-700"
@@ -473,7 +479,6 @@ export function LandingContainer() {
                 </div>
               </div>
 
-              {/* Action Spin Button */}
               <button
                 onClick={handleSpin}
                 disabled={isSpinning || balance < bet}
@@ -488,7 +493,7 @@ export function LandingContainer() {
         </div>
       </section>
 
-      {/* 2. CASINO FEATURES WITH 3D HOVER TILT EFFECTS */}
+      {/* 2. CASINO FEATURES */}
       <section className="py-20 bg-card/30 border-y border-border/40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           
@@ -585,7 +590,7 @@ export function LandingContainer() {
         </div>
       </section>
 
-      {/* NEW SECTION: VIP CLUB SHOWCASE GRID */}
+      {/* VIP CLUB SHOWCASE GRID */}
       <section className="py-24 relative overflow-hidden bg-background">
         <div className="absolute inset-0 bg-radial-gradient from-purple-500/5 to-transparent pointer-events-none" />
 
@@ -603,12 +608,12 @@ export function LandingContainer() {
             </div>
             <h2 className="text-3xl sm:text-5xl font-black text-foreground">Jackpot Canopy VIP Ranks</h2>
             <p className="text-muted-foreground text-sm sm:text-base leading-relaxed font-medium max-w-lg mx-auto">
-              Active play builds VIP XP. Progress through the tiers to permanently enhance cashbacks, match boosts, and host support.
+              Progress through the tiers by making deposits to unlock permanent cashback rates and instant free reward payouts!
             </p>
           </motion.div>
 
-          {/* VIP Ranks Flexbox/Grid Deck */}
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+          {/* VIP Ranks Grid Deck */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
             {VIP_LEVELS.map((level, idx) => (
               <motion.div
                 key={level.name}
@@ -618,17 +623,15 @@ export function LandingContainer() {
                 className={`p-6 rounded-3xl bg-gradient-to-br from-card to-background border-2 shadow-xl relative overflow-hidden flex flex-col justify-between items-center text-center gap-6 ${level.color} ${level.glow}`}
                 style={{ transformStyle: "preserve-3d" }}
               >
-                {/* Header Title */}
                 <div className="space-y-1">
                   <h3 className="font-extrabold text-base text-foreground leading-tight">
                     {level.name.split(" ")[0]}
                   </h3>
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest font-mono">
-                    {level.req}
+                    Tier {idx + 1}
                   </span>
                 </div>
 
-                {/* Medallion Medal Image */}
                 <div className="h-28 w-28 flex items-center justify-center select-none pointer-events-none">
                   <img 
                     src={level.img} 
@@ -638,15 +641,23 @@ export function LandingContainer() {
                   />
                 </div>
 
-                {/* Benefits List */}
-                <div className="w-full space-y-2 border-t border-border/40 pt-4 text-left font-mono text-xs">
+                {/* Requirements / Rewards */}
+                <div className="w-full bg-black/55 p-3 rounded-xl border border-zinc-800 space-y-1 font-mono text-xs text-left">
                   <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground uppercase text-[9px] tracking-wider font-semibold">Cashback:</span>
-                    <span className="font-bold text-amber-400">{level.cashback}</span>
+                    <span className="text-muted-foreground uppercase text-[8px] tracking-wider font-semibold">Deposit:</span>
+                    <span className="font-bold text-foreground">{level.deposit}</span>
                   </div>
+                  <div className="flex justify-between items-center border-t border-zinc-800 pt-1.5 mt-1">
+                    <span className="text-muted-foreground uppercase text-[8px] tracking-wider font-semibold">Reward:</span>
+                    <span className="font-bold text-green-400">{level.reward} Free</span>
+                  </div>
+                </div>
+
+                {/* Benefits */}
+                <div className="w-full space-y-1 border-t border-border/40 pt-4 text-left font-mono text-xs">
                   <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground uppercase text-[9px] tracking-wider font-semibold">Welcome:</span>
-                    <span className="font-bold text-foreground">{level.welcome}</span>
+                    <span className="text-muted-foreground uppercase text-[8px] tracking-wider font-semibold">Cashback:</span>
+                    <span className="font-bold text-amber-400">{level.cashback}</span>
                   </div>
                 </div>
               </motion.div>
@@ -656,9 +667,9 @@ export function LandingContainer() {
           <div className="text-center pt-10">
             <Link 
               to="/vip" 
-              className="inline-flex items-center gap-2 font-black text-sm bg-purple-500/10 border border-purple-500/30 text-purple-400 px-6 py-3 rounded-full hover:bg-purple-500/20 active:scale-95 transition-all"
+              className="inline-flex items-center gap-2 font-black text-sm bg-purple-500/10 border border-purple-500/30 text-purple-400 px-6 py-3 rounded-full hover:bg-purple-500/20 active:scale-95 transition-all cursor-pointer"
             >
-              <span>Explore Extensive VIP Tiers & Perks</span>
+              <span>Explore VIP Club Tiers & Perks Page</span>
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -666,7 +677,7 @@ export function LandingContainer() {
         </div>
       </section>
 
-      {/* 3. MOBILE APP 3D PREVIEW CARD */}
+      {/* 3. MOBILE APP PREVIEW */}
       <section id="download" className="py-24 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div 
@@ -706,7 +717,7 @@ export function LandingContainer() {
                 </div>
               </div>
 
-              {/* 3D Mockup Device Card */}
+              {/* Mockup Device */}
               <div className="relative flex items-center justify-center" style={{ perspective: "1000px" }}>
                 <motion.div 
                   whileHover={{ rotateY: -15, rotateX: 10, scale: 1.02 }}
@@ -739,7 +750,7 @@ export function LandingContainer() {
         </div>
       </section>
 
-      {/* 5. SECURITY & TRUST HIGHLIGHTS */}
+      {/* 5. SECURITY & TRUST */}
       <section className="py-20 border-t border-border/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-12">
           

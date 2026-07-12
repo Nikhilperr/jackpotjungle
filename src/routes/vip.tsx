@@ -1,18 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PublicLayout } from "@/components/landing/PublicLayout";
-import { Crown, Check, Shield, Star, Award, Zap, ShieldCheck, Mail } from "lucide-react";
+import { Crown, Check, ShieldCheck, Award, Zap, Gem, Landmark, Coins } from "lucide-react";
 import { motion } from "framer-motion";
 
 export const Route = createFileRoute("/vip")({
   head: () => ({
     meta: [
       { title: "VIP Club — Jackpot Jungle Messenger & Casino" },
-      { name: "description", content: "Join the exclusive Jackpot Jungle VIP Club. Earn daily cashback up to 8%, get customized streaks, direct line to hosts, and high-roller rewards." },
+      { name: "description", content: "Join the exclusive Jackpot Jungle VIP Club. Deposit $100 to get Bronze with $15 reward, up to Diamond with $100 reward. Unlock daily cashbacks up to 25%." },
       { property: "og:title", content: "VIP Club — Jackpot Jungle Messenger & Casino" },
-      { property: "og:description", content: "Join the VIP Club at Jackpot Jungle. Get instant cashback, priority host support, and custom sweeps codes." },
+      { property: "og:description", content: "Join the VIP Club at Jackpot Jungle. Deposit to rank up from Bronze to Diamond and unlock massive welcome rewards and cashbacks." },
       { property: "og:url", content: "https://playjackpotjungle.com/vip" },
       { name: "twitter:title", content: "VIP Club — Jackpot Jungle Messenger & Casino" },
-      { name: "twitter:description", content: "Learn about the Jackpot Jungle VIP Program tiers, levels, daily cashback rates, and special promotions." },
+      { name: "twitter:description", content: "Learn about the Jackpot Jungle VIP Program tiers, requirements, welcome bonuses, and cashback rates." },
     ],
   }),
   component: VIPPage,
@@ -21,112 +21,225 @@ export const Route = createFileRoute("/vip")({
 function VIPPage() {
   const tiers = [
     {
-      name: "Bronze",
-      color: "from-amber-700 to-amber-500",
-      req: "Free for All Users",
-      perks: ["1% Daily Cashback", "Standard Weekly Bonuses", "Community Access"],
+      name: "Bronze Medallion",
+      img: "/bronze.png",
+      deposit: "$100",
+      reward: "$15",
+      cashback: "5%",
+      color: "from-amber-700 to-amber-900 border-amber-700/50 shadow-amber-500/5",
+      perks: [
+        "5% Daily Cashback Rate",
+        "Instant $15 Welcome Reward",
+        "Weekly Match Boosters",
+        "Standard Chat Room Access",
+      ],
     },
     {
-      name: "Silver",
-      color: "from-slate-400 to-slate-200 text-slate-900",
-      req: "$500 Wallet Balance",
-      perks: ["2% Daily Cashback", "2x Weekly Streaks", "Dedicated support agent"],
+      name: "Silver Medallion",
+      img: "/silver.png",
+      deposit: "$250",
+      reward: "$10",
+      cashback: "8%",
+      color: "from-slate-400 to-slate-600 border-slate-400/50 shadow-slate-500/5",
+      perks: [
+        "8% Daily Cashback Rate",
+        "Instant $10 Welcome Reward",
+        "Priority Customer Support Queue",
+        "Exclusive Medallion Icon",
+      ],
     },
     {
-      name: "Gold",
-      color: "from-yellow-600 to-yellow-400 text-yellow-950",
-      req: "$2,000 Wallet Balance",
-      perks: ["3.5% Daily Cashback", "3x Weekly Streaks", "Personal VIP Manager", "Exclusive Promotions"],
+      name: "Gold Medallion",
+      img: "/gold.png",
+      deposit: "$500",
+      reward: "$40",
+      cashback: "12%",
+      color: "from-yellow-500 to-amber-500 border-yellow-500/50 shadow-yellow-500/5",
+      perks: [
+        "12% Daily Cashback Rate",
+        "Instant $40 Welcome Reward",
+        "Personal VIP Account Manager",
+        "3x Weekly Level-up Streaks",
+      ],
     },
     {
-      name: "Platinum",
-      color: "from-cyan-500 to-blue-400 text-blue-950",
-      req: "$10,000 Wallet Balance",
-      perks: ["5% Daily Cashback", "4x Weekly Streaks", "Express Withdrawals", "Special Birthday Gift"],
+      name: "Platinum Medallion",
+      img: "/platium.png",
+      deposit: "$1,000",
+      reward: "$75",
+      cashback: "18%",
+      color: "from-cyan-400 to-blue-500 border-cyan-400/50 shadow-cyan-500/5",
+      perks: [
+        "18% Daily Cashback Rate",
+        "Instant $75 Welcome Reward",
+        "Express Withdrawal Approvals",
+        "Milestone Birthday Perks",
+      ],
     },
     {
-      name: "Diamond",
-      color: "from-purple-600 via-pink-500 to-amber-400 text-white",
-      req: "By Invite Only",
-      perks: ["8% Daily Cashback", "5x Weekly Streaks", "Direct Line to VIP Host", "Luxury Vacation Invites"],
+      name: "Diamond Medallion",
+      img: "/dimond.png",
+      deposit: "$5,000",
+      reward: "$100",
+      cashback: "25%",
+      color: "from-purple-500 to-indigo-600 border-purple-500/50 shadow-purple-500/5",
+      perks: [
+        "25% Daily Cashback Rate",
+        "Instant $100 Welcome Reward",
+        "Direct Line to Elite VIP Host",
+        "Luxury Offline Event Invites",
+      ],
     },
   ];
 
   return (
     <PublicLayout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-16">
-        {/* Header */}
-        <div className="text-center max-w-3xl mx-auto space-y-4">
-          <div className="inline-flex h-14 w-14 rounded-full bg-amber-500/10 text-amber-400 items-center justify-center border border-amber-500/20 shadow-md">
-            <Crown className="h-7 w-7" />
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-foreground">
-            Jackpot Jungle VIP Club
-          </h1>
-          <p className="text-muted-foreground text-lg">
-            Unlock exclusive tier benefits, instant cashback, personalized host services, and direct event invitations.
-          </p>
+      <div className="relative min-h-screen bg-background text-foreground overflow-hidden py-16 sm:py-24">
+        {/* Background Gradients */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-[140px]" />
+          <div className="absolute top-2/3 left-1/4 w-[400px] h-[400px] bg-amber-500/5 rounded-full blur-[120px]" />
         </div>
 
-        {/* Tier Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-          {tiers.map((tier, idx) => (
-            <div 
-              key={tier.name}
-              className="p-6 rounded-2xl bg-card border border-border/60 flex flex-col justify-between hover:border-primary/50 transition-all hover:-translate-y-1 duration-300 shadow-md"
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 space-y-16">
+          
+          {/* Header */}
+          <div className="text-center max-w-3xl mx-auto space-y-4">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 100 }}
+              className="inline-flex h-16 w-16 rounded-3xl bg-gradient-to-r from-amber-500 to-yellow-400 text-black items-center justify-center border border-amber-300/30 shadow-lg shadow-amber-500/25"
             >
-              <div className="space-y-4">
-                <div className={`p-4 rounded-xl bg-gradient-to-r ${tier.color} text-center font-black text-lg shadow-sm`}>
-                  {tier.name}
+              <Crown className="h-8 w-8 animate-pulse" />
+            </motion.div>
+            
+            <motion.h1
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className="text-4xl sm:text-6xl font-black tracking-tight text-foreground leading-none"
+            >
+              Jungle VIP Club
+            </motion.h1>
+            
+            <motion.p
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              className="text-muted-foreground text-base sm:text-lg max-w-xl mx-auto font-medium"
+            >
+              Unlock legendary privileges. Progress from Bronze to Diamond by depositing and claim instant rewards, custom hosts, and cashbacks.
+            </motion.p>
+          </div>
+
+          {/* Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+            {tiers.map((tier, idx) => (
+              <motion.div
+                key={tier.name}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 50, delay: idx * 0.1 }}
+                className={`p-6 rounded-3xl bg-gradient-to-br from-card to-background border-2 shadow-2xl flex flex-col justify-between items-center text-center gap-6 hover:scale-[1.02] transition-transform duration-300 relative overflow-hidden group ${tier.color}`}
+              >
+                {/* Ribbon decoration */}
+                <div className="absolute top-0 right-0 -mt-4 -mr-4 w-12 h-12 bg-white/5 rounded-full blur-lg pointer-events-none" />
+
+                {/* Level Tag Header */}
+                <div className="space-y-1">
+                  <h3 className="font-black text-lg text-foreground tracking-tight">
+                    {tier.name.split(" ")[0]}
+                  </h3>
+                  <span className="text-[10px] tracking-widest font-black uppercase text-muted-foreground/80 font-mono">
+                    Tier {idx + 1}
+                  </span>
                 </div>
-                <div className="text-center">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Requirement</p>
-                  <p className="font-bold text-sm text-foreground">{tier.req}</p>
+
+                {/* Medallion Medals Icon */}
+                <div className="h-28 w-28 flex items-center justify-center select-none pointer-events-none drop-shadow-[0_8px_16px_rgba(0,0,0,0.5)] group-hover:scale-110 transition-transform duration-300">
+                  <img 
+                    src={tier.img} 
+                    alt={tier.name} 
+                    className="max-h-24 w-auto object-contain animate-pulse"
+                    style={{ animationDuration: `${4 + idx}s` }}
+                  />
                 </div>
-                <ul className="space-y-2 pt-2">
-                  {tier.perks.map((perk) => (
-                    <li key={perk} className="flex items-start gap-2 text-xs">
-                      <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+
+                {/* Requirements / Rewards Info */}
+                <div className="w-full bg-black/45 p-3 rounded-xl border border-border/10 space-y-1 font-mono text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Deposit:</span>
+                    <span className="font-extrabold text-foreground">{tier.deposit}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-t border-border/10 pt-1.5 mt-1">
+                    <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Reward:</span>
+                    <span className="font-extrabold text-green-400">{tier.reward} Free</span>
+                  </div>
+                </div>
+
+                {/* Perks Checklist */}
+                <ul className="w-full space-y-2 text-left pt-2 border-t border-border/20 flex-1">
+                  <li className="flex justify-between items-center text-xs pb-1.5 border-b border-border/10">
+                    <span className="text-muted-foreground font-semibold">Daily Cashback:</span>
+                    <span className="font-black text-amber-400">{tier.cashback}</span>
+                  </li>
+                  {tier.perks.slice(1).map((perk) => (
+                    <li key={perk} className="flex items-start gap-1.5 text-[11px] leading-tight">
+                      <Check className="h-3.5 w-3.5 text-green-400 shrink-0 mt-0.5" />
                       <span className="text-muted-foreground">{perk}</span>
                     </li>
                   ))}
                 </ul>
-              </div>
-              <div className="pt-6">
-                <Link
-                  to="/app/auth"
-                  className="w-full py-2.5 rounded-xl font-bold text-xs bg-secondary text-foreground hover:bg-accent border border-border/60 transition-colors flex items-center justify-center gap-1.5"
-                >
-                  Join VIP
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
 
-        {/* Perks Highlights */}
-        <div className="bg-secondary/20 border border-border/40 rounded-3xl p-8 sm:p-12 grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="space-y-3">
-            <Shield className="h-8 w-8 text-primary" />
-            <h4 className="font-bold text-lg text-foreground">Highest Security & Trust</h4>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Your VIP status is fully protected with multi-factor authentication and private encryption layers.
-            </p>
+                {/* Join CTA */}
+                <div className="w-full pt-4">
+                  <Link
+                    to="/app/auth"
+                    className="w-full h-10 rounded-xl font-bold text-xs bg-secondary text-foreground hover:bg-accent border border-border/50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                  >
+                    <Coins className="h-3.5 w-3.5 text-primary" />
+                    <span>Claim Reward</span>
+                  </Link>
+                </div>
+              </motion.div>
+            ))}
           </div>
-          <div className="space-y-3">
-            <Zap className="h-8 w-8 text-purple-400" />
-            <h4 className="font-bold text-lg text-foreground">Instant Processing</h4>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              VIP members benefit from accelerated verification queues and premium customer care responsiveness.
-            </p>
+
+          {/* Perks Highlights Grid */}
+          <div className="bg-gradient-to-br from-card to-background border border-border/60 rounded-3xl p-8 sm:p-12 grid grid-cols-1 md:grid-cols-3 gap-8 shadow-2xl relative">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 via-purple-500 to-cyan-500 rounded-t-3xl" />
+            
+            <div className="space-y-3">
+              <div className="h-10 w-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                <Landmark className="h-5 w-5" />
+              </div>
+              <h4 className="font-extrabold text-lg text-foreground">Secure Vault Safeguard</h4>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                VIP player records and wallets are fully protected by multi-factor security layers and strict Supabase database policies.
+              </p>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="h-10 w-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+                <Zap className="h-5 w-5" />
+              </div>
+              <h4 className="font-extrabold text-lg text-foreground">Accelerated Approvals</h4>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                Unlock lightning-fast redemption and priority handling for all verification and withdrawal requests.
+              </p>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="h-10 w-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                <Crown className="h-5 w-5 animate-pulse" />
+              </div>
+              <h4 className="font-extrabold text-lg text-foreground">Elite Custom Promotions</h4>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                Receive match bonus sheets, secret promo codes, and special invites tailored strictly to your rank progress.
+              </p>
+            </div>
           </div>
-          <div className="space-y-3">
-            <Award className="h-8 w-8 text-amber-400" />
-            <h4 className="font-bold text-lg text-foreground">Premium Promotions</h4>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Receive special high-roller invitations and custom milestone promotions tailored to your tier status.
-            </p>
-          </div>
+
         </div>
       </div>
     </PublicLayout>
