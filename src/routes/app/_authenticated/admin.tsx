@@ -3866,14 +3866,7 @@ function Conversation({
     }
 
     const cacheKey = `admin-page-${conv.conversationId}`;
-    let cached = getCachedPageMessages(cacheKey);
-    if (cached) {
-      const sample = cached[0];
-      if (sample && sample.conversation_id !== conv.conversationId) {
-        invalidatePageMessageCache(cacheKey);
-        cached = null;
-      }
-    }
+    const cached = getCachedPageMessages(cacheKey);
     if (cached && messages.length === 0) {
       setMessages(cached);
     }
@@ -3940,14 +3933,7 @@ function Conversation({
     activeIdRef.current = conv.conversationId;
     if (!isGroup && !isTeamChat) {
       const cacheKey = `admin-page-${conv.conversationId}`;
-      let cached = getCachedPageMessages(cacheKey);
-      if (cached) {
-        const sample = cached[0];
-        if (sample && sample.conversation_id !== conv.conversationId) {
-          invalidatePageMessageCache(cacheKey);
-          cached = null;
-        }
-      }
+      const cached = getCachedPageMessages(cacheKey);
       setMessages(cached || []);
     } else {
       setMessages([]);
