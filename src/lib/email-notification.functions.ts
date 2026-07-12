@@ -61,7 +61,7 @@ export const notifyRecentLogin = createServerFn({ method: "POST" })
     const port = parseInt(smtpConfig.port || process.env.SMTP_PORT || "587", 10);
     const user = smtpConfig.user || process.env.SMTP_USER || "";
     const pass = smtpConfig.pass || process.env.SMTP_PASS || "";
-    const from = smtpConfig.from || process.env.SMTP_FROM || user || "security@playjackpotjungle.com";
+    const from = smtpConfig.from || process.env.SMTP_FROM || user || "noreplay@playjackpotjungle.com";
 
     console.log(`[Email_Notification] Configured SMTP options: Host=${host}, Port=${port}, User=${user}, From=${from}`);
 
