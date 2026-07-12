@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { LogOut } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { X, Loader2 } from "lucide-react";
 
 type Props = {
   isOpen: boolean;
@@ -8,10 +8,13 @@ type Props = {
 };
 
 export function SignOutDialog({ isOpen, onClose, onConfirm }: Props) {
+  const [busy, setBusy] = useState(false);
+
   // Lock body scroll when open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
+      setBusy(false); // Reset busy state when opening
     } else {
       document.body.style.overflow = "unset";
     }
@@ -22,41 +25,62 @@ export function SignOutDialog({ isOpen, onClose, onConfirm }: Props) {
 
   if (!isOpen) return null;
 
+  const handleConfirm = () => {
+    setBusy(true);
+    onConfirm();
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity" 
         onClick={onClose} 
       />
 
-      {/* Sheet / Dialog Container */}
-      <div className="relative z-10 w-full bg-card border-t sm:border border-border rounded-t-2xl sm:rounded-2xl p-6 text-center shadow-2xl space-y-5 animate-slide-up sm:animate-scale-in sm:max-w-sm max-h-[90vh] overflow-y-auto mb-0">
-        {/* Drag handle for mobile visual hint */}
-        <div className="mx-auto w-12 h-1.5 rounded-full bg-muted-foreground/20 sm:hidden -mt-2 mb-2" />
+      {/* Dialog Container */}
+      <div className="relative z-10 w-full max-w-[320px] bg-card border border-border rounded-2xl p-6 text-center shadow-2xl space-y-4 animate-scale-in max-h-[90vh] overflow-y-auto">
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 text-muted-foreground hover:text-foreground hover:bg-secondary/50 p-1.5 rounded-full transition-colors cursor-pointer"
+          aria-label="Close"
+          disabled={busy}
+        >
+          <X className="h-4 w-4" />
+        </button>
 
-        <div className="mx-auto h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center text-destructive">
-          <LogOut className="h-7 w-7" />
+        {/* Character Image */}
+        <div className="flex justify-center pt-2 select-none pointer-events-none">
+          <img 
+            src="/signout.png" 
+            alt="Sad character" 
+            className="w-28 h-auto object-contain select-none max-h-32"
+          />
         </div>
 
-        <div className="space-y-1">
-          <h3 className="text-xl font-bold text-foreground">Sign out?</h3>
-          <p className="text-sm text-muted-foreground">You really wanna sign out of Jackpot Jungle?</p>
+        {/* Message */}
+        <div className="space-y-1 select-none">
+          <h3 className="text-lg font-bold text-foreground">Leaving already?!</h3>
+          <p className="text-xs text-muted-foreground">We'll be here when you come back ❤️</p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2 pt-2">
+        {/* Actions */}
+        <div className="flex items-center gap-2.5 pt-2">
           <button
-            onClick={onConfirm}
-            className="w-full sm:flex-1 h-12 sm:h-10 text-sm font-semibold rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground transition-colors shadow-lg shadow-destructive/20 order-1 sm:order-2 flex items-center justify-center gap-1.5"
+            onClick={handleConfirm}
+            disabled={busy}
+            className="flex-1 h-10 text-xs font-semibold rounded-xl bg-transparent border border-border text-foreground hover:bg-secondary/40 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
           >
-            <LogOut className="h-4 w-4" />
-            Sign out
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
+            Logout
           </button>
           <button
             onClick={onClose}
-            className="w-full sm:flex-1 h-12 sm:h-10 text-sm font-semibold rounded-xl bg-secondary hover:bg-secondary/80 text-foreground transition-colors order-2 sm:order-1"
+            disabled={busy}
+            className="flex-1 h-10 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
           >
-            Cancel
+            Stay
           </button>
         </div>
       </div>
