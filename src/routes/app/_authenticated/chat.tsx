@@ -147,7 +147,7 @@ function ChatLayout() {
     const firstMsg = arr[0];
     const firstCall = lastCalls?.[0];
 
-    let content = firstMsg?.content ?? null;
+    let content = firstMsg ? (firstMsg.image_url ? "📷 Photo" : firstMsg.audio_url ? "🎤 Voice message" : firstMsg.content) : null;
     let at = firstMsg?.created_at ?? null;
 
     if (content?.startsWith("[system:reaction:")) {
