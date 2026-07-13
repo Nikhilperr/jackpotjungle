@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Settings, ShieldCheck, Percent, Scale, Coins, Calendar, Award, UserPlus, Save, Play, Sparkles, Terminal, ChevronDown, ChevronUp, TrendingUp, Crown } from "lucide-react";
+import { Loader2, Settings, ShieldCheck, Percent, Scale, Coins, Calendar, Award, UserPlus, Save, Play, Sparkles, Terminal, ChevronDown, ChevronUp, TrendingUp, Crown, AlertTriangle } from "lucide-react";
 import { getVipRewardSettings, updateVipRewardSettings } from "@/lib/api/vip-settings.functions";
 import { runVipRewardSimulation } from "@/lib/api/vip-reward-engine/engine.functions";
 import { getVipRewardRun, saveVipRewardRunDraft, updateVipRewardRunStatus, executeVipRewardRunPayouts } from "@/lib/api/vip-reward-engine/approval.functions";
@@ -61,6 +61,7 @@ export function VipRewardSettingsView() {
   const [dbRun, setDbRun] = useState<any | null>(null);
   const [loadingRun, setLoadingRun] = useState(false);
   const [workflowProcessing, setWorkflowProcessing] = useState(false);
+  const [showPayoutConfirm, setShowPayoutConfirm] = useState(false);
 
   const fetchActiveRun = async (m: number, y: number) => {
     setLoadingRun(true);
@@ -305,9 +306,7 @@ export function VipRewardSettingsView() {
 
   const handleExecutePayouts = async () => {
     if (!dbRun?.id) return;
-    const confirmExec = window.confirm("WARNING: You are about to credit user wallets and insert transaction logs. This action is irreversible. Do you want to proceed?");
-    if (!confirmExec) return;
-
+    setShowPayoutConfirm(false);
     setWorkflowProcessing(true);
     try {
       const res = await executePayoutsFn({
@@ -890,7 +889,7 @@ export function VipRewardSettingsView() {
                         <>
                           <Button
                             size="sm"
-                            onClick={handleExecutePayouts}
+                            onClick={() => setShowPayoutConfirm(true)}
                             className="bg-primary hover:bg-primary/95 text-primary-foreground font-black h-9 px-4 rounded-lg text-xs uppercase animate-pulse"
                           >
                             Approve & Execute Payouts
@@ -1058,6 +1057,67 @@ export function VipRewardSettingsView() {
               </section>
             </div>
           )}
+        </div>
+      )}
+
+      {showPayoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 text-left space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-500 shrink-0">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-base font-extrabold text-neutral-100">
+                  Confirm Payout Execution
+                </h3>
+                <p className="text-xs text-neutral-400 leading-relaxed font-semibold">
+                  WARNING: You are about to credit user wallets and insert transaction logs. This action is <span className="text-destructive underline font-bold uppercase">irreversible</span>.
+                </p>
+              </div>
+            </div>
+
+            {dbRun && (
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-4 space-y-2.5 text-xs text-neutral-300">
+                <div className="flex justify-between font-medium">
+                  <span className="text-neutral-500 uppercase tracking-wider text-[10px]">Reward Period</span>
+                  <span className="font-bold text-neutral-200">
+                    {new Date(0, (dbRun.month || simMonth) - 1).toLocaleString("en", { month: "long" })} {dbRun.year || simYear}
+                  </span>
+                </div>
+                <div className="flex justify-between font-medium">
+                  <span className="text-neutral-500 uppercase tracking-wider text-[10px]">Reward Pool Size</span>
+                  <span className="font-bold text-primary">${Number(dbRun.reward_pool).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-medium">
+                  <span className="text-neutral-500 uppercase tracking-wider text-[10px]">Qualified Players</span>
+                  <span className="font-bold text-neutral-200">{dbRun.total_qualified_users}</span>
+                </div>
+                <div className="flex justify-between font-medium border-t border-neutral-800/80 pt-2">
+                  <span className="text-neutral-500 uppercase tracking-wider text-[10px]">Total Distributed</span>
+                  <span className="font-bold text-emerald-400">${Number(dbRun.total_distributed_rewards).toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowPayoutConfirm(false)}
+                className="h-10 px-5 border-neutral-800 hover:bg-neutral-900 font-bold text-xs uppercase"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleExecutePayouts}
+                className="h-10 px-6 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs uppercase shadow-lg shadow-amber-950/40"
+              >
+                Execute Payouts
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
