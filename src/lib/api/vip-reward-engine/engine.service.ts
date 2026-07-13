@@ -89,9 +89,8 @@ export class VipRewardEngineService {
       logs.push(`[VipRewardEngine] Fetching candidate profiles from database.`);
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, email, username, vip_status, wallet_balance")
-        .eq("is_blocked", false)
-        .limit(100); // Process batch in this foundation phase
+        .select("id, email, username, vip_status, wallet_balance, is_blocked, verified, status")
+        .eq("is_blocked", false);
 
       if (profilesError) {
         throw new Error(`Failed to load candidates: ${profilesError.message}`);
@@ -100,83 +99,134 @@ export class VipRewardEngineService {
       const candidates = profiles ?? [];
       logs.push(`[VipRewardEngine] Found ${candidates.length} candidate user profiles.`);
 
-      // 5. Gather/Mock activity metrics for calculation context foundation
-      // (Actual activity aggregation metrics will be integrated in Phase 3/4)
-      const userActivities: UserActivity[] = candidates.map(c => {
-        // Safe baseline mock values mapped from user profile values
-        const monthlyDeposit = c.wallet_balance > 0 ? Number((c.wallet_balance * 1.5).toFixed(2)) : 150.0;
-        const monthlyHolding = Number((c.wallet_balance).toFixed(2));
-        
-        return {
+      // Define date range for transactions query
+      const startDate = new Date(Date.UTC(params.year, params.month - 1, 1)).toISOString();
+      const endDate = new Date(Date.UTC(params.year, params.month, 1, 0, 0, 0, -1)).toISOString();
+      logs.push(`[VipRewardEngine] Querying transactions from ${startDate} to ${endDate}.`);
+
+      // Query monthly transactions in range
+      const { data: txs, error: txsError } = await supabase
+        .from("wallet_transactions")
+        .select("user_id, action, amount, created_at")
+        .gte("created_at", startDate)
+        .lte("created_at", endDate)
+        .in("action", ["cashin", "cashout"]);
+
+      if (txsError) {
+        throw new Error(`Failed to query transactions: ${txsError.message}`);
+      }
+
+      const transactions = txs ?? [];
+      logs.push(`[VipRewardEngine] Retrieved ${transactions.length} wallet transactions for the period.`);
+
+      // Group transactions by user_id
+      const depositsMap: Record<string, number> = {};
+      const cashoutsMap: Record<string, number> = {};
+
+      for (const tx of transactions) {
+        if (!tx.user_id) continue;
+        const amt = Number(tx.amount || 0);
+        if (tx.action === "cashin") {
+          depositsMap[tx.user_id] = (depositsMap[tx.user_id] || 0) + amt;
+        } else if (tx.action === "cashout") {
+          cashoutsMap[tx.user_id] = (cashoutsMap[tx.user_id] || 0) + amt;
+        }
+      }
+
+      // Fetch referrals to implement referral qualifications checks (if rules are active)
+      logs.push(`[VipRewardEngine] Fetching referrals for eligibility verification.`);
+      const { data: referrals, error: referralsError } = await supabase
+        .from("referrals")
+        .select("referrer_id, referred_id, status");
+
+      if (referralsError) {
+        throw new Error(`Failed to query referrals: ${referralsError.message}`);
+      }
+
+      const referralsList = referrals ?? [];
+      const referrerMap: Record<string, string[]> = {};
+      for (const ref of referralsList) {
+        if (ref.referrer_id && ref.referred_id) {
+          if (!referrerMap[ref.referrer_id]) {
+            referrerMap[ref.referrer_id] = [];
+          }
+          referrerMap[ref.referrer_id].push(ref.referred_id);
+        }
+      }
+
+      // Calculate monthly holding and qualification status for each candidate user
+      const userActivities: UserActivity[] = [];
+
+      for (const c of candidates) {
+        const monthlyDeposit = depositsMap[c.id] || 0.0;
+        const monthlyCashout = cashoutsMap[c.id] || 0.0;
+        const monthlyHolding = monthlyDeposit - monthlyCashout;
+
+        // Count qualified referrals
+        const referredIds = referrerMap[c.id] || [];
+        let referralCount = 0;
+        let referredDepositTotal = 0;
+
+        for (const refId of referredIds) {
+          const refDeposit = depositsMap[refId] || 0;
+          referredDepositTotal += refDeposit;
+          
+          if (refDeposit >= settings.referral_qualification_rules.min_referred_deposit) {
+            if (settings.referral_qualification_rules.requires_verification) {
+              const referredProfile = candidates.find(u => u.id === refId);
+              if (referredProfile?.verified) {
+                referralCount++;
+              }
+            } else {
+              referralCount++;
+            }
+          }
+        }
+
+        userActivities.push({
           user_id: c.id,
           email: c.email || "",
           username: c.username || "User",
           vip_status: c.vip_status || "none",
           monthly_deposit: monthlyDeposit,
+          monthly_cashout: monthlyCashout,
           monthly_holding: monthlyHolding,
-          referred_deposit_total: 120.0,
-          referral_count: 2,
-          loyalty_months: 6,
-        };
-      });
+          referred_deposit_total: referredDepositTotal,
+          referral_count: referralCount,
+          loyalty_months: 1,
+        });
+      }
 
-      // Define static virtual monthly holding pool for simulator payout estimation
-      const absoluteMonthlyHolding = userActivities.reduce((acc, curr) => acc + curr.monthly_holding, 0) || 50000.0;
-      const totalPoolSize = absoluteMonthlyHolding * (settings.reward_pool_percentage / 100);
-      logs.push(`[VipRewardEngine] Monthly Holding Pool calculated: $${absoluteMonthlyHolding.toFixed(2)}.`);
-      logs.push(`[VipRewardEngine] Allocated Reward Pool: $${totalPoolSize.toFixed(2)} (${settings.reward_pool_percentage}%).`);
-
+      let totalQualifiedHolding = 0;
       const userResults: RewardResult[] = [];
       let totalQualifiedUsers = 0;
-      let totalCalculatedScores = 0;
 
-      // 6. Perform Qualification and Score Math simulation context mapping
+      // Evaluate player qualification
       for (const act of userActivities) {
-        // Player Qualification check
         let qualified = true;
         let disqualificationReason: string | null = null;
 
-        if (act.monthly_deposit < settings.min_monthly_deposit) {
+        const candidateProfile = candidates.find(u => u.id === act.user_id);
+        if (!candidateProfile || candidateProfile.is_blocked) {
           qualified = false;
-          disqualificationReason = `Deposit below limit ($${act.monthly_deposit} < $${settings.min_monthly_deposit})`;
-        } else if (act.monthly_holding < settings.min_holding_requirement) {
+          disqualificationReason = "Account is blocked or suspended";
+        }
+        else if (act.monthly_deposit < settings.min_monthly_deposit) {
           qualified = false;
-          disqualificationReason = `Holding balance below limit ($${act.monthly_holding} < $${settings.min_holding_requirement})`;
+          disqualificationReason = `Deposits below minimum requirement ($${act.monthly_deposit.toFixed(2)} < $${settings.min_monthly_deposit.toFixed(2)})`;
         }
-
-        // Subscores mapping placeholder architecture
-        const depositScore = act.monthly_deposit >= settings.min_monthly_deposit ? 85 : 0;
-        const holdingScore = act.monthly_holding >= settings.min_holding_requirement ? 90 : 0;
-        const referralScore = act.referral_count > 0 ? 95 : 0;
-        const loyaltyScore = act.loyalty_months * 10 > 100 ? 100 : act.loyalty_months * 10;
-
-        // Base Score = Weighted sum of subscores
-        const baseScore = qualified 
-          ? (
-              (depositScore * settings.deposit_weight) +
-              (holdingScore * settings.holding_weight) +
-              (referralScore * settings.referral_weight) +
-              (loyaltyScore * settings.loyalty_weight)
-            ) / 100
-          : 0;
-
-        // VIP Multiplier resolution
-        let multiplier = 1.0;
-        const normalizedStatus = act.vip_status.toLowerCase();
-        if (normalizedStatus === "bronze") multiplier = settings.vip_multipliers.bronze;
-        else if (normalizedStatus === "silver") multiplier = settings.vip_multipliers.silver;
-        else if (normalizedStatus === "gold") multiplier = settings.vip_multipliers.gold;
-        else if (normalizedStatus === "platinum") multiplier = settings.vip_multipliers.platinum;
-        else if (normalizedStatus === "diamond") multiplier = settings.vip_multipliers.diamond;
-        else if (normalizedStatus === "black_diamond" || normalizedStatus === "black diamond") {
-          multiplier = settings.vip_multipliers.black_diamond;
+        else if (act.monthly_holding <= 0) {
+          qualified = false;
+          disqualificationReason = `Non-positive holding contribution ($${act.monthly_holding.toFixed(2)} <= 0)`;
         }
-
-        const finalScore = baseScore * multiplier;
+        else if (act.monthly_holding < settings.min_holding_requirement) {
+          qualified = false;
+          disqualificationReason = `Holding below minimum requirement ($${act.monthly_holding.toFixed(2)} < $${settings.min_holding_requirement.toFixed(2)})`;
+        }
 
         if (qualified) {
           totalQualifiedUsers++;
-          totalCalculatedScores += finalScore;
+          totalQualifiedHolding += act.monthly_holding;
         }
 
         userResults.push({
@@ -185,36 +235,41 @@ export class VipRewardEngineService {
           username: act.username,
           vip_status: act.vip_status,
           monthly_deposit: act.monthly_deposit,
+          monthly_cashout: act.monthly_cashout,
           monthly_holding: act.monthly_holding,
-          deposit_score: depositScore,
-          holding_score: holdingScore,
-          referral_score: referralScore,
-          loyalty_score: loyaltyScore,
-          base_score: Number(baseScore.toFixed(2)),
-          multiplier,
-          final_score: Number(finalScore.toFixed(2)),
+          deposit_score: qualified ? 100 : 0,
+          holding_score: qualified ? 100 : 0,
+          referral_score: qualified ? 100 : 0,
+          loyalty_score: qualified ? 100 : 0,
+          base_score: qualified ? 100 : 0,
+          multiplier: 1.0,
+          final_score: qualified ? 100 : 0,
           qualified,
           disqualification_reason: disqualificationReason,
-          estimated_payout: 0, // Calculated post-loop
+          estimated_payout: 0,
         });
       }
 
-      // 7. Share Pool Allocation & Payout Cap validation checks
+      // Calculate total pool size
+      let totalPoolSize = totalQualifiedHolding * (settings.reward_pool_percentage / 100);
+      if (totalPoolSize < 0) {
+        totalPoolSize = 0;
+      }
+      logs.push(`[VipRewardEngine] Total Qualified Holding sum: $${totalQualifiedHolding.toFixed(2)}.`);
+      logs.push(`[VipRewardEngine] Allocated Reward Pool: $${totalPoolSize.toFixed(2)} (${settings.reward_pool_percentage}%).`);
+
       let totalDistributedRewards = 0;
-      if (totalCalculatedScores > 0) {
+      if (totalQualifiedUsers > 0) {
+        const individualPayout = totalPoolSize / totalQualifiedUsers;
         for (const res of userResults) {
           if (!res.qualified) continue;
-
-          // Estimate uncapped reward pool share
-          let estimatedShare = totalPoolSize * (res.final_score / totalCalculatedScores);
-
-          // Payout Cap constraint validation
+          
+          let payout = individualPayout;
           const maxPayoutCap = totalPoolSize * (settings.reward_cap_percentage / 100);
-          if (estimatedShare > maxPayoutCap) {
-            estimatedShare = maxPayoutCap;
+          if (payout > maxPayoutCap) {
+            payout = maxPayoutCap;
           }
-
-          res.estimated_payout = Number(estimatedShare.toFixed(2));
+          res.estimated_payout = Number(payout.toFixed(2));
           totalDistributedRewards += res.estimated_payout;
         }
       }

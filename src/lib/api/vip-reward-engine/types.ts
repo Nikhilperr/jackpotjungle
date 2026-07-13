@@ -38,6 +38,7 @@ export interface UserActivity {
   username: string;
   vip_status: string;
   monthly_deposit: number;
+  monthly_cashout: number;
   monthly_holding: number;
   referred_deposit_total: number;
   referral_count: number;
@@ -50,6 +51,7 @@ export interface RewardResult {
   username: string;
   vip_status: string;
   monthly_deposit: number;
+  monthly_cashout: number;
   monthly_holding: number;
   deposit_score: number;
   holding_score: number;
