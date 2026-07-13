@@ -78,7 +78,9 @@ export default function VipAnalyticsDashboardView({ isSuperAdmin }: VipAnalytics
     { value: 12, name: "December" },
   ];
 
-  const years = [2024, 2025, 2026, 2027];
+  const startYear = 2024;
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: currentYear - startYear + 2 }, (_, i) => startYear + i);
 
   useEffect(() => {
     fetchStats();
@@ -186,50 +188,59 @@ export default function VipAnalyticsDashboardView({ isSuperAdmin }: VipAnalytics
           </p>
         </div>
 
-        {/* Date Selector controls */}
-        <div className="flex flex-wrap items-center gap-2 bg-secondary/30 p-1.5 rounded-xl border border-border/60">
-          <button
-            onClick={() => setSubTab("analytics")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              subTab === "analytics"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Executive Analytics
-          </button>
-          <button
-            onClick={() => setSubTab("reports")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              subTab === "reports"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Export Reports
-          </button>
+        {/* Responsive Selector controls */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-secondary/30 p-1.5 rounded-xl border border-border/60 w-full sm:w-auto">
+          {/* Sub-tab selection */}
+          <div className="flex items-center sm:bg-transparent p-1 sm:p-0 rounded-lg sm:rounded-none bg-background/40">
+            <button
+              onClick={() => setSubTab("analytics")}
+              className={`flex-1 sm:flex-none text-center px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                subTab === "analytics"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Executive Analytics
+            </button>
+            <button
+              onClick={() => setSubTab("reports")}
+              className={`flex-1 sm:flex-none text-center px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                subTab === "reports"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Export Reports
+            </button>
+          </div>
           
-          <div className="h-4 w-px bg-border/60 mx-1 hidden sm:block"></div>
+          <div className="h-px w-full sm:h-4 sm:w-px bg-border/60 my-1 sm:my-0"></div>
           
-          <select
-            value={activeMonth}
-            onChange={(e) => setActiveMonth(Number(e.target.value))}
-            className="bg-transparent border-0 text-xs font-bold text-foreground focus:ring-0 cursor-pointer"
-          >
-            {months.map(m => (
-              <option key={m.value} value={m.value} className="bg-background text-foreground">{m.name}</option>
-            ))}
-          </select>
+          {/* Date Selectors (horizontal row on all screens) */}
+          <div className="flex items-center justify-between sm:justify-start gap-2 px-2 sm:px-0">
+            <span className="text-[10px] uppercase font-bold text-muted-foreground sm:hidden">Select Period:</span>
+            <div className="flex items-center gap-1">
+              <select
+                value={activeMonth}
+                onChange={(e) => setActiveMonth(Number(e.target.value))}
+                className="bg-transparent border-0 text-xs font-bold text-foreground focus:ring-0 cursor-pointer py-1 pl-2 pr-8"
+              >
+                {months.map(m => (
+                  <option key={m.value} value={m.value} className="bg-background text-foreground">{m.name}</option>
+                ))}
+              </select>
 
-          <select
-            value={activeYear}
-            onChange={(e) => setActiveYear(Number(e.target.value))}
-            className="bg-transparent border-0 text-xs font-bold text-foreground focus:ring-0 cursor-pointer"
-          >
-            {years.map(y => (
-              <option key={y} value={y} className="bg-background text-foreground">{y}</option>
-            ))}
-          </select>
+              <select
+                value={activeYear}
+                onChange={(e) => setActiveYear(Number(e.target.value))}
+                className="bg-transparent border-0 text-xs font-bold text-foreground focus:ring-0 cursor-pointer py-1 pl-2 pr-8"
+              >
+                {years.map(y => (
+                  <option key={y} value={y} className="bg-background text-foreground">{y}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
