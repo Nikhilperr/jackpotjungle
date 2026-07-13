@@ -87,7 +87,7 @@ export default function VipAnalyticsDashboardView({ isSuperAdmin }: VipAnalytics
   async function fetchStats() {
     setLoading(true);
     try {
-      const res = await getVipDashboardStats({ month: activeMonth, year: activeYear });
+      const res = (await getVipDashboardStats({ data: { month: activeMonth, year: activeYear } })) as any;
       if (res.success) {
         setStats(res.stats);
         setChartsData(res.chartsData || []);
@@ -106,12 +106,14 @@ export default function VipAnalyticsDashboardView({ isSuperAdmin }: VipAnalytics
     const reportKey = `${reportType}_${format}`;
     setDownloading(reportKey);
     try {
-      const res = await getVipReportsData({
-        type: reportType,
-        month: repMonth,
-        year: repYear,
-        vipStatus: repVipStatus,
-      });
+      const res = (await getVipReportsData({
+        data: {
+          type: reportType,
+          month: repMonth,
+          year: repYear,
+          vipStatus: repVipStatus,
+        }
+      })) as any;
 
       if (res.success && res.headers && res.rows) {
         exportVipReportData(

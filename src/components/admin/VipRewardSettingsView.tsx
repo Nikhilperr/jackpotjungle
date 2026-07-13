@@ -95,17 +95,18 @@ export function VipRewardSettingsView() {
     setSimResult(null);
     setSimError(null);
     try {
-      const res = await getRunFn({ data: { month: m, year: y } });
+      const res = (await getRunFn({ data: { month: m, year: y } })) as any;
       if (res.success && res.run) {
-        setDbRun(res.run);
+        const runData = res.run as any;
+        setDbRun(runData);
         setSimResult({
-          pool_size: Number(res.run.reward_pool),
-          total_qualified_users: res.run.total_qualified_users,
-          total_distributed_rewards: Number(res.run.total_distributed_rewards),
+          pool_size: Number(runData.reward_pool),
+          total_qualified_users: runData.total_qualified_users,
+          total_distributed_rewards: Number(runData.total_distributed_rewards),
           execution_time_ms: 0,
-          configuration: res.run.configuration,
-          user_results: res.run.player_results,
-          logs: res.run.logs,
+          configuration: runData.configuration,
+          user_results: runData.player_results,
+          logs: runData.logs,
         });
       }
     } catch (err: any) {
@@ -118,13 +119,13 @@ export function VipRewardSettingsView() {
   const fetchCyclesHistory = async () => {
     setLoadingHistory(true);
     try {
-      const res = await getCycleHistoryFn({
+      const res = (await getCycleHistoryFn({
         data: {
           month: historyFilterMonth,
           year: historyFilterYear,
           status: historyFilterStatus,
         }
-      });
+      })) as any;
       if (res.success && res.cycles) {
         setCyclesHistory(res.cycles);
       }
@@ -138,14 +139,14 @@ export function VipRewardSettingsView() {
   const fetchPlayersHistory = async () => {
     setLoadingHistory(true);
     try {
-      const res = await getPlayerHistoryFn({
+      const res = (await getPlayerHistoryFn({
         data: {
           month: historyFilterMonth,
           year: historyFilterYear,
           username: historyFilterUsername,
           vipLevel: historyFilterVip,
         }
-      });
+      })) as any;
       if (res.success && res.history) {
         setPlayersHistory(res.history);
       }
@@ -159,13 +160,13 @@ export function VipRewardSettingsView() {
   const fetchAuditLogsList = async () => {
     setLoadingAudit(true);
     try {
-      const res = await getAuditLogsFn({
+      const res = (await getAuditLogsFn({
         data: {
           action: auditFilterAction,
           username: auditFilterUsername,
           role: auditFilterRole,
         }
-      });
+      })) as any;
       if (res.success && res.logs) {
         setAuditLogs(res.logs);
       }
@@ -228,9 +229,9 @@ export function VipRewardSettingsView() {
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const res = await loadFn();
+      const res = (await loadFn()) as any;
       if (res.success && res.settings) {
-        const s = res.settings;
+        const s = res.settings as any;
         setRewardPoolPercentage(String(s.reward_pool_percentage));
         setDepositWeight(String(s.deposit_weight));
         setHoldingWeight(String(s.holding_weight));
@@ -302,7 +303,7 @@ export function VipRewardSettingsView() {
 
     setSaving(true);
     try {
-      const res = await saveFn({
+      const res = (await saveFn({
         data: {
           rewardPoolPercentage: numPoolPct,
           depositWeight: Number(depositWeight || 0),
@@ -326,7 +327,7 @@ export function VipRewardSettingsView() {
             requires_verification: requiresVerification,
           },
         }
-      });
+      })) as any;
 
       if (res.success) {
         toast.success("VIP Loyalty Settings saved successfully!");
@@ -345,20 +346,20 @@ export function VipRewardSettingsView() {
     setSimResult(null);
     setSimError(null);
     try {
-      const res = await runSimFn({
+      const res = (await runSimFn({
         data: {
           month: Number(simMonth),
           year: Number(simYear),
           isSimulation: true,
         }
-      });
+      })) as any;
       if (res.success && res.result) {
         if (res.result.status === "error") {
           setSimError(res.result.error_message || "An unexpected error occurred during execution.");
         } else {
           setSimResult(res.result);
           // Save calculation results to database
-          const saveRes = await saveDraftFn({
+          const saveRes = (await saveDraftFn({
             data: {
               month: Number(simMonth),
               year: Number(simYear),
@@ -370,7 +371,7 @@ export function VipRewardSettingsView() {
               playerResults: res.result.user_results,
               logs: res.result.logs,
             }
-          });
+          })) as any;
           if (saveRes.success) {
             setDbRun(saveRes.run);
             toast.success("Calculation draft saved successfully!");
@@ -391,12 +392,12 @@ export function VipRewardSettingsView() {
     if (!dbRun?.id) return;
     setWorkflowProcessing(true);
     try {
-      const res = await updateStatusFn({
+      const res = (await updateStatusFn({
         data: {
           runId: dbRun.id,
           status: targetStatus,
         }
-      });
+      })) as any;
       if (res.success && res.run) {
         setDbRun(res.run);
         toast.success(`Workflow updated to: ${targetStatus}`);
@@ -415,11 +416,11 @@ export function VipRewardSettingsView() {
     setShowPayoutConfirm(false);
     setWorkflowProcessing(true);
     try {
-      const res = await executePayoutsFn({
+      const res = (await executePayoutsFn({
         data: {
           runId: dbRun.id,
         }
-      });
+      })) as any;
       if (res.success) {
         toast.success("VIP Rewards payout completed and user wallets credited successfully!");
         await fetchActiveRun(simMonth, simYear);
