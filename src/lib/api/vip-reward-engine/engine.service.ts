@@ -7,6 +7,7 @@ import { HoldingCalculator } from "./score-engine/holding.calculator";
 import { ReferralCalculator } from "./score-engine/referral.calculator";
 import { LoyaltyCalculator } from "./score-engine/loyalty.calculator";
 import { BaseScoreAggregator } from "./score-engine/base-score.aggregator";
+import { MultiplierCalculator } from "./multiplier-engine/multiplier.calculator";
 
 export class VipRewardEngineService {
   private configReader = new ConfigReaderService();
@@ -17,6 +18,7 @@ export class VipRewardEngineService {
   private referralScoreCalc = new ReferralCalculator();
   private loyaltyScoreCalc = new LoyaltyCalculator();
   private scoreAggregator = new BaseScoreAggregator();
+  private multiplierCalc = new MultiplierCalculator();
 
   /**
    * Runs the VIP monthly loyalty reward engine calculation simulation.
@@ -334,7 +336,15 @@ export class VipRewardEngineService {
           res.loyalty_score = Number((loyaltyScores[act.user_id] || 0).toFixed(2));
           res.base_score = Number((baseScores[act.user_id] || 0).toFixed(2));
           
-          res.final_score = res.base_score;
+          // Compute VIP Multiplier adjustment
+          const vipCalc = this.multiplierCalc.calculateFinalScore(
+            res.base_score,
+            act.vip_status,
+            settings
+          );
+          
+          res.multiplier = vipCalc.multiplier;
+          res.final_score = Number(vipCalc.finalScore.toFixed(4));
         }
       }
 
@@ -346,14 +356,24 @@ export class VipRewardEngineService {
       logs.push(`[VipRewardEngine] Total Qualified Holding sum: $${totalQualifiedHolding.toFixed(2)}.`);
       logs.push(`[VipRewardEngine] Allocated Reward Pool: $${totalPoolSize.toFixed(2)} (${settings.reward_pool_percentage}%).`);
 
-      let totalDistributedRewards = 0;
+      // Sum total final scores to distribute payout proportionally
+      let totalFinalScores = 0;
       const userResults = Object.values(userResultsMap);
-
       if (totalQualifiedUsers > 0) {
+        for (const res of userResults) {
+          if (res.qualified) {
+            totalFinalScores += res.final_score;
+          }
+        }
+      }
+
+      let totalDistributedRewards = 0;
+      if (totalQualifiedUsers > 0 && totalFinalScores > 0) {
         for (const res of userResults) {
           if (!res.qualified) continue;
           
-          let payout = totalPoolSize * (res.base_score / 100);
+          // Proportional payout share based on Final Score relative to the total sum of Final Scores
+          let payout = totalPoolSize * (res.final_score / totalFinalScores);
           const maxPayoutCap = totalPoolSize * (settings.reward_cap_percentage / 100);
           if (payout > maxPayoutCap) {
             payout = maxPayoutCap;
