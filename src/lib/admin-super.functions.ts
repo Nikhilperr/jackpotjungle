@@ -738,23 +738,49 @@ export const runDatabaseMigration = createServerFn({ method: "POST" })
 
       for (const h of hosts) {
         for (const p of ports) {
-          console.log(`[Migration] Trying connection to ${h}:${p}...`);
           const isRemote = h.includes(".") && !h.startsWith("127.");
           const sslVal = process.env.DATABASE_SSL === "true" || (process.env.DATABASE_SSL !== "false" && isRemote);
-          const client = new pg.Client({
+          
+          let client = new pg.Client({
             connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
             ssl: sslVal ? { rejectUnauthorized: false } : undefined
           });
+          let success = false;
           try {
+            console.log(`[Migration] Trying connection to ${h}:${p} (SSL: ${sslVal})...`);
             await client.connect();
-            console.log(`[Migration] Connected to ${h}:${p}! Executing SQL...`);
-            await client.query(sql);
-            await client.end();
-            console.log(`[Migration] SQL executed successfully on ${h}:${p}!`);
-            return { success: true, message: `Executed successfully on ${h}:${p}` };
+            success = true;
           } catch (e: any) {
-            console.warn(`[Migration] Failed on ${h}:${p}:`, e.message);
+            console.warn(`[Migration] Failed on ${h}:${p} with SSL:`, e.message);
             try { await client.end(); } catch {}
+            
+            if (sslVal) {
+              console.log(`[Migration] Retrying connection to ${h}:${p} WITHOUT SSL...`);
+              client = new pg.Client({
+                connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
+                ssl: undefined
+              });
+              try {
+                await client.connect();
+                success = true;
+              } catch (e2: any) {
+                console.warn(`[Migration] Failed on ${h}:${p} without SSL:`, e2.message);
+                try { await client.end(); } catch {}
+              }
+            }
+          }
+
+          if (success) {
+            try {
+              console.log(`[Migration] Connected to ${h}:${p}! Executing SQL...`);
+              await client.query(sql);
+              await client.end();
+              console.log(`[Migration] SQL executed successfully on ${h}:${p}!`);
+              return { success: true, message: `Executed successfully on ${h}:${p}` };
+            } catch (err: any) {
+              console.error(`[Migration] Query execution failed:`, err.message);
+              try { await client.end(); } catch {}
+            }
           }
         }
       }
@@ -894,24 +920,50 @@ export const runAutoDatabaseMigrations = createServerFn({ method: "POST" })
 
       for (const h of hosts) {
         for (const p of ports) {
-          console.log(`[AutoMigration] Trying connection to ${h}:${p}...`);
           const isRemote = h.includes(".") && !h.startsWith("127.");
           const sslVal = process.env.DATABASE_SSL === "true" || (process.env.DATABASE_SSL !== "false" && isRemote);
-          const client = new pg.Client({
+          
+          let client = new pg.Client({
             connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
             ssl: sslVal ? { rejectUnauthorized: false } : undefined
           });
+          let success = false;
           try {
+            console.log(`[AutoMigration] Trying connection to ${h}:${p} (SSL: ${sslVal})...`);
             await client.connect();
-            console.log(`[AutoMigration] Connected to ${h}:${p}! Executing SQL...`);
-            await client.query(sql);
-            const columns = await queryColumns(client);
-            await client.end();
-            console.log(`[AutoMigration] SQL executed successfully on ${h}:${p}! Columns:`, columns);
-            return { success: true, message: `Executed successfully on ${h}:${p}`, columns };
+            success = true;
           } catch (e: any) {
-            console.warn(`[AutoMigration] Failed on ${h}:${p}:`, e.message);
-            try { await client.end(); } catch {}
+            console.warn(`[AutoMigration] Failed on ${h}:${p} with SSL:`, e.message);
+            try { client.end(); } catch {}
+            
+            if (sslVal) {
+              console.log(`[AutoMigration] Retrying connection to ${h}:${p} WITHOUT SSL...`);
+              client = new pg.Client({
+                connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
+                ssl: undefined
+              });
+              try {
+                await client.connect();
+                success = true;
+              } catch (e2: any) {
+                console.warn(`[AutoMigration] Failed on ${h}:${p} without SSL:`, e2.message);
+                try { client.end(); } catch {}
+              }
+            }
+          }
+
+          if (success) {
+            try {
+              console.log(`[AutoMigration] Connected to ${h}:${p}! Executing SQL...`);
+              await client.query(sql);
+              const columns = await queryColumns(client);
+              await client.end();
+              console.log(`[AutoMigration] SQL executed successfully on ${h}:${p}! Columns:`, columns);
+              return { success: true, message: `Executed successfully on ${h}:${p}`, columns };
+            } catch (err: any) {
+              console.error(`[AutoMigration] Query execution failed:`, err.message);
+              try { client.end(); } catch {}
+            }
           }
         }
       }

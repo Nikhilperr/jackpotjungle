@@ -81,15 +81,44 @@ async function runMigrationsForHostPort(host: string, port: number, useSSL: bool
   console.log(`Attempting migration on ${host}:${port} (SSL: ${useSSL})...`);
   
   const isRemote = originalHost.includes(".") && !originalHost.startsWith("127.") && originalHost !== "localhost";
-  const client = new pg.Client({
+  const sslVal = useSSL || isRemote;
+  let client = new pg.Client({
     connectionString,
-    ssl: useSSL || isRemote
+    ssl: sslVal
       ? { rejectUnauthorized: false, servername: originalHost }
       : undefined
   });
 
+  let success = false;
   try {
     await client.connect();
+    success = true;
+  } catch (err: any) {
+    console.warn(`Connection failed on ${host}:${port} with SSL (${sslVal}):`, err.message);
+    try { await client.end(); } catch {}
+    
+    if (sslVal) {
+      console.log(`Retrying connection on ${host}:${port} WITHOUT SSL...`);
+      client = new pg.Client({
+        connectionString,
+        ssl: undefined
+      });
+      try {
+        await client.connect();
+        success = true;
+      } catch (err2: any) {
+        console.warn(`Connection failed on ${host}:${port} without SSL:`, err2.message);
+        try { await client.end(); } catch {}
+      }
+    }
+  }
+
+  if (!success) {
+    process.env.DATABASE_URL = originalEnvUrl;
+    return false;
+  }
+
+  try {
     console.log(`Connected to database on ${host}:${port}!`);
     
     const files = fs.readdirSync(migrationsDir)
@@ -112,7 +141,7 @@ async function runMigrationsForHostPort(host: string, port: number, useSSL: bool
     process.env.DATABASE_URL = originalEnvUrl;
     return true;
   } catch (err: any) {
-    console.warn(`Connection failed on ${host}:${port} (SSL: ${useSSL}):`, err.message);
+    console.warn(`Query execution failed on ${host}:${port}:`, err.message);
     try { await client.end(); } catch {}
     process.env.DATABASE_URL = originalEnvUrl;
     return false;
