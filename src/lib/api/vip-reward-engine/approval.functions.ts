@@ -26,14 +26,7 @@ export async function ensureVipRewardSchema() {
 
   const dbPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD || "grootMahakal7X";
   const dbName = process.env.SUPABASE_DB_NAME || process.env.DATABASE_NAME || "postgres";
-  const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "postgres";
-
-  const configuredHost = process.env.SUPABASE_DB_HOST || process.env.DATABASE_HOST;
-  const hosts = configuredHost ? [configuredHost] : ["localhost", "127.0.0.1", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
-
-  const configuredPort = process.env.SUPABASE_DB_PORT || process.env.DATABASE_PORT;
-  const ports = configuredPort ? [parseInt(configuredPort, 10)] : [5432, 6543];
-
+  const errors: string[] = [];
   let client;
   let success = false;
 
@@ -111,6 +104,8 @@ export async function ensureVipRewardSchema() {
       success = true;
       console.log("[SelfHealing] Connected successfully using DATABASE_URL!");
     } catch (e: any) {
+      const maskedUrl = process.env.DATABASE_URL?.replace(/:[^:@/]+@/, ":****@");
+      errors.push(`DATABASE_URL (${maskedUrl}): ${e.message}`);
       console.warn("[SelfHealing] DATABASE_URL connection attempt failed:", e.message);
       try { if (client) await client.end(); } catch {}
       client = null;
@@ -160,10 +155,10 @@ export async function ensureVipRewardSchema() {
             success = true;
             break;
           } catch (err: any) {
-            // try next
+            errors.push(`Host ${h}:${p} (${candidateUsername}): ${err.message}`);
           }
-        } catch (err) {
-          // try next
+        } catch (err: any) {
+          errors.push(`Host ${h}:${p} resolution: ${err.message}`);
         }
       }
       if (success) break;
@@ -171,7 +166,7 @@ export async function ensureVipRewardSchema() {
   }
 
   if (!success || !client) {
-    throw new Error("Self-healing schema deployment failed: could not connect to database.");
+    throw new Error(`Self-healing schema deployment failed: could not connect to database. Details:\n- ${errors.join('\n- ')}`);
   }
 
   try {
