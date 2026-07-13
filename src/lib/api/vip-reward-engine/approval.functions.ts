@@ -37,44 +37,137 @@ export async function ensureVipRewardSchema() {
   let client;
   let success = false;
 
-  for (const h of hosts) {
-    for (const p of ports) {
-      try {
-        const resolvedHost = await resolveHostToIPv4(h, dns);
-        const isRemote = h.includes(".") && !h.startsWith("127.");
-        
-        let candidateUsername = username;
-        let projectRef = "";
-        
-        const match = h.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
-        if (match) {
-          projectRef = match[1];
-        } else if (isRemote) {
-          projectRef = "gsnhqzsgptqxtlhggzkz";
-        }
-        
-        if (projectRef && !candidateUsername.includes(".")) {
-          candidateUsername = `${candidateUsername}.${projectRef}`;
-        }
+  // 1. Try DATABASE_URL first
+  if (process.env.DATABASE_URL) {
+    try {
+      console.log("[SelfHealing] Found DATABASE_URL, attempting connection...");
+      let connUrlStr = process.env.DATABASE_URL;
 
-        const sslVal = isRemote ? { rejectUnauthorized: false, servername: h } : undefined;
+      const parsePostgresConfig = (connStr: string) => {
+        let host = "";
+        let port = "5432";
+        let user = "postgres";
+        let password = "";
+        let database = "postgres";
 
+        if (connStr.includes("://")) {
+          try {
+            const url = new URL(connStr);
+            host = url.hostname;
+            port = url.port || "5432";
+            user = url.username;
+            password = url.password;
+            database = url.pathname.replace(/^\//, "");
+          } catch (e) {}
+        } else {
+          const pairs = connStr.split(/\s+/);
+          for (const pair of pairs) {
+            const [k, v] = pair.split("=");
+            if (k && v) {
+              const cleanV = v.replace(/(^["']|["']$)/g, "");
+              if (k === "host") host = cleanV;
+              else if (k === "port") port = cleanV;
+              else if (k === "user") user = cleanV;
+              else if (k === "password") password = cleanV;
+              else if (k === "dbname") database = cleanV;
+            }
+          }
+        }
+        return { host, port, user, password, database };
+      };
+
+      const config = parsePostgresConfig(connUrlStr);
+      const resolvedHost = await resolveHostToIPv4(config.host, dns);
+      const isRemote = config.host && config.host !== "localhost" && config.host !== "127.0.0.1" && config.host !== "db";
+
+      let projectRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID;
+      const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
+      if (match) {
+        projectRef = match[1];
+      }
+      if (!projectRef) {
+        projectRef = isRemote ? "gsnhqzsgptqxtlhggzkz" : "self-hosted";
+      }
+
+      if (projectRef && config.user && !config.user.includes(".")) {
+        config.user = `${config.user}.${projectRef}`;
+      }
+
+      let servername = undefined;
+      if (isRemote && projectRef) {
+        servername = `db.${projectRef}.supabase.co`;
+      }
+
+      connUrlStr = `postgres://${config.user}:${config.password}@${resolvedHost}:${config.port}/${config.database}`;
+
+      const sslVal = servername ? { rejectUnauthorized: false, servername } : undefined;
+
+      client = new pg.Client({
+        connectionString: connUrlStr,
+        ssl: sslVal
+      });
+
+      await client.connect();
+      success = true;
+      console.log("[SelfHealing] Connected successfully using DATABASE_URL!");
+    } catch (e: any) {
+      console.warn("[SelfHealing] DATABASE_URL connection attempt failed:", e.message);
+      try { if (client) await client.end(); } catch {}
+      client = null;
+    }
+  }
+
+  // 2. Try configured connection settings fallback
+  if (!success) {
+    const dbPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD || "grootMahakal7X";
+    const dbName = process.env.SUPABASE_DB_NAME || process.env.DATABASE_NAME || "postgres";
+    const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "postgres";
+
+    const configuredHost = process.env.SUPABASE_DB_HOST || process.env.DATABASE_HOST;
+    const hosts = configuredHost ? [configuredHost] : ["localhost", "127.0.0.1", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
+
+    const configuredPort = process.env.SUPABASE_DB_PORT || process.env.DATABASE_PORT;
+    const ports = configuredPort ? [parseInt(configuredPort, 10)] : [5432, 6543];
+
+    for (const h of hosts) {
+      for (const p of ports) {
         try {
-          client = new pg.Client({
-            connectionString: `postgres://${candidateUsername}:${dbPassword}@${resolvedHost}:${p}/${dbName}`,
-            ssl: sslVal
-          });
-          await client.connect();
-          success = true;
-          break;
-        } catch (err: any) {
+          const resolvedHost = await resolveHostToIPv4(h, dns);
+          const isRemote = h.includes(".") && !h.startsWith("127.");
+          
+          let candidateUsername = username;
+          let projectRef = "";
+          
+          const match = h.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
+          if (match) {
+            projectRef = match[1];
+          } else if (isRemote) {
+            projectRef = "gsnhqzsgptqxtlhggzkz";
+          }
+          
+          if (projectRef && !candidateUsername.includes(".")) {
+            candidateUsername = `${candidateUsername}.${projectRef}`;
+          }
+
+          const sslVal = isRemote ? { rejectUnauthorized: false, servername: h } : undefined;
+
+          try {
+            client = new pg.Client({
+              connectionString: `postgres://${candidateUsername}:${dbPassword}@${resolvedHost}:${p}/${dbName}`,
+              ssl: sslVal
+            });
+            await client.connect();
+            success = true;
+            break;
+          } catch (err: any) {
+            // try next
+          }
+        } catch (err) {
           // try next
         }
-      } catch (err) {
-        // try next
       }
+      if (success) break;
     }
-    if (success) break;
   }
 
   if (!success || !client) {
