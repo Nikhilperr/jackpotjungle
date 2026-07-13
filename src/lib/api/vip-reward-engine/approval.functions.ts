@@ -76,22 +76,18 @@ export async function ensureVipRewardSchema() {
       const resolvedHost = await resolveHostToIPv4(config.host, dns);
       const isRemote = config.host && config.host !== "localhost" && config.host !== "127.0.0.1" && config.host !== "db";
 
-      let projectRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID;
+      // Only append project ref suffix if the host explicitly matches a Supabase project domain
       const match = config.host.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
       if (match) {
-        projectRef = match[1];
-      }
-      if (!projectRef) {
-        projectRef = isRemote ? "gsnhqzsgptqxtlhggzkz" : "self-hosted";
-      }
-
-      if (projectRef && config.user && !config.user.includes(".")) {
-        config.user = `${config.user}.${projectRef}`;
+        const projectRef = match[1];
+        if (projectRef && !config.user.includes(".")) {
+          config.user = `${config.user}.${projectRef}`;
+        }
       }
 
       let servername = undefined;
-      if (isRemote && projectRef) {
-        servername = `db.${projectRef}.supabase.co`;
+      if (isRemote && match) {
+        servername = config.host;
       }
 
       connUrlStr = `postgres://${config.user}:${config.password}@${resolvedHost}:${config.port}/${config.database}`;
@@ -152,18 +148,16 @@ export async function ensureVipRewardSchema() {
           let candidateUsername = username;
           let projectRef = "";
           
+          // Only append project ref suffix if the host explicitly matches a Supabase project domain
           const match = h.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
           if (match) {
             projectRef = match[1];
-          } else if (isRemote) {
-            projectRef = "gsnhqzsgptqxtlhggzkz";
-          }
-          
-          if (projectRef && !candidateUsername.includes(".")) {
-            candidateUsername = `${candidateUsername}.${projectRef}`;
+            if (projectRef && !candidateUsername.includes(".")) {
+              candidateUsername = `${candidateUsername}.${projectRef}`;
+            }
           }
 
-          const sslVal = isRemote ? { rejectUnauthorized: false, servername: h } : undefined;
+          const sslVal = (isRemote && match) ? { rejectUnauthorized: false, servername: h } : undefined;
 
           try {
             client = new pg.Client({
