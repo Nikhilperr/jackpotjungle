@@ -2,10 +2,21 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { ConfigReaderService } from "./config-reader.service";
 import { ValidationService } from "./validation.service";
 import { EngineParams, RewardResult, SimulationResult, UserActivity } from "./types";
+import { DepositCalculator } from "./score-engine/deposit.calculator";
+import { HoldingCalculator } from "./score-engine/holding.calculator";
+import { ReferralCalculator } from "./score-engine/referral.calculator";
+import { LoyaltyCalculator } from "./score-engine/loyalty.calculator";
+import { BaseScoreAggregator } from "./score-engine/base-score.aggregator";
 
 export class VipRewardEngineService {
   private configReader = new ConfigReaderService();
   private validator = new ValidationService();
+  
+  private depositScoreCalc = new DepositCalculator();
+  private holdingScoreCalc = new HoldingCalculator();
+  private referralScoreCalc = new ReferralCalculator();
+  private loyaltyScoreCalc = new LoyaltyCalculator();
+  private scoreAggregator = new BaseScoreAggregator();
 
   /**
    * Runs the VIP monthly loyalty reward engine calculation simulation.
@@ -89,7 +100,7 @@ export class VipRewardEngineService {
       logs.push(`[VipRewardEngine] Fetching candidate profiles from database.`);
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, email, username, vip_status, wallet_balance, is_blocked, verified, status")
+        .select("id, email, username, vip_status, wallet_balance, is_blocked, verified, status, created_at")
         .eq("is_blocked", false);
 
       if (profilesError) {
@@ -130,6 +141,31 @@ export class VipRewardEngineService {
           depositsMap[tx.user_id] = (depositsMap[tx.user_id] || 0) + amt;
         } else if (tx.action === "cashout") {
           cashoutsMap[tx.user_id] = (cashoutsMap[tx.user_id] || 0) + amt;
+        }
+      }
+
+      // Query login logs for active days metrics
+      logs.push(`[VipRewardEngine] Querying login logs for active days metrics.`);
+      const { data: loginLogs, error: loginLogsError } = await supabase
+        .from("login_logs")
+        .select("user_id, created_at")
+        .eq("success", true)
+        .gte("created_at", startDate)
+        .lte("created_at", endDate);
+
+      const activeDaysMap: Record<string, number> = {};
+      if (loginLogs && !loginLogsError) {
+        const userDaysMap: Record<string, Set<string>> = {};
+        for (const log of loginLogs) {
+          if (!log.user_id || !log.created_at) continue;
+          const dateStr = log.created_at.split("T")[0];
+          if (!userDaysMap[log.user_id]) {
+            userDaysMap[log.user_id] = new Set();
+          }
+          userDaysMap[log.user_id].add(dateStr);
+        }
+        for (const uid of Object.keys(userDaysMap)) {
+          activeDaysMap[uid] = userDaysMap[uid].size;
         }
       }
 
@@ -183,6 +219,9 @@ export class VipRewardEngineService {
           }
         }
 
+        const regDate = c.created_at ? new Date(c.created_at) : new Date();
+        const loyaltyMonths = Math.max(1, (params.year - regDate.getFullYear()) * 12 + (params.month - regDate.getMonth()));
+
         userActivities.push({
           user_id: c.id,
           email: c.email || "",
@@ -193,13 +232,13 @@ export class VipRewardEngineService {
           monthly_holding: monthlyHolding,
           referred_deposit_total: referredDepositTotal,
           referral_count: referralCount,
-          loyalty_months: 1,
+          loyalty_months: loyaltyMonths,
         });
       }
 
       let totalQualifiedHolding = 0;
-      const userResults: RewardResult[] = [];
-      let totalQualifiedUsers = 0;
+      const qualifiedActivities: UserActivity[] = [];
+      const userResultsMap: Record<string, RewardResult> = {};
 
       // Evaluate player qualification
       for (const act of userActivities) {
@@ -225,11 +264,11 @@ export class VipRewardEngineService {
         }
 
         if (qualified) {
-          totalQualifiedUsers++;
+          qualifiedActivities.push(act);
           totalQualifiedHolding += act.monthly_holding;
         }
 
-        userResults.push({
+        userResultsMap[act.user_id] = {
           user_id: act.user_id,
           email: act.email,
           username: act.username,
@@ -237,17 +276,66 @@ export class VipRewardEngineService {
           monthly_deposit: act.monthly_deposit,
           monthly_cashout: act.monthly_cashout,
           monthly_holding: act.monthly_holding,
-          deposit_score: qualified ? 100 : 0,
-          holding_score: qualified ? 100 : 0,
-          referral_score: qualified ? 100 : 0,
-          loyalty_score: qualified ? 100 : 0,
-          base_score: qualified ? 100 : 0,
+          deposit_score: 0,
+          holding_score: 0,
+          referral_score: 0,
+          loyalty_score: 0,
+          base_score: 0,
           multiplier: 1.0,
-          final_score: qualified ? 100 : 0,
+          final_score: 0,
           qualified,
           disqualification_reason: disqualificationReason,
           estimated_payout: 0,
-        });
+        };
+      }
+
+      const totalQualifiedUsers = qualifiedActivities.length;
+
+      // 5. Compute scores using the modular Player Score Engine
+      if (totalQualifiedUsers > 0) {
+        logs.push(`[VipRewardEngine] Calculating component scores for ${totalQualifiedUsers} qualified users.`);
+        
+        // Calculate Deposit Scores
+        const depositScores = this.depositScoreCalc.calculateScores(qualifiedActivities);
+        
+        // Calculate Holding Scores
+        const holdingScores = this.holdingScoreCalc.calculateScores(qualifiedActivities);
+        
+        // Calculate Referral Scores
+        const referralScores = this.referralScoreCalc.calculateScores(qualifiedActivities);
+        
+        // Prepare context for loyalty points calculation
+        const verifiedUserIds = new Set(candidates.filter(c => c.verified).map(c => c.id));
+        const loyaltyScores = this.loyaltyScoreCalc.calculateScores(
+          qualifiedActivities,
+          {
+            verifiedUserIds,
+            activeDaysMap,
+          }
+        );
+
+        // Aggregate Base Scores
+        const qualifiedUserIds = qualifiedActivities.map(act => act.user_id);
+        const baseScores = this.scoreAggregator.aggregate(
+          qualifiedUserIds,
+          depositScores,
+          holdingScores,
+          referralScores,
+          loyaltyScores,
+          settings
+        );
+
+        // Map scores back to userResultsMap
+        for (const act of qualifiedActivities) {
+          const res = userResultsMap[act.user_id];
+          res.deposit_score = Number((depositScores[act.user_id] || 0).toFixed(2));
+          res.holding_score = Number((holdingScores[act.user_id] || 0).toFixed(2));
+          res.referral_score = Number((referralScores[act.user_id] || 0).toFixed(2));
+          res.loyalty_score = Number((loyaltyScores[act.user_id] || 0).toFixed(2));
+          res.base_score = Number((baseScores[act.user_id] || 0).toFixed(2));
+          
+          res.final_score = res.base_score;
+        }
       }
 
       // Calculate total pool size
@@ -259,12 +347,13 @@ export class VipRewardEngineService {
       logs.push(`[VipRewardEngine] Allocated Reward Pool: $${totalPoolSize.toFixed(2)} (${settings.reward_pool_percentage}%).`);
 
       let totalDistributedRewards = 0;
+      const userResults = Object.values(userResultsMap);
+
       if (totalQualifiedUsers > 0) {
-        const individualPayout = totalPoolSize / totalQualifiedUsers;
         for (const res of userResults) {
           if (!res.qualified) continue;
           
-          let payout = individualPayout;
+          let payout = totalPoolSize * (res.base_score / 100);
           const maxPayoutCap = totalPoolSize * (settings.reward_cap_percentage / 100);
           if (payout > maxPayoutCap) {
             payout = maxPayoutCap;
