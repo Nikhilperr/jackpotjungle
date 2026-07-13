@@ -1721,7 +1721,7 @@ export const getMonitorMessagesAdmin = createServerFn({ method: "POST" })
     return { messages };
   });
 
-async function getDbClient() {
+export async function getDbClient() {
   console.log("[DB_DEBUG] getDbClient called.");
   const pg = (await import("pg")).default;
   let connectionString = process.env.DATABASE_URL;
