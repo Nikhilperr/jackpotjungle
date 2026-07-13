@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Settings, ShieldCheck, Percent, Scale, Coins, Calendar, Award, UserPlus, Save, Play, Sparkles, Terminal, ChevronDown, ChevronUp, TrendingUp, Crown, AlertTriangle } from "lucide-react";
+import { Loader2, Settings, ShieldCheck, Percent, Scale, Coins, Calendar, Award, UserPlus, Save, Play, Sparkles, Terminal, ChevronDown, ChevronUp, TrendingUp, Crown, AlertTriangle, FileText, Download, Search, Filter, HelpCircle } from "lucide-react";
 import { getVipRewardSettings, updateVipRewardSettings } from "@/lib/api/vip-settings.functions";
 import { runVipRewardSimulation } from "@/lib/api/vip-reward-engine/engine.functions";
 import { getVipRewardRun, saveVipRewardRunDraft, updateVipRewardRunStatus, executeVipRewardRunPayouts } from "@/lib/api/vip-reward-engine/approval.functions";
+import { getMonthlyCycleHistory, getVipPlayerHistoryAll } from "@/lib/api/vip-reward-engine/history.functions";
+import { getVipAuditLogs } from "@/lib/api/vip-reward-engine/audit.functions";
+import { exportRewardHistory, exportAuditLogs, exportPlayerPayouts } from "@/lib/api/vip-reward-engine/export.service";
 import { useServerFn } from "@tanstack/react-start";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -45,7 +48,11 @@ export function VipRewardSettingsView() {
   const updateStatusFn = useServerFn(updateVipRewardRunStatus);
   const executePayoutsFn = useServerFn(executeVipRewardRunPayouts);
 
-  const [activeTab, setActiveTab] = useState<"settings" | "simulation">("settings");
+  const getCycleHistoryFn = useServerFn(getMonthlyCycleHistory);
+  const getPlayerHistoryFn = useServerFn(getVipPlayerHistoryAll);
+  const getAuditLogsFn = useServerFn(getVipAuditLogs);
+
+  const [activeTab, setActiveTab] = useState<"settings" | "simulation" | "history" | "audit">("settings");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -62,6 +69,25 @@ export function VipRewardSettingsView() {
   const [loadingRun, setLoadingRun] = useState(false);
   const [workflowProcessing, setWorkflowProcessing] = useState(false);
   const [showPayoutConfirm, setShowPayoutConfirm] = useState(false);
+
+  // History state
+  const [historyFilterMonth, setHistoryFilterMonth] = useState(0);
+  const [historyFilterYear, setHistoryFilterYear] = useState(0);
+  const [historyFilterStatus, setHistoryFilterStatus] = useState("all");
+  const [historyFilterUsername, setHistoryFilterUsername] = useState("");
+  const [historyFilterVip, setHistoryFilterVip] = useState("all");
+  const [historyViewMode, setHistoryViewMode] = useState<"cycles" | "players">("cycles");
+  const [cyclesHistory, setCyclesHistory] = useState<any[]>([]);
+  const [playersHistory, setPlayersHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [selectedCycle, setSelectedCycle] = useState<any | null>(null);
+
+  // Audit Logs state
+  const [auditFilterAction, setAuditFilterAction] = useState("all");
+  const [auditFilterUsername, setAuditFilterUsername] = useState("");
+  const [auditFilterRole, setAuditFilterRole] = useState("all");
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
 
   const fetchActiveRun = async (m: number, y: number) => {
     setLoadingRun(true);
@@ -89,11 +115,91 @@ export function VipRewardSettingsView() {
     }
   };
 
+  const fetchCyclesHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await getCycleHistoryFn({
+        data: {
+          month: historyFilterMonth,
+          year: historyFilterYear,
+          status: historyFilterStatus,
+        }
+      });
+      if (res.success && res.cycles) {
+        setCyclesHistory(res.cycles);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load cycles history");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const fetchPlayersHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await getPlayerHistoryFn({
+        data: {
+          month: historyFilterMonth,
+          year: historyFilterYear,
+          username: historyFilterUsername,
+          vipLevel: historyFilterVip,
+        }
+      });
+      if (res.success && res.history) {
+        setPlayersHistory(res.history);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load players payout history");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const fetchAuditLogsList = async () => {
+    setLoadingAudit(true);
+    try {
+      const res = await getAuditLogsFn({
+        data: {
+          action: auditFilterAction,
+          username: auditFilterUsername,
+          role: auditFilterRole,
+        }
+      });
+      if (res.success && res.logs) {
+        setAuditLogs(res.logs);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load audit logs");
+    } finally {
+      setLoadingAudit(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "simulation") {
       fetchActiveRun(simMonth, simYear);
+    } else if (activeTab === "history") {
+      if (historyViewMode === "cycles") {
+        fetchCyclesHistory();
+      } else {
+        fetchPlayersHistory();
+      }
+    } else if (activeTab === "audit") {
+      fetchAuditLogsList();
     }
-  }, [activeTab, simMonth, simYear]);
+  }, [
+    activeTab,
+    simMonth,
+    simYear,
+    historyViewMode,
+    historyFilterMonth,
+    historyFilterYear,
+    historyFilterStatus,
+    historyFilterVip,
+    auditFilterAction,
+    auditFilterRole
+  ]);
 
   // Form Fields State
   const [rewardPoolPercentage, setRewardPoolPercentage] = useState("5.0");
@@ -361,7 +467,7 @@ export function VipRewardSettingsView() {
       </div>
 
       {/* Tab Switcher */}
-      <div className="flex border-b border-border/60 select-none pb-0.5 mb-2">
+      <div className="flex border-b border-border/60 select-none pb-0.5 mb-2 overflow-x-auto whitespace-nowrap scrollbar-none">
         <button
           type="button"
           onClick={() => setActiveTab("settings")}
@@ -384,6 +490,30 @@ export function VipRewardSettingsView() {
         >
           <Sparkles className="h-4 w-4 text-primary shrink-0" />
           <span>Payout Simulation Preview</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("history")}
+          className={`px-5 py-2 text-xs font-extrabold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "history"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Award className="h-4 w-4 text-primary shrink-0" />
+          <span>Reward History</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("audit")}
+          className={`px-5 py-2 text-xs font-extrabold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "audit"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Terminal className="h-4 w-4 text-primary shrink-0" />
+          <span>Audit Logs</span>
         </button>
       </div>
 
@@ -1055,6 +1185,625 @@ export function VipRewardSettingsView() {
                   </div>
                 )}
               </section>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "history" && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="text-left space-y-1">
+              <h3 className="text-lg font-black text-foreground">Reward Distribution Cycles</h3>
+              <p className="text-xs text-muted-foreground">Review permanent history records of completed monthly runs and user payouts.</p>
+            </div>
+            
+            {/* View Mode switcher */}
+            <div className="flex bg-secondary/35 p-1 rounded-xl select-none shrink-0">
+              <button
+                type="button"
+                onClick={() => setHistoryViewMode("cycles")}
+                className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all ${
+                  historyViewMode === "cycles" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Monthly Cycles
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryViewMode("players")}
+                className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all ${
+                  historyViewMode === "players" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Player Payouts
+              </button>
+            </div>
+          </div>
+
+          {/* Filters Bar */}
+          <div className="bg-card border border-border/80 rounded-2xl p-5 shadow-sm">
+            {historyViewMode === "cycles" ? (
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-left">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Month</label>
+                  <select
+                    value={historyFilterMonth}
+                    onChange={(e) => setHistoryFilterMonth(Number(e.target.value))}
+                    className="w-full h-10 bg-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-foreground font-semibold outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value={0}>All Months</option>
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        {new Date(0, i).toLocaleString("en", { month: "long" })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Year</label>
+                  <select
+                    value={historyFilterYear}
+                    onChange={(e) => setHistoryFilterYear(Number(e.target.value))}
+                    className="w-full h-10 bg-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-foreground font-semibold outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value={0}>All Years</option>
+                    <option value={2026}>2026</option>
+                    <option value={2027}>2027</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Status</label>
+                  <select
+                    value={historyFilterStatus}
+                    onChange={(e) => setHistoryFilterStatus(e.target.value)}
+                    className="w-full h-10 bg-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-foreground font-semibold outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Locked">Locked</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5 flex flex-col justify-end">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 select-none">Export History</label>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => exportRewardHistory(cyclesHistory, "csv")}
+                      disabled={cyclesHistory.length === 0}
+                      variant="outline"
+                      className="flex-1 h-10 text-[10px] font-bold uppercase rounded-xl border-border bg-secondary/50 hover:bg-secondary"
+                    >
+                      <Download className="h-3 w-3 mr-1" /> CSV
+                    </Button>
+                    <Button
+                      onClick={() => exportRewardHistory(cyclesHistory, "excel")}
+                      disabled={cyclesHistory.length === 0}
+                      variant="outline"
+                      className="flex-1 h-10 text-[10px] font-bold uppercase rounded-xl border-border bg-secondary/50 hover:bg-secondary"
+                    >
+                      <FileText className="h-3 w-3 mr-1" /> XLS
+                    </Button>
+                    <Button
+                      onClick={() => exportRewardHistory(cyclesHistory, "pdf")}
+                      disabled={cyclesHistory.length === 0}
+                      variant="outline"
+                      className="flex-1 h-10 text-[10px] font-bold uppercase rounded-xl border-border bg-secondary/50 hover:bg-secondary"
+                    >
+                      <FileText className="h-3 w-3 mr-1" /> PDF
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 text-left">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Username</label>
+                  <div className="relative">
+                    <Input
+                      value={historyFilterUsername}
+                      onChange={(e) => setHistoryFilterUsername(e.target.value)}
+                      placeholder="Search player..."
+                      className="bg-secondary text-xs pl-8 h-10 border-border"
+                    />
+                    <Search className="absolute left-2.5 top-3.5 h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Month</label>
+                  <select
+                    value={historyFilterMonth}
+                    onChange={(e) => setHistoryFilterMonth(Number(e.target.value))}
+                    className="w-full h-10 bg-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-foreground font-semibold outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value={0}>All Months</option>
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        {new Date(0, i).toLocaleString("en", { month: "long" })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Year</label>
+                  <select
+                    value={historyFilterYear}
+                    onChange={(e) => setHistoryFilterYear(Number(e.target.value))}
+                    className="w-full h-10 bg-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-foreground font-semibold outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value={0}>All Years</option>
+                    <option value={2026}>2026</option>
+                    <option value={2027}>2027</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">VIP Level</label>
+                  <select
+                    value={historyFilterVip}
+                    onChange={(e) => setHistoryFilterVip(e.target.value)}
+                    className="w-full h-10 bg-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-foreground font-semibold outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="all">All Levels</option>
+                    <option value="bronze">Bronze</option>
+                    <option value="silver">Silver</option>
+                    <option value="gold">Gold</option>
+                    <option value="platinum">Platinum</option>
+                    <option value="diamond">Diamond</option>
+                    <option value="black_diamond">Black Diamond</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5 flex flex-col justify-end">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 select-none">Export Payouts</label>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => exportPlayerPayouts(playersHistory, "csv")}
+                      disabled={playersHistory.length === 0}
+                      variant="outline"
+                      className="flex-1 h-10 text-[10px] font-bold uppercase rounded-xl border-border bg-secondary/50 hover:bg-secondary"
+                    >
+                      <Download className="h-3 w-3 mr-1" /> CSV
+                    </Button>
+                    <Button
+                      onClick={() => exportPlayerPayouts(playersHistory, "excel")}
+                      disabled={playersHistory.length === 0}
+                      variant="outline"
+                      className="flex-1 h-10 text-[10px] font-bold uppercase rounded-xl border-border bg-secondary/50 hover:bg-secondary"
+                    >
+                      <FileText className="h-3 w-3 mr-1" /> XLS
+                    </Button>
+                    <Button
+                      onClick={() => exportPlayerPayouts(playersHistory, "pdf")}
+                      disabled={playersHistory.length === 0}
+                      variant="outline"
+                      className="flex-1 h-10 text-[10px] font-bold uppercase rounded-xl border-border bg-secondary/50 hover:bg-secondary"
+                    >
+                      <FileText className="h-3 w-3 mr-1" /> PDF
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Results Block */}
+          {loadingHistory ? (
+            <div className="bg-card border border-border/80 rounded-2xl p-16 flex flex-col items-center justify-center space-y-3">
+              <Loader2 className="h-7 w-7 animate-spin text-primary" />
+              <p className="text-xs text-muted-foreground font-medium select-none">Loading rewards history data...</p>
+            </div>
+          ) : historyViewMode === "cycles" ? (
+            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm text-left">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[900px]">
+                  <thead>
+                    <tr className="border-b border-border/80 bg-secondary/35 text-[10px] uppercase tracking-wider text-muted-foreground font-bold select-none">
+                      <th className="p-3.5 pl-5">Cycle period</th>
+                      <th className="p-3.5 text-center">Status</th>
+                      <th className="p-3.5 text-right">allocated Pool</th>
+                      <th className="p-3.5 text-right">Deposits / Holding</th>
+                      <th className="p-3.5 text-center">qualified users</th>
+                      <th className="p-3.5 text-right">Distributed Amount</th>
+                      <th className="p-3.5">approved by</th>
+                      <th className="p-3.5 pr-5 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60 text-xs">
+                    {cyclesHistory.map((c) => (
+                      <tr key={c.id} className="hover:bg-secondary/10 transition-colors">
+                        <td className="p-3.5 pl-5 font-bold text-foreground">
+                          {new Date(0, c.month - 1).toLocaleString("en", { month: "long" })} {c.year}
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+                            c.status === "Locked" 
+                              ? "bg-zinc-500/10 border-zinc-500/20 text-zinc-400" 
+                              : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                          }`}>
+                            {c.status}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-right font-mono font-semibold text-foreground">
+                          ${c.reward_pool.toFixed(2)}
+                        </td>
+                        <td className="p-3.5 text-right text-muted-foreground font-mono">
+                          <div>Dep: ${c.monthly_deposits.toFixed(2)}</div>
+                          <div className="text-[10px] text-emerald-500">Hold: ${c.monthly_holding.toFixed(2)}</div>
+                        </td>
+                        <td className="p-3.5 text-center font-bold text-foreground">
+                          {c.total_qualified_players}
+                        </td>
+                        <td className="p-3.5 text-right font-mono font-black text-emerald-400">
+                          ${c.total_distributed_amount.toFixed(2)}
+                        </td>
+                        <td className="p-3.5 text-muted-foreground font-semibold">
+                          {c.approved_by_name}
+                        </td>
+                        <td className="p-3.5 pr-5 text-center">
+                          <Button
+                            onClick={() => setSelectedCycle(c)}
+                            size="sm"
+                            className="bg-secondary text-foreground hover:bg-muted font-bold text-[10px] h-8 rounded-lg"
+                          >
+                            View details
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {cyclesHistory.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="p-12 text-center text-xs text-muted-foreground font-semibold select-none">
+                          No completed monthly reward cycles found matching the filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm text-left">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[1100px]">
+                  <thead>
+                    <tr className="border-b border-border/80 bg-secondary/35 text-[10px] uppercase tracking-wider text-muted-foreground font-bold select-none">
+                      <th className="p-3.5 pl-5">Player Profile</th>
+                      <th className="p-3.5 text-center">Period</th>
+                      <th className="p-3.5 text-center">VIP Rank</th>
+                      <th className="p-3.5 text-right">Deposit Score</th>
+                      <th className="p-3.5 text-right">Holding Score</th>
+                      <th className="p-3.5 text-right">referral score</th>
+                      <th className="p-3.5 text-right">loyalty score</th>
+                      <th className="p-3.5 text-right">base score</th>
+                      <th className="p-3.5 text-right">vip mult</th>
+                      <th className="p-3.5 text-right">final score</th>
+                      <th className="p-3.5 text-right font-black text-emerald-400">Reward amount</th>
+                      <th className="p-3.5 pr-5">Distribution Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60 text-xs font-medium">
+                    {playersHistory.map((p) => (
+                      <tr key={p.id} className="hover:bg-secondary/10 transition-colors">
+                        <td className="p-3.5 pl-5">
+                          <span className="font-bold text-sm text-foreground">@{p.username}</span>
+                        </td>
+                        <td className="p-3.5 text-center font-bold text-muted-foreground font-mono">
+                          {p.month}/{p.year}
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <span className="px-2 py-0.5 rounded bg-secondary text-[10px] font-black uppercase text-foreground">
+                            {p.vip_status}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-right font-mono text-muted-foreground">{Number(p.deposit_score).toFixed(2)}</td>
+                        <td className="p-3.5 text-right font-mono text-muted-foreground">{Number(p.holding_score).toFixed(2)}</td>
+                        <td className="p-3.5 text-right font-mono text-muted-foreground">{Number(p.referral_score).toFixed(2)}</td>
+                        <td className="p-3.5 text-right font-mono text-muted-foreground">{Number(p.loyalty_score).toFixed(2)}</td>
+                        <td className="p-3.5 text-right font-mono text-muted-foreground">{Number(p.base_score).toFixed(2)}%</td>
+                        <td className="p-3.5 text-right font-mono text-muted-foreground">{Number(p.multiplier).toFixed(2)}x</td>
+                        <td className="p-3.5 text-right font-mono text-muted-foreground font-semibold text-foreground">{Number(p.final_score).toFixed(4)}%</td>
+                        <td className="p-3.5 text-right font-mono font-black text-emerald-400 text-sm">
+                          ${Number(p.reward_amount).toFixed(2)}
+                        </td>
+                        <td className="p-3.5 pr-5 text-muted-foreground font-mono">
+                          {new Date(p.distribution_date).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+
+                    {playersHistory.length === 0 && (
+                      <tr>
+                        <td colSpan={12} className="p-12 text-center text-xs text-muted-foreground font-semibold select-none">
+                          No historical payout transactions found matching the filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Detailed Cycle Overlay Modal */}
+          {selectedCycle && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
+              <div className="bg-neutral-950 border border-neutral-800 rounded-3xl p-6 max-w-3xl w-full shadow-2xl animate-in zoom-in-95 duration-200 text-left flex flex-col max-h-[85vh]">
+                <div className="flex justify-between items-center border-b border-neutral-800/80 pb-4 mb-4 select-none shrink-0">
+                  <div>
+                    <h3 className="text-lg font-black text-foreground">
+                      Cycle details: {new Date(0, selectedCycle.month - 1).toLocaleString("en", { month: "long" })} {selectedCycle.year}
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mt-0.5">
+                      Status: {selectedCycle.status} | ID: {selectedCycle.id}
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => setSelectedCycle(null)}
+                    variant="outline"
+                    className="h-8 rounded-lg border-neutral-800 text-neutral-400 text-xs font-bold px-3.5"
+                  >
+                    Close
+                  </Button>
+                </div>
+
+                <div className="overflow-y-auto space-y-6 flex-1 pr-1.5 scrollbar-thin">
+                  {/* Configuration Summary Card */}
+                  <div className="bg-neutral-900 border border-neutral-800/60 rounded-2xl p-5 space-y-4">
+                    <h4 className="font-extrabold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <Settings className="h-4 w-4 shrink-0 text-primary" />
+                      <span>Calculation Configuration Rules</span>
+                    </h4>
+                    
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-semibold text-neutral-300">
+                      <div className="bg-neutral-950 p-2.5 rounded-xl border border-neutral-800/40">
+                        <div className="text-[9px] text-neutral-500 uppercase">Deposit Weight</div>
+                        <div className="text-sm font-bold text-neutral-200 mt-0.5">{selectedCycle.configuration.deposit_weight}%</div>
+                      </div>
+                      <div className="bg-neutral-950 p-2.5 rounded-xl border border-neutral-800/40">
+                        <div className="text-[9px] text-neutral-500 uppercase">Holding Weight</div>
+                        <div className="text-sm font-bold text-neutral-200 mt-0.5">{selectedCycle.configuration.holding_weight}%</div>
+                      </div>
+                      <div className="bg-neutral-950 p-2.5 rounded-xl border border-neutral-800/40">
+                        <div className="text-[9px] text-neutral-500 uppercase">Referral Weight</div>
+                        <div className="text-sm font-bold text-neutral-200 mt-0.5">{selectedCycle.configuration.referral_weight}%</div>
+                      </div>
+                      <div className="bg-neutral-950 p-2.5 rounded-xl border border-neutral-800/40">
+                        <div className="text-[9px] text-neutral-500 uppercase">Loyalty Weight</div>
+                        <div className="text-sm font-bold text-neutral-200 mt-0.5">{selectedCycle.configuration.loyalty_weight}%</div>
+                      </div>
+                      <div className="bg-neutral-950 p-2.5 rounded-xl border border-neutral-800/40">
+                        <div className="text-[9px] text-neutral-500 uppercase">Reward Pool %</div>
+                        <div className="text-sm font-bold text-neutral-200 mt-0.5">{selectedCycle.configuration.reward_pool_percentage}%</div>
+                      </div>
+                      <div className="bg-neutral-950 p-2.5 rounded-xl border border-neutral-800/40">
+                        <div className="text-[9px] text-neutral-500 uppercase">Cap Allocation</div>
+                        <div className="text-sm font-bold text-neutral-200 mt-0.5">{selectedCycle.configuration.reward_cap_percentage}%</div>
+                      </div>
+                      <div className="bg-neutral-950 p-2.5 rounded-xl border border-neutral-800/40">
+                        <div className="text-[9px] text-neutral-500 uppercase">Min Monthly Deposit</div>
+                        <div className="text-sm font-bold text-neutral-200 mt-0.5">${selectedCycle.configuration.min_monthly_deposit}</div>
+                      </div>
+                      <div className="bg-neutral-950 p-2.5 rounded-xl border border-neutral-800/40">
+                        <div className="text-[9px] text-neutral-500 uppercase">Min Holding Req</div>
+                        <div className="text-sm font-bold text-neutral-200 mt-0.5">${selectedCycle.configuration.min_holding_requirement}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Logs Section */}
+                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl overflow-hidden">
+                    <div className="px-4 py-3 bg-neutral-900 border-b border-neutral-800 text-xs font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5 select-none">
+                      <Terminal className="h-4 w-4 text-emerald-400" />
+                      <span>Historical Calculation Logs</span>
+                    </div>
+                    <div className="p-4 font-mono text-[10px] text-neutral-400 text-left leading-relaxed space-y-1.5 max-h-56 overflow-y-auto bg-neutral-950">
+                      {selectedCycle.logs && selectedCycle.logs.map((log: string, idx: number) => (
+                        <div key={idx} className="whitespace-pre-wrap select-text">
+                          <span className="text-neutral-600 select-none mr-2">[{idx + 1}]</span>
+                          <span>{log}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "audit" && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="text-left space-y-1">
+              <h3 className="text-lg font-black text-foreground">VIP Audit Trail logs</h3>
+              <p className="text-xs text-muted-foreground">Permanent, append-only history of system setting updates and admin actions.</p>
+            </div>
+          </div>
+
+          {/* Filters Bar */}
+          <div className="bg-card border border-border/80 rounded-2xl p-5 shadow-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Action Type</label>
+                <select
+                  value={auditFilterAction}
+                  onChange={(e) => setAuditFilterAction(e.target.value)}
+                  className="w-full h-10 bg-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-foreground font-semibold outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="all">All Actions</option>
+                  <option value="reward_settings_changed">Settings Updated</option>
+                  <option value="calculation_started">Calculation Started</option>
+                  <option value="calculation_completed">Calculation Completed</option>
+                  <option value="calculation_failed">Calculation Failed</option>
+                  <option value="draft_saved">Draft Saved</option>
+                  <option value="reward_recalculated">Reward Recalculated</option>
+                  <option value="submit_for_review">Submitted Review</option>
+                  <option value="reward_approved">Approved</option>
+                  <option value="reward_rejected">Rejected</option>
+                  <option value="month_locked">Locked Month</option>
+                  <option value="wallet_distribution_executed">Distribution Executed</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Admin Username</label>
+                <div className="relative">
+                  <Input
+                    value={auditFilterUsername}
+                    onChange={(e) => setAuditFilterUsername(e.target.value)}
+                    placeholder="Search admin..."
+                    className="bg-secondary text-xs pl-8 h-10 border-border"
+                  />
+                  <Search className="absolute left-2.5 top-3.5 h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Role</label>
+                <select
+                  value={auditFilterRole}
+                  onChange={(e) => setAuditFilterRole(e.target.value)}
+                  className="w-full h-10 bg-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-foreground font-semibold outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="all">All Roles</option>
+                  <option value="super_admin">Super Admin</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="space-y-1.5 flex flex-col justify-end">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 select-none">Export Audit Trail</label>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => exportAuditLogs(auditLogs, "csv")}
+                    disabled={auditLogs.length === 0}
+                    variant="outline"
+                    className="flex-1 h-10 text-[10px] font-bold uppercase rounded-xl border-border bg-secondary/50 hover:bg-secondary"
+                  >
+                    <Download className="h-3 w-3 mr-1" /> CSV
+                  </Button>
+                  <Button
+                    onClick={() => exportAuditLogs(auditLogs, "excel")}
+                    disabled={auditLogs.length === 0}
+                    variant="outline"
+                    className="flex-1 h-10 text-[10px] font-bold uppercase rounded-xl border-border bg-secondary/50 hover:bg-secondary"
+                  >
+                    <FileText className="h-3 w-3 mr-1" /> XLS
+                  </Button>
+                  <Button
+                    onClick={() => exportAuditLogs(auditLogs, "pdf")}
+                    disabled={auditLogs.length === 0}
+                    variant="outline"
+                    className="flex-1 h-10 text-[10px] font-bold uppercase rounded-xl border-border bg-secondary/50 hover:bg-secondary"
+                  >
+                    <FileText className="h-3 w-3 mr-1" /> PDF
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Audit Logs Table */}
+          {loadingAudit ? (
+            <div className="bg-card border border-border/80 rounded-2xl p-16 flex flex-col items-center justify-center space-y-3">
+              <Loader2 className="h-7 w-7 animate-spin text-primary" />
+              <p className="text-xs text-muted-foreground font-medium select-none">Loading audit trail logs...</p>
+            </div>
+          ) : (
+            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm text-left">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[900px]">
+                  <thead>
+                    <tr className="border-b border-border/80 bg-secondary/35 text-[10px] uppercase tracking-wider text-muted-foreground font-bold select-none">
+                      <th className="p-3.5 pl-5">Timestamp</th>
+                      <th className="p-3.5">Admin Username</th>
+                      <th className="p-3.5 text-center">Role</th>
+                      <th className="p-3.5">Action Executed</th>
+                      <th className="p-3.5 text-center">IP Address</th>
+                      <th className="p-3.5">Device Information</th>
+                      <th className="p-3.5 pr-5 text-center">Payload Data</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60 text-xs font-semibold text-neutral-300">
+                    {auditLogs.map((l) => (
+                      <React.Fragment key={l.id}>
+                        <tr className="hover:bg-secondary/10 transition-colors">
+                          <td className="p-3.5 pl-5 font-mono text-muted-foreground select-none">
+                            {new Date(l.created_at).toLocaleString()}
+                          </td>
+                          <td className="p-3.5 font-bold text-foreground">
+                            @{l.username}
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${
+                              l.role === "super_admin" 
+                                ? "bg-amber-500/10 border-amber-500/20 text-amber-500" 
+                                : "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                            }`}>
+                              {l.role}
+                            </span>
+                          </td>
+                          <td className="p-3.5 font-bold">
+                            <span className="text-foreground bg-secondary/40 px-2 py-1 rounded-lg border border-border/40 font-mono text-[10px]">
+                              {l.action}
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-center font-mono text-muted-foreground select-all">
+                            {l.ip_address || "N/A"}
+                          </td>
+                          <td className="p-3.5 text-muted-foreground text-[10px] leading-tight max-w-[200px] truncate" title={l.device_info}>
+                            {l.device_info || "N/A"}
+                          </td>
+                          <td className="p-3.5 pr-5 text-center">
+                            {(l.previous_value || l.new_value) ? (
+                              <Button
+                                onClick={() => setLogsExpanded(prev => prev === l.id ? "" : l.id)}
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-[9px] font-bold uppercase rounded-lg border-border"
+                              >
+                                {logsExpanded === l.id ? "Hide details" : "Show details"}
+                              </Button>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground font-bold">—</span>
+                            )}
+                          </td>
+                        </tr>
+
+                        {logsExpanded === l.id && (
+                          <tr className="bg-secondary/5">
+                            <td colSpan={7} className="p-4 pl-8 border-b border-border/40">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+                                {l.previous_value && (
+                                  <div className="bg-neutral-950 border border-neutral-900 rounded-xl p-3 text-left">
+                                    <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-bold mb-2">Previous value data</div>
+                                    <pre className="text-[10px] leading-relaxed text-zinc-400 overflow-x-auto select-all max-h-48 p-1 scrollbar-thin">
+                                      {JSON.stringify(l.previous_value, null, 2)}
+                                    </pre>
+                                  </div>
+                                )}
+                                {l.new_value && (
+                                  <div className="bg-neutral-950 border border-neutral-900 rounded-xl p-3 text-left">
+                                    <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-bold mb-2">New value payload</div>
+                                    <pre className="text-[10px] leading-relaxed text-zinc-400 overflow-x-auto select-all max-h-48 p-1 scrollbar-thin">
+                                      {JSON.stringify(l.new_value, null, 2)}
+                                    </pre>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+
+                    {auditLogs.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="p-12 text-center text-xs text-muted-foreground font-semibold select-none">
+                          No audit trail events found matching the filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

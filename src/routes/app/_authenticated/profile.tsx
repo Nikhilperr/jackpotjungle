@@ -7,13 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Copy, Camera, Loader2, Bell, BellOff, Wallet, History, FileText, Download, Printer, CheckCircle, Share2, Shield, Trash2, Smartphone, Laptop, Globe, User, KeyRound } from "lucide-react";
+import { Copy, Camera, Loader2, Bell, BellOff, Wallet, History, FileText, Download, Printer, CheckCircle, Share2, Shield, Trash2, Smartphone, Laptop, Globe, User, KeyRound, Award } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
 import { getWalletHistoryUser } from "@/lib/wallet.functions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 import { getActiveSessionsUser, terminateSessionUser } from "@/lib/admin-super.functions";
+import { getUserRewardHistory } from "@/lib/api/vip-reward-engine/history.functions";
 import { useServerFn } from "@tanstack/react-start";
 
 export const Route = createFileRoute("/app/_authenticated/profile")({
@@ -128,7 +129,10 @@ function ProfilePage() {
   const [settingPw, setSettingPw] = useState(false);
 
   // Sub-tab selection state
-  const [activeSubTab, setActiveSubTab] = useState<"profile" | "wallet" | "logins">("profile");
+  const [activeSubTab, setActiveSubTab] = useState<"profile" | "wallet" | "logins" | "vipRewards">("profile");
+  const getVipHistoryFn = useServerFn(getUserRewardHistory);
+  const [vipRewardsHistory, setVipRewardsHistory] = useState<any[]>([]);
+  const [loadingVipHistory, setLoadingVipHistory] = useState(false);
 
   // MFA states
   const [mfaStatus, setMfaStatus] = useState<"unverified" | "enrolling" | "active">("unverified");
@@ -187,6 +191,26 @@ function ProfilePage() {
       }
     });
   }, []);
+
+  const loadVipHistory = async () => {
+    setLoadingVipHistory(true);
+    try {
+      const res = await getVipHistoryFn();
+      if (res.success && res.history) {
+        setVipRewardsHistory(res.history);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load VIP history");
+    } finally {
+      setLoadingVipHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === "vipRewards") {
+      loadVipHistory();
+    }
+  }, [activeSubTab]);
 
   const handleEnableMFA = async () => {
     setMfaLoading(true);
@@ -851,6 +875,19 @@ function ProfilePage() {
                 <Shield className="h-4 w-4" />
                 <span>Logins</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveSubTab("vipRewards")}
+                className={`flex-1 md:flex-initial flex items-center justify-center md:justify-start gap-2.5 px-3 py-2 text-xs md:text-sm font-bold rounded-xl transition-all ${
+                  activeSubTab === "vipRewards" 
+                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" 
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                }`}
+              >
+                <Award className="h-4 w-4" />
+                <span>VIP Payouts</span>
+              </button>
             </div>
 
             {/* Sub-tab content */}
@@ -1247,6 +1284,80 @@ function ProfilePage() {
                     </div>
                   </div>
 
+                </div>
+              )}
+
+              {activeSubTab === "vipRewards" && (
+                <div className="space-y-6 animate-in fade-in duration-200 text-left">
+                  <div className="bg-secondary rounded-2xl p-5 space-y-3">
+                    <h2 className="font-semibold text-foreground flex items-center gap-2">
+                      <Award className="h-5 w-5 text-primary animate-pulse" /> Monthly VIP Loyalty Payouts
+                    </h2>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Your historical VIP rewards distributed at the end of each monthly calculations cycle. Bonuses are automatically credited directly to your Available Balance.
+                    </p>
+                  </div>
+
+                  <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-sm">
+                    {loadingVipHistory ? (
+                      <div className="flex h-32 items-center justify-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      </div>
+                    ) : vipRewardsHistory.length === 0 ? (
+                      <div className="flex h-32 flex-col items-center justify-center text-muted-foreground text-center p-6 select-none bg-secondary/10">
+                        <Award className="h-7 w-7 opacity-30 mb-2" />
+                        <p className="text-xs font-bold text-foreground">No VIP rewards found</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 max-w-xs mx-auto">
+                          Complete qualified deposits and maintain positive holding to earn loyalty rewards next cycle!
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="w-full overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs min-w-[700px]">
+                          <thead>
+                            <tr className="border-b border-border/80 bg-secondary/35 text-[10px] uppercase font-bold text-muted-foreground">
+                              <th className="p-3 pl-5">Cycle Period</th>
+                              <th className="p-3 text-center">VIP Tier</th>
+                              <th className="p-3 text-right">Scores (Dep/Hold/Ref/Loy)</th>
+                              <th className="p-3 text-right">VIP Multiplier</th>
+                              <th className="p-3 text-right">Final Score</th>
+                              <th className="p-3 text-right text-emerald-400">Reward amount</th>
+                              <th className="p-3 pr-5">Distribution Date</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/60">
+                            {vipRewardsHistory.map((row) => (
+                              <tr key={row.id} className="hover:bg-secondary/10 transition-colors">
+                                <td className="p-3 pl-5 font-bold text-foreground">
+                                  {new Date(0, row.month - 1).toLocaleString("en", { month: "long" })} {row.year}
+                                </td>
+                                <td className="p-3 text-center">
+                                  <span className="px-2 py-0.5 rounded bg-secondary text-[10px] font-black uppercase text-foreground">
+                                    {row.vip_status}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-right text-[10px] font-mono text-muted-foreground">
+                                  Dep: {Number(row.deposit_score).toFixed(0)} | Hold: {Number(row.holding_score).toFixed(0)} | Ref: {Number(row.referral_score).toFixed(0)} | Loy: {Number(row.loyalty_score).toFixed(0)}
+                                </td>
+                                <td className="p-3 text-right font-mono text-muted-foreground font-semibold">
+                                  {Number(row.multiplier).toFixed(2)}x
+                                </td>
+                                <td className="p-3 text-right font-mono font-bold text-foreground">
+                                  {Number(row.final_score).toFixed(4)}%
+                                </td>
+                                <td className="p-3 text-right font-mono font-black text-emerald-400 text-sm">
+                                  ${Number(row.reward_amount).toFixed(2)}
+                                </td>
+                                <td className="p-3 pr-5 font-mono text-muted-foreground">
+                                  {new Date(row.distribution_date).toLocaleDateString()}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

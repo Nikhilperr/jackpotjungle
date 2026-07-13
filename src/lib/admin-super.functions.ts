@@ -768,6 +768,14 @@ export const MIGRATIONS_SQL = `
           FOR v_player IN SELECT * FROM jsonb_to_recordset(v_run.player_results) AS x(
             user_id UUID,
             username TEXT,
+            vip_status TEXT,
+            deposit_score NUMERIC,
+            holding_score NUMERIC,
+            referral_score NUMERIC,
+            loyalty_score NUMERIC,
+            base_score NUMERIC,
+            multiplier NUMERIC,
+            final_score NUMERIC,
             final_reward NUMERIC,
             qualified BOOLEAN
           ) LOOP
@@ -804,6 +812,19 @@ export const MIGRATIONS_SQL = `
                   'VIP Loyalty Payout',
                   'You received a loyalty bonus of $' || to_char(v_player.final_reward, 'FM999,999,990.00') || ' into your Available Balance.'
                 );
+
+                -- Insert player reward history record
+                INSERT INTO public.vip_player_rewards (
+                  run_id, user_id, username, month, year, vip_status,
+                  deposit_score, holding_score, referral_score, loyalty_score,
+                  base_score, multiplier, final_score, reward_amount,
+                  distribution_date, approval_status
+                ) VALUES (
+                  run_uuid, v_player.user_id, v_player.username, v_run.month, v_run.year, COALESCE(v_player.vip_status, 'none'),
+                  COALESCE(v_player.deposit_score, 0), COALESCE(v_player.holding_score, 0), COALESCE(v_player.referral_score, 0), COALESCE(v_player.loyalty_score, 0),
+                  COALESCE(v_player.base_score, 0), COALESCE(v_player.multiplier, 1.0), COALESCE(v_player.final_score, 0), v_player.final_reward,
+                  now(), 'Completed'
+                );
               END IF;
             END IF;
           END LOOP;
@@ -823,6 +844,92 @@ export const MIGRATIONS_SQL = `
           );
         END;
         $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+        -- Create public.vip_player_rewards table
+        CREATE TABLE IF NOT EXISTS public.vip_player_rewards (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          run_id UUID NOT NULL REFERENCES public.vip_reward_runs(id) ON DELETE CASCADE,
+          user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+          username VARCHAR NOT NULL,
+          month INTEGER NOT NULL,
+          year INTEGER NOT NULL,
+          vip_status VARCHAR NOT NULL,
+          deposit_score NUMERIC NOT NULL,
+          holding_score NUMERIC NOT NULL,
+          referral_score NUMERIC NOT NULL,
+          loyalty_score NUMERIC NOT NULL,
+          base_score NUMERIC NOT NULL,
+          multiplier NUMERIC NOT NULL,
+          final_score NUMERIC NOT NULL,
+          reward_amount NUMERIC NOT NULL,
+          distribution_date TIMESTAMPTZ NOT NULL,
+          approval_status VARCHAR NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        -- Enable RLS on vip_player_rewards
+        ALTER TABLE public.vip_player_rewards ENABLE ROW LEVEL SECURITY;
+
+        -- Policies for vip_player_rewards
+        DROP POLICY IF EXISTS "user_view_own_vip_player_rewards" ON public.vip_player_rewards;
+        CREATE POLICY "user_view_own_vip_player_rewards" ON public.vip_player_rewards
+          FOR SELECT TO authenticated
+          USING (
+            auth.uid() = user_id OR
+            public.has_role(auth.uid(), 'super_admin'::app_role) OR
+            public.has_role(auth.uid(), 'admin'::app_role)
+          );
+
+        -- Create public.vip_audit_logs table
+        CREATE TABLE IF NOT EXISTS public.vip_audit_logs (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+          username VARCHAR NOT NULL,
+          role VARCHAR NOT NULL,
+          action VARCHAR NOT NULL,
+          previous_value JSONB,
+          new_value JSONB,
+          ip_address VARCHAR,
+          device_info VARCHAR
+        );
+
+        -- Enable RLS on vip_audit_logs
+        ALTER TABLE public.vip_audit_logs ENABLE ROW LEVEL SECURITY;
+
+        -- Policies for vip_audit_logs: only admins/super admins can select
+        DROP POLICY IF EXISTS "admins_view_all_vip_audit_logs" ON public.vip_audit_logs;
+        CREATE POLICY "admins_view_all_vip_audit_logs" ON public.vip_audit_logs
+          FOR SELECT TO authenticated
+          USING (
+            public.has_role(auth.uid(), 'super_admin'::app_role) OR
+            public.has_role(auth.uid(), 'admin'::app_role)
+          );
+
+        -- Grant permissions
+        GRANT SELECT ON public.vip_player_rewards TO authenticated;
+        GRANT ALL ON public.vip_player_rewards TO service_role;
+
+        GRANT SELECT ON public.vip_audit_logs TO authenticated;
+        GRANT ALL ON public.vip_audit_logs TO service_role;
+
+        -- Add tables to realtime publication if not already present
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_publication_tables 
+            WHERE pubname = 'supabase_realtime' AND tablename = 'vip_player_rewards'
+          ) THEN
+            ALTER PUBLICATION supabase_realtime ADD TABLE public.vip_player_rewards;
+          END IF;
+
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_publication_tables 
+            WHERE pubname = 'supabase_realtime' AND tablename = 'vip_audit_logs'
+          ) THEN
+            ALTER PUBLICATION supabase_realtime ADD TABLE public.vip_audit_logs;
+          END IF;
+        END $$;
 
         -- Notify PostgREST to reload its schema cache
         NOTIFY pgrst, 'reload schema';

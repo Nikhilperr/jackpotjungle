@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { writeVipAuditLog } from "./vip-reward-engine/audit.functions";
 
 // Zod schemas for multipliers
 const multipliersSchema = z.object({
@@ -93,27 +94,46 @@ export const updateVipRewardSettings = createServerFn({ method: "POST" })
 
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+      // Fetch current settings for audit previous value comparison
+      const { data: prevSettings } = await supabaseAdmin
+        .from("vip_reward_settings")
+        .select("*")
+        .eq("id", true)
+        .maybeSingle();
+
+      const newSettingsPayload = {
+        id: true,
+        reward_pool_percentage: data.rewardPoolPercentage,
+        deposit_weight: data.depositWeight,
+        holding_weight: data.holdingWeight,
+        referral_weight: data.referralWeight,
+        loyalty_weight: data.loyaltyWeight,
+        reward_cap_percentage: data.rewardCapPercentage,
+        min_monthly_deposit: data.minMonthlyDeposit,
+        min_holding_requirement: data.minHoldingRequirement,
+        distribution_date: data.distributionDate,
+        vip_multipliers: data.vipMultipliers,
+        referral_qualification_rules: data.referralQualificationRules,
+        updated_at: new Date().toISOString(),
+        updated_by: context.userId,
+      };
+
       // 3. Upsert the active configuration row
       const { error } = await supabaseAdmin
         .from("vip_reward_settings")
-        .upsert({
-          id: true,
-          reward_pool_percentage: data.rewardPoolPercentage,
-          deposit_weight: data.depositWeight,
-          holding_weight: data.holdingWeight,
-          referral_weight: data.referralWeight,
-          loyalty_weight: data.loyaltyWeight,
-          reward_cap_percentage: data.rewardCapPercentage,
-          min_monthly_deposit: data.minMonthlyDeposit,
-          min_holding_requirement: data.minHoldingRequirement,
-          distribution_date: data.distributionDate,
-          vip_multipliers: data.vipMultipliers,
-          referral_qualification_rules: data.referralQualificationRules,
-          updated_at: new Date().toISOString(),
-          updated_by: context.userId,
-        }, { onConflict: "id" });
+        .upsert(newSettingsPayload, { onConflict: "id" });
 
       if (error) throw new Error(error.message);
+
+      // Write Audit Log entry
+      await writeVipAuditLog(
+        supabaseAdmin,
+        context.userId,
+        "reward_settings_changed",
+        prevSettings,
+        newSettingsPayload
+      );
+
       return { success: true };
     } catch (e: any) {
       console.error("[updateVipRewardSettings Error]:", e.message);

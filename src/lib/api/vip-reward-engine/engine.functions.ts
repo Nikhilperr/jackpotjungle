@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { VipRewardEngineService } from "./engine.service";
+import { writeVipAuditLog } from "./audit.functions";
 
 const runSimulationValidator = z.object({
   month: z.number().min(1).max(12),
@@ -36,6 +37,13 @@ export const runVipRewardSimulation = createServerFn({ method: "POST" })
         throw new Error("Action Forbidden: Direct live updates are not allowed in this phase.");
       }
 
+      // Write audit log for starting calculation
+      await writeVipAuditLog(context.supabase, context.userId, "calculation_started", null, {
+        month: data.month,
+        year: data.year,
+        isSimulation: data.isSimulation,
+      });
+
       // 2. Instantiate and execute calculation orchestration
       const engine = new VipRewardEngineService();
       const result = await engine.runSimulation(context.supabase, {
@@ -44,6 +52,22 @@ export const runVipRewardSimulation = createServerFn({ method: "POST" })
         isSimulation: data.isSimulation,
       });
 
+      if (result.status === "success") {
+        await writeVipAuditLog(context.supabase, context.userId, "calculation_completed", null, {
+          month: data.month,
+          year: data.year,
+          pool_size: result.pool_size,
+          total_qualified_users: result.total_qualified_users,
+          total_distributed_rewards: result.total_distributed_rewards,
+        });
+      } else {
+        await writeVipAuditLog(context.supabase, context.userId, "calculation_failed", null, {
+          month: data.month,
+          year: data.year,
+          error: result.error_message || "Calculation failed",
+        });
+      }
+
       return {
         success: result.status === "success",
         result,
@@ -51,6 +75,15 @@ export const runVipRewardSimulation = createServerFn({ method: "POST" })
 
     } catch (e: any) {
       console.error("[runVipRewardSimulation Server Error]:", e.message);
+      try {
+        await writeVipAuditLog(context.supabase, context.userId, "calculation_failed", null, {
+          month: data.month,
+          year: data.year,
+          error: e.message,
+        });
+      } catch (err) {
+        console.error("Failed to write failure audit log:", err);
+      }
       return {
         success: false,
         error: e.message || "An error occurred executing the calculation engine.",
