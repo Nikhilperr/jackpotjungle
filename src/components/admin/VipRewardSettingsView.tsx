@@ -41,26 +41,26 @@ export function VipRewardSettingsView() {
   const [saving, setSaving] = useState(false);
 
   // Form Fields State
-  const [rewardPoolPercentage, setRewardPoolPercentage] = useState(5.0);
-  const [depositWeight, setDepositWeight] = useState(35.0);
-  const [holdingWeight, setHoldingWeight] = useState(30.0);
-  const [referralWeight, setReferralWeight] = useState(15.0);
-  const [loyaltyWeight, setLoyaltyWeight] = useState(20.0);
-  const [rewardCapPercentage, setRewardCapPercentage] = useState(10.0);
-  const [minMonthlyDeposit, setMinMonthlyDeposit] = useState(100.0);
-  const [minHoldingRequirement, setMinHoldingRequirement] = useState(50.0);
-  const [distributionDate, setDistributionDate] = useState(1);
+  const [rewardPoolPercentage, setRewardPoolPercentage] = useState("5.0");
+  const [depositWeight, setDepositWeight] = useState("35.0");
+  const [holdingWeight, setHoldingWeight] = useState("30.0");
+  const [referralWeight, setReferralWeight] = useState("15.0");
+  const [loyaltyWeight, setLoyaltyWeight] = useState("20.0");
+  const [rewardCapPercentage, setRewardCapPercentage] = useState("10.0");
+  const [minMonthlyDeposit, setMinMonthlyDeposit] = useState("100.0");
+  const [minHoldingRequirement, setMinHoldingRequirement] = useState("50.0");
+  const [distributionDate, setDistributionDate] = useState("1");
 
   // Multipliers State
-  const [bronze, setBronze] = useState(1.00);
-  const [silver, setSilver] = useState(1.05);
-  const [gold, setGold] = useState(1.10);
-  const [platinum, setPlatinum] = useState(1.20);
-  const [diamond, setDiamond] = useState(1.30);
-  const [blackDiamond, setBlackDiamond] = useState(1.50);
+  const [bronze, setBronze] = useState("1.00");
+  const [silver, setSilver] = useState("1.05");
+  const [gold, setGold] = useState("1.10");
+  const [platinum, setPlatinum] = useState("1.20");
+  const [diamond, setDiamond] = useState("1.30");
+  const [blackDiamond, setBlackDiamond] = useState("1.50");
 
   // Referral Rules State
-  const [minReferredDeposit, setMinReferredDeposit] = useState(50.0);
+  const [minReferredDeposit, setMinReferredDeposit] = useState("50.0");
   const [requiresVerification, setRequiresVerification] = useState(false);
 
   // Load active configurations from db
@@ -70,29 +70,29 @@ export function VipRewardSettingsView() {
       const res = await loadFn();
       if (res.success && res.settings) {
         const s = res.settings;
-        setRewardPoolPercentage(Number(s.reward_pool_percentage));
-        setDepositWeight(Number(s.deposit_weight));
-        setHoldingWeight(Number(s.holding_weight));
-        setReferralWeight(Number(s.referral_weight));
-        setLoyaltyWeight(Number(s.loyalty_weight));
-        setRewardCapPercentage(Number(s.reward_cap_percentage));
-        setMinMonthlyDeposit(Number(s.min_monthly_deposit));
-        setMinHoldingRequirement(Number(s.min_holding_requirement));
-        setDistributionDate(Number(s.distribution_date));
+        setRewardPoolPercentage(String(s.reward_pool_percentage));
+        setDepositWeight(String(s.deposit_weight));
+        setHoldingWeight(String(s.holding_weight));
+        setReferralWeight(String(s.referral_weight));
+        setLoyaltyWeight(String(s.loyalty_weight));
+        setRewardCapPercentage(String(s.reward_cap_percentage));
+        setMinMonthlyDeposit(String(s.min_monthly_deposit));
+        setMinHoldingRequirement(String(s.min_holding_requirement));
+        setDistributionDate(String(s.distribution_date));
         
         // Multipliers
         if (s.vip_multipliers) {
-          setBronze(Number(s.vip_multipliers.bronze ?? 1.0));
-          setSilver(Number(s.vip_multipliers.silver ?? 1.05));
-          setGold(Number(s.vip_multipliers.gold ?? 1.10));
-          setPlatinum(Number(s.vip_multipliers.platinum ?? 1.20));
-          setDiamond(Number(s.vip_multipliers.diamond ?? 1.30));
-          setBlackDiamond(Number(s.vip_multipliers.black_diamond ?? 1.50));
+          setBronze(String(s.vip_multipliers.bronze ?? 1.0));
+          setSilver(String(s.vip_multipliers.silver ?? 1.05));
+          setGold(String(s.vip_multipliers.gold ?? 1.10));
+          setPlatinum(String(s.vip_multipliers.platinum ?? 1.20));
+          setDiamond(String(s.vip_multipliers.diamond ?? 1.30));
+          setBlackDiamond(String(s.vip_multipliers.black_diamond ?? 1.50));
         }
 
         // Referral rules
         if (s.referral_qualification_rules) {
-          setMinReferredDeposit(Number(s.referral_qualification_rules.min_referred_deposit ?? 50.0));
+          setMinReferredDeposit(String(s.referral_qualification_rules.min_referred_deposit ?? 50.0));
           setRequiresVerification(Boolean(s.referral_qualification_rules.requires_verification ?? false));
         }
       } else if (res.error) {
@@ -110,27 +110,31 @@ export function VipRewardSettingsView() {
   }, []);
 
   // Compute live score weights sum
-  const weightsSum = Number(depositWeight) + Number(holdingWeight) + Number(referralWeight) + Number(loyaltyWeight);
+  const weightsSum = Number(depositWeight || 0) + Number(holdingWeight || 0) + Number(referralWeight || 0) + Number(loyaltyWeight || 0);
   const isWeightsValid = Math.abs(weightsSum - 100) < 0.001;
 
   // Handle Form Submission
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    const numPoolPct = Number(rewardPoolPercentage || 0);
+    const numCapPct = Number(rewardCapPercentage || 0);
+    const numDistDate = Number(distributionDate || 1);
+
     // 1. Validation checks
     if (!isWeightsValid) {
       toast.error(`Score weights must sum to exactly 100 points. (Current Sum: ${weightsSum})`);
       return;
     }
-    if (rewardPoolPercentage < 0 || rewardPoolPercentage > 100) {
+    if (numPoolPct < 0 || numPoolPct > 100) {
       toast.error("Reward Pool Percentage must be between 0% and 100%.");
       return;
     }
-    if (rewardCapPercentage < 0 || rewardCapPercentage > 100) {
+    if (numCapPct < 0 || numCapPct > 100) {
       toast.error("Reward Cap Percentage must be between 0% and 100%.");
       return;
     }
-    if (distributionDate < 1 || distributionDate > 28) {
+    if (numDistDate < 1 || numDistDate > 28) {
       toast.error("Distribution Day of Month must be between 1 and 28.");
       return;
     }
@@ -138,27 +142,29 @@ export function VipRewardSettingsView() {
     setSaving(true);
     try {
       const res = await saveFn({
-        rewardPoolPercentage,
-        depositWeight,
-        holdingWeight,
-        referralWeight,
-        loyaltyWeight,
-        rewardCapPercentage,
-        minMonthlyDeposit,
-        minHoldingRequirement,
-        distributionDate,
-        vipMultipliers: {
-          bronze,
-          silver,
-          gold,
-          platinum,
-          diamond,
-          black_diamond: blackDiamond,
-        },
-        referralQualificationRules: {
-          min_referred_deposit: minReferredDeposit,
-          requires_verification: requiresVerification,
-        },
+        data: {
+          rewardPoolPercentage: numPoolPct,
+          depositWeight: Number(depositWeight || 0),
+          holdingWeight: Number(holdingWeight || 0),
+          referralWeight: Number(referralWeight || 0),
+          loyaltyWeight: Number(loyaltyWeight || 0),
+          rewardCapPercentage: numCapPct,
+          minMonthlyDeposit: Number(minMonthlyDeposit || 0),
+          minHoldingRequirement: Number(minHoldingRequirement || 0),
+          distributionDate: numDistDate,
+          vipMultipliers: {
+            bronze: Number(bronze || 0),
+            silver: Number(silver || 0),
+            gold: Number(gold || 0),
+            platinum: Number(platinum || 0),
+            diamond: Number(diamond || 0),
+            black_diamond: Number(blackDiamond || 0),
+          },
+          referralQualificationRules: {
+            min_referred_deposit: Number(minReferredDeposit || 0),
+            requires_verification: requiresVerification,
+          },
+        }
       });
 
       if (res.success) {
@@ -221,7 +227,7 @@ export function VipRewardSettingsView() {
                 min="0"
                 max="100"
                 value={rewardPoolPercentage}
-                onChange={(e) => setRewardPoolPercentage(Math.max(0, Math.min(100, Number(e.target.value))))}
+                onChange={(e) => setRewardPoolPercentage(e.target.value)}
                 placeholder="e.g. 5.0"
                 required
               />
@@ -242,7 +248,7 @@ export function VipRewardSettingsView() {
                 min="0"
                 max="100"
                 value={rewardCapPercentage}
-                onChange={(e) => setRewardCapPercentage(Math.max(0, Math.min(100, Number(e.target.value))))}
+                onChange={(e) => setRewardCapPercentage(e.target.value)}
                 placeholder="e.g. 10.0"
                 required
               />
@@ -280,7 +286,7 @@ export function VipRewardSettingsView() {
                 min="0"
                 max="100"
                 value={depositWeight}
-                onChange={(e) => setDepositWeight(Math.max(0, Number(e.target.value)))}
+                onChange={(e) => setDepositWeight(e.target.value)}
                 required
               />
             </div>
@@ -295,7 +301,7 @@ export function VipRewardSettingsView() {
                 min="0"
                 max="100"
                 value={holdingWeight}
-                onChange={(e) => setHoldingWeight(Math.max(0, Number(e.target.value)))}
+                onChange={(e) => setHoldingWeight(e.target.value)}
                 required
               />
             </div>
@@ -310,7 +316,7 @@ export function VipRewardSettingsView() {
                 min="0"
                 max="100"
                 value={referralWeight}
-                onChange={(e) => setReferralWeight(Math.max(0, Number(e.target.value)))}
+                onChange={(e) => setReferralWeight(e.target.value)}
                 required
               />
             </div>
@@ -325,7 +331,7 @@ export function VipRewardSettingsView() {
                 min="0"
                 max="100"
                 value={loyaltyWeight}
-                onChange={(e) => setLoyaltyWeight(Math.max(0, Number(e.target.value)))}
+                onChange={(e) => setLoyaltyWeight(e.target.value)}
                 required
               />
             </div>
@@ -354,7 +360,7 @@ export function VipRewardSettingsView() {
                 type="number"
                 min="0"
                 value={minMonthlyDeposit}
-                onChange={(e) => setMinMonthlyDeposit(Math.max(0, Number(e.target.value)))}
+                onChange={(e) => setMinMonthlyDeposit(e.target.value)}
                 required
               />
             </div>
@@ -368,7 +374,7 @@ export function VipRewardSettingsView() {
                 type="number"
                 min="0"
                 value={minHoldingRequirement}
-                onChange={(e) => setMinHoldingRequirement(Math.max(0, Number(e.target.value)))}
+                onChange={(e) => setMinHoldingRequirement(e.target.value)}
                 required
               />
             </div>
@@ -383,7 +389,7 @@ export function VipRewardSettingsView() {
                 min="1"
                 max="28"
                 value={distributionDate}
-                onChange={(e) => setDistributionDate(Math.max(1, Math.min(28, Number(e.target.value))))}
+                onChange={(e) => setDistributionDate(e.target.value)}
                 required
               />
               <span className="text-[9px] text-muted-foreground leading-none font-medium">Day of month (1-28)</span>
@@ -403,42 +409,42 @@ export function VipRewardSettingsView() {
                 <span>Bronze</span>
                 <HelpTooltip content="Reward multiplier for the Bronze VIP tier. A higher multiplier increases the tier's reward payout size." />
               </label>
-              <Input id="vipBronze" type="number" step="0.01" min="0" value={bronze} onChange={(e) => setBronze(Math.max(0, Number(e.target.value)))} required />
+              <Input id="vipBronze" type="number" step="0.01" min="0" value={bronze} onChange={(e) => setBronze(e.target.value)} required />
             </div>
             <div className="space-y-1.5">
               <label htmlFor="vipSilver" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
                 <span>Silver</span>
                 <HelpTooltip content="Reward multiplier for the Silver VIP tier. A higher multiplier increases the tier's reward payout size." />
               </label>
-              <Input id="vipSilver" type="number" step="0.01" min="0" value={silver} onChange={(e) => setSilver(Math.max(0, Number(e.target.value)))} required />
+              <Input id="vipSilver" type="number" step="0.01" min="0" value={silver} onChange={(e) => setSilver(e.target.value)} required />
             </div>
             <div className="space-y-1.5">
               <label htmlFor="vipGold" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
                 <span>Gold</span>
                 <HelpTooltip content="Reward multiplier for the Gold VIP tier. A higher multiplier increases the tier's reward payout size." />
               </label>
-              <Input id="vipGold" type="number" step="0.01" min="0" value={gold} onChange={(e) => setGold(Math.max(0, Number(e.target.value)))} required />
+              <Input id="vipGold" type="number" step="0.01" min="0" value={gold} onChange={(e) => setGold(e.target.value)} required />
             </div>
             <div className="space-y-1.5">
               <label htmlFor="vipPlatinum" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
                 <span>Platinum</span>
                 <HelpTooltip content="Reward multiplier for the Platinum VIP tier. A higher multiplier increases the tier's reward payout size." />
               </label>
-              <Input id="vipPlatinum" type="number" step="0.01" min="0" value={platinum} onChange={(e) => setPlatinum(Math.max(0, Number(e.target.value)))} required />
+              <Input id="vipPlatinum" type="number" step="0.01" min="0" value={platinum} onChange={(e) => setPlatinum(e.target.value)} required />
             </div>
             <div className="space-y-1.5">
               <label htmlFor="vipDiamond" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
                 <span>Diamond</span>
                 <HelpTooltip content="Reward multiplier for the Diamond VIP tier. A higher multiplier increases the tier's reward payout size." />
               </label>
-              <Input id="vipDiamond" type="number" step="0.01" min="0" value={diamond} onChange={(e) => setDiamond(Math.max(0, Number(e.target.value)))} required />
+              <Input id="vipDiamond" type="number" step="0.01" min="0" value={diamond} onChange={(e) => setDiamond(e.target.value)} required />
             </div>
             <div className="space-y-1.5">
               <label htmlFor="vipBlackDiamond" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
                 <span>Black Diamond</span>
                 <HelpTooltip content="Reward multiplier for the Black Diamond VIP tier. A higher multiplier increases the tier's reward payout size." />
               </label>
-              <Input id="vipBlackDiamond" type="number" step="0.01" min="0" value={blackDiamond} onChange={(e) => setBlackDiamond(Math.max(0, Number(e.target.value)))} required />
+              <Input id="vipBlackDiamond" type="number" step="0.01" min="0" value={blackDiamond} onChange={(e) => setBlackDiamond(e.target.value)} required />
             </div>
           </div>
         </section>
@@ -460,7 +466,7 @@ export function VipRewardSettingsView() {
                 type="number"
                 min="0"
                 value={minReferredDeposit}
-                onChange={(e) => setMinReferredDeposit(Math.max(0, Number(e.target.value)))}
+                onChange={(e) => setMinReferredDeposit(e.target.value)}
                 required
               />
               <span className="text-[10px] text-muted-foreground font-semibold leading-relaxed block">
