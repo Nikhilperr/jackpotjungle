@@ -30,15 +30,41 @@ export function useRole() {
         return; 
       }
 
-      const { data } = await supabase
-        .from("user_roles")
-        .select("role, permissions")
-        .eq("user_id", userId);
+      let roleData: any[] | null = null;
+      try {
+        const { data, error } = await supabase
+          .from("user_roles")
+          .select("role, permissions")
+          .eq("user_id", userId);
+        
+        if (error) {
+          console.warn("useRole permissions query error (might not exist yet):", error);
+          if (error.code === "42703" || error.message?.includes("permissions")) {
+            // Column permissions does not exist yet (migration pending), query only role
+            const fallback = await supabase
+              .from("user_roles")
+              .select("role")
+              .eq("user_id", userId);
+            if (fallback.error) {
+              console.error("useRole fallback query failed:", fallback.error);
+            } else {
+              roleData = fallback.data;
+            }
+          }
+        } else {
+          roleData = data;
+        }
+      } catch (err) {
+        console.error("Exception fetching user roles:", err);
+      }
+
       if (!mounted) return;
-      setRoles((data ?? []).map((r) => r.role as AppRole));
+      
+      const parsedRoles = (roleData ?? []).map((r: any) => r.role as AppRole);
+      setRoles(parsedRoles);
       
       const permsSet = new Set<string>();
-      (data ?? []).forEach((r: any) => {
+      (roleData ?? []).forEach((r: any) => {
         if (r.permissions) {
           r.permissions.forEach((p: string) => permsSet.add(p));
         }
