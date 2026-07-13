@@ -59,7 +59,7 @@ export async function ensureVipRewardSchema() {
 
       -- Ensure vip_reward_settings has run_time and timezone columns
       ALTER TABLE public.vip_reward_settings ADD COLUMN IF NOT EXISTS run_time VARCHAR NOT NULL DEFAULT '00:00';
-      ALTER TABLE public.vip_reward_settings ADD COLUMN IF NOT EXISTS timezone VARCHAR NOT NULL DEFAULT 'UTC';
+      ALTER TABLE public.vip_reward_settings ADD COLUMN IF NOT EXISTS timezone VARCHAR NOT NULL DEFAULT 'America/New_York';
 
       -- Stored Procedure to safely, atomically execute payouts inside a database transaction
       CREATE OR REPLACE FUNCTION public.execute_vip_payouts(
@@ -529,8 +529,8 @@ export const updateVipRewardRunStatus = createServerFn({ method: "POST" })
           throw new Error(`Invalid Transition: Cannot approve run from "${currentStatus}" status. Run must be "Pending Review".`);
         }
       } else if (targetStatus === "Rejected") {
-        if (currentStatus !== "Pending Review") {
-          throw new Error(`Invalid Transition: Cannot reject run from "${currentStatus}" status. Run must be "Pending Review".`);
+        if (currentStatus !== "Pending Review" && currentStatus !== "Approved") {
+          throw new Error(`Invalid Transition: Cannot reject run from "${currentStatus}" status. Run must be "Pending Review" or "Approved".`);
         }
       } else if (targetStatus === "Locked") {
         if (currentStatus !== "Completed") {

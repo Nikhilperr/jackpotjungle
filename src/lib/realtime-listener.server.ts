@@ -295,7 +295,7 @@ export async function initRealtimeListeners() {
           if (!errVipSettings && activeVipSettings) {
             const distDay = activeVipSettings.distribution_date || 1;
             const runTime = activeVipSettings.run_time || "00:00";
-            const timeZone = activeVipSettings.timezone || "UTC";
+            const timeZone = activeVipSettings.timezone || "America/New_York";
 
             const localTime = getFormattedDateTimeInTimezone(new Date(), timeZone);
             

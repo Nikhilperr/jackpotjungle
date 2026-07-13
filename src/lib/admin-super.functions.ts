@@ -733,7 +733,7 @@ export const MIGRATIONS_SQL = `
 
         -- Ensure vip_reward_settings table has run_time and timezone columns
         ALTER TABLE public.vip_reward_settings ADD COLUMN IF NOT EXISTS run_time VARCHAR NOT NULL DEFAULT '00:00';
-        ALTER TABLE public.vip_reward_settings ADD COLUMN IF NOT EXISTS timezone VARCHAR NOT NULL DEFAULT 'UTC';
+        ALTER TABLE public.vip_reward_settings ADD COLUMN IF NOT EXISTS timezone VARCHAR NOT NULL DEFAULT 'America/New_York';
 
         -- Stored Procedure to safely, atomically execute payouts inside a database transaction
         CREATE OR REPLACE FUNCTION public.execute_vip_payouts(

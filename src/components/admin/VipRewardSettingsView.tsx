@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Settings, ShieldCheck, Percent, Scale, Coins, Calendar, Award, UserPlus, Save, Play, Sparkles, Terminal, ChevronDown, ChevronUp, TrendingUp, Crown, AlertTriangle, FileText, Download, Search, Filter, HelpCircle } from "lucide-react";
+import { Loader2, Settings, ShieldCheck, Percent, Scale, Coins, Calendar, Award, UserPlus, Save, Play, Sparkles, Terminal, ChevronDown, ChevronUp, TrendingUp, Crown, AlertTriangle, FileText, Download, Search, Filter, HelpCircle, RotateCcw, RefreshCw } from "lucide-react";
 import { getVipRewardSettings, updateVipRewardSettings } from "@/lib/api/vip-settings.functions";
 import { runVipRewardSimulation } from "@/lib/api/vip-reward-engine/engine.functions";
 import { getVipRewardRun, saveVipRewardRunDraft, updateVipRewardRunStatus, executeVipRewardRunPayouts } from "@/lib/api/vip-reward-engine/approval.functions";
@@ -88,6 +88,67 @@ export function VipRewardSettingsView() {
   const [auditFilterRole, setAuditFilterRole] = useState("all");
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
+
+  // Pull-to-Refresh & Reset states
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [pullDistance, setPullDistance] = useState(0);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (activeTab === "settings") {
+        await loadSettings();
+      } else if (activeTab === "simulation") {
+        await fetchActiveRun(simMonth, simYear);
+      } else if (activeTab === "history") {
+        if (historyViewMode === "cycles") {
+          await fetchCyclesHistory();
+        } else {
+          await fetchPlayersHistory();
+        }
+      } else if (activeTab === "audit") {
+        await fetchAuditLogsList();
+      }
+      toast.success("Active panel refreshed successfully.");
+    } catch (err: any) {
+      console.error("Refresh failed:", err);
+      toast.error("Failed to refresh: " + err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (window.scrollY === 0) {
+      setTouchStart(e.touches[0].clientY);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStart === null) return;
+    const currentY = e.touches[0].clientY;
+    const distance = currentY - touchStart;
+    
+    if (distance > 0) {
+      // Add a damping factor so the pull resistance increases
+      const dampedDistance = Math.min(distance * 0.4, 90);
+      setPullDistance(dampedDistance);
+    }
+  };
+
+  const handleTouchEnd = async () => {
+    if (touchStart === null) return;
+    setTouchStart(null);
+
+    // If pulled more than 60px, trigger refresh
+    if (pullDistance >= 60) {
+      setPullDistance(60); // Hold height while refreshing
+      await handleRefresh();
+    }
+    setPullDistance(0);
+  };
 
   const fetchActiveRun = async (m: number, y: number) => {
     setLoadingRun(true);
@@ -202,6 +263,11 @@ export function VipRewardSettingsView() {
     auditFilterRole
   ]);
 
+  // Dynamic Years Range Generator (handles automatic rollover for any future year)
+  const startYear = 2024;
+  const currentYear = new Date().getFullYear();
+  const availableYears = Array.from({ length: Math.max(currentYear - startYear + 6, 8) }, (_, i) => startYear + i);
+
   // Form Fields State
   const [rewardPoolPercentage, setRewardPoolPercentage] = useState("5.0");
   const [depositWeight, setDepositWeight] = useState("35.0");
@@ -213,7 +279,7 @@ export function VipRewardSettingsView() {
   const [minHoldingRequirement, setMinHoldingRequirement] = useState("50.0");
   const [distributionDate, setDistributionDate] = useState("1");
   const [runTime, setRunTime] = useState("00:00");
-  const [timezone, setTimezone] = useState("UTC");
+  const [timezone, setTimezone] = useState("America/New_York");
 
   // Multipliers State
   const [bronze, setBronze] = useState("1.00");
@@ -244,7 +310,7 @@ export function VipRewardSettingsView() {
         setMinHoldingRequirement(String(s.min_holding_requirement));
         setDistributionDate(String(s.distribution_date));
         setRunTime(String(s.run_time ?? "00:00"));
-        setTimezone(String(s.timezone ?? "UTC"));
+        setTimezone(String(s.timezone ?? "America/New_York"));
         
         // Multipliers
         if (s.vip_multipliers) {
@@ -455,8 +521,26 @@ export function VipRewardSettingsView() {
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 space-y-6 overflow-hidden">
-      
+    <div 
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className="w-full max-w-6xl mx-auto p-4 sm:p-6 space-y-6 overflow-hidden"
+    >
+      {/* Pull-to-Refresh Spinner Indicator */}
+      <div 
+        className="transition-all duration-200 ease-out overflow-hidden flex items-center justify-center bg-secondary/10 border border-border/20 rounded-2xl"
+        style={{ 
+          height: pullDistance > 0 ? `${pullDistance}px` : '0px',
+          opacity: pullDistance > 0 ? pullDistance / 60 : 0,
+        }}
+      >
+        <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground py-2">
+          <RefreshCw className={`h-4 w-4 text-primary ${pullDistance >= 60 || refreshing ? "animate-spin" : ""}`} />
+          <span>{pullDistance >= 60 ? "Release to refresh..." : "Pull down to refresh active tab..."}</span>
+        </div>
+      </div>
+
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/50 pb-5">
         <div className="space-y-1 text-left">
@@ -467,9 +551,22 @@ export function VipRewardSettingsView() {
             Configure monthly calculation pool variables, score weights, multipliers, and qualifications.
           </p>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/20 shadow-sm shrink-0">
-          <ShieldCheck className="h-4 w-4 shrink-0" />
-          <span>SUPER ADMIN AUTHORIZED ONLY</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            variant="outline"
+            className="h-8 px-3 rounded-xl flex items-center gap-1.5 text-xs font-bold border-border bg-secondary/20 hover:bg-secondary/50 transition-all"
+            title="Refresh current panel data"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-primary" : ""}`} />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/20 shadow-sm">
+            <ShieldCheck className="h-4 w-4 shrink-0" />
+            <span>SUPER ADMIN ONLY</span>
+          </div>
         </div>
       </div>
 
@@ -856,8 +953,17 @@ export function VipRewardSettingsView() {
           </div>
         </section>
 
-        {/* Action Button */}
-        <div className="flex justify-end pt-4">
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowResetConfirm(true)}
+            className="w-full sm:w-auto h-12 px-8 rounded-xl font-bold flex items-center justify-center gap-2 text-sm border-border bg-secondary/10 hover:bg-secondary/40 transition-all"
+          >
+            <RotateCcw className="h-4 w-4" />
+            <span>Reset Settings</span>
+          </Button>
           <Button
             type="submit"
             disabled={saving || !isWeightsValid}
@@ -910,7 +1016,7 @@ export function VipRewardSettingsView() {
                   onChange={(e) => setSimYear(Number(e.target.value))}
                   className="w-full h-10 px-3 bg-secondary rounded-lg border border-border text-xs font-semibold focus:outline-none"
                 >
-                  {Array.from({ length: 7 }, (_, i) => 2024 + i).map((y) => (
+                  {availableYears.map((y) => (
                     <option key={y} value={y}>
                       {y}
                     </option>
@@ -1293,8 +1399,11 @@ export function VipRewardSettingsView() {
                     className="w-full h-10 bg-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-foreground font-semibold outline-none focus:ring-1 focus:ring-primary"
                   >
                     <option value={0}>All Years</option>
-                    <option value={2026}>2026</option>
-                    <option value={2027}>2027</option>
+                    {availableYears.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -1376,8 +1485,11 @@ export function VipRewardSettingsView() {
                     className="w-full h-10 bg-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-foreground font-semibold outline-none focus:ring-1 focus:ring-primary"
                   >
                     <option value={0}>All Years</option>
-                    <option value={2026}>2026</option>
-                    <option value={2027}>2027</option>
+                    {availableYears.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -1909,6 +2021,47 @@ export function VipRewardSettingsView() {
                 className="h-10 px-6 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs uppercase shadow-lg shadow-amber-950/40"
               >
                 Execute Payouts
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 text-left space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-full bg-rose-500/10 flex items-center justify-center border border-rose-500/20 text-rose-500 shrink-0">
+                <RotateCcw className="h-5 w-5" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-base font-extrabold text-neutral-100">
+                  Reset Settings Configurations?
+                </h3>
+                <p className="text-xs text-neutral-400 leading-relaxed font-semibold">
+                  Are you sure you want to reset all configurations on this page? This will discard your current unsaved modifications and revert the fields back to the settings stored in the database.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowResetConfirm(false)}
+                className="h-10 px-5 border-neutral-800 hover:bg-neutral-900 font-bold text-xs uppercase"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  loadSettings();
+                  setShowResetConfirm(false);
+                  toast.success("Configurations successfully reset to saved values.");
+                }}
+                className="h-10 px-6 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs uppercase shadow-lg shadow-rose-950/40"
+              >
+                Confirm Reset
               </Button>
             </div>
           </div>
