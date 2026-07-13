@@ -448,7 +448,7 @@ export function VipRewardSettingsView() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
+    <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 space-y-6 overflow-hidden">
       
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/50 pb-5">
@@ -1224,7 +1224,7 @@ export function VipRewardSettingsView() {
           {/* Filters Bar */}
           <div className="bg-card border border-border/80 rounded-2xl p-5 shadow-sm">
             {historyViewMode === "cycles" ? (
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-left">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Month</label>
                   <select
@@ -1295,7 +1295,7 @@ export function VipRewardSettingsView() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 text-left">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 text-left">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Username</label>
                   <div className="relative">
@@ -1622,7 +1622,7 @@ export function VipRewardSettingsView() {
 
           {/* Filters Bar */}
           <div className="bg-card border border-border/80 rounded-2xl p-5 shadow-sm">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-left">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Action Type</label>
                 <select
