@@ -29,6 +29,7 @@ export function getVipBadgeUrl(status: string | null | undefined): string | null
   const normalized = status.toLowerCase();
   if (normalized === "platinum") return "/platium.png";
   if (normalized === "diamond") return "/dimond.png";
+  if (normalized === "black_diamond" || normalized === "blackvip") return "/blackvip.png";
   return `/${normalized}.png`;
 }
 
@@ -54,6 +55,9 @@ export function getVipBadgeStyles(status: string | null | undefined) {
   } else if (normalized === "diamond") {
     label = "Diamond VIP";
     color = "#2563eb";
+  } else if (normalized === "black_diamond" || normalized === "blackvip") {
+    label = "Black Diamond VIP";
+    color = "#000000";
   }
   
   return { label, color };

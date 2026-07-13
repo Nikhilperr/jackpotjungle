@@ -19,6 +19,7 @@ function getVipBadgeUrl(status: string | null | undefined): string | null {
   const normalized = status.toLowerCase();
   if (normalized === "platinum") return "/platium.png";
   if (normalized === "diamond") return "/dimond.png";
+  if (normalized === "black_diamond" || normalized === "blackvip") return "/blackvip.png";
   return `/${normalized}.png`;
 }
 

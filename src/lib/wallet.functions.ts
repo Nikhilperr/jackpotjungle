@@ -353,7 +353,8 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
               silver: 2,
               gold: 3,
               platinum: 4,
-              diamond: 5
+              diamond: 5,
+              black_diamond: 6
             };
 
             const currentRank = ranks[currentVip] ?? 0;
@@ -361,7 +362,10 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
             let qualifiedVip = "none";
             let bonusAmount = 0;
 
-            if (totalCashIn >= 5000) {
+            if (totalCashIn >= 10000) {
+              qualifiedVip = "black_diamond";
+              bonusAmount = 200;
+            } else if (totalCashIn >= 5000) {
               qualifiedVip = "diamond";
               bonusAmount = 100;
             } else if (totalCashIn >= 1000) {
@@ -397,6 +401,7 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
                 .eq("id", data.targetUserId);
 
               if (!vipUpdateErr) {
+                const formattedVipLabel = qualifiedVip.replace(/_/g, " ");
                 // 2. Insert wallet transaction for cashback deposit
                 await supabaseAdmin
                   .from("wallet_transactions")
@@ -410,8 +415,8 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
                     avail_after: newAvail,
                     credit_before: 0,
                     credit_after: 0,
-                    reason: `VIP Upgrade Cashback - ${qualifiedVip.toUpperCase()}`,
-                    notes: `Automatically awarded for reaching ${qualifiedVip.toUpperCase()} VIP level.`,
+                    reason: `VIP Upgrade Cashback - ${formattedVipLabel.toUpperCase()}`,
+                    notes: `Automatically awarded for reaching ${formattedVipLabel.toUpperCase()} VIP level.`,
                   });
 
                 // 3. Send automated system message to their support chat
@@ -422,7 +427,7 @@ export const performWalletActionAdmin = createServerFn({ method: "POST" })
                   .maybeSingle();
 
                 if (conv) {
-                  const messageText = `your level upgraded to ${qualifiedVip} you got ${bonusAmount}$ cashback for reaching ${qualifiedVip} its as deposit you can cashout or play it`;
+                  const messageText = `your level upgraded to ${formattedVipLabel} you got ${bonusAmount}$ cashback for reaching ${formattedVipLabel} its as deposit you can cashout or play it`;
                   await supabaseAdmin.from("page_messages").insert({
                     conversation_id: conv.id,
                     sender_id: context.userId,
