@@ -43,6 +43,9 @@ import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/c
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AppAuthenticatedRouteRouteImport } from './routes/app/_authenticated/route'
 import { Route as AuthenticatedChatIndexRouteImport } from './routes/_authenticated/chat.index'
+import { Route as AppAuthenticatedWalletRouteImport } from './routes/app/_authenticated/wallet'
+import { Route as AppAuthenticatedVipRewardsRouteImport } from './routes/app/_authenticated/vip-rewards'
+import { Route as AppAuthenticatedSecurityRouteImport } from './routes/app/_authenticated/security'
 import { Route as AppAuthenticatedProfileRouteImport } from './routes/app/_authenticated/profile'
 import { Route as AppAuthenticatedOnboardingRouteImport } from './routes/app/_authenticated/onboarding'
 import { Route as AppAuthenticatedFriendsRouteImport } from './routes/app/_authenticated/friends'
@@ -224,6 +227,23 @@ const AuthenticatedChatIndexRoute = AuthenticatedChatIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedChatRoute,
 } as any)
+const AppAuthenticatedWalletRoute = AppAuthenticatedWalletRouteImport.update({
+  id: '/wallet',
+  path: '/wallet',
+  getParentRoute: () => AppAuthenticatedRouteRoute,
+} as any)
+const AppAuthenticatedVipRewardsRoute =
+  AppAuthenticatedVipRewardsRouteImport.update({
+    id: '/vip-rewards',
+    path: '/vip-rewards',
+    getParentRoute: () => AppAuthenticatedRouteRoute,
+  } as any)
+const AppAuthenticatedSecurityRoute =
+  AppAuthenticatedSecurityRouteImport.update({
+    id: '/security',
+    path: '/security',
+    getParentRoute: () => AppAuthenticatedRouteRoute,
+  } as any)
 const AppAuthenticatedProfileRoute = AppAuthenticatedProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -331,6 +351,9 @@ export interface FileRoutesByFullPath {
   '/app/friends': typeof AppAuthenticatedFriendsRoute
   '/app/onboarding': typeof AppAuthenticatedOnboardingRoute
   '/app/profile': typeof AppAuthenticatedProfileRoute
+  '/app/security': typeof AppAuthenticatedSecurityRoute
+  '/app/vip-rewards': typeof AppAuthenticatedVipRewardsRoute
+  '/app/wallet': typeof AppAuthenticatedWalletRoute
   '/chat/': typeof AuthenticatedChatIndexRoute
   '/app/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
   '/app/chat/page': typeof AppAuthenticatedChatPageRoute
@@ -374,6 +397,9 @@ export interface FileRoutesByTo {
   '/app/friends': typeof AppAuthenticatedFriendsRoute
   '/app/onboarding': typeof AppAuthenticatedOnboardingRoute
   '/app/profile': typeof AppAuthenticatedProfileRoute
+  '/app/security': typeof AppAuthenticatedSecurityRoute
+  '/app/vip-rewards': typeof AppAuthenticatedVipRewardsRoute
+  '/app/wallet': typeof AppAuthenticatedWalletRoute
   '/chat': typeof AuthenticatedChatIndexRoute
   '/app/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
   '/app/chat/page': typeof AppAuthenticatedChatPageRoute
@@ -423,6 +449,9 @@ export interface FileRoutesById {
   '/app/_authenticated/friends': typeof AppAuthenticatedFriendsRoute
   '/app/_authenticated/onboarding': typeof AppAuthenticatedOnboardingRoute
   '/app/_authenticated/profile': typeof AppAuthenticatedProfileRoute
+  '/app/_authenticated/security': typeof AppAuthenticatedSecurityRoute
+  '/app/_authenticated/vip-rewards': typeof AppAuthenticatedVipRewardsRoute
+  '/app/_authenticated/wallet': typeof AppAuthenticatedWalletRoute
   '/_authenticated/chat/': typeof AuthenticatedChatIndexRoute
   '/app/_authenticated/chat/$friendId': typeof AppAuthenticatedChatFriendIdRoute
   '/app/_authenticated/chat/page': typeof AppAuthenticatedChatPageRoute
@@ -471,6 +500,9 @@ export interface FileRouteTypes {
     | '/app/friends'
     | '/app/onboarding'
     | '/app/profile'
+    | '/app/security'
+    | '/app/vip-rewards'
+    | '/app/wallet'
     | '/chat/'
     | '/app/chat/$friendId'
     | '/app/chat/page'
@@ -514,6 +546,9 @@ export interface FileRouteTypes {
     | '/app/friends'
     | '/app/onboarding'
     | '/app/profile'
+    | '/app/security'
+    | '/app/vip-rewards'
+    | '/app/wallet'
     | '/chat'
     | '/app/chat/$friendId'
     | '/app/chat/page'
@@ -562,6 +597,9 @@ export interface FileRouteTypes {
     | '/app/_authenticated/friends'
     | '/app/_authenticated/onboarding'
     | '/app/_authenticated/profile'
+    | '/app/_authenticated/security'
+    | '/app/_authenticated/vip-rewards'
+    | '/app/_authenticated/wallet'
     | '/_authenticated/chat/'
     | '/app/_authenticated/chat/$friendId'
     | '/app/_authenticated/chat/page'
@@ -834,6 +872,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatIndexRouteImport
       parentRoute: typeof AuthenticatedChatRoute
     }
+    '/app/_authenticated/wallet': {
+      id: '/app/_authenticated/wallet'
+      path: '/wallet'
+      fullPath: '/app/wallet'
+      preLoaderRoute: typeof AppAuthenticatedWalletRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
+    '/app/_authenticated/vip-rewards': {
+      id: '/app/_authenticated/vip-rewards'
+      path: '/vip-rewards'
+      fullPath: '/app/vip-rewards'
+      preLoaderRoute: typeof AppAuthenticatedVipRewardsRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
+    '/app/_authenticated/security': {
+      id: '/app/_authenticated/security'
+      path: '/security'
+      fullPath: '/app/security'
+      preLoaderRoute: typeof AppAuthenticatedSecurityRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
     '/app/_authenticated/profile': {
       id: '/app/_authenticated/profile'
       path: '/profile'
@@ -978,6 +1037,9 @@ interface AppAuthenticatedRouteRouteChildren {
   AppAuthenticatedFriendsRoute: typeof AppAuthenticatedFriendsRoute
   AppAuthenticatedOnboardingRoute: typeof AppAuthenticatedOnboardingRoute
   AppAuthenticatedProfileRoute: typeof AppAuthenticatedProfileRoute
+  AppAuthenticatedSecurityRoute: typeof AppAuthenticatedSecurityRoute
+  AppAuthenticatedVipRewardsRoute: typeof AppAuthenticatedVipRewardsRoute
+  AppAuthenticatedWalletRoute: typeof AppAuthenticatedWalletRoute
   AppAuthenticatedUUsernameRoute: typeof AppAuthenticatedUUsernameRoute
 }
 
@@ -987,6 +1049,9 @@ const AppAuthenticatedRouteRouteChildren: AppAuthenticatedRouteRouteChildren = {
   AppAuthenticatedFriendsRoute: AppAuthenticatedFriendsRoute,
   AppAuthenticatedOnboardingRoute: AppAuthenticatedOnboardingRoute,
   AppAuthenticatedProfileRoute: AppAuthenticatedProfileRoute,
+  AppAuthenticatedSecurityRoute: AppAuthenticatedSecurityRoute,
+  AppAuthenticatedVipRewardsRoute: AppAuthenticatedVipRewardsRoute,
+  AppAuthenticatedWalletRoute: AppAuthenticatedWalletRoute,
   AppAuthenticatedUUsernameRoute: AppAuthenticatedUUsernameRoute,
 }
 

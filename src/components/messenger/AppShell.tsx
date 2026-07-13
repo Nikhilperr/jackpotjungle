@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState, useRouter } from "@tanstack/react-router";
-import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff } from "lucide-react";
+import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -140,10 +140,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }
 
-  const navItems: Array<{ to: string; icon: typeof MessageCircle; label: string }> = [
+  const navItems = [
     { to: "/app/chat", icon: MessageCircle, label: "Chats" },
     { to: "/app/friends", icon: Users, label: "Friends" },
     { to: "/app/profile", icon: UserIcon, label: "Profile" },
+    { to: "/app/wallet", icon: Wallet, label: "Wallet" },
+    { to: "/app/security", icon: Shield, label: "Security" },
+    { to: "/app/vip-rewards", icon: Award, label: "VIP Rewards" },
   ];
   if (isAdmin) navItems.push({ to: "/app/admin", icon: Shield, label: "Admin" });
 
@@ -157,7 +160,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <button
           onClick={() => setOpen(false)}
-          className="md:hidden h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-secondary"
+          className="h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-secondary transition-colors"
         >
           <X className="h-5 w-5" />
         </button>
@@ -196,14 +199,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <DrawerCtx.Provider value={{ open: () => setOpen(true) }}>
       <div className="flex h-[100dvh] bg-background">
-        {/* Desktop persistent sidebar */}
-        <div className="hidden md:flex">{Drawer}</div>
-
-        {/* Mobile drawer */}
+        {/* Sliding overlay drawer menu for desktop and mobile */}
         {open && (
-          <div className="md:hidden fixed inset-0 z-50 flex">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-            <div className="relative z-10">{Drawer}</div>
+          <div className="fixed inset-0 z-50 flex animate-in fade-in duration-200">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setOpen(false)} />
+            <div className="relative z-10 animate-in slide-in-from-left duration-250 ease-out h-full">
+              {Drawer}
+            </div>
           </div>
         )}
 
@@ -223,7 +225,7 @@ export function HamburgerButton() {
   return (
     <button
       onClick={open}
-      className="md:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1"
+      className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1 transition-colors"
       aria-label="Open menu"
     >
       <Menu className="h-5 w-5" />
