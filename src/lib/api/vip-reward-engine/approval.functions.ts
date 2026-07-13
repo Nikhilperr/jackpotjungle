@@ -32,9 +32,12 @@ export async function ensureVipRewardSchema() {
 
   // 1. Try DATABASE_URL first
   if (process.env.DATABASE_URL) {
+    let connUrlStr = process.env.DATABASE_URL;
+    let sslVal: any = undefined;
+    const maskedUrl = process.env.DATABASE_URL?.replace(/:[^:@/]+@/, ":****@");
+
     try {
       console.log("[SelfHealing] Found DATABASE_URL, attempting connection...");
-      let connUrlStr = process.env.DATABASE_URL;
 
       const parsePostgresConfig = (connStr: string) => {
         let host = "";
@@ -92,8 +95,7 @@ export async function ensureVipRewardSchema() {
       }
 
       connUrlStr = `postgres://${config.user}:${config.password}@${resolvedHost}:${config.port}/${config.database}`;
-
-      const sslVal = servername ? { rejectUnauthorized: false, servername } : undefined;
+      sslVal = servername ? { rejectUnauthorized: false, servername } : undefined;
 
       client = new pg.Client({
         connectionString: connUrlStr,
@@ -104,11 +106,28 @@ export async function ensureVipRewardSchema() {
       success = true;
       console.log("[SelfHealing] Connected successfully using DATABASE_URL!");
     } catch (e: any) {
-      const maskedUrl = process.env.DATABASE_URL?.replace(/:[^:@/]+@/, ":****@");
-      errors.push(`DATABASE_URL (${maskedUrl}): ${e.message}`);
-      console.warn("[SelfHealing] DATABASE_URL connection attempt failed:", e.message);
+      errors.push(`DATABASE_URL (${maskedUrl}) with SSL: ${e.message}`);
+      console.warn("[SelfHealing] DATABASE_URL connection attempt failed with SSL:", e.message);
       try { if (client) await client.end(); } catch {}
       client = null;
+
+      if (sslVal) {
+        try {
+          console.log("[SelfHealing] Retrying DATABASE_URL without SSL...");
+          client = new pg.Client({
+            connectionString: connUrlStr,
+            ssl: undefined
+          });
+          await client.connect();
+          success = true;
+          console.log("[SelfHealing] Connected successfully using DATABASE_URL without SSL!");
+        } catch (e2: any) {
+          errors.push(`DATABASE_URL (${maskedUrl}) without SSL: ${e2.message}`);
+          console.warn("[SelfHealing] DATABASE_URL connection attempt failed without SSL:", e2.message);
+          try { if (client) await client.end(); } catch {}
+          client = null;
+        }
+      }
     }
   }
 
@@ -155,7 +174,21 @@ export async function ensureVipRewardSchema() {
             success = true;
             break;
           } catch (err: any) {
-            errors.push(`Host ${h}:${p} (${candidateUsername}): ${err.message}`);
+            errors.push(`Host ${h}:${p} (${candidateUsername}) with SSL: ${err.message}`);
+            
+            if (sslVal) {
+              try {
+                client = new pg.Client({
+                  connectionString: `postgres://${candidateUsername}:${dbPassword}@${resolvedHost}:${p}/${dbName}`,
+                  ssl: undefined
+                });
+                await client.connect();
+                success = true;
+                break;
+              } catch (err2: any) {
+                errors.push(`Host ${h}:${p} (${candidateUsername}) without SSL: ${err2.message}`);
+              }
+            }
           }
         } catch (err: any) {
           errors.push(`Host ${h}:${p} resolution: ${err.message}`);
