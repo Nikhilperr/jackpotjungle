@@ -6,6 +6,33 @@ import { useServerFn } from "@tanstack/react-start";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
+function HelpTooltip({ content }: { content: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-block ml-1.5 select-none shrink-0 align-middle">
+      <button
+        type="button"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onClick={(e) => {
+          e.preventDefault();
+          setOpen(!open);
+        }}
+        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-secondary text-muted-foreground text-[10px] font-bold hover:bg-muted hover:text-foreground active:scale-90 transition-all cursor-help border border-border"
+        title="Help Info"
+      >
+        ?
+      </button>
+      {open && (
+        <span className="absolute z-50 bottom-6 left-1/2 -translate-x-1/2 w-64 p-3 bg-neutral-950 border border-neutral-800 text-neutral-200 text-xs rounded-xl shadow-xl leading-relaxed whitespace-normal break-words pointer-events-none select-none font-normal normal-case block">
+          <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-neutral-950 border-r border-b border-neutral-800 rotate-45" />
+          {content}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function VipRewardSettingsView() {
   const loadFn = useServerFn(getVipRewardSettings);
   const saveFn = useServerFn(updateVipRewardSettings);
@@ -183,8 +210,9 @@ export function VipRewardSettingsView() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label htmlFor="rewardPoolPct" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                Reward Pool Percentage (%)
+              <label htmlFor="rewardPoolPct" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Reward Pool Percentage (%)</span>
+                <HelpTooltip content="The percentage of total users' holdings allocated each month to fund the VIP reward payouts. E.g., if set to 5%, the system uses 5% of the platform's monthly assets to distribute rewards." />
               </label>
               <Input
                 id="rewardPoolPct"
@@ -203,8 +231,9 @@ export function VipRewardSettingsView() {
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="rewardCapPct" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                Reward Cap Percentage (%)
+              <label htmlFor="rewardCapPct" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Reward Cap Percentage (%)</span>
+                <HelpTooltip content="The maximum percentage of the total reward pool that a single user can receive. E.g., if set to 10%, no single player can walk away with more than 10% of the entire monthly pool, protecting against heavy whale manipulation." />
               </label>
               <Input
                 id="rewardCapPct"
@@ -241,8 +270,9 @@ export function VipRewardSettingsView() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1.5">
-              <label htmlFor="depWeight" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                Deposit Weight
+              <label htmlFor="depWeight" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Deposit Weight</span>
+                <HelpTooltip content="Determines the contribution weight (out of 100 total points) of a user's total monthly deposits when calculating their final score." />
               </label>
               <Input
                 id="depWeight"
@@ -255,8 +285,9 @@ export function VipRewardSettingsView() {
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="holdWeight" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                Holding Weight
+              <label htmlFor="holdWeight" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Holding Weight</span>
+                <HelpTooltip content="Determines the contribution weight (out of 100 total points) of a user's average asset balance holdings when calculating their final score." />
               </label>
               <Input
                 id="holdWeight"
@@ -269,8 +300,9 @@ export function VipRewardSettingsView() {
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="refWeight" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                Referral Weight
+              <label htmlFor="refWeight" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Referral Weight</span>
+                <HelpTooltip content="Determines the contribution weight (out of 100 total points) of a user's referral deposit performance when calculating their final score." />
               </label>
               <Input
                 id="refWeight"
@@ -283,8 +315,9 @@ export function VipRewardSettingsView() {
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="loyWeight" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                Loyalty Weight
+              <label htmlFor="loyWeight" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Loyalty Weight</span>
+                <HelpTooltip content="Determines the contribution weight (out of 100 total points) of a user's overall longevity and engagement score." />
               </label>
               <Input
                 id="loyWeight"
@@ -312,8 +345,9 @@ export function VipRewardSettingsView() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <label htmlFor="minDeposit" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                Min Monthly Deposit ($)
+              <label htmlFor="minDeposit" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Min Monthly Deposit ($)</span>
+                <HelpTooltip content="The minimum deposit amount required in a single month for a user to qualify for any monthly loyalty reward payout." />
               </label>
               <Input
                 id="minDeposit"
@@ -325,8 +359,9 @@ export function VipRewardSettingsView() {
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="minHolding" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                Min Monthly Holding ($)
+              <label htmlFor="minHolding" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Min Monthly Holding ($)</span>
+                <HelpTooltip content="The minimum average holding balance required for a user to qualify for monthly loyalty rewards." />
               </label>
               <Input
                 id="minHolding"
@@ -338,8 +373,9 @@ export function VipRewardSettingsView() {
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="distDate" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block flex items-center gap-1">
-                <Calendar className="h-3.5 w-3.5" /> Distribution Date (Day)
+              <label htmlFor="distDate" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5" /> <span>Distribution Date (Day)</span>
+                <HelpTooltip content="The day of the month (between 1 and 28) when the reward engine automatically processes payouts and updates balances." />
               </label>
               <Input
                 id="distDate"
@@ -363,27 +399,45 @@ export function VipRewardSettingsView() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
             <div className="space-y-1.5">
-              <label htmlFor="vipBronze" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Bronze</label>
+              <label htmlFor="vipBronze" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Bronze</span>
+                <HelpTooltip content="Reward multiplier for the Bronze VIP tier. A higher multiplier increases the tier's reward payout size." />
+              </label>
               <Input id="vipBronze" type="number" step="0.01" min="0" value={bronze} onChange={(e) => setBronze(Math.max(0, Number(e.target.value)))} required />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="vipSilver" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Silver</label>
+              <label htmlFor="vipSilver" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Silver</span>
+                <HelpTooltip content="Reward multiplier for the Silver VIP tier. A higher multiplier increases the tier's reward payout size." />
+              </label>
               <Input id="vipSilver" type="number" step="0.01" min="0" value={silver} onChange={(e) => setSilver(Math.max(0, Number(e.target.value)))} required />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="vipGold" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Gold</label>
+              <label htmlFor="vipGold" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Gold</span>
+                <HelpTooltip content="Reward multiplier for the Gold VIP tier. A higher multiplier increases the tier's reward payout size." />
+              </label>
               <Input id="vipGold" type="number" step="0.01" min="0" value={gold} onChange={(e) => setGold(Math.max(0, Number(e.target.value)))} required />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="vipPlatinum" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Platinum</label>
+              <label htmlFor="vipPlatinum" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Platinum</span>
+                <HelpTooltip content="Reward multiplier for the Platinum VIP tier. A higher multiplier increases the tier's reward payout size." />
+              </label>
               <Input id="vipPlatinum" type="number" step="0.01" min="0" value={platinum} onChange={(e) => setPlatinum(Math.max(0, Number(e.target.value)))} required />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="vipDiamond" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Diamond</label>
+              <label htmlFor="vipDiamond" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Diamond</span>
+                <HelpTooltip content="Reward multiplier for the Diamond VIP tier. A higher multiplier increases the tier's reward payout size." />
+              </label>
               <Input id="vipDiamond" type="number" step="0.01" min="0" value={diamond} onChange={(e) => setDiamond(Math.max(0, Number(e.target.value)))} required />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="vipBlackDiamond" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Black Diamond</label>
+              <label htmlFor="vipBlackDiamond" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Black Diamond</span>
+                <HelpTooltip content="Reward multiplier for the Black Diamond VIP tier. A higher multiplier increases the tier's reward payout size." />
+              </label>
               <Input id="vipBlackDiamond" type="number" step="0.01" min="0" value={blackDiamond} onChange={(e) => setBlackDiamond(Math.max(0, Number(e.target.value)))} required />
             </div>
           </div>
@@ -397,8 +451,9 @@ export function VipRewardSettingsView() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label htmlFor="minRefDeposit" className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                Min Referred User Deposit ($)
+              <label htmlFor="minRefDeposit" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Min Referred User Deposit ($)</span>
+                <HelpTooltip content="The minimum deposit a referred friend must complete in order to count towards the referrer's VIP score points." />
               </label>
               <Input
                 id="minRefDeposit"
@@ -414,8 +469,9 @@ export function VipRewardSettingsView() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                Referred User Verification Required
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center">
+                <span>Referred User Verification Required</span>
+                <HelpTooltip content="If active, referred friends must complete their profile and identity verification before their deposits count toward the referrer's VIP points." />
               </label>
               <div className="flex items-center gap-3 pt-2">
                 <button
