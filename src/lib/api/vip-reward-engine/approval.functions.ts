@@ -17,8 +17,71 @@ export async function ensureVipRewardSchema() {
     dns.setDefaultResultOrder("ipv4first");
   }
 
+  // Load root .env file variables if missing (including project ref)
+  try {
+    const fs = await import("fs");
+    const path = await import("path");
+    const envPath = path.resolve(".env");
+    if (fs.existsSync(envPath)) {
+      const envContent = fs.readFileSync(envPath, "utf-8");
+      for (const line of envContent.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const index = trimmed.indexOf("=");
+        if (index > 0) {
+          const key = trimmed.slice(0, index).trim();
+          let value = trimmed.slice(index + 1).trim();
+          if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+          }
+          if (!process.env[key]) {
+            process.env[key] = value;
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
+  // Load credentials from PM2 JSON list (jlist) if running under PM2 on the VPS
+  try {
+    const { execSync } = await import("child_process");
+    const pm2Output = execSync('pm2 jlist', { encoding: 'utf8' });
+    if (pm2Output) {
+      const pm2Data = JSON.parse(pm2Output);
+      for (const proc of pm2Data) {
+        const env = proc.pm2_env;
+        if (env && (env.DATABASE_URL || env.SUPABASE_DB_PASSWORD || env.DATABASE_PASSWORD)) {
+          const keys = [
+            'DATABASE_URL',
+            'SUPABASE_DB_PASSWORD',
+            'DATABASE_PASSWORD',
+            'SUPABASE_DB_HOST',
+            'DATABASE_HOST',
+            'SUPABASE_DB_PORT',
+            'DATABASE_PORT',
+            'SUPABASE_DB_USER',
+            'DATABASE_USER',
+            'SUPABASE_DB_NAME',
+            'DATABASE_NAME',
+            'DATABASE_SSL'
+          ];
+          for (const key of keys) {
+            if (env[key] && !process.env[key]) {
+              process.env[key] = env[key];
+            }
+          }
+          console.log(`[SelfHealing] Successfully loaded database credentials from active PM2 process "${proc.name}"`);
+          break;
+        }
+      }
+    }
+  } catch (e: any) {
+    // quiet - PM2 might not be installed locally or no permission
+  }
+
   const dbPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD || "grootMahakal7X";
   const dbName = process.env.SUPABASE_DB_NAME || process.env.DATABASE_NAME || "postgres";
+  const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "postgres";
   const errors: string[] = [];
   let client;
   let success = false;
@@ -122,10 +185,6 @@ export async function ensureVipRewardSchema() {
 
   // 2. Try configured connection settings fallback
   if (!success) {
-    const dbPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD || "grootMahakal7X";
-    const dbName = process.env.SUPABASE_DB_NAME || process.env.DATABASE_NAME || "postgres";
-    const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "postgres";
-
     const configuredHost = process.env.SUPABASE_DB_HOST || process.env.DATABASE_HOST;
     const hosts = configuredHost ? [configuredHost] : ["localhost", "127.0.0.1", "db.gsnhqzsgptqxtlhggzkz.supabase.co", "db.chancerealm.casino", "db"];
 
@@ -138,45 +197,50 @@ export async function ensureVipRewardSchema() {
           const resolvedHost = await resolveHostToIPv4(h, dns);
           const isRemote = h.includes(".") && !h.startsWith("127.");
           
-          let candidateUsername = username;
           let projectRef = "";
-          
-          // Only append project ref suffix if the host explicitly matches a Supabase project domain
           const match = h.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
           if (match) {
             projectRef = match[1];
-            if (projectRef && !candidateUsername.includes(".")) {
-              candidateUsername = `${candidateUsername}.${projectRef}`;
-            }
+          } else if (isRemote || h === "localhost" || h === "127.0.0.1") {
+            projectRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID || "self-hosted";
+          }
+
+          // Build a set of candidate usernames to try: pure username and suffixed username
+          const candidateUsernames = [username];
+          if (projectRef && !username.includes(".")) {
+            candidateUsernames.push(`${username}.${projectRef}`);
           }
 
           const sslVal = isRemote ? { rejectUnauthorized: false, servername: h } : undefined;
 
-          try {
-            client = new pg.Client({
-              connectionString: `postgres://${candidateUsername}:${dbPassword}@${resolvedHost}:${p}/${dbName}`,
-              ssl: sslVal
-            });
-            await client.connect();
-            success = true;
-            break;
-          } catch (err: any) {
-            errors.push(`Host ${h}:${p} (${candidateUsername}) with SSL: ${err.message}`);
-            
-            if (sslVal) {
-              try {
-                client = new pg.Client({
-                  connectionString: `postgres://${candidateUsername}:${dbPassword}@${resolvedHost}:${p}/${dbName}`,
-                  ssl: undefined
-                });
-                await client.connect();
-                success = true;
-                break;
-              } catch (err2: any) {
-                errors.push(`Host ${h}:${p} (${candidateUsername}) without SSL: ${err2.message}`);
+          for (const candidateUsername of candidateUsernames) {
+            try {
+              client = new pg.Client({
+                connectionString: `postgres://${candidateUsername}:${dbPassword}@${resolvedHost}:${p}/${dbName}`,
+                ssl: sslVal
+              });
+              await client.connect();
+              success = true;
+              break;
+            } catch (err: any) {
+              errors.push(`Host ${h}:${p} (${candidateUsername}) with SSL: ${err.message}`);
+              
+              if (sslVal) {
+                try {
+                  client = new pg.Client({
+                    connectionString: `postgres://${candidateUsername}:${dbPassword}@${resolvedHost}:${p}/${dbName}`,
+                    ssl: undefined
+                  });
+                  await client.connect();
+                  success = true;
+                  break;
+                } catch (err2: any) {
+                  errors.push(`Host ${h}:${p} (${candidateUsername}) without SSL: ${err2.message}`);
+                }
               }
             }
           }
+          if (success) break;
         } catch (err: any) {
           errors.push(`Host ${h}:${p} resolution: ${err.message}`);
         }
