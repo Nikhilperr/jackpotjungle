@@ -312,8 +312,14 @@ function AdminPage() {
   }, [user]);
 
   useEffect(() => {
-    if (!loading && !isAdmin) navigate({ to: "/app/chat", replace: true });
-  }, [loading, isAdmin, navigate]);
+    if (!loading) {
+      if (!isAdmin) {
+        navigate({ to: "/app/chat", replace: true });
+      } else if (!isSuperAdmin && (tab === "monthly_profit" || tab === "vip_dashboard")) {
+        setTab("inbox");
+      }
+    }
+  }, [loading, isAdmin, isSuperAdmin, tab, navigate]);
 
   useEffect(() => {
     if (isSuperAdmin) {
@@ -441,10 +447,8 @@ function AdminPage() {
         <SideBtn active={tab === "referrals"} onClick={() => selectTab("referrals")} icon={Gift} label="Referrals" />
         <SideBtn active={tab === "logs"} onClick={() => selectTab("logs")} icon={Activity} label="Logs" />
         <SideBtn active={tab === "users"} onClick={() => selectTab("users")} icon={UsersIcon} label="Users Management" />
-        <SideBtn active={tab === "monthly_profit"} onClick={() => selectTab("monthly_profit")} icon={Coins} label="Monthly Profit" />
         <SideBtn active={tab === "monitor"} onClick={() => selectTab("monitor")} icon={Eye} label="Monitor Chats" />
         <SideBtn active={tab === "push_notifications"} onClick={() => selectTab("push_notifications")} icon={Bell} label="Push Notification" />
-        <SideBtn active={tab === "vip_dashboard"} onClick={() => selectTab("vip_dashboard")} icon={TrendingUp} label="VIP Dashboard" />
         {isSuperAdmin && (
           <>
             <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Pinned Chats</p>
@@ -454,6 +458,8 @@ function AdminPage() {
             <SideBtn active={tab === "admins"} onClick={() => selectTab("admins")} icon={UsersIcon} label="Admin team" />
             <SideBtn active={tab === "super"} onClick={() => selectTab("super")} icon={SettingsIcon} label="System settings" />
             <SideBtn active={tab === "vip_settings"} onClick={() => selectTab("vip_settings")} icon={Crown} label="VIP Settings" />
+            <SideBtn active={tab === "monthly_profit"} onClick={() => selectTab("monthly_profit")} icon={Coins} label="Monthly Profit" />
+            <SideBtn active={tab === "vip_dashboard"} onClick={() => selectTab("vip_dashboard")} icon={TrendingUp} label="VIP Dashboard" />
           </>
         )}
         <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
@@ -515,11 +521,13 @@ function AdminPage() {
             <UsersManagementView meId={user.id} />
           </ScrollWrap>
         </div>
-        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "monthly_profit" ? "" : "hidden"}`}>
-          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Monthly Profit">
-            <MonthlyProfitView />
-          </ScrollWrap>
-        </div>
+        {isSuperAdmin && (
+          <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "monthly_profit" ? "" : "hidden"}`}>
+            <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Monthly Profit">
+              <MonthlyProfitView />
+            </ScrollWrap>
+          </div>
+        )}
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "monitor" ? "" : "hidden"}`}>
           <MonitorChatsView meId={user.id} onOpenNav={() => setNavOpen(true)} />
         </div>
@@ -547,11 +555,13 @@ function AdminPage() {
             </ScrollWrap>
           </div>
         )}
-        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "vip_dashboard" ? "" : "hidden"}`}>
-          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="VIP & Loyalty Dashboard">
-            <VipAnalyticsDashboardView isSuperAdmin={isSuperAdmin} />
-          </ScrollWrap>
-        </div>
+        {isSuperAdmin && (
+          <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "vip_dashboard" ? "" : "hidden"}`}>
+            <ScrollWrap onOpenNav={() => setNavOpen(true)} title="VIP & Loyalty Dashboard">
+              <VipAnalyticsDashboardView isSuperAdmin={isSuperAdmin} />
+            </ScrollWrap>
+          </div>
+        )}
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "profile" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={user.id} email={user.email ?? null} /></ScrollWrap>
         </div>
