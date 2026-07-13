@@ -1055,7 +1055,7 @@ export function ReferralsAdminView({ onUserClick }: { onUserClick?: (userId: str
       </div>
       <div className="bg-card border border-border rounded-2xl divide-y divide-border">
         {filtered.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No referrals.</p> : filtered.map((r) => (
-          <div key={r.id} className="p-4 flex items-center gap-3 flex-wrap text-sm">
+          <div key={r.id} className="p-4 flex items-center justify-between gap-3 flex-wrap text-sm">
             <div className="flex-1 min-w-0 select-none">
               <p className="flex items-center gap-1.5 flex-wrap">
                 <button 
@@ -1076,6 +1076,29 @@ export function ReferralsAdminView({ onUserClick }: { onUserClick?: (userId: str
               </p>
               <p className="text-xs text-muted-foreground">Bonus: {r.bonus_amount} · {r.status}</p>
             </div>
+            {r.status === "pending" && (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  const amtStr = window.prompt("Enter bonus amount ($) for this referral:", "10");
+                  if (amtStr === null) return;
+                  const amt = parseFloat(amtStr);
+                  if (isNaN(amt) || amt < 0) {
+                    toast.error("Invalid bonus amount");
+                    return;
+                  }
+                  try {
+                    await approve(r.id, amt);
+                    toast.success("Referral approved!");
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to approve");
+                  }
+                }}
+                className="h-8 rounded-full text-xs font-semibold px-4"
+              >
+                Approve
+              </Button>
+            )}
           </div>
         ))}
       </div>

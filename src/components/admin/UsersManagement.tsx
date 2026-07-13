@@ -38,6 +38,26 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const LIMIT = 15;
 
+const AVAILABLE_PERMISSIONS = [
+  { id: "inbox", label: "Page Inbox" },
+  { id: "aichat", label: "AI Chat" },
+  { id: "user_ai_knowledge", label: "User AI Knowledge" },
+  { id: "teamchat", label: "Admin Team Chat" },
+  { id: "quickreplies", label: "Quick Replies" },
+  { id: "tags", label: "Tags" },
+  { id: "broadcasts", label: "Broadcasts" },
+  { id: "followups", label: "Follow-ups" },
+  { id: "autoresp", label: "Auto-response" },
+  { id: "referrals", label: "Referrals" },
+  { id: "logs", label: "Logs" },
+  { id: "users", label: "User Management" },
+  { id: "monitor", label: "Monitor Chat" },
+  { id: "push_notifications", label: "Push Notification" },
+  { id: "profile", label: "My Profile" }
+];
+
+const DEFAULT_PERMISSIONS = ["inbox", "aichat", "teamchat", "referrals", "users", "monitor", "profile"];
+
 export function UsersManagementView({ meId }: { meId: string }) {
   const fetchFn = useServerFn(getUsersListAdmin);
   const updateFn = useServerFn(updateUserProfileAdmin);
@@ -90,6 +110,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
   const [editVerified, setEditVerified] = useState(false);
   const [editStatus, setEditStatus] = useState("active");
   const [editRole, setEditRole] = useState("user");
+  const [editPermissions, setEditPermissions] = useState<string[]>(DEFAULT_PERMISSIONS);
   const [editTheme, setEditTheme] = useState("dark");
   const [editLanguage, setEditLanguage] = useState("en");
   const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(null);
@@ -174,6 +195,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
     setEditVerified(!!u.verified);
     setEditStatus(u.status || (u.is_blocked ? "suspended" : "active"));
     setEditRole(u.role || "user");
+    setEditPermissions(u.permissions || DEFAULT_PERMISSIONS);
     setEditTheme(u.theme || "dark");
     setEditLanguage(u.language || "en");
     setEditAvatarUrl(u.avatar_url);
@@ -248,7 +270,8 @@ export function UsersManagementView({ meId }: { meId: string }) {
             avatar_url: editAvatarUrl,
             cover_photo: editCoverPhoto
           },
-          roleUpdate: isSuperAdmin ? (editRole as any) : undefined
+          roleUpdate: isSuperAdmin ? (editRole as any) : undefined,
+          permissionsUpdate: isSuperAdmin && editRole === "admin" ? editPermissions : undefined
         }
       });
       toast.success("User profile successfully updated.");
@@ -850,7 +873,13 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         </p>
                         <select
                           value={editRole}
-                          onChange={(e) => setEditRole(e.target.value)}
+                          onChange={(e) => {
+                            const newRole = e.target.value;
+                            setEditRole(newRole);
+                            if (newRole === "admin" && (!selectedUser?.permissions || selectedUser.permissions.length === 0)) {
+                              setEditPermissions(DEFAULT_PERMISSIONS);
+                            }
+                          }}
                           className="w-full h-10 rounded-lg border border-border bg-card px-3 text-sm"
                           disabled={!canEditSelectedUser}
                         >
@@ -858,6 +887,34 @@ export function UsersManagementView({ meId }: { meId: string }) {
                           <option value="admin">Administrator</option>
                           <option value="super_admin">Super Administrator</option>
                         </select>
+
+                        {/* Sidebar permissions list if role is admin */}
+                        {editRole === "admin" && (
+                          <div className="space-y-2 border-t border-border/50 pt-3 mt-3">
+                            <label className="text-xs font-bold text-muted-foreground uppercase">Sidebar Permissions</label>
+                            <div className="grid grid-cols-2 gap-2 mt-1 max-h-48 overflow-y-auto p-2 border border-border rounded-lg bg-card">
+                              {AVAILABLE_PERMISSIONS.map((p) => {
+                                const checked = editPermissions.includes(p.id);
+                                return (
+                                  <label key={p.id} className="flex items-center gap-2 text-xs font-medium cursor-pointer p-1 hover:bg-secondary/40 rounded select-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={!canEditSelectedUser}
+                                      onChange={() => {
+                                        setEditPermissions(prev =>
+                                          checked ? prev.filter(x => x !== p.id) : [...prev, p.id]
+                                        );
+                                      }}
+                                      className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
+                                    />
+                                    <span>{p.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 

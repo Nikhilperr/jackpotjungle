@@ -208,7 +208,9 @@ type ConvRow = {
 
 function AdminPage() {
   const { user } = useAuth();
-  const { isAdmin, isSuperAdmin, loading } = useRole();
+  const { isAdmin, isSuperAdmin, permissions, loading } = useRole();
+  const activePermissions = useMemo(() => permissions && permissions.length > 0 ? permissions : DEFAULT_PERMISSIONS, [permissions]);
+  const hasPerm = useCallback((t: string) => isSuperAdmin || activePermissions.includes(t), [isSuperAdmin, activePermissions]);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [adminName, setAdminName] = useState("Admin");
@@ -315,11 +317,17 @@ function AdminPage() {
     if (!loading) {
       if (!isAdmin) {
         navigate({ to: "/app/chat", replace: true });
-      } else if (!isSuperAdmin && (tab === "monthly_profit" || tab === "vip_dashboard")) {
-        setTab("inbox");
+      } else if (!isSuperAdmin) {
+        const superAdminOnlyTabs = ["rules", "updates", "admins", "super", "vip_settings", "monthly_profit", "vip_dashboard"];
+        const isRestrictedTab = superAdminOnlyTabs.includes(tab) || !hasPerm(tab);
+        if (isRestrictedTab) {
+          const allowedTabs = ["inbox", "aichat", "user_ai_knowledge", "teamchat", "quickreplies", "tags", "broadcasts", "followups", "autoresp", "referrals", "logs", "users", "monitor", "push_notifications", "profile"];
+          const firstAllowed = allowedTabs.find(t => hasPerm(t)) || "profile";
+          setTab(firstAllowed as Tab);
+        }
       }
     }
-  }, [loading, isAdmin, isSuperAdmin, tab, navigate]);
+  }, [loading, isAdmin, isSuperAdmin, tab, hasPerm, navigate]);
 
   useEffect(() => {
     if (isSuperAdmin) {
@@ -435,20 +443,20 @@ function AdminPage() {
       </div>
       <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
         <p className="px-3 pt-1 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Business</p>
-        <SideBtn active={tab === "inbox"} onClick={() => selectTab("inbox")} icon={Inbox} label="Page Inbox" />
-        <SideBtn active={tab === "aichat"} onClick={() => selectTab("aichat")} icon={Sparkles} label="AI Chat" />
-        <SideBtn active={tab === "user_ai_knowledge"} onClick={() => selectTab("user_ai_knowledge")} icon={Bot} label="User AI Knowledge" />
-        <SideBtn active={tab === "teamchat"} onClick={() => selectTab("teamchat")} icon={MessageSquare} label="Admin Team Chat" />
-        <SideBtn active={tab === "quickreplies"} onClick={() => selectTab("quickreplies")} icon={MessageSquareQuote} label="Quick Replies" />
-        <SideBtn active={tab === "tags"} onClick={() => selectTab("tags")} icon={TagIcon} label="Tags" />
-        <SideBtn active={tab === "broadcasts"} onClick={() => selectTab("broadcasts")} icon={Megaphone} label="Broadcasts" />
-        <SideBtn active={tab === "followups"} onClick={() => selectTab("followups")} icon={Bell} label="Follow-ups" />
-        <SideBtn active={tab === "autoresp"} onClick={() => selectTab("autoresp")} icon={Bot} label="Auto-response" />
-        <SideBtn active={tab === "referrals"} onClick={() => selectTab("referrals")} icon={Gift} label="Referrals" />
-        <SideBtn active={tab === "logs"} onClick={() => selectTab("logs")} icon={Activity} label="Logs" />
-        <SideBtn active={tab === "users"} onClick={() => selectTab("users")} icon={UsersIcon} label="Users Management" />
-        <SideBtn active={tab === "monitor"} onClick={() => selectTab("monitor")} icon={Eye} label="Monitor Chats" />
-        <SideBtn active={tab === "push_notifications"} onClick={() => selectTab("push_notifications")} icon={Bell} label="Push Notification" />
+        {hasPerm("inbox") && <SideBtn active={tab === "inbox"} onClick={() => selectTab("inbox")} icon={Inbox} label="Page Inbox" />}
+        {hasPerm("aichat") && <SideBtn active={tab === "aichat"} onClick={() => selectTab("aichat")} icon={Sparkles} label="AI Chat" />}
+        {hasPerm("user_ai_knowledge") && <SideBtn active={tab === "user_ai_knowledge"} onClick={() => selectTab("user_ai_knowledge")} icon={Bot} label="User AI Knowledge" />}
+        {hasPerm("teamchat") && <SideBtn active={tab === "teamchat"} onClick={() => selectTab("teamchat")} icon={MessageSquare} label="Admin Team Chat" />}
+        {hasPerm("quickreplies") && <SideBtn active={tab === "quickreplies"} onClick={() => selectTab("quickreplies")} icon={MessageSquareQuote} label="Quick Replies" />}
+        {hasPerm("tags") && <SideBtn active={tab === "tags"} onClick={() => selectTab("tags")} icon={TagIcon} label="Tags" />}
+        {hasPerm("broadcasts") && <SideBtn active={tab === "broadcasts"} onClick={() => selectTab("broadcasts")} icon={Megaphone} label="Broadcasts" />}
+        {hasPerm("followups") && <SideBtn active={tab === "followups"} onClick={() => selectTab("followups")} icon={Bell} label="Follow-ups" />}
+        {hasPerm("autoresp") && <SideBtn active={tab === "autoresp"} onClick={() => selectTab("autoresp")} icon={Bot} label="Auto-response" />}
+        {hasPerm("referrals") && <SideBtn active={tab === "referrals"} onClick={() => selectTab("referrals")} icon={Gift} label="Referrals" />}
+        {hasPerm("logs") && <SideBtn active={tab === "logs"} onClick={() => selectTab("logs")} icon={Activity} label="Logs" />}
+        {hasPerm("users") && <SideBtn active={tab === "users"} onClick={() => selectTab("users")} icon={UsersIcon} label="Users Management" />}
+        {hasPerm("monitor") && <SideBtn active={tab === "monitor"} onClick={() => selectTab("monitor")} icon={Eye} label="Monitor Chats" />}
+        {hasPerm("push_notifications") && <SideBtn active={tab === "push_notifications"} onClick={() => selectTab("push_notifications")} icon={Bell} label="Push Notification" />}
         {isSuperAdmin && (
           <>
             <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Pinned Chats</p>
@@ -463,7 +471,7 @@ function AdminPage() {
           </>
         )}
         <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
-        <SideBtn active={tab === "profile"} onClick={() => selectTab("profile")} icon={UserIcon} label="My profile" />
+        {hasPerm("profile") && <SideBtn active={tab === "profile"} onClick={() => selectTab("profile")} icon={UserIcon} label="My profile" />}
       </nav>
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
@@ -6497,10 +6505,31 @@ function AdminsView({ onOpenNav }: { onOpenNav: () => void }) {
   );
 }
 
+const AVAILABLE_PERMISSIONS = [
+  { id: "inbox", label: "Page Inbox" },
+  { id: "aichat", label: "AI Chat" },
+  { id: "user_ai_knowledge", label: "User AI Knowledge" },
+  { id: "teamchat", label: "Admin Team Chat" },
+  { id: "quickreplies", label: "Quick Replies" },
+  { id: "tags", label: "Tags" },
+  { id: "broadcasts", label: "Broadcasts" },
+  { id: "followups", label: "Follow-ups" },
+  { id: "autoresp", label: "Auto-response" },
+  { id: "referrals", label: "Referrals" },
+  { id: "logs", label: "Logs" },
+  { id: "users", label: "User Management" },
+  { id: "monitor", label: "Monitor Chat" },
+  { id: "push_notifications", label: "Push Notification" },
+  { id: "profile", label: "My Profile" }
+];
+
+const DEFAULT_PERMISSIONS = ["inbox", "aichat", "teamchat", "referrals", "users", "monitor", "profile"];
+
 function AddAdminDialog({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Array<{ id: string; username: string; avatar_url: string | null }>>([]);
   const [role, setRole] = useState<"admin" | "super_admin">("admin");
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>(DEFAULT_PERMISSIONS);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -6518,7 +6547,11 @@ function AddAdminDialog({ onClose }: { onClose: () => void }) {
 
   async function promote(userId: string) {
     setBusy(true);
-    const { error } = await supabase.from("user_roles").insert({ user_id: userId, role });
+    const { error } = await supabase.from("user_roles").insert({ 
+      user_id: userId, 
+      role,
+      permissions: role === "super_admin" ? null : selectedPermissions
+    });
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success(`Granted ${role.replace("_", " ")}.`);
@@ -6527,7 +6560,7 @@ function AddAdminDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card rounded-2xl border border-border w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card rounded-2xl border border-border w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-lg">Add admin</h3>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><ChevronLeft className="h-5 w-5 rotate-45" /></button>
@@ -6540,6 +6573,31 @@ function AddAdminDialog({ onClose }: { onClose: () => void }) {
               <button onClick={() => setRole("super_admin")} className={`flex-1 h-10 rounded-lg text-sm font-medium ${role === "super_admin" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"}`}>Super admin</button>
             </div>
           </div>
+          {role === "admin" && (
+            <div className="space-y-1.5 border-t border-border/50 pt-3">
+              <label className="text-xs font-bold text-muted-foreground uppercase">Sidebar Permissions</label>
+              <div className="grid grid-cols-2 gap-2 mt-1 max-h-48 overflow-y-auto p-2 border border-border rounded-lg bg-secondary/20">
+                {AVAILABLE_PERMISSIONS.map((p) => {
+                  const checked = selectedPermissions.includes(p.id);
+                  return (
+                    <label key={p.id} className="flex items-center gap-2 text-xs font-medium cursor-pointer p-1 hover:bg-secondary/40 rounded select-none">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setSelectedPermissions(prev =>
+                            checked ? prev.filter(x => x !== p.id) : [...prev, p.id]
+                          );
+                        }}
+                        className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
+                      />
+                      <span>{p.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div>
             <label className="text-xs font-medium text-muted-foreground">Search user</label>
             <Input

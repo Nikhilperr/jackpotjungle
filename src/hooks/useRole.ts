@@ -6,6 +6,7 @@ export type AppRole = "user" | "admin" | "super_admin";
 
 export function useRole() {
   const [roles, setRoles] = useState<AppRole[]>([]);
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export function useRole() {
       if (!userId) { 
         if (mounted) { 
           setRoles([]); 
+          setPermissions([]);
           setLoading(false); 
         } 
         return; 
@@ -30,10 +32,19 @@ export function useRole() {
 
       const { data } = await supabase
         .from("user_roles")
-        .select("role")
+        .select("role, permissions")
         .eq("user_id", userId);
       if (!mounted) return;
       setRoles((data ?? []).map((r) => r.role as AppRole));
+      
+      const permsSet = new Set<string>();
+      (data ?? []).forEach((r: any) => {
+        if (r.permissions) {
+          r.permissions.forEach((p: string) => permsSet.add(p));
+        }
+      });
+      setPermissions(Array.from(permsSet));
+
       setLoading(false);
     }
 
@@ -60,5 +71,5 @@ export function useRole() {
   const isAdmin = roles.includes("admin") || isSuperAdmin;
   const topRole: AppRole = isSuperAdmin ? "super_admin" : isAdmin ? "admin" : "user";
 
-  return { roles, isAdmin, isSuperAdmin, topRole, role: topRole, loading };
+  return { roles, isAdmin, isSuperAdmin, topRole, role: topRole, permissions, loading };
 }

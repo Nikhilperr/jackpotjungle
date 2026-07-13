@@ -954,6 +954,14 @@ export const MIGRATIONS_SQL = `
           END IF;
         END $$;
 
+        -- Add permissions column to user_roles
+        ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS permissions TEXT[];
+
+        -- Set default permissions for existing admins & super admins if they are null
+        UPDATE public.user_roles 
+        SET permissions = ARRAY['inbox', 'aichat', 'teamchat', 'referrals', 'users', 'monitor', 'profile'] 
+        WHERE role IN ('admin', 'super_admin') AND permissions IS NULL;
+
         -- Notify PostgREST to reload its schema cache
         NOTIFY pgrst, 'reload schema';
       `;
@@ -1269,7 +1277,7 @@ export const getUsersListAdmin = createServerFn({ method: "POST" })
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: allAdminRoles } = await supabaseAdmin.from("user_roles").select("user_id, role");
+    const { data: allAdminRoles } = await supabaseAdmin.from("user_roles").select("user_id, role, permissions");
     const adminIds = (allAdminRoles ?? [])
       .filter((r: any) => r.role === "admin" || r.role === "super_admin")
       .map((r: any) => r.user_id);
@@ -1360,15 +1368,18 @@ export const getUsersListAdmin = createServerFn({ method: "POST" })
       refCountMap[r.referrer_id] = (refCountMap[r.referrer_id] || 0) + 1;
     });
 
-    // Map roles to each user
+    // Map roles & permissions to each user
     const rolesMap = new Map<string, string>();
+    const permissionsMap = new Map<string, string[]>();
     (allAdminRoles ?? []).forEach((r: any) => {
       rolesMap.set(r.user_id, r.role);
+      permissionsMap.set(r.user_id, r.permissions || []);
     });
 
     const mappedUsers = users.map((u: any) => ({
       ...u,
       role: rolesMap.get(u.id) || "user",
+      permissions: permissionsMap.get(u.id) || [],
       referral_count: refCountMap[u.id] || 0,
     }));
 
@@ -1401,6 +1412,7 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
       status?: string;
     };
     roleUpdate?: "user" | "admin" | "super_admin";
+    permissionsUpdate?: string[];
   }) => d)
   .handler(async ({ data, context }) => {
     // 1. Verify caller role
@@ -1459,19 +1471,27 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
       .eq("id", data.targetUserId);
     if (updateError) throw new Error(updateError.message);
 
-    // Handle role updates (only super admins can change roles)
-    if (data.roleUpdate && data.roleUpdate !== targetRole) {
-      if (!isCallerSuperAdmin) throw new Error("Only super admins can change user roles");
-      
-      // Delete existing roles
-      await supabaseAdmin.from("user_roles").delete().eq("user_id", data.targetUserId);
-      
-      // If not "user", insert new role record
-      if (data.roleUpdate !== "user") {
-        await supabaseAdmin.from("user_roles").insert({
-          user_id: data.targetUserId,
-          role: data.roleUpdate,
-        });
+    // Handle role & permissions updates (only super admins can change roles/permissions)
+    if (isCallerSuperAdmin) {
+      if (data.roleUpdate && data.roleUpdate !== targetRole) {
+        // Delete existing roles
+        await supabaseAdmin.from("user_roles").delete().eq("user_id", data.targetUserId);
+        
+        // If not "user", insert new role record
+        if (data.roleUpdate !== "user") {
+          await supabaseAdmin.from("user_roles").insert({
+            user_id: data.targetUserId,
+            role: data.roleUpdate,
+            permissions: data.roleUpdate === "admin" ? data.permissionsUpdate || null : null
+          });
+        }
+      } else if (data.permissionsUpdate && (targetRole === "admin" || targetRole === "super_admin")) {
+        // Update permissions for existing admin role
+        await supabaseAdmin
+          .from("user_roles")
+          .update({ permissions: data.permissionsUpdate })
+          .eq("user_id", data.targetUserId)
+          .eq("role", targetRole);
       }
     }
 
