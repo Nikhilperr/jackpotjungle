@@ -205,10 +205,24 @@ export async function ensureVipRewardSchema() {
             projectRef = process.env.SUPABASE_PROJECT_ID || process.env.VITE_SUPABASE_PROJECT_ID || "self-hosted";
           }
 
-          // Build a set of candidate usernames to try: pure username and suffixed username
+          // Build a set of candidate usernames to try: pure username and various default/custom tenant suffixes
           const candidateUsernames = [username];
-          if (projectRef && !username.includes(".")) {
-            candidateUsernames.push(`${username}.${projectRef}`);
+          const potentialTenantIds = [
+            projectRef,
+            "local",
+            "default",
+            "supabase",
+            "local-project-ref",
+            "chancerealm",
+            "jackpotjungle",
+            process.env.SUPABASE_PROJECT_ID,
+            process.env.VITE_SUPABASE_PROJECT_ID
+          ].filter(Boolean) as string[];
+
+          for (const tid of potentialTenantIds) {
+            if (tid && !username.includes(".") && !candidateUsernames.includes(`${username}.${tid}`)) {
+              candidateUsernames.push(`${username}.${tid}`);
+            }
           }
 
           const sslVal = isRemote ? { rejectUnauthorized: false, servername: h } : undefined;
