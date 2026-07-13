@@ -850,7 +850,8 @@ export const runDatabaseMigration = createServerFn({ method: "POST" })
           connectionString: process.env.DATABASE_URL,
           ssl: process.env.DATABASE_URL.includes("supabase.co") || process.env.DATABASE_URL.includes("chancerealm.casino")
             ? { rejectUnauthorized: false }
-            : undefined
+            : undefined,
+          connectionTimeoutMillis: 1500
         });
         try {
           await client.connect();
@@ -882,7 +883,8 @@ export const runDatabaseMigration = createServerFn({ method: "POST" })
           
           let client = new pg.Client({
             connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
-            ssl: sslVal ? { rejectUnauthorized: false } : undefined
+            ssl: sslVal ? { rejectUnauthorized: false } : undefined,
+            connectionTimeoutMillis: 1500
           });
           let success = false;
           try {
@@ -897,7 +899,8 @@ export const runDatabaseMigration = createServerFn({ method: "POST" })
               console.log(`[Migration] Retrying connection to ${h}:${p} WITHOUT SSL...`);
               client = new pg.Client({
                 connectionString: `postgres://${username}:${dbPassword}@${h}:${p}/${dbName}`,
-                ssl: undefined
+                ssl: undefined,
+                connectionTimeoutMillis: 1500
               });
               try {
                 await client.connect();
@@ -1887,7 +1890,16 @@ export async function getDbClient() {
 
     for (const p of ports) {
       // Determine possible project refs to try for this host
-      const projectRefs = ["gsnhqzsgptqxtlhggzkz"];
+      const projectRefs = [
+        "gsnhqzsgptqxtlhggzkz",
+        "your-tenant-id",
+        "local",
+        "default",
+        "supabase",
+        "local-project-ref",
+        "chancerealm",
+        "jackpotjungle"
+      ];
       const match = h.match(/^db\.([a-z0-9]+)\.supabase\.(co|net)$/i);
       if (match) {
         projectRefs.unshift(match[1]);
@@ -1980,7 +1992,8 @@ export async function getDbClient() {
         user: cand.user,
         password: pw,
         database: config.database,
-        ssl: cand.ssl
+        ssl: cand.ssl,
+        connectionTimeoutMillis: 1500
       });
 
       try {
