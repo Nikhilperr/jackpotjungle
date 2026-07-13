@@ -70,7 +70,9 @@ import {
   PlusCircle,
   MinusCircle,
   Sparkles,
+  Crown,
 } from "lucide-react";
+import { VipRewardSettingsView } from "@/components/admin/VipRewardSettingsView";
 import { AIWorkspace } from "@/components/admin/AIWorkspace";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -147,7 +149,8 @@ type Tab =
   | "monthly_profit"
   | "push_notifications"
   | "aichat"
-  | "user_ai_knowledge";
+  | "user_ai_knowledge"
+  | "vip_settings";
 
 type AdminSearch = {
   c?: string;
@@ -448,6 +451,7 @@ function AdminPage() {
             <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Super admin</p>
             <SideBtn active={tab === "admins"} onClick={() => selectTab("admins")} icon={UsersIcon} label="Admin team" />
             <SideBtn active={tab === "super"} onClick={() => selectTab("super")} icon={SettingsIcon} label="System settings" />
+            <SideBtn active={tab === "vip_settings"} onClick={() => selectTab("vip_settings")} icon={Crown} label="VIP Settings" />
           </>
         )}
         <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
@@ -534,6 +538,13 @@ function AdminPage() {
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "super" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Super admin"><SuperAdminView /></ScrollWrap>
         </div>
+        {isSuperAdmin && (
+          <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "vip_settings" ? "" : "hidden"}`}>
+            <ScrollWrap onOpenNav={() => setNavOpen(true)} title="VIP Reward Settings">
+              <VipRewardSettingsView />
+            </ScrollWrap>
+          </div>
+        )}
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "profile" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={user.id} email={user.email ?? null} /></ScrollWrap>
         </div>
