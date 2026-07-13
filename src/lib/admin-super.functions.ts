@@ -731,6 +731,10 @@ export const MIGRATIONS_SQL = `
           END IF;
         END $$;
 
+        -- Ensure vip_reward_settings table has run_time and timezone columns
+        ALTER TABLE public.vip_reward_settings ADD COLUMN IF NOT EXISTS run_time VARCHAR NOT NULL DEFAULT '00:00';
+        ALTER TABLE public.vip_reward_settings ADD COLUMN IF NOT EXISTS timezone VARCHAR NOT NULL DEFAULT 'UTC';
+
         -- Stored Procedure to safely, atomically execute payouts inside a database transaction
         CREATE OR REPLACE FUNCTION public.execute_vip_payouts(
           run_uuid UUID,
@@ -780,6 +784,14 @@ export const MIGRATIONS_SQL = `
             qualified BOOLEAN
           ) LOOP
             IF v_player.qualified = TRUE AND v_player.final_reward > 0 THEN
+              -- Check if user has already been paid for this run to avoid duplicates and allow resuming
+              IF EXISTS (
+                SELECT 1 FROM public.vip_player_rewards 
+                WHERE run_id = run_uuid AND user_id = v_player.user_id
+              ) THEN
+                CONTINUE;
+              END IF;
+
               -- Fetch and lock profile row
               SELECT wallet_balance, credit_balance INTO v_prev_avail, v_prev_credit 
               FROM public.profiles WHERE id = v_player.user_id FOR UPDATE;
@@ -864,8 +876,19 @@ export const MIGRATIONS_SQL = `
           reward_amount NUMERIC NOT NULL,
           distribution_date TIMESTAMPTZ NOT NULL,
           approval_status VARCHAR NOT NULL,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          CONSTRAINT unique_run_user UNIQUE (run_id, user_id)
         );
+
+        -- Ensure unique constraint exists on older tables
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'unique_run_user'
+          ) THEN
+            ALTER TABLE public.vip_player_rewards ADD CONSTRAINT unique_run_user UNIQUE (run_id, user_id);
+          END IF;
+        END $$;
 
         -- Enable RLS on vip_player_rewards
         ALTER TABLE public.vip_player_rewards ENABLE ROW LEVEL SECURITY;

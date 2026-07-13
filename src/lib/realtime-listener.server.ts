@@ -1,6 +1,44 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendPushNotification } from "./fcm.server";
 
+function getFormattedDateTimeInTimezone(date: Date, timeZone: string) {
+  try {
+    const options = {
+      timeZone,
+      year: "numeric" as const,
+      month: "numeric" as const,
+      day: "numeric" as const,
+      hour: "numeric" as const,
+      minute: "numeric" as const,
+      hour12: false,
+    };
+    const formatter = new Intl.DateTimeFormat("en-US", options);
+    const parts = formatter.formatToParts(date);
+    
+    const partValues = parts.reduce((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {} as Record<string, string>);
+    
+    return {
+      year: parseInt(partValues.year, 10),
+      month: parseInt(partValues.month, 10),
+      day: parseInt(partValues.day, 10),
+      hour: parseInt(partValues.hour, 10),
+      minute: parseInt(partValues.minute, 10),
+    };
+  } catch (err: any) {
+    console.warn(`[Scheduler Timezone] Invalid timezone "${timeZone}", falling back to UTC:`, err.message);
+    return {
+      year: date.getUTCFullYear(),
+      month: date.getUTCMonth() + 1,
+      day: date.getUTCDate(),
+      hour: date.getUTCHours(),
+      minute: date.getUTCMinutes(),
+    };
+  }
+}
+
 export async function initRealtimeListeners() {
   console.log("[Realtime Listener] Initializing server-side database change listeners...");
 
@@ -245,6 +283,109 @@ export async function initRealtimeListeners() {
             }
           }
         }
+
+        // --- TASK 4: VIP MONTHLY REWARD AUTOMATION ---
+        try {
+          const { data: activeVipSettings, error: errVipSettings } = await supabaseAdmin
+            .from("vip_reward_settings")
+            .select("*")
+            .eq("id", true)
+            .maybeSingle();
+
+          if (!errVipSettings && activeVipSettings) {
+            const distDay = activeVipSettings.distribution_date || 1;
+            const runTime = activeVipSettings.run_time || "00:00";
+            const timeZone = activeVipSettings.timezone || "UTC";
+
+            const localTime = getFormattedDateTimeInTimezone(new Date(), timeZone);
+            
+            // Check if current day matches configured distribution_date
+            if (localTime.day === distDay) {
+              const [targetHour, targetMinute] = runTime.split(":").map(x => parseInt(x, 10));
+              
+              if (localTime.hour === targetHour && localTime.minute === targetMinute) {
+                // Calculate previous month relative to the local time
+                let targetMonth = localTime.month - 1;
+                let targetYear = localTime.year;
+                if (targetMonth === 0) {
+                  targetMonth = 12;
+                  targetYear -= 1;
+                }
+
+                // Check if a run already exists for this target month and year
+                const { data: existingRun, error: errExisting } = await supabaseAdmin
+                  .from("vip_reward_runs")
+                  .select("id, status")
+                  .eq("month", targetMonth)
+                  .eq("year", targetYear)
+                  .maybeSingle();
+
+                if (!errExisting && !existingRun) {
+                  console.log(`[Scheduler VIP] Launching VIP Reward Automation for ${targetMonth}/${targetYear}...`);
+                  
+                  // Execute calculation
+                  const { VipRewardEngineService } = await import("./api/vip-reward-engine/engine.service");
+                  const engine = new VipRewardEngineService();
+                  const result = await engine.runSimulation(supabaseAdmin, {
+                    month: targetMonth,
+                    year: targetYear,
+                    isSimulation: true,
+                  });
+
+                  if (result.status === "success") {
+                    // Create Pending Review batch
+                    const payload = {
+                      month: targetMonth,
+                      year: targetYear,
+                      reward_pool: result.pool_size,
+                      status: "Pending Review",
+                      total_qualified_users: result.total_qualified_users,
+                      total_distributed_rewards: result.total_distributed_rewards,
+                      configuration: result.configuration,
+                      player_results: result.user_results,
+                      logs: [
+                        ...result.logs,
+                        `[Scheduler VIP] Automatic run triggered on ${new Date().toISOString()}`,
+                        `[Scheduler VIP] Created batch with Pending Review status`
+                      ],
+                      updated_at: new Date().toISOString(),
+                    };
+
+                    const { error: insertErr } = await supabaseAdmin
+                      .from("vip_reward_runs")
+                      .insert(payload);
+
+                    if (insertErr) {
+                      console.error("[Scheduler VIP Error] Failed to insert automatic run:", insertErr.message);
+                    } else {
+                      console.log(`[Scheduler VIP] Automatic run batch created successfully for ${targetMonth}/${targetYear}.`);
+                      
+                      // Write Audit Log
+                      const { writeVipAuditLog } = await import("./api/vip-reward-engine/audit.functions");
+                      await writeVipAuditLog(
+                        supabaseAdmin,
+                        null, // system automated
+                        "draft_saved",
+                        null,
+                        {
+                          month: targetMonth,
+                          year: targetYear,
+                          status: "Pending Review",
+                          automated: true,
+                        }
+                      );
+                    }
+                  } else {
+                    console.error("[Scheduler VIP Error] Calculation engine returned failure:", result.error_message);
+                  }
+                }
+              }
+            }
+          }
+        } catch (vipErr: any) {
+          console.error("[Scheduler VIP Error] Automation trigger failed:", vipErr.message || vipErr);
+        }
+
       } catch (e: any) {
         console.error("[Scheduler Error] Background runner iteration failed:", e.message || e);
       }

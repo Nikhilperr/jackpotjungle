@@ -30,6 +30,8 @@ const updateSettingsValidator = z.object({
   minMonthlyDeposit: z.number().min(0),
   minHoldingRequirement: z.number().min(0),
   distributionDate: z.number().min(1).max(28),
+  runTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
+  timezone: z.string(),
   vipMultipliers: multipliersSchema,
   referralQualificationRules: referralRulesSchema,
 });
@@ -112,6 +114,8 @@ export const updateVipRewardSettings = createServerFn({ method: "POST" })
         min_monthly_deposit: data.minMonthlyDeposit,
         min_holding_requirement: data.minHoldingRequirement,
         distribution_date: data.distributionDate,
+        run_time: data.runTime,
+        timezone: data.timezone,
         vip_multipliers: data.vipMultipliers,
         referral_qualification_rules: data.referralQualificationRules,
         updated_at: new Date().toISOString(),

@@ -57,6 +57,10 @@ export async function ensureVipRewardSchema() {
         END IF;
       END $$;
 
+      -- Ensure vip_reward_settings has run_time and timezone columns
+      ALTER TABLE public.vip_reward_settings ADD COLUMN IF NOT EXISTS run_time VARCHAR NOT NULL DEFAULT '00:00';
+      ALTER TABLE public.vip_reward_settings ADD COLUMN IF NOT EXISTS timezone VARCHAR NOT NULL DEFAULT 'UTC';
+
       -- Stored Procedure to safely, atomically execute payouts inside a database transaction
       CREATE OR REPLACE FUNCTION public.execute_vip_payouts(
         run_uuid UUID,
@@ -106,6 +110,14 @@ export async function ensureVipRewardSchema() {
           qualified BOOLEAN
         ) LOOP
           IF v_player.qualified = TRUE AND v_player.final_reward > 0 THEN
+            -- Check if user has already been paid for this run to avoid duplicates and allow resuming
+            IF EXISTS (
+              SELECT 1 FROM public.vip_player_rewards 
+              WHERE run_id = run_uuid AND user_id = v_player.user_id
+            ) THEN
+              CONTINUE;
+            END IF;
+
             -- Fetch and lock profile row
             SELECT wallet_balance, credit_balance INTO v_prev_avail, v_prev_credit 
             FROM public.profiles WHERE id = v_player.user_id FOR UPDATE;
@@ -190,8 +202,19 @@ export async function ensureVipRewardSchema() {
         reward_amount NUMERIC NOT NULL,
         distribution_date TIMESTAMPTZ NOT NULL,
         approval_status VARCHAR NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        CONSTRAINT unique_run_user UNIQUE (run_id, user_id)
       );
+
+      -- Ensure unique constraint exists on older tables
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'unique_run_user'
+        ) THEN
+          ALTER TABLE public.vip_player_rewards ADD CONSTRAINT unique_run_user UNIQUE (run_id, user_id);
+        END IF;
+      END $$;
 
       -- Enable RLS on vip_player_rewards
       ALTER TABLE public.vip_player_rewards ENABLE ROW LEVEL SECURITY;
@@ -672,6 +695,39 @@ export const executeVipRewardRunPayouts = createServerFn({ method: "POST" })
         totalDistributedRewards: run.total_distributed_rewards,
         totalQualifiedUsers: run.total_qualified_users
       });
+
+      // 3. Trigger Push Notifications for paid users who have push tokens
+      try {
+        const paidUsers = playerResults.filter((p: any) => p.qualified && Number(p.final_reward) > 0);
+        if (paidUsers.length > 0) {
+          const userIds = paidUsers.map((p: any) => p.user_id);
+          const { data: tokenRows } = await supabaseAdmin
+            .from("push_tokens")
+            .select("user_id, token")
+            .in("user_id", userIds);
+
+          if (tokenRows && tokenRows.length > 0) {
+            const { sendPushNotification } = await import("@/lib/fcm.server");
+            
+            for (const p of paidUsers) {
+              const userTokens = tokenRows
+                .filter((r: any) => r.user_id === p.user_id)
+                .map((r: any) => r.token);
+
+              if (userTokens.length > 0) {
+                const title = "VIP Loyalty Payout";
+                const body = `You received a loyalty bonus of $${Number(p.final_reward).toFixed(2)} into your Available Balance.`;
+                await sendPushNotification(userTokens, title, body, {
+                  type: "vip_payout",
+                  routePath: "/app/profile",
+                });
+              }
+            }
+          }
+        }
+      } catch (notifErr: any) {
+        console.error("[executeVipRewardRunPayouts] FCM notifications failed:", notifErr.message || notifErr);
+      }
 
       return {
         success: true,

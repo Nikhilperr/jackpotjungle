@@ -212,6 +212,8 @@ export function VipRewardSettingsView() {
   const [minMonthlyDeposit, setMinMonthlyDeposit] = useState("100.0");
   const [minHoldingRequirement, setMinHoldingRequirement] = useState("50.0");
   const [distributionDate, setDistributionDate] = useState("1");
+  const [runTime, setRunTime] = useState("00:00");
+  const [timezone, setTimezone] = useState("UTC");
 
   // Multipliers State
   const [bronze, setBronze] = useState("1.00");
@@ -241,6 +243,8 @@ export function VipRewardSettingsView() {
         setMinMonthlyDeposit(String(s.min_monthly_deposit));
         setMinHoldingRequirement(String(s.min_holding_requirement));
         setDistributionDate(String(s.distribution_date));
+        setRunTime(String(s.run_time ?? "00:00"));
+        setTimezone(String(s.timezone ?? "UTC"));
         
         // Multipliers
         if (s.vip_multipliers) {
@@ -314,6 +318,8 @@ export function VipRewardSettingsView() {
           minMonthlyDeposit: Number(minMonthlyDeposit || 0),
           minHoldingRequirement: Number(minHoldingRequirement || 0),
           distributionDate: numDistDate,
+          runTime: runTime || "00:00",
+          timezone: timezone || "UTC",
           vipMultipliers: {
             bronze: Number(bronze || 0),
             silver: Number(silver || 0),
@@ -706,6 +712,44 @@ export function VipRewardSettingsView() {
                 required
               />
               <span className="text-[9px] text-muted-foreground leading-none font-medium">Day of month (1-28)</span>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="runTime" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <span>Monthly Run Time</span>
+                <HelpTooltip content="The time of day (HH:MM in 24-hour format) when the automation trigger will process calculations." />
+              </label>
+              <Input
+                id="runTime"
+                type="text"
+                placeholder="e.g. 02:00"
+                value={runTime}
+                onChange={(e) => setRunTime(e.target.value)}
+                required
+              />
+              <span className="text-[9px] text-muted-foreground leading-none font-medium">24-hour format (e.g., 14:30)</span>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="timezone" className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <span>Time Zone</span>
+                <HelpTooltip content="The target time zone for evaluating the schedule." />
+              </label>
+              <select
+                id="timezone"
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="UTC">UTC</option>
+                <option value="America/New_York">EST / EDT (New York)</option>
+                <option value="America/Los_Angeles">PST / PDT (Los Angeles)</option>
+                <option value="Europe/London">GMT / BST (London)</option>
+                <option value="Asia/Kolkata">IST (India)</option>
+                <option value="Asia/Singapore">SGT (Singapore)</option>
+                <option value="Australia/Sydney">AEST / AEDT (Sydney)</option>
+              </select>
+              <span className="text-[9px] text-muted-foreground leading-none font-medium">Time zone for execution</span>
             </div>
           </div>
         </section>

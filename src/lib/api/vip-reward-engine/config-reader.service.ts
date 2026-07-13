@@ -47,6 +47,8 @@ export class ConfigReaderService {
         min_monthly_deposit: Number(data.min_monthly_deposit ?? 100.0),
         min_holding_requirement: Number(data.min_holding_requirement ?? 50.0),
         distribution_date: Number(data.distribution_date ?? 1),
+        run_time: String(data.run_time ?? "00:00"),
+        timezone: String(data.timezone ?? "UTC"),
         vip_multipliers: multipliers,
         referral_qualification_rules: referralRules,
       };

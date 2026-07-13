@@ -28,6 +28,8 @@ export interface VipRewardSettings {
   min_monthly_deposit: number;
   min_holding_requirement: number;
   distribution_date: number;
+  run_time: string;
+  timezone: string;
   vip_multipliers: VipMultipliers;
   referral_qualification_rules: ReferralQualificationRules;
 }
