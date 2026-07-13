@@ -4,15 +4,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { assertAdmin } from "@/lib/wallet.functions";
 
 async function resolveHostToIPv4(host: string, dns: any): Promise<string> {
-  if (host === "localhost" || host === "127.0.0.1") return host;
-  try {
-    const addresses = await dns.promises.resolve4(host);
-    if (addresses && addresses.length > 0) {
-      return addresses[0];
-    }
-  } catch (err: any) {
-    // quiet
-  }
+  if (host === "localhost" || host === "127.0.0.1") return "127.0.0.1";
+  // Keep hostname intact for remote hosts so SNI/host routing works correctly
   return host;
 }
 
@@ -157,7 +150,7 @@ export async function ensureVipRewardSchema() {
             }
           }
 
-          const sslVal = (isRemote && match) ? { rejectUnauthorized: false, servername: h } : undefined;
+          const sslVal = isRemote ? { rejectUnauthorized: false, servername: h } : undefined;
 
           try {
             client = new pg.Client({
