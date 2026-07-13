@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Loader2, Settings, ShieldCheck, Percent, Scale, Coins, Calendar, Award, UserPlus, Save, Play, Sparkles, Terminal, ChevronDown, ChevronUp, TrendingUp } from "lucide-react";
 import { getVipRewardSettings, updateVipRewardSettings } from "@/lib/api/vip-settings.functions";
 import { runVipRewardSimulation } from "@/lib/api/vip-reward-engine/engine.functions";
+import { getVipRewardRun, saveVipRewardRunDraft, updateVipRewardRunStatus, executeVipRewardRunPayouts } from "@/lib/api/vip-reward-engine/approval.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,11 @@ export function VipRewardSettingsView() {
   const saveFn = useServerFn(updateVipRewardSettings);
   const runSimFn = useServerFn(runVipRewardSimulation);
 
+  const getRunFn = useServerFn(getVipRewardRun);
+  const saveDraftFn = useServerFn(saveVipRewardRunDraft);
+  const updateStatusFn = useServerFn(updateVipRewardRunStatus);
+  const executePayoutsFn = useServerFn(executeVipRewardRunPayouts);
+
   const [activeTab, setActiveTab] = useState<"settings" | "simulation">("settings");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,6 +56,43 @@ export function VipRewardSettingsView() {
   const [simResult, setSimResult] = useState<any | null>(null);
   const [simError, setSimError] = useState<string | null>(null);
   const [logsExpanded, setLogsExpanded] = useState(false);
+
+  // Active DB Run details
+  const [dbRun, setDbRun] = useState<any | null>(null);
+  const [loadingRun, setLoadingRun] = useState(false);
+  const [workflowProcessing, setWorkflowProcessing] = useState(false);
+
+  const fetchActiveRun = async (m: number, y: number) => {
+    setLoadingRun(true);
+    setDbRun(null);
+    setSimResult(null);
+    setSimError(null);
+    try {
+      const res = await getRunFn({ data: { month: m, year: y } });
+      if (res.success && res.run) {
+        setDbRun(res.run);
+        setSimResult({
+          pool_size: Number(res.run.reward_pool),
+          total_qualified_users: res.run.total_qualified_users,
+          total_distributed_rewards: Number(res.run.total_distributed_rewards),
+          execution_time_ms: 0,
+          configuration: res.run.configuration,
+          user_results: res.run.player_results,
+          logs: res.run.logs,
+        });
+      }
+    } catch (err: any) {
+      console.error("Failed to load active run state:", err.message);
+    } finally {
+      setLoadingRun(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "simulation") {
+      fetchActiveRun(simMonth, simYear);
+    }
+  }, [activeTab, simMonth, simYear]);
 
   // Form Fields State
   const [rewardPoolPercentage, setRewardPoolPercentage] = useState("5.0");
@@ -207,16 +250,88 @@ export function VipRewardSettingsView() {
           setSimError(res.result.error_message || "An unexpected error occurred during execution.");
         } else {
           setSimResult(res.result);
-          toast.success("Simulation completed successfully!");
+          // Save calculation results to database
+          const saveRes = await saveDraftFn({
+            data: {
+              month: Number(simMonth),
+              year: Number(simYear),
+              status: "Calculated",
+              rewardPool: res.result.pool_size,
+              totalQualifiedUsers: res.result.total_qualified_users,
+              totalDistributedRewards: res.result.total_distributed_rewards,
+              configuration: res.result.configuration,
+              playerResults: res.result.user_results,
+              logs: res.result.logs,
+            }
+          });
+          if (saveRes.success) {
+            setDbRun(saveRes.run);
+            toast.success("Calculation draft saved successfully!");
+          } else {
+            setSimError(saveRes.error || "Failed to persist calculations draft.");
+          }
         }
       } else {
-        setSimError(res.error || "Failed to execute simulation.");
+        setSimError(res.error || "Failed to execute calculation engine.");
       }
     } catch (err: any) {
       setSimError(err.message || "Failed to run simulation.");
     } finally {
       setSimRunning(false);
     }
+  };
+  const handleWorkflowTransition = async (targetStatus: "Pending Review" | "Approved" | "Rejected" | "Locked") => {
+    if (!dbRun?.id) return;
+    setWorkflowProcessing(true);
+    try {
+      const res = await updateStatusFn({
+        data: {
+          runId: dbRun.id,
+          status: targetStatus,
+        }
+      });
+      if (res.success && res.run) {
+        setDbRun(res.run);
+        toast.success(`Workflow updated to: ${targetStatus}`);
+      } else {
+        toast.error(res.error || "Failed to update workflow status.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to change run status.");
+    } finally {
+      setWorkflowProcessing(false);
+    }
+  };
+
+  const handleExecutePayouts = async () => {
+    if (!dbRun?.id) return;
+    const confirmExec = window.confirm("WARNING: You are about to credit user wallets and insert transaction logs. This action is irreversible. Do you want to proceed?");
+    if (!confirmExec) return;
+
+    setWorkflowProcessing(true);
+    try {
+      const res = await executePayoutsFn({
+        data: {
+          runId: dbRun.id,
+        }
+      });
+      if (res.success) {
+        toast.success("VIP Rewards payout completed and user wallets credited successfully!");
+        await fetchActiveRun(simMonth, simYear);
+      } else {
+        toast.error(res.error || "Failed to execute reward payouts.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed executing payouts.");
+    } finally {
+      setWorkflowProcessing(false);
+    }
+  };
+
+  const handleRecalculate = () => {
+    setSimResult(null);
+    setDbRun(null);
+    toast.success("Ready for recalculation. You can modify settings and run again.");
   };
 
   if (loading) {
@@ -631,13 +746,18 @@ export function VipRewardSettingsView() {
 
               <Button
                 type="submit"
-                disabled={simRunning}
+                disabled={simRunning || (dbRun && dbRun.status !== 'Calculated' && dbRun.status !== 'Rejected')}
                 className="h-10 w-full font-bold flex items-center justify-center gap-1.5 text-xs uppercase"
               >
                 {simRunning ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                    <span>Executing Simulation...</span>
+                    <span>Executing Calculation...</span>
+                  </>
+                ) : dbRun && dbRun.status !== 'Calculated' && dbRun.status !== 'Rejected' ? (
+                  <>
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-amber-500" />
+                    <span>Calculations Locked</span>
                   </>
                 ) : (
                   <>
@@ -648,6 +768,165 @@ export function VipRewardSettingsView() {
               </Button>
             </form>
           </section>
+
+          {/* Active Run Workflow Control Panel */}
+          {loadingRun ? (
+            <div className="h-32 w-full flex items-center justify-center bg-card border border-border/60 rounded-2xl p-5">
+              <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+              <span className="text-xs font-semibold text-muted-foreground">Loading active month workflow status...</span>
+            </div>
+          ) : dbRun ? (
+            <section className="bg-card border border-border/60 rounded-2xl p-5 text-left space-y-4 shadow-md">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/30 pb-3">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Active Run Payout State</span>
+                  <div className="flex items-center gap-2">
+                    <Crown className="h-5 w-5 text-primary shrink-0" />
+                    <h3 className="font-extrabold text-base">Super Admin Review & Approvals</h3>
+                  </div>
+                </div>
+                
+                {/* Status Badges */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-muted-foreground">Status:</span>
+                  <span className={`text-xs font-black uppercase px-3 py-1 rounded-full border shadow-sm select-none ${
+                    dbRun.status === 'Draft' || dbRun.status === 'Calculated' ? 'bg-zinc-500/10 border-zinc-500/20 text-zinc-400' :
+                    dbRun.status === 'Pending Review' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
+                    dbRun.status === 'Approved' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
+                    dbRun.status === 'Rejected' ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' :
+                    dbRun.status === 'Completed' ? 'bg-primary/10 border-primary/20 text-primary' :
+                    dbRun.status === 'Locked' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : ''
+                  }`}>
+                    {dbRun.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* Status helper text & workflows */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-secondary/15 p-4 rounded-xl border border-border/40">
+                <div className="flex-1 space-y-0.5 text-xs">
+                  {dbRun.status === 'Calculated' && (
+                    <p className="font-semibold text-foreground">
+                      Payout calculation draft is ready. Review calculations and submit to begin approval loop.
+                    </p>
+                  )}
+                  {dbRun.status === 'Pending Review' && (
+                    <p className="font-bold text-amber-500">
+                      Calculation draft is under review. Super Admins must verify stats and approve or reject payouts.
+                    </p>
+                  )}
+                  {dbRun.status === 'Approved' && (
+                    <p className="font-bold text-emerald-500">
+                      Month run has been APPROVED by a Super Admin. Payout execution is ready to credit user wallets.
+                    </p>
+                  )}
+                  {dbRun.status === 'Rejected' && (
+                    <p className="font-semibold text-rose-500">
+                      Payout calculation was REJECTED. Recalculate month with modified weights or settings to overwrite.
+                    </p>
+                  )}
+                  {dbRun.status === 'Completed' && (
+                    <p className="font-bold text-primary">
+                      Payout distribution COMPLETED. Wallet balances have been credited. Lock the month to secure records.
+                    </p>
+                  )}
+                  {dbRun.status === 'Locked' && (
+                    <p className="font-semibold text-muted-foreground">
+                      Month is LOCKED. Result records are final and read-only. Duplicate checks are permanently locked.
+                    </p>
+                  )}
+                </div>
+
+                {/* Action Workflow Controls */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {workflowProcessing ? (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-semibold px-4 py-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      <span>Processing...</span>
+                    </div>
+                  ) : (
+                    <>
+                      {(dbRun.status === 'Calculated' || dbRun.status === 'Rejected') && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => handleWorkflowTransition('Pending Review')}
+                            className="bg-amber-500 hover:bg-amber-600 text-neutral-950 font-bold h-9 px-4 rounded-lg text-xs"
+                          >
+                            Submit for Review
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={handleRecalculate}
+                            className="h-9 px-4 rounded-lg text-xs font-semibold"
+                          >
+                            Recalculate Month
+                          </Button>
+                        </>
+                      )}
+
+                      {dbRun.status === 'Pending Review' && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => handleWorkflowTransition('Approved')}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 px-4 rounded-lg text-xs"
+                          >
+                            Approve Run
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleWorkflowTransition('Rejected')}
+                            variant="destructive"
+                            className="font-bold h-9 px-4 rounded-lg text-xs"
+                          >
+                            Reject Run
+                          </Button>
+                        </>
+                      )}
+
+                      {dbRun.status === 'Approved' && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={handleExecutePayouts}
+                            className="bg-primary hover:bg-primary/95 text-primary-foreground font-black h-9 px-4 rounded-lg text-xs uppercase animate-pulse"
+                          >
+                            Approve & Execute Payouts
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleWorkflowTransition('Rejected')}
+                            variant="destructive"
+                            className="font-bold h-9 px-4 rounded-lg text-xs"
+                          >
+                            Reject Run
+                          </Button>
+                        </>
+                      )}
+
+                      {dbRun.status === 'Completed' && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleWorkflowTransition('Locked')}
+                          className="bg-zinc-700 hover:bg-zinc-600 text-white font-bold h-9 px-4 rounded-lg text-xs"
+                        >
+                          Lock Month
+                        </Button>
+                      )}
+
+                      {dbRun.status === 'Locked' && (
+                        <span className="text-xs text-muted-foreground font-black uppercase tracking-wider px-3 py-1 rounded bg-zinc-800 border border-zinc-700 select-none">
+                          🔒 READ-ONLY
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           {/* Error Message Panel */}
           {simError && (
@@ -686,7 +965,11 @@ export function VipRewardSettingsView() {
               <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm text-left">
                 <div className="p-4 border-b border-border/60 bg-secondary/20 flex items-center justify-between">
                   <h4 className="font-extrabold text-sm text-foreground">Calculated Distributions (Read-Only Preview)</h4>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary">Simulation Mode</span>
+                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                    dbRun ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-amber-500/10 border-amber-500/20 text-amber-500'
+                  }`}>
+                    {dbRun ? `Persisted: ${dbRun.status}` : "Draft: Simulation Mode"}
+                  </span>
                 </div>
                 
                 <div className="overflow-x-auto">
