@@ -1380,11 +1380,18 @@ function ProfilePage() {
                             </div>
                           </div>
 
-                          <p className="text-[10px] text-muted-foreground leading-relaxed">
-                            {vipDashboardStats?.progression?.remainingDeposits > 0
-                              ? `Deposit $${vipDashboardStats.progression.remainingDeposits.toLocaleString()} more to reach ${vipDashboardStats.progression.nextTier}.`
-                              : "Maximum VIP tier achieved! Enjoy premium benefits."}
-                          </p>
+                          <div className="text-[10px] text-muted-foreground leading-relaxed">
+                            {vipDashboardStats?.progression?.remainingDeposits > 0 ? (
+                              `Deposit $${vipDashboardStats.progression.remainingDeposits.toLocaleString()} more to reach ${vipDashboardStats.progression.nextTier}.`
+                            ) : (
+                              <div className="space-y-0.5">
+                                <p>Maximum VIP tier achieved! Enjoy premium benefits.</p>
+                                <p className="text-[9px] opacity-75 font-medium italic">
+                                  (Maxed out. Stay tuned, new VIP badges and tiers will be introduced in the future!)
+                                </p>
+                              </div>
+                            )}
+                          </div>
 
                           <div className="text-[9px] border-t border-border/50 pt-2 text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 font-semibold">
                             {vipDashboardStats?.progression?.benefits?.map((benefit: string, idx: number) => (
