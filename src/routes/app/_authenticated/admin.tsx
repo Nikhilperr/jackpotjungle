@@ -166,7 +166,7 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
       "inbox", "teamchat", "quickreplies", "tags", "broadcasts", "followups",
       "autoresp", "referrals", "logs", "users", "admins", "super", "profile",
       "rules", "updates", "monitor", "monthly_profit", "push_notifications",
-      "aichat", "user_ai_knowledge"
+      "aichat", "user_ai_knowledge", "vip_settings"
     ];
     const incomingTab = search.tab as Tab;
     return {
