@@ -8,6 +8,7 @@ import { ReferralCalculator } from "./score-engine/referral.calculator";
 import { LoyaltyCalculator } from "./score-engine/loyalty.calculator";
 import { BaseScoreAggregator } from "./score-engine/base-score.aggregator";
 import { MultiplierCalculator } from "./multiplier-engine/multiplier.calculator";
+import { DistributionCalculator } from "./distribution-engine/distribution.calculator";
 
 export class VipRewardEngineService {
   private configReader = new ConfigReaderService();
@@ -19,6 +20,7 @@ export class VipRewardEngineService {
   private loyaltyScoreCalc = new LoyaltyCalculator();
   private scoreAggregator = new BaseScoreAggregator();
   private multiplierCalc = new MultiplierCalculator();
+  private distributionCalc = new DistributionCalculator();
 
   /**
    * Runs the VIP monthly loyalty reward engine calculation simulation.
@@ -368,20 +370,40 @@ export class VipRewardEngineService {
       }
 
       let totalDistributedRewards = 0;
-      if (totalQualifiedUsers > 0 && totalFinalScores > 0) {
-        for (const res of userResults) {
-          if (!res.qualified) continue;
-          
-          // Proportional payout share based on Final Score relative to the total sum of Final Scores
-          let payout = totalPoolSize * (res.final_score / totalFinalScores);
-          const maxPayoutCap = totalPoolSize * (settings.reward_cap_percentage / 100);
-          if (payout > maxPayoutCap) {
-            payout = maxPayoutCap;
-          }
-          res.estimated_payout = Number(payout.toFixed(2));
-          totalDistributedRewards += res.estimated_payout;
+
+      // Execute proportional distribution and cap protection calculations
+      logs.push(`[VipRewardEngine] Calculating rewards distribution using Distribution & Protection Engine.`);
+      const qualifiedPlayers = userResults
+        .filter(res => res.qualified)
+        .map(res => ({
+          userId: res.user_id,
+          finalScore: res.final_score,
+        }));
+
+      const distResult = this.distributionCalc.calculate(
+        qualifiedPlayers,
+        totalPoolSize,
+        settings
+      );
+
+      // Map distribution results back to userResults map
+      for (const res of userResults) {
+        if (!res.qualified) continue;
+        const payoutInfo = distResult.payouts[res.user_id];
+        if (payoutInfo) {
+          res.reward_before_protection = payoutInfo.rewardBeforeProtection;
+          res.cap_applied = payoutInfo.capApplied;
+          res.final_reward = payoutInfo.finalReward;
+          res.estimated_payout = payoutInfo.finalReward;
+        } else {
+          res.reward_before_protection = 0;
+          res.cap_applied = false;
+          res.final_reward = 0;
+          res.estimated_payout = 0;
         }
       }
+
+      totalDistributedRewards = distResult.totalDistributed;
 
       logs.push(`[VipRewardEngine] Calculation simulation completed successfully.`);
       logs.push(`[VipRewardEngine] Qualified Users: ${totalQualifiedUsers}/${userResults.length}.`);

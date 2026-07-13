@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Settings, ShieldCheck, Percent, Scale, Coins, Calendar, Award, UserPlus, Save } from "lucide-react";
+import { Loader2, Settings, ShieldCheck, Percent, Scale, Coins, Calendar, Award, UserPlus, Save, Play, Sparkles, Terminal, ChevronDown, ChevronUp, TrendingUp } from "lucide-react";
 import { getVipRewardSettings, updateVipRewardSettings } from "@/lib/api/vip-settings.functions";
+import { runVipRewardSimulation } from "@/lib/api/vip-reward-engine/engine.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -36,9 +37,19 @@ function HelpTooltip({ content }: { content: string }) {
 export function VipRewardSettingsView() {
   const loadFn = useServerFn(getVipRewardSettings);
   const saveFn = useServerFn(updateVipRewardSettings);
+  const runSimFn = useServerFn(runVipRewardSimulation);
 
+  const [activeTab, setActiveTab] = useState<"settings" | "simulation">("settings");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Simulation parameters & results
+  const [simMonth, setSimMonth] = useState(new Date().getMonth() + 1);
+  const [simYear, setSimYear] = useState(new Date().getFullYear());
+  const [simRunning, setSimRunning] = useState(false);
+  const [simResult, setSimResult] = useState<any | null>(null);
+  const [simError, setSimError] = useState<string | null>(null);
+  const [logsExpanded, setLogsExpanded] = useState(false);
 
   // Form Fields State
   const [rewardPoolPercentage, setRewardPoolPercentage] = useState("5.0");
@@ -178,6 +189,35 @@ export function VipRewardSettingsView() {
       setSaving(false);
     }
   };
+  const handleRunSimulation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSimRunning(true);
+    setSimResult(null);
+    setSimError(null);
+    try {
+      const res = await runSimFn({
+        data: {
+          month: Number(simMonth),
+          year: Number(simYear),
+          isSimulation: true,
+        }
+      });
+      if (res.success && res.result) {
+        if (res.result.status === "error") {
+          setSimError(res.result.error_message || "An unexpected error occurred during execution.");
+        } else {
+          setSimResult(res.result);
+          toast.success("Simulation completed successfully!");
+        }
+      } else {
+        setSimError(res.error || "Failed to execute simulation.");
+      }
+    } catch (err: any) {
+      setSimError(err.message || "Failed to run simulation.");
+    } finally {
+      setSimRunning(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -206,7 +246,35 @@ export function VipRewardSettingsView() {
         </div>
       </div>
 
-      <form onSubmit={handleSave} className="space-y-6">
+      {/* Tab Switcher */}
+      <div className="flex border-b border-border/60 select-none pb-0.5 mb-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab("settings")}
+          className={`px-5 py-2 text-xs font-extrabold uppercase tracking-wider border-b-2 transition-all ${
+            activeTab === "settings"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Configuration Settings
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("simulation")}
+          className={`px-5 py-2 text-xs font-extrabold uppercase tracking-wider border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "simulation"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Sparkles className="h-4 w-4 text-primary shrink-0" />
+          <span>Payout Simulation Preview</span>
+        </button>
+      </div>
+
+      {activeTab === "settings" ? (
+        <form onSubmit={handleSave} className="space-y-6">
         
         {/* Module 2 & 3: Pool Configurations */}
         <section className="bg-card border border-border/60 rounded-2xl p-5 space-y-4 shadow-sm text-left">
@@ -521,6 +589,194 @@ export function VipRewardSettingsView() {
         </div>
 
       </form>
+      ) : (
+        <div className="space-y-6">
+          {/* Controls Card */}
+          <section className="bg-card border border-border/60 rounded-2xl p-5 space-y-4 shadow-sm text-left">
+            <div className="flex items-center gap-2 border-b border-border/30 pb-3">
+              <Play className="h-5 w-5 text-primary shrink-0" />
+              <h3 className="font-extrabold text-base">Run Reward Simulation</h3>
+            </div>
+            
+            <form onSubmit={handleRunSimulation} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Month</label>
+                <select
+                  value={simMonth}
+                  onChange={(e) => setSimMonth(Number(e.target.value))}
+                  className="w-full h-10 px-3 bg-secondary rounded-lg border border-border text-xs font-semibold focus:outline-none"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <option key={m} value={m}>
+                      {new Date(0, m - 1).toLocaleString("en", { month: "long" })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Year</label>
+                <select
+                  value={simYear}
+                  onChange={(e) => setSimYear(Number(e.target.value))}
+                  className="w-full h-10 px-3 bg-secondary rounded-lg border border-border text-xs font-semibold focus:outline-none"
+                >
+                  {Array.from({ length: 7 }, (_, i) => 2024 + i).map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={simRunning}
+                className="h-10 w-full font-bold flex items-center justify-center gap-1.5 text-xs uppercase"
+              >
+                {simRunning ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                    <span>Executing Simulation...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 shrink-0" />
+                    <span>Run Calculation</span>
+                  </>
+                )}
+              </Button>
+            </form>
+          </section>
+
+          {/* Error Message Panel */}
+          {simError && (
+            <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-2xl p-5 text-left space-y-2">
+              <h4 className="font-extrabold text-sm flex items-center gap-2">
+                Calculation Failed
+              </h4>
+              <p className="text-xs font-semibold font-mono whitespace-pre-line leading-relaxed">{simError}</p>
+            </div>
+          )}
+
+          {/* Simulation Statistics & Results table */}
+          {simResult && (
+            <div className="space-y-6">
+              {/* Stat Summary Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-card border border-border/60 rounded-xl p-4 text-left space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Reward Pool Size</span>
+                  <p className="text-lg font-black font-mono text-foreground">${simResult.pool_size.toFixed(2)}</p>
+                </div>
+                <div className="bg-card border border-border/60 rounded-xl p-4 text-left space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Qualified Players</span>
+                  <p className="text-lg font-black font-mono text-primary">{simResult.total_qualified_users}</p>
+                </div>
+                <div className="bg-card border border-border/60 rounded-xl p-4 text-left space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Distributed Payout</span>
+                  <p className="text-lg font-black font-mono text-foreground">${simResult.total_distributed_rewards.toFixed(2)}</p>
+                </div>
+                <div className="bg-card border border-border/60 rounded-xl p-4 text-left space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Execution Duration</span>
+                  <p className="text-lg font-black font-mono text-muted-foreground">{simResult.execution_time_ms}ms</p>
+                </div>
+              </div>
+
+              {/* Qualified Players Results list */}
+              <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm text-left">
+                <div className="p-4 border-b border-border/60 bg-secondary/20 flex items-center justify-between">
+                  <h4 className="font-extrabold text-sm text-foreground">Calculated Distributions (Read-Only Preview)</h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary">Simulation Mode</span>
+                </div>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[900px]">
+                    <thead>
+                      <tr className="border-b border-border/80 bg-secondary/35 text-[10px] uppercase tracking-wider text-muted-foreground font-bold select-none">
+                        <th className="p-3 pl-5">Player Profile</th>
+                        <th className="p-3 text-right">Base Score</th>
+                        <th className="p-3 text-right">Multiplier</th>
+                        <th className="p-3 text-right">Adjusted Score</th>
+                        <th className="p-3 text-right">Reward (Pre-Cap)</th>
+                        <th className="p-3 text-center">Cap Applied</th>
+                        <th className="p-3 pr-5 text-right text-primary font-extrabold">Final Reward</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {simResult.user_results.filter((u: any) => u.qualified).map((u: any) => (
+                        <tr key={u.user_id} className="hover:bg-secondary/15 transition-colors">
+                          <td className="p-3 pl-5">
+                            <span className="font-bold text-sm text-foreground">@{u.username}</span>
+                            <span className="ml-1.5 text-[10px] font-bold uppercase text-muted-foreground">({u.vip_status || "None"})</span>
+                          </td>
+                          <td className="p-3 text-right font-mono text-xs font-semibold text-muted-foreground">
+                            {u.base_score.toFixed(2)}%
+                          </td>
+                          <td className="p-3 text-right font-mono text-xs font-semibold text-muted-foreground">
+                            {u.multiplier.toFixed(2)}x
+                          </td>
+                          <td className="p-3 text-right font-mono text-xs font-semibold text-muted-foreground">
+                            {u.final_score.toFixed(4)}%
+                          </td>
+                          <td className="p-3 text-right font-mono text-xs font-semibold text-muted-foreground">
+                            ${(u.reward_before_protection ?? 0).toFixed(2)}
+                          </td>
+                          <td className="p-3 text-center">
+                            {u.cap_applied ? (
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/20 select-none">
+                                CAPPED
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground font-bold">—</span>
+                            )}
+                          </td>
+                          <td className="p-3 pr-5 text-right font-mono text-sm font-black text-primary">
+                            ${(u.final_reward ?? u.estimated_payout).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+
+                      {simResult.user_results.filter((u: any) => u.qualified).length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-xs text-muted-foreground font-semibold">
+                            No users qualified for payouts under the current thresholds configuration.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Logs explorer section */}
+              <section className="bg-neutral-950 border border-neutral-900 rounded-2xl overflow-hidden shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setLogsExpanded(!logsExpanded)}
+                  className="w-full p-4 flex items-center justify-between font-bold text-neutral-200 hover:bg-neutral-900/50 transition-colors text-xs uppercase select-none border-b border-neutral-900"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Terminal className="h-4 w-4 text-primary" />
+                    <span>Calculation Logs Console</span>
+                  </span>
+                  {logsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+
+                {logsExpanded && (
+                  <div className="p-4 bg-neutral-950 text-neutral-400 font-mono text-[10px] text-left leading-relaxed space-y-1.5 h-64 overflow-y-auto">
+                    {simResult.logs.map((log: string, idx: number) => (
+                      <div key={idx} className="whitespace-pre-wrap select-text">
+                        <span className="text-neutral-600 select-none mr-2">[{idx + 1}]</span>
+                        <span>{log}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

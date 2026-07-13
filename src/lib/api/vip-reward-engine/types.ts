@@ -63,6 +63,9 @@ export interface RewardResult {
   qualified: boolean;
   disqualification_reason: string | null;
   estimated_payout: number;
+  reward_before_protection?: number;
+  cap_applied?: boolean;
+  final_reward?: number;
 }
 
 export interface SimulationResult {
