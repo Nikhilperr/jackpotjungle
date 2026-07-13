@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState, useRouter } from "@tanstack/react-router";
-import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award } from "lucide-react";
+import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award, Trophy, Gift } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -143,12 +143,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navItems = [
     { to: "/app/chat", icon: MessageCircle, label: "Chats" },
     { to: "/app/friends", icon: Users, label: "Friends" },
+    { to: "/app/refer-earn", icon: Gift, label: "Refer & Earn" },
+    { to: "/app/leaderboard", icon: Trophy, label: "Leaderboard", badge: "Soon" },
     { to: "/app/wallet", icon: Wallet, label: "Wallet" },
     { to: "/app/security", icon: Shield, label: "Security" },
     { to: "/app/vip-rewards", icon: Award, label: "VIP Rewards" },
-    { to: "/app/profile", icon: UserIcon, label: "Profile" },
   ];
-  if (isAdmin) navItems.push({ to: "/app/admin", icon: Shield, label: "Admin" });
+
+  const allNavItems = [...navItems];
+  if (isAdmin) {
+    allNavItems.push({ to: "/app/admin", icon: Shield, label: "Admin" });
+  }
+  allNavItems.push({ to: "/app/profile", icon: UserIcon, label: "Profile" });
 
   const Drawer = (
     <aside className="w-72 h-full bg-card border-r border-border flex flex-col">
@@ -166,7 +172,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
       </div>
       <nav className="flex-1 px-2 py-3 space-y-1">
-        {navItems.map((n) => {
+        {allNavItems.map((n) => {
           const active = pathname.startsWith(n.to);
           return (
             <Link
@@ -178,11 +184,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               }`}
             >
               <n.icon className="h-5 w-5 shrink-0" />
-              <span>{n.label}</span>
+              <span className="flex-1 text-left">{n.label}</span>
+              {n.badge && (
+                <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[9px] font-black uppercase tracking-wider border border-primary/20 shrink-0">
+                  {n.badge}
+                </span>
+              )}
             </Link>
           );
         })}
       </nav>
+
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
         <button

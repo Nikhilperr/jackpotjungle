@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
@@ -93,11 +93,7 @@ function ProfilePage() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [shareOpen, setShareOpen] = useState(false);
 
-  // Referrals details states
-  const [referralsModalOpen, setReferralsModalOpen] = useState(false);
-  const [referredByProfile, setReferredByProfile] = useState<any>(null);
-  const [referralsList, setReferralsList] = useState<any[]>([]);
-  const [loadingReferrals, setLoadingReferrals] = useState(false);
+
 
   const fileRef = useRef<HTMLInputElement>(null);
   const email = user?.email ?? null;
@@ -148,64 +144,7 @@ function ProfilePage() {
     };
   }, [user]);
 
-  const fetchReferralDetails = async () => {
-    if (!user) return;
-    setLoadingReferrals(true);
-    try {
-      // 1. Fetch referred_by from current user's profile
-      const { data: myProf } = await supabase
-        .from("profiles")
-        .select("referred_by")
-        .eq("id", user.id)
-        .maybeSingle();
 
-      if (myProf?.referred_by) {
-        const { data: refBy } = await supabase
-          .from("profiles")
-          .select("username, first_name, last_name")
-          .eq("id", myProf.referred_by)
-          .maybeSingle();
-        setReferredByProfile(refBy);
-      } else {
-        setReferredByProfile(null);
-      }
-
-      // 2. Fetch whom I referred
-      const { data: refs, error: refsErr } = await supabase
-        .from("referrals")
-        .select("*")
-        .eq("referrer_id", user.id);
-
-      if (refsErr) throw refsErr;
-
-      if (refs && refs.length > 0) {
-        const referredIds = refs.map((r) => r.referred_id);
-        const { data: profs, error: profsErr } = await supabase
-          .from("profiles")
-          .select("id, username, first_name, last_name, vip_status, avatar_url")
-          .in("id", referredIds);
-
-        if (profsErr) throw profsErr;
-
-        const combined = refs.map((r) => {
-          const matchedProf = profs?.find((p) => p.id === r.referred_id);
-          return {
-            id: r.id,
-            status: r.status,
-            created_at: r.created_at,
-            referredUser: matchedProf || { username: "Unknown User" },
-          };
-        });
-        setReferralsList(combined);
-      } else {
-        setReferralsList([]);
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to load referrals list");
-    } finally {
-      setLoadingReferrals(false);
-    }
-  };
 
   async function toggleNotif(v: boolean) {
     if (!profile) return;
@@ -382,18 +321,16 @@ function ProfilePage() {
                 <CodeCard label="Referral code" value={profile.referral_code} onCopy={() => copy(profile.referral_code, "Referral code")} />
               </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  fetchReferralDetails();
-                  setReferralsModalOpen(true);
-                }}
-                className="w-full rounded-2xl gap-1.5 h-11 font-bold text-xs"
-              >
-                <Users className="h-4 w-4" />
-                <span>See your referrals</span>
-              </Button>
+              <Link to="/app/refer-earn" className="w-full">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full rounded-2xl gap-1.5 h-11 font-bold text-xs"
+                >
+                  <Users className="h-4 w-4" />
+                  <span>See your referrals</span>
+                </Button>
+              </Link>
             </div>
 
             <form onSubmit={save} className="bg-secondary rounded-2xl p-5 space-y-4">
@@ -451,92 +388,7 @@ function ProfilePage() {
         memberSince={profile.created_at}
       />
 
-      {/* Referrals Dialog */}
-      <Dialog open={referralsModalOpen} onOpenChange={setReferralsModalOpen}>
-        <DialogContent className="max-w-md max-h-[80vh] flex flex-col bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
-              <Users className="h-5 w-5 text-primary" /> Referral History
-            </DialogTitle>
-            <DialogDescription>
-              View who referred you and details of players you have referred.
-            </DialogDescription>
-          </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-            {/* Referrer Details */}
-            <div className="bg-secondary/40 border border-border/80 rounded-xl p-4 space-y-2">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Referred By</p>
-              {loadingReferrals ? (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Loading...
-                </div>
-              ) : referredByProfile ? (
-                <div className="flex items-center gap-2.5">
-                  <div className="h-8 w-8 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold text-xs border border-primary/20 uppercase">
-                    {referredByProfile.username.slice(0, 2)}
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-foreground">
-                      {referredByProfile.first_name ? `${referredByProfile.first_name} ${referredByProfile.last_name || ""}`.trim() : referredByProfile.username}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">@{referredByProfile.username}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs font-medium text-muted-foreground italic">Direct Sign Up (No Referrer)</p>
-              )}
-            </div>
-
-            {/* Referred Users List */}
-            <div className="space-y-3">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Your Referrals</p>
-              {loadingReferrals ? (
-                <div className="flex h-32 items-center justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                </div>
-              ) : referralsList.length === 0 ? (
-                <div className="flex h-24 flex-col items-center justify-center border border-dashed border-border/60 rounded-xl text-center p-4">
-                  <Users className="h-6 w-6 opacity-30 mb-1" />
-                  <p className="text-xs font-bold text-muted-foreground">No referrals yet</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Share your referral code to invite friends!</p>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {referralsList.map((ref) => (
-                    <div key={ref.id} className="flex items-center justify-between p-3 bg-secondary/35 border border-border/40 rounded-xl hover:border-border transition-all">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="h-8 w-8 bg-secondary border border-border rounded-full flex items-center justify-center text-foreground font-bold text-xs uppercase shrink-0">
-                          {ref.referredUser.username.slice(0, 2)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-foreground truncate">
-                            {ref.referredUser.first_name ? `${ref.referredUser.first_name} ${ref.referredUser.last_name || ""}`.trim() : ref.referredUser.username}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
-                            <span>@{ref.referredUser.username}</span>
-                            <span>•</span>
-                            <span>{new Date(ref.created_at).toLocaleDateString()}</span>
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide border ${
-                          ref.status === "qualified" || ref.status === "joined"
-                            ? "bg-green-500/10 text-green-500 border-green-500/20"
-                            : "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                        }`}>
-                          {ref.status}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </AppShell>
   );
 }

@@ -46,8 +46,10 @@ import { Route as AuthenticatedChatIndexRouteImport } from './routes/_authentica
 import { Route as AppAuthenticatedWalletRouteImport } from './routes/app/_authenticated/wallet'
 import { Route as AppAuthenticatedVipRewardsRouteImport } from './routes/app/_authenticated/vip-rewards'
 import { Route as AppAuthenticatedSecurityRouteImport } from './routes/app/_authenticated/security'
+import { Route as AppAuthenticatedReferEarnRouteImport } from './routes/app/_authenticated/refer-earn'
 import { Route as AppAuthenticatedProfileRouteImport } from './routes/app/_authenticated/profile'
 import { Route as AppAuthenticatedOnboardingRouteImport } from './routes/app/_authenticated/onboarding'
+import { Route as AppAuthenticatedLeaderboardRouteImport } from './routes/app/_authenticated/leaderboard'
 import { Route as AppAuthenticatedFriendsRouteImport } from './routes/app/_authenticated/friends'
 import { Route as AppAuthenticatedChatRouteImport } from './routes/app/_authenticated/chat'
 import { Route as AppAuthenticatedAdminRouteImport } from './routes/app/_authenticated/admin'
@@ -244,6 +246,12 @@ const AppAuthenticatedSecurityRoute =
     path: '/security',
     getParentRoute: () => AppAuthenticatedRouteRoute,
   } as any)
+const AppAuthenticatedReferEarnRoute =
+  AppAuthenticatedReferEarnRouteImport.update({
+    id: '/refer-earn',
+    path: '/refer-earn',
+    getParentRoute: () => AppAuthenticatedRouteRoute,
+  } as any)
 const AppAuthenticatedProfileRoute = AppAuthenticatedProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -253,6 +261,12 @@ const AppAuthenticatedOnboardingRoute =
   AppAuthenticatedOnboardingRouteImport.update({
     id: '/onboarding',
     path: '/onboarding',
+    getParentRoute: () => AppAuthenticatedRouteRoute,
+  } as any)
+const AppAuthenticatedLeaderboardRoute =
+  AppAuthenticatedLeaderboardRouteImport.update({
+    id: '/leaderboard',
+    path: '/leaderboard',
     getParentRoute: () => AppAuthenticatedRouteRoute,
   } as any)
 const AppAuthenticatedFriendsRoute = AppAuthenticatedFriendsRouteImport.update({
@@ -349,8 +363,10 @@ export interface FileRoutesByFullPath {
   '/app/admin': typeof AppAuthenticatedAdminRoute
   '/app/chat': typeof AppAuthenticatedChatRouteWithChildren
   '/app/friends': typeof AppAuthenticatedFriendsRoute
+  '/app/leaderboard': typeof AppAuthenticatedLeaderboardRoute
   '/app/onboarding': typeof AppAuthenticatedOnboardingRoute
   '/app/profile': typeof AppAuthenticatedProfileRoute
+  '/app/refer-earn': typeof AppAuthenticatedReferEarnRoute
   '/app/security': typeof AppAuthenticatedSecurityRoute
   '/app/vip-rewards': typeof AppAuthenticatedVipRewardsRoute
   '/app/wallet': typeof AppAuthenticatedWalletRoute
@@ -395,8 +411,10 @@ export interface FileRoutesByTo {
   '/chat/page': typeof AuthenticatedChatPageRoute
   '/app/admin': typeof AppAuthenticatedAdminRoute
   '/app/friends': typeof AppAuthenticatedFriendsRoute
+  '/app/leaderboard': typeof AppAuthenticatedLeaderboardRoute
   '/app/onboarding': typeof AppAuthenticatedOnboardingRoute
   '/app/profile': typeof AppAuthenticatedProfileRoute
+  '/app/refer-earn': typeof AppAuthenticatedReferEarnRoute
   '/app/security': typeof AppAuthenticatedSecurityRoute
   '/app/vip-rewards': typeof AppAuthenticatedVipRewardsRoute
   '/app/wallet': typeof AppAuthenticatedWalletRoute
@@ -447,8 +465,10 @@ export interface FileRoutesById {
   '/app/_authenticated/admin': typeof AppAuthenticatedAdminRoute
   '/app/_authenticated/chat': typeof AppAuthenticatedChatRouteWithChildren
   '/app/_authenticated/friends': typeof AppAuthenticatedFriendsRoute
+  '/app/_authenticated/leaderboard': typeof AppAuthenticatedLeaderboardRoute
   '/app/_authenticated/onboarding': typeof AppAuthenticatedOnboardingRoute
   '/app/_authenticated/profile': typeof AppAuthenticatedProfileRoute
+  '/app/_authenticated/refer-earn': typeof AppAuthenticatedReferEarnRoute
   '/app/_authenticated/security': typeof AppAuthenticatedSecurityRoute
   '/app/_authenticated/vip-rewards': typeof AppAuthenticatedVipRewardsRoute
   '/app/_authenticated/wallet': typeof AppAuthenticatedWalletRoute
@@ -498,8 +518,10 @@ export interface FileRouteTypes {
     | '/app/admin'
     | '/app/chat'
     | '/app/friends'
+    | '/app/leaderboard'
     | '/app/onboarding'
     | '/app/profile'
+    | '/app/refer-earn'
     | '/app/security'
     | '/app/vip-rewards'
     | '/app/wallet'
@@ -544,8 +566,10 @@ export interface FileRouteTypes {
     | '/chat/page'
     | '/app/admin'
     | '/app/friends'
+    | '/app/leaderboard'
     | '/app/onboarding'
     | '/app/profile'
+    | '/app/refer-earn'
     | '/app/security'
     | '/app/vip-rewards'
     | '/app/wallet'
@@ -595,8 +619,10 @@ export interface FileRouteTypes {
     | '/app/_authenticated/admin'
     | '/app/_authenticated/chat'
     | '/app/_authenticated/friends'
+    | '/app/_authenticated/leaderboard'
     | '/app/_authenticated/onboarding'
     | '/app/_authenticated/profile'
+    | '/app/_authenticated/refer-earn'
     | '/app/_authenticated/security'
     | '/app/_authenticated/vip-rewards'
     | '/app/_authenticated/wallet'
@@ -893,6 +919,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthenticatedSecurityRouteImport
       parentRoute: typeof AppAuthenticatedRouteRoute
     }
+    '/app/_authenticated/refer-earn': {
+      id: '/app/_authenticated/refer-earn'
+      path: '/refer-earn'
+      fullPath: '/app/refer-earn'
+      preLoaderRoute: typeof AppAuthenticatedReferEarnRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
     '/app/_authenticated/profile': {
       id: '/app/_authenticated/profile'
       path: '/profile'
@@ -905,6 +938,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/app/onboarding'
       preLoaderRoute: typeof AppAuthenticatedOnboardingRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
+    '/app/_authenticated/leaderboard': {
+      id: '/app/_authenticated/leaderboard'
+      path: '/leaderboard'
+      fullPath: '/app/leaderboard'
+      preLoaderRoute: typeof AppAuthenticatedLeaderboardRouteImport
       parentRoute: typeof AppAuthenticatedRouteRoute
     }
     '/app/_authenticated/friends': {
@@ -1035,8 +1075,10 @@ interface AppAuthenticatedRouteRouteChildren {
   AppAuthenticatedAdminRoute: typeof AppAuthenticatedAdminRoute
   AppAuthenticatedChatRoute: typeof AppAuthenticatedChatRouteWithChildren
   AppAuthenticatedFriendsRoute: typeof AppAuthenticatedFriendsRoute
+  AppAuthenticatedLeaderboardRoute: typeof AppAuthenticatedLeaderboardRoute
   AppAuthenticatedOnboardingRoute: typeof AppAuthenticatedOnboardingRoute
   AppAuthenticatedProfileRoute: typeof AppAuthenticatedProfileRoute
+  AppAuthenticatedReferEarnRoute: typeof AppAuthenticatedReferEarnRoute
   AppAuthenticatedSecurityRoute: typeof AppAuthenticatedSecurityRoute
   AppAuthenticatedVipRewardsRoute: typeof AppAuthenticatedVipRewardsRoute
   AppAuthenticatedWalletRoute: typeof AppAuthenticatedWalletRoute
@@ -1047,8 +1089,10 @@ const AppAuthenticatedRouteRouteChildren: AppAuthenticatedRouteRouteChildren = {
   AppAuthenticatedAdminRoute: AppAuthenticatedAdminRoute,
   AppAuthenticatedChatRoute: AppAuthenticatedChatRouteWithChildren,
   AppAuthenticatedFriendsRoute: AppAuthenticatedFriendsRoute,
+  AppAuthenticatedLeaderboardRoute: AppAuthenticatedLeaderboardRoute,
   AppAuthenticatedOnboardingRoute: AppAuthenticatedOnboardingRoute,
   AppAuthenticatedProfileRoute: AppAuthenticatedProfileRoute,
+  AppAuthenticatedReferEarnRoute: AppAuthenticatedReferEarnRoute,
   AppAuthenticatedSecurityRoute: AppAuthenticatedSecurityRoute,
   AppAuthenticatedVipRewardsRoute: AppAuthenticatedVipRewardsRoute,
   AppAuthenticatedWalletRoute: AppAuthenticatedWalletRoute,
