@@ -68,8 +68,10 @@ import {
   MinusCircle,
   Sparkles,
   Crown,
+  TrendingUp,
 } from "lucide-react";
 import { VipRewardSettingsView } from "@/components/admin/VipRewardSettingsView";
+import VipAnalyticsDashboardView from "@/components/admin/VipAnalyticsDashboardView";
 import { AIWorkspace } from "@/components/admin/AIWorkspace";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
@@ -147,7 +149,8 @@ type Tab =
   | "push_notifications"
   | "aichat"
   | "user_ai_knowledge"
-  | "vip_settings";
+  | "vip_settings"
+  | "vip_dashboard";
 
 type AdminSearch = {
   c?: string;
@@ -163,7 +166,7 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
       "inbox", "teamchat", "quickreplies", "tags", "broadcasts", "followups",
       "autoresp", "referrals", "logs", "users", "admins", "super", "profile",
       "rules", "updates", "monitor", "monthly_profit", "push_notifications",
-      "aichat", "user_ai_knowledge", "vip_settings"
+      "aichat", "user_ai_knowledge", "vip_settings", "vip_dashboard"
     ];
     const incomingTab = search.tab as Tab;
     return {
@@ -440,6 +443,7 @@ function AdminPage() {
         <SideBtn active={tab === "monthly_profit"} onClick={() => selectTab("monthly_profit")} icon={Coins} label="Monthly Profit" />
         <SideBtn active={tab === "monitor"} onClick={() => selectTab("monitor")} icon={Eye} label="Monitor Chats" />
         <SideBtn active={tab === "push_notifications"} onClick={() => selectTab("push_notifications")} icon={Bell} label="Push Notification" />
+        <SideBtn active={tab === "vip_dashboard"} onClick={() => selectTab("vip_dashboard")} icon={TrendingUp} label="VIP Dashboard" />
         {isSuperAdmin && (
           <>
             <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">Pinned Chats</p>
@@ -542,6 +546,11 @@ function AdminPage() {
             </ScrollWrap>
           </div>
         )}
+        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "vip_dashboard" ? "" : "hidden"}`}>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="VIP & Loyalty Dashboard">
+            <VipAnalyticsDashboardView isSuperAdmin={isSuperAdmin} />
+          </ScrollWrap>
+        </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "profile" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={user.id} email={user.email ?? null} /></ScrollWrap>
         </div>

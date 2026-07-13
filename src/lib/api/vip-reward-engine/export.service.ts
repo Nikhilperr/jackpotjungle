@@ -255,3 +255,29 @@ export function exportPlayerPayouts(payouts: any[], format: "csv" | "excel" | "p
     printPdfLayout("VIP Player Payout Distributions", headers, rows);
   }
 }
+
+/**
+ * Exporter: exportVipReportData
+ * General-purpose reporter export for Monthly Reward, VIP, Referral, Distribution, and Qualification reports.
+ */
+export function exportVipReportData(
+  title: string,
+  headers: string[],
+  rows: any[][],
+  format: "csv" | "excel" | "pdf",
+  defaultFilename: string
+) {
+  const timestamp = new Date().toISOString().split("T")[0];
+  const filename = `${defaultFilename.replace(/\s+/g, "_")}_${timestamp}`;
+
+  if (format === "csv") {
+    const csvContent = [headers.join(","), ...rows.map(r => r.map(escapeCSV).join(","))].join("\n");
+    triggerDownload(csvContent, `${filename}.csv`, "text/csv;charset=utf-8;");
+  } else if (format === "excel") {
+    const excelContent = generateExcelXml(headers, rows, "Report Sheets");
+    triggerDownload(excelContent, `${filename}.xls`, "application/vnd.ms-excel");
+  } else if (format === "pdf") {
+    printPdfLayout(title, headers, rows);
+  }
+}
+

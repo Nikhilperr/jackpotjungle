@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 import { getActiveSessionsUser, terminateSessionUser } from "@/lib/admin-super.functions";
 import { getUserRewardHistory } from "@/lib/api/vip-reward-engine/history.functions";
+import { getUserVipDashboardStats } from "@/lib/api/vip-reward-engine/dashboard.functions";
 import { useServerFn } from "@tanstack/react-start";
 
 export const Route = createFileRoute("/app/_authenticated/profile")({
@@ -131,8 +132,12 @@ function ProfilePage() {
   // Sub-tab selection state
   const [activeSubTab, setActiveSubTab] = useState<"profile" | "wallet" | "logins" | "vipRewards">("profile");
   const getVipHistoryFn = useServerFn(getUserRewardHistory);
+  const getVipStatsFn = useServerFn(getUserVipDashboardStats);
   const [vipRewardsHistory, setVipRewardsHistory] = useState<any[]>([]);
   const [loadingVipHistory, setLoadingVipHistory] = useState(false);
+  const [vipDashboardStats, setVipDashboardStats] = useState<any>(null);
+  const [loadingVipDashboard, setLoadingVipDashboard] = useState(false);
+  const [vipHistoryPage, setVipHistoryPage] = useState(1);
 
   // MFA states
   const [mfaStatus, setMfaStatus] = useState<"unverified" | "enrolling" | "active">("unverified");
@@ -194,15 +199,21 @@ function ProfilePage() {
 
   const loadVipHistory = async () => {
     setLoadingVipHistory(true);
+    setLoadingVipDashboard(true);
     try {
-      const res = await getVipHistoryFn();
-      if (res.success && res.history) {
-        setVipRewardsHistory(res.history);
+      const historyRes = await getVipHistoryFn();
+      if (historyRes.success && historyRes.history) {
+        setVipRewardsHistory(historyRes.history);
+      }
+      const statsRes = await getVipStatsFn();
+      if (statsRes.success) {
+        setVipDashboardStats(statsRes);
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to load VIP history");
     } finally {
       setLoadingVipHistory(false);
+      setLoadingVipDashboard(false);
     }
   };
 
@@ -1294,70 +1305,241 @@ function ProfilePage() {
                       <Award className="h-5 w-5 text-primary animate-pulse" /> Monthly VIP Loyalty Payouts
                     </h2>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      Your historical VIP rewards distributed at the end of each monthly calculations cycle. Bonuses are automatically credited directly to your Available Balance.
+                      Your VIP status tracker and historical rewards distributed at the end of each monthly calculations cycle.
                     </p>
                   </div>
 
-                  <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-sm">
-                    {loadingVipHistory ? (
-                      <div className="flex h-32 items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                      </div>
-                    ) : vipRewardsHistory.length === 0 ? (
-                      <div className="flex h-32 flex-col items-center justify-center text-muted-foreground text-center p-6 select-none bg-secondary/10">
-                        <Award className="h-7 w-7 opacity-30 mb-2" />
-                        <p className="text-xs font-bold text-foreground">No VIP rewards found</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5 max-w-xs mx-auto">
-                          Complete qualified deposits and maintain positive holding to earn loyalty rewards next cycle!
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="w-full overflow-x-auto">
-                        <table className="w-full text-left border-collapse text-xs min-w-[700px]">
-                          <thead>
-                            <tr className="border-b border-border/80 bg-secondary/35 text-[10px] uppercase font-bold text-muted-foreground">
-                              <th className="p-3 pl-5">Cycle Period</th>
-                              <th className="p-3 text-center">VIP Tier</th>
-                              <th className="p-3 text-right">Scores (Dep/Hold/Ref/Loy)</th>
-                              <th className="p-3 text-right">VIP Multiplier</th>
-                              <th className="p-3 text-right">Final Score</th>
-                              <th className="p-3 text-right text-emerald-400">Reward amount</th>
-                              <th className="p-3 pr-5">Distribution Date</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border/60">
-                            {vipRewardsHistory.map((row) => (
-                              <tr key={row.id} className="hover:bg-secondary/10 transition-colors">
-                                <td className="p-3 pl-5 font-bold text-foreground">
-                                  {new Date(0, row.month - 1).toLocaleString("en", { month: "long" })} {row.year}
-                                </td>
-                                <td className="p-3 text-center">
-                                  <span className="px-2 py-0.5 rounded bg-secondary text-[10px] font-black uppercase text-foreground">
-                                    {row.vip_status}
-                                  </span>
-                                </td>
-                                <td className="p-3 text-right text-[10px] font-mono text-muted-foreground">
-                                  Dep: {Number(row.deposit_score).toFixed(0)} | Hold: {Number(row.holding_score).toFixed(0)} | Ref: {Number(row.referral_score).toFixed(0)} | Loy: {Number(row.loyalty_score).toFixed(0)}
-                                </td>
-                                <td className="p-3 text-right font-mono text-muted-foreground font-semibold">
-                                  {Number(row.multiplier).toFixed(2)}x
-                                </td>
-                                <td className="p-3 text-right font-mono font-bold text-foreground">
-                                  {Number(row.final_score).toFixed(4)}%
-                                </td>
-                                <td className="p-3 text-right font-mono font-black text-emerald-400 text-sm">
-                                  ${Number(row.reward_amount).toFixed(2)}
-                                </td>
-                                <td className="p-3 pr-5 font-mono text-muted-foreground">
-                                  {new Date(row.distribution_date).toLocaleDateString()}
-                                </td>
-                              </tr>
+                  {loadingVipHistory || loadingVipDashboard ? (
+                    <div className="flex h-32 items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      
+                      {/* VIP Dashboard Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        
+                        {/* 1. Monthly Reward Estimator Card */}
+                        <div className="bg-card border border-border/80 rounded-2xl p-5 space-y-4 shadow-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Current Month Reward</span>
+                            {vipDashboardStats?.activeMonthEstimate ? (
+                              <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                                vipDashboardStats.activeMonthEstimate.status === "Approved" || vipDashboardStats.activeMonthEstimate.status === "Completed"
+                                  ? "bg-emerald-400/10 text-emerald-400 border border-emerald-400/20"
+                                  : "bg-amber-400/10 text-amber-400 border border-amber-400/20"
+                              }`}>
+                                {vipDashboardStats.activeMonthEstimate.status}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-secondary text-muted-foreground border border-border">
+                                Calculating
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div>
+                            <h3 className="text-2xl font-black text-foreground font-mono">
+                              ${vipDashboardStats?.activeMonthEstimate ? Number(vipDashboardStats.activeMonthEstimate.rewardAmount).toFixed(2) : "0.00"}
+                            </h3>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              {vipDashboardStats?.activeMonthEstimate?.qualified
+                                ? `Score: ${vipDashboardStats.activeMonthEstimate.finalScore.toFixed(4)}% | Multiplier: ${vipDashboardStats.activeMonthEstimate.multiplier.toFixed(2)}x`
+                                : vipDashboardStats?.activeMonthEstimate?.disqualificationReason || "Qualified deposits & positive holding required."}
+                            </p>
+                          </div>
+                          <div className="text-[9px] text-muted-foreground border-t border-border/50 pt-2 flex items-center justify-between">
+                            <span>Expected Distribution Date:</span>
+                            <span className="font-bold text-foreground">1st of next month</span>
+                          </div>
+                        </div>
+
+                        {/* 2. VIP level card and progress */}
+                        <div className="bg-card border border-border/80 rounded-2xl p-5 space-y-3 shadow-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">VIP Tier Progression</span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-primary/10 text-primary border border-primary/20">
+                              {vipDashboardStats?.progression?.currentTier || "NONE"}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="text-muted-foreground font-medium">Progress to {vipDashboardStats?.progression?.nextTier}</span>
+                              <span className="font-bold text-foreground font-mono">{vipDashboardStats?.progression?.progressPercentage || 0}%</span>
+                            </div>
+                            <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
+                              <div
+                                className="bg-primary h-full transition-all duration-500 rounded-full"
+                                style={{ width: `${vipDashboardStats?.progression?.progressPercentage || 0}%` }}
+                              ></div>
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] text-muted-foreground leading-relaxed">
+                            {vipDashboardStats?.progression?.remainingDeposits > 0
+                              ? `Deposit $${vipDashboardStats.progression.remainingDeposits.toLocaleString()} more to reach ${vipDashboardStats.progression.nextTier}.`
+                              : "Maximum VIP tier achieved! Enjoy premium benefits."}
+                          </p>
+
+                          <div className="text-[9px] border-t border-border/50 pt-2 text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 font-semibold">
+                            {vipDashboardStats?.progression?.benefits?.map((benefit: string, idx: number) => (
+                              <span key={idx} className="flex items-center gap-1">
+                                <span className="h-1 w-1 bg-primary rounded-full shrink-0"></span> {benefit}
+                              </span>
                             ))}
-                          </tbody>
-                        </table>
+                          </div>
+                        </div>
+
+                        {/* 3. Referral Progress Card */}
+                        <div className="bg-card border border-border/80 rounded-2xl p-5 space-y-4 shadow-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Referral Stats</span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-secondary text-foreground">
+                              {vipDashboardStats?.referrals?.qualified || 0} Qualified
+                            </span>
+                          </div>
+                          <div>
+                            <h3 className="text-2xl font-black text-foreground font-mono">
+                              {vipDashboardStats?.referrals?.total || 0} Referrals
+                            </h3>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              Qualified referrals registered and deposited at least ${vipDashboardStats?.referrals?.minRequiredDeposit || 50}.
+                            </p>
+                          </div>
+                          <div className="text-[9px] text-muted-foreground border-t border-border/50 pt-2">
+                            Earn referral score weights to increase monthly rewards score.
+                          </div>
+                        </div>
+
+                        {/* 4. Wallet Balances Summary Card */}
+                        <div className="bg-card border border-border/80 rounded-2xl p-5 space-y-4 shadow-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Available & Credits Balance</span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              Active
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-left">
+                            <div>
+                              <span className="text-[10px] text-muted-foreground font-semibold block uppercase">Available</span>
+                              <span className="text-base font-bold text-foreground font-mono">
+                                ${vipDashboardStats?.profile?.walletBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-muted-foreground font-semibold block uppercase">Credits</span>
+                              <span className="text-base font-bold text-primary font-mono">
+                                ${vipDashboardStats?.profile?.creditBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-[9px] text-muted-foreground border-t border-border/50 pt-2">
+                            Rewards distributed are automatically credited to your Available Balance.
+                          </div>
+                        </div>
+
                       </div>
-                    )}
-                  </div>
+
+                      {/* Reward Payout History Table */}
+                      <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-sm">
+                        <div className="p-4 border-b border-border/50 bg-secondary/15 flex items-center justify-between">
+                          <h4 className="font-bold text-xs text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <History className="h-4 w-4 text-primary" /> Reward Payout History
+                          </h4>
+                          <span className="text-[10px] text-muted-foreground font-semibold font-mono">
+                            {vipRewardsHistory.length} total entries
+                          </span>
+                        </div>
+
+                        {vipRewardsHistory.length === 0 ? (
+                          <div className="flex h-32 flex-col items-center justify-center text-muted-foreground text-center p-6 select-none bg-secondary/10">
+                            <Award className="h-7 w-7 opacity-30 mb-2" />
+                            <p className="text-xs font-bold text-foreground">No VIP rewards found</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 max-w-xs mx-auto">
+                              Complete qualified deposits and maintain positive holding to earn loyalty rewards next cycle!
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="w-full">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse text-xs min-w-[700px]">
+                                <thead>
+                                  <tr className="border-b border-border/80 bg-secondary/35 text-[10px] uppercase font-bold text-muted-foreground">
+                                    <th className="p-3 pl-5">Cycle Period</th>
+                                    <th className="p-3 text-center">VIP Tier</th>
+                                    <th className="p-3 text-right">Scores (Dep/Hold/Ref/Loy)</th>
+                                    <th className="p-3 text-right">VIP Multiplier</th>
+                                    <th className="p-3 text-right">Final Score</th>
+                                    <th className="p-3 text-right text-emerald-400">Reward amount</th>
+                                    <th className="p-3 pr-5">Distribution Date</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/60">
+                                  {vipRewardsHistory
+                                    .slice((vipHistoryPage - 1) * 5, vipHistoryPage * 5)
+                                    .map((row) => (
+                                      <tr key={row.id} className="hover:bg-secondary/10 transition-colors">
+                                        <td className="p-3 pl-5 font-bold text-foreground">
+                                          {new Date(0, row.month - 1).toLocaleString("en", { month: "long" })} {row.year}
+                                        </td>
+                                        <td className="p-3 text-center">
+                                          <span className="px-2 py-0.5 rounded bg-secondary text-[10px] font-black uppercase text-foreground">
+                                            {row.vip_status}
+                                          </span>
+                                        </td>
+                                        <td className="p-3 text-right text-[10px] font-mono text-muted-foreground">
+                                          Dep: {Number(row.deposit_score).toFixed(0)} | Hold: {Number(row.holding_score).toFixed(0)} | Ref: {Number(row.referral_score).toFixed(0)} | Loy: {Number(row.loyalty_score).toFixed(0)}
+                                        </td>
+                                        <td className="p-3 text-right font-mono text-muted-foreground font-semibold">
+                                          {Number(row.multiplier).toFixed(2)}x
+                                        </td>
+                                        <td className="p-3 text-right font-mono font-bold text-foreground">
+                                          {Number(row.final_score).toFixed(4)}%
+                                        </td>
+                                        <td className="p-3 text-right font-mono font-black text-emerald-400 text-sm">
+                                          ${Number(row.reward_amount).toFixed(2)}
+                                        </td>
+                                        <td className="p-3 pr-5 font-mono text-muted-foreground">
+                                          {new Date(row.distribution_date).toLocaleDateString()}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Client-side Pagination controls */}
+                            {vipRewardsHistory.length > 5 && (
+                              <div className="flex items-center justify-between p-3 bg-secondary/5 border-t border-border/50 text-[10px]">
+                                <span className="text-muted-foreground">
+                                  Showing page {vipHistoryPage} of {Math.ceil(vipRewardsHistory.length / 5)}
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => setVipHistoryPage(p => Math.max(1, p - 1))}
+                                    disabled={vipHistoryPage === 1}
+                                    className="px-2 py-1 rounded bg-secondary text-foreground hover:bg-secondary/80 disabled:opacity-50 transition-all"
+                                  >
+                                    Previous
+                                  </button>
+                                  <button
+                                    onClick={() => setVipHistoryPage(p => Math.min(Math.ceil(vipRewardsHistory.length / 5), p + 1))}
+                                    disabled={vipHistoryPage === Math.ceil(vipRewardsHistory.length / 5)}
+                                    className="px-2 py-1 rounded bg-secondary text-foreground hover:bg-secondary/80 disabled:opacity-50 transition-all"
+                                  >
+                                    Next
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+                  )}
+
                 </div>
               )}
             </div>
