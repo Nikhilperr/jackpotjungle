@@ -2,14 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { assertAdmin } from "@/lib/wallet.functions";
-import pg from "pg";
-import dns from "dns";
 
-if (typeof dns.setDefaultResultOrder === "function") {
-  dns.setDefaultResultOrder("ipv4first");
-}
-
-async function resolveHostToIPv4(host: string): Promise<string> {
+async function resolveHostToIPv4(host: string, dns: any): Promise<string> {
   if (host === "localhost" || host === "127.0.0.1") return host;
   try {
     const addresses = await dns.promises.resolve4(host);
@@ -23,6 +17,13 @@ async function resolveHostToIPv4(host: string): Promise<string> {
 }
 
 export async function ensureVipRewardSchema() {
+  const pg = (await import("pg")).default;
+  const dns = await import("dns");
+
+  if (typeof dns.setDefaultResultOrder === "function") {
+    dns.setDefaultResultOrder("ipv4first");
+  }
+
   const dbPassword = process.env.SUPABASE_DB_PASSWORD || process.env.DATABASE_PASSWORD || "grootMahakal7X";
   const dbName = process.env.SUPABASE_DB_NAME || process.env.DATABASE_NAME || "postgres";
   const username = process.env.SUPABASE_DB_USER || process.env.DATABASE_USER || "postgres";
@@ -39,7 +40,7 @@ export async function ensureVipRewardSchema() {
   for (const h of hosts) {
     for (const p of ports) {
       try {
-        const resolvedHost = await resolveHostToIPv4(h);
+        const resolvedHost = await resolveHostToIPv4(h, dns);
         const isRemote = h.includes(".") && !h.startsWith("127.");
         
         let candidateUsername = username;
