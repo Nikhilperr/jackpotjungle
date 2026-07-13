@@ -7499,6 +7499,7 @@ const AdminConversationItem = React.memo(function AdminConversationItem({
       pressTimer.current = null;
     }
   };
+  const isBlackDiamond = u.vip_status && (u.vip_status.toLowerCase() === 'black_diamond' || u.vip_status.toLowerCase() === 'blackvip');
 
   return (
     <div className="group relative">
@@ -7509,7 +7510,13 @@ const AdminConversationItem = React.memo(function AdminConversationItem({
         onPointerMove={cancelPress}
         onPointerLeave={cancelPress}
         onContextMenu={(e) => { e.preventDefault(); setContextMenuTarget(u.conversationId); }}
-        className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-colors select-none ${isActive ? "bg-secondary" : ""}`}
+        className={`w-full flex items-center gap-3 px-3 py-3 mx-2 my-1 rounded-xl text-left hover:bg-secondary transition-all select-none border ${
+          isBlackDiamond
+            ? "border-amber-500/60 dark:border-amber-400/50 bg-amber-500/[0.04] dark:bg-amber-400/[0.03] shadow-[0_0_10px_rgba(245,158,11,0.15)]"
+            : isActive
+            ? "bg-secondary border-transparent"
+            : "border-transparent"
+        }`}
       >
         <div className="relative shrink-0">
           <Avatar name={u.username} url={u.avatar_url} size={44} />
