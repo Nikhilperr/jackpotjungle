@@ -143,10 +143,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navItems = [
     { to: "/app/chat", icon: MessageCircle, label: "Chats" },
     { to: "/app/friends", icon: Users, label: "Friends" },
-    { to: "/app/profile", icon: UserIcon, label: "Profile" },
     { to: "/app/wallet", icon: Wallet, label: "Wallet" },
     { to: "/app/security", icon: Shield, label: "Security" },
     { to: "/app/vip-rewards", icon: Award, label: "VIP Rewards" },
+    { to: "/app/profile", icon: UserIcon, label: "Profile" },
   ];
   if (isAdmin) navItems.push({ to: "/app/admin", icon: Shield, label: "Admin" });
 

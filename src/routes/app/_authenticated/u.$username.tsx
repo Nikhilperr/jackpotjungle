@@ -2,11 +2,13 @@ import { createFileRoute, useNavigate, useParams, Link } from "@tanstack/react-r
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Loader2, UserPlus, Check, X, MessageCircle, AlertCircle, ArrowLeft, Calendar, Sparkles } from "lucide-react";
+import { useRole } from "@/hooks/useRole";
+import { Loader2, UserPlus, Check, X, MessageCircle, AlertCircle, ArrowLeft, Calendar, Sparkles, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/messenger/Avatar";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 const sb: any = supabase;
 
@@ -65,6 +67,7 @@ export const Route = createFileRoute("/app/_authenticated/u/$username")({
 function UserProfileLandingPage() {
   const { username } = useParams({ from: "/app/_authenticated/u/$username" });
   const { user } = useAuth();
+  const { isAdmin } = useRole();
   const navigate = useNavigate();
   const meId = user?.id;
 
@@ -75,6 +78,65 @@ function UserProfileLandingPage() {
   const [pendingReq, setPendingReq] = useState<{ id: string; direction: "in" | "out" } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Referrals details states
+  const [referralsModalOpen, setReferralsModalOpen] = useState(false);
+  const [referredByProfile, setReferredByProfile] = useState<any>(null);
+  const [referralsList, setReferralsList] = useState<any[]>([]);
+  const [loadingReferrals, setLoadingReferrals] = useState(false);
+
+  const fetchReferralDetails = async () => {
+    if (!profile?.id) return;
+    setLoadingReferrals(true);
+    try {
+      // 1. Fetch referred_by details from target profile
+      if (profile.referred_by) {
+        const { data: refBy } = await supabase
+          .from("profiles")
+          .select("username, first_name, last_name")
+          .eq("id", profile.referred_by)
+          .maybeSingle();
+        setReferredByProfile(refBy);
+      } else {
+        setReferredByProfile(null);
+      }
+
+      // 2. Fetch whom target user has referred
+      const { data: refs, error: refsErr } = await supabase
+        .from("referrals")
+        .select("*")
+        .eq("referrer_id", profile.id);
+
+      if (refsErr) throw refsErr;
+
+      if (refs && refs.length > 0) {
+        const referredIds = refs.map((r) => r.referred_id);
+        const { data: profs, error: profsErr } = await supabase
+          .from("profiles")
+          .select("id, username, first_name, last_name, vip_status, avatar_url")
+          .in("id", referredIds);
+
+        if (profsErr) throw profsErr;
+
+        const combined = refs.map((r) => {
+          const matchedProf = profs?.find((p) => p.id === r.referred_id);
+          return {
+            id: r.id,
+            status: r.status,
+            created_at: r.created_at,
+            referredUser: matchedProf || { username: "Unknown User" },
+          };
+        });
+        setReferralsList(combined);
+      } else {
+        setReferralsList([]);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load referrals list");
+    } finally {
+      setLoadingReferrals(false);
+    }
+  };
 
   async function checkRelationship(myId: string, targetId: string) {
     try {
@@ -124,7 +186,7 @@ function UserProfileLandingPage() {
       try {
         const { data: prof, error } = await sb
           .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url, friend_code, created_at, vip_status")
+          .select("id, username, first_name, last_name, avatar_url, friend_code, created_at, vip_status, referred_by")
           .eq("username", username)
           .maybeSingle();
 
@@ -425,6 +487,34 @@ function UserProfileLandingPage() {
               </Button>
             )}
 
+            {/* Referrals details restricted section */}
+            {(isSelf || isAdmin) && (
+              <div className="bg-secondary/40 border border-border/80 rounded-2xl p-4 space-y-3 text-left">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-foreground">Referral details</p>
+                  <span className="px-2 py-0.5 rounded text-[8px] font-extrabold uppercase bg-primary/10 text-primary border border-primary/20">
+                    Restricted
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  {isSelf 
+                    ? "As the account owner, you can view your referrer and list of referred accounts."
+                    : `As an Admin, you are authorized to view @${profile.username}'s referral details.`}
+                </p>
+                <Button
+                  onClick={() => {
+                    fetchReferralDetails();
+                    setReferralsModalOpen(true);
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="w-full rounded-xl font-bold text-xs"
+                >
+                  <Users className="h-3.5 w-3.5 mr-1" /> See referrals
+                </Button>
+              </div>
+            )}
+
             <Link 
               to="/app/chat" 
               className="block text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline transition-colors mt-2"
@@ -434,6 +524,94 @@ function UserProfileLandingPage() {
           </div>
         </div>
       )}
+
+      {/* Referrals Dialog */}
+      <Dialog open={referralsModalOpen} onOpenChange={setReferralsModalOpen}>
+        <DialogContent className="max-w-md max-h-[80vh] flex flex-col bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+              <Users className="h-5 w-5 text-primary" /> Referral History
+            </DialogTitle>
+            <DialogDescription>
+              {isSelf 
+                ? "View who referred you and details of players you have referred."
+                : `View details of players referred by @${profile?.username}.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            {/* Referrer Details */}
+            <div className="bg-secondary/40 border border-border/80 rounded-xl p-4 space-y-2">
+              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Referred By</p>
+              {loadingReferrals ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Loading...
+                </div>
+              ) : referredByProfile ? (
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold text-xs border border-primary/20 uppercase">
+                    {referredByProfile.username.slice(0, 2)}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-foreground">
+                      {referredByProfile.first_name ? `${referredByProfile.first_name} ${referredByProfile.last_name || ""}`.trim() : referredByProfile.username}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">@{referredByProfile.username}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs font-medium text-muted-foreground italic">Direct Sign Up (No Referrer)</p>
+              )}
+            </div>
+
+            {/* Referred Users List */}
+            <div className="space-y-3">
+              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Referred Users</p>
+              {loadingReferrals ? (
+                <div className="flex h-32 items-center justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </div>
+              ) : referralsList.length === 0 ? (
+                <div className="flex h-24 flex-col items-center justify-center border border-dashed border-border/60 rounded-xl text-center p-4">
+                  <Users className="h-6 w-6 opacity-30 mb-1" />
+                  <p className="text-xs font-bold text-muted-foreground">No referrals yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {referralsList.map((ref) => (
+                    <div key={ref.id} className="flex items-center justify-between p-3 bg-secondary/35 border border-border/40 rounded-xl hover:border-border transition-all">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="h-8 w-8 bg-secondary border border-border rounded-full flex items-center justify-center text-foreground font-bold text-xs uppercase shrink-0">
+                          {ref.referredUser.username.slice(0, 2)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-foreground truncate">
+                            {ref.referredUser.first_name ? `${ref.referredUser.first_name} ${ref.referredUser.last_name || ""}`.trim() : ref.referredUser.username}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                            <span>@{ref.referredUser.username}</span>
+                            <span>•</span>
+                            <span>{new Date(ref.created_at).toLocaleDateString()}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide border ${
+                          ref.status === "qualified" || ref.status === "joined"
+                            ? "bg-green-500/10 text-green-500 border-green-500/20"
+                            : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                        }`}>
+                          {ref.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
