@@ -892,104 +892,116 @@ function ChatLayout() {
 
             {/* Premium VIP Progression & Wallet Card */}
             {(() => {
-              const vipStatus = (vipStats?.profile?.vipStatus || "gold").toLowerCase();
-              
-              // Define dynamic tier styles
-              let cardBg = "from-amber-600/20 via-amber-500/10 to-transparent border-amber-500/35 shadow-sm";
-              let trophyColor = "text-amber-500";
-              let badgeText = "text-amber-400";
-              let progressPercentageText = "text-amber-400";
-              let barBg = "from-amber-500 to-amber-300";
-
-              if (vipStatus === "bronze") {
-                cardBg = "from-orange-950/30 via-orange-900/10 to-zinc-900/40 border-orange-800/40 shadow-sm";
-                trophyColor = "text-orange-600";
-                badgeText = "text-orange-400";
-                progressPercentageText = "text-orange-400";
-                barBg = "from-orange-600 to-orange-400";
-              } else if (vipStatus === "silver") {
-                cardBg = "from-slate-700/20 via-slate-800/10 to-zinc-900/40 border-slate-600/30 shadow-[0_0_12px_rgba(148,163,184,0.05)]";
-                trophyColor = "text-slate-400";
-                badgeText = "text-slate-300";
-                progressPercentageText = "text-slate-300";
-                barBg = "from-slate-400 to-slate-300";
-              } else if (vipStatus === "platinum") {
-                cardBg = "from-cyan-600/25 via-cyan-500/10 to-zinc-950/80 border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.08)]";
-                trophyColor = "text-cyan-400";
-                badgeText = "text-cyan-400";
-                progressPercentageText = "text-cyan-400";
-                barBg = "from-cyan-500 to-cyan-300 animate-pulse";
-              } else if (vipStatus === "diamond") {
-                cardBg = "from-blue-600/25 via-blue-500/10 to-zinc-950/80 border-blue-500/40 shadow-[0_0_15px_rgba(59,130,246,0.08)]";
-                trophyColor = "text-blue-400";
-                badgeText = "text-blue-400";
-                progressPercentageText = "text-blue-400";
-                barBg = "from-blue-500 to-blue-300";
-              } else if (vipStatus === "black_diamond" || vipStatus === "blackvip") {
-                cardBg = "from-purple-950/30 via-zinc-900/40 to-black border-yellow-500/30 shadow-[0_0_20px_rgba(234,179,8,0.12)]";
-                trophyColor = "text-yellow-400";
-                badgeText = "bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent font-black";
-                progressPercentageText = "text-yellow-400 font-extrabold";
-                barBg = "from-yellow-500 via-amber-400 to-yellow-600";
-              }
+              const vipStatus = vipStats?.profile?.vipStatus && vipStats.profile.vipStatus !== "none"
+                ? vipStats.profile.vipStatus
+                : "gold"; // Default to gold for display placeholder
+              const badgeUrl = getVipBadgeUrl(vipStatus) || "/gold.png";
+              const progressPercentage = vipStats?.progression?.progressPercentage !== undefined
+                ? vipStats.progression.progressPercentage
+                : 72;
+              const nextTierName = vipStats?.progression?.nextTier || "Platinum";
+              const currentTierName = vipStats?.progression?.currentTier || "Gold VIP";
+              const walletBalanceVal = vipStats?.profile?.walletBalance !== undefined
+                ? Number(vipStats.profile.walletBalance).toFixed(2)
+                : "580.00";
+              const monthlyRewardVal = vipStats?.activeMonthEstimate?.rewardAmount !== undefined
+                ? Number(vipStats.activeMonthEstimate.rewardAmount).toFixed(2)
+                : "96.50";
+              const remainingDeposits = vipStats?.progression?.remainingDeposits !== undefined
+                ? vipStats.progression.remainingDeposits
+                : 250;
 
               return (
-                <div className={`mb-4 bg-gradient-to-br ${cardBg} border rounded-2xl p-4 shadow-md backdrop-blur-sm transition-all duration-300 hover:scale-[1.01]`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Trophy className={`h-5 w-5 ${trophyColor} animate-pulse`} />
-                      <span className={`text-xs font-black uppercase tracking-wider ${badgeText}`}>
-                        {vipStats?.progression?.currentTier || "Gold VIP"}
+                <div className="mb-4 bg-card text-card-foreground border border-border/80 rounded-3xl p-4 shadow-sm space-y-4">
+                  {/* Top row */}
+                  <div className="flex items-stretch justify-between gap-1 select-none">
+                    {/* Left: Badge and progress */}
+                    <div className="flex-[1.4] flex items-center gap-2.5 min-w-0">
+                      <img
+                        src={badgeUrl}
+                        alt={currentTierName}
+                        className="h-11 w-11 object-contain shrink-0"
+                        onError={(e) => {
+                          // Fallback in case path doesn't load
+                          (e.target as HTMLImageElement).src = "/gold.png";
+                        }}
+                      />
+                      <div className="min-w-0 flex-1 flex flex-col justify-center">
+                        <span className="text-xs font-black text-foreground truncate">
+                          {currentTierName}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-medium mt-0.5 truncate">
+                          {remainingDeposits > 0 
+                            ? `${progressPercentage}% to ${nextTierName}`
+                            : "Maximum Tier reached"
+                          }
+                        </span>
+                        
+                        {/* Progress Bar */}
+                        <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden mt-1.5 border border-border/30">
+                          <div
+                            className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${remainingDeposits > 0 ? progressPercentage : 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Vertical Divider */}
+                    <div className="border-r border-border/80 h-10 self-center mx-1.5 shrink-0" />
+
+                    {/* Middle: Wallet Balance */}
+                    <div className="flex-1 flex flex-col justify-center min-w-0">
+                      <span className="text-[9px] text-muted-foreground font-black uppercase tracking-wider truncate">
+                        Wallet Balance
+                      </span>
+                      <span className="text-sm font-black text-green-600 font-mono mt-1 truncate">
+                        ${walletBalanceVal}
                       </span>
                     </div>
-                    <span className={`text-[10px] font-mono font-bold ${progressPercentageText}`}>
-                      {vipStats?.progression?.progressPercentage || 72}% to {vipStats?.progression?.nextTier || "Platinum"}
-                    </span>
-                  </div>
-                  
-                  {/* Progress Bar */}
-                  <div className="w-full bg-zinc-900/80 h-2.5 rounded-full overflow-hidden mt-2 border border-zinc-805/40">
-                    <div
-                      className={`bg-gradient-to-r ${barBg} h-full rounded-full transition-all duration-500 shadow-md`}
-                      style={{ width: `${vipStats?.progression?.progressPercentage || 72}%` }}
-                    />
+
+                    {/* Vertical Divider */}
+                    <div className="border-r border-border/80 h-10 self-center mx-1.5 shrink-0" />
+
+                    {/* Right: Est. Monthly Reward */}
+                    <div className="flex-1 flex flex-col justify-center min-w-0">
+                      <span className="text-[9px] text-muted-foreground font-black uppercase tracking-wider truncate">
+                        Est. Monthly Reward
+                      </span>
+                      <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 font-mono mt-1 truncate">
+                        ${monthlyRewardVal}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Balances Grid */}
-                  <div className="grid grid-cols-2 gap-4 mt-4 border-t border-zinc-800/60 pt-3">
-                    <div>
-                      <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider block">Wallet Balance</span>
-                      <span className="text-base font-black text-white font-mono leading-none mt-1 block">
-                        ${vipStats?.profile?.walletBalance !== undefined ? Number(vipStats.profile.walletBalance).toFixed(2) : "0.00"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider block">Est. Monthly Reward</span>
-                      <span className="text-base font-black text-amber-500 font-mono leading-none mt-1 block">
-                        ${vipStats?.activeMonthEstimate?.rewardAmount !== undefined ? Number(vipStats.activeMonthEstimate.rewardAmount).toFixed(2) : "0.00"}
-                      </span>
-                    </div>
-                  </div>
+                  {/* Divider line */}
+                  <div className="border-t border-border/60" />
 
-                  {/* Next Best Action and Deposit Button */}
-                  <div className="flex items-center justify-between border-t border-zinc-800/60 pt-3 mt-3 gap-2">
+                  {/* Bottom row */}
+                  <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <span className="text-[8px] text-zinc-500 uppercase font-black tracking-wide block">Next Best Action</span>
-                      <p className="text-[10px] font-bold text-zinc-200 truncate mt-0.5">
-                        {vipStats?.progression?.remainingDeposits !== undefined
-                          ? (vipStats.progression.remainingDeposits > 0 
-                              ? `Deposit $${vipStats.progression.remainingDeposits} more. Est. Reward +$${Math.ceil(vipStats.progression.remainingDeposits * 0.05)}`
-                              : "Maxed out. No further deposits needed.")
-                          : "Deposit $250 more. Est. Reward +$12"
+                      <span className="text-[9px] text-muted-foreground uppercase font-black tracking-wider block">
+                        Next Best Action
+                      </span>
+                      <p className="text-xs font-bold text-foreground truncate mt-0.5">
+                        {remainingDeposits > 0 
+                          ? `Deposit $${remainingDeposits} more`
+                          : "Maxed out. No further deposits needed."
                         }
                       </p>
+                      {remainingDeposits > 0 && (
+                        <p className="text-[10px] text-green-600 font-bold mt-0.5">
+                          Est. Reward +${Math.ceil(remainingDeposits * 0.05)}
+                        </p>
+                      )}
                     </div>
+                    
                     <button
                       onClick={() => setDepositOpen(true)}
-                      className="px-3.5 py-1.5 bg-gradient-to-r from-primary to-orange-500 hover:brightness-110 text-white font-black text-[10px] rounded-xl shrink-0 transition-all flex items-center gap-0.5 active:scale-95 shadow-sm shadow-primary/10"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-2xl shrink-0 transition-all flex items-center gap-1 shadow-sm shadow-blue-500/10"
                     >
                       <span>Deposit Now</span>
-                      <span className="text-[8px] font-black">&gt;</span>
+                      <span className="text-[9px] font-black">&gt;</span>
                     </button>
                   </div>
                 </div>
