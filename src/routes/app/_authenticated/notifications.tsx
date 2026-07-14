@@ -6,6 +6,16 @@ import { useAuth } from "@/hooks/useAuth";
 import { Bell, Trash2, Loader2, Sparkles, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/app/_authenticated/notifications")({
   ssr: false,
@@ -26,6 +36,7 @@ function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const fetchNotifications = async () => {
     if (!user) return;
@@ -70,8 +81,6 @@ function NotificationsPage() {
 
   const handleClearAll = async () => {
     if (!user || notifications.length === 0) return;
-    const confirm = window.confirm("Are you sure you want to clear all notifications?");
-    if (!confirm) return;
 
     setLoading(true);
     try {
@@ -88,6 +97,7 @@ function NotificationsPage() {
       toast.error(err.message || "Failed to clear notifications.");
     } finally {
       setLoading(false);
+      setConfirmOpen(false);
     }
   };
 
@@ -105,7 +115,7 @@ function NotificationsPage() {
           </div>
           {notifications.length > 0 && (
             <Button
-              onClick={handleClearAll}
+              onClick={() => setConfirmOpen(true)}
               variant="outline"
               size="sm"
               className="rounded-full text-xs font-bold font-sans h-9 text-destructive hover:bg-destructive/10 hover:text-destructive border-border/80"
@@ -177,6 +187,32 @@ function NotificationsPage() {
           )}
         </div>
       </div>
+
+      {/* Clear All Confirmation Modal */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent className="w-full max-w-sm bg-card border border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive flex items-center gap-1.5">
+              <AlertCircle className="h-5 w-5" />
+              Clear All Notifications
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground select-none">
+              Are you sure you want to permanently clear all notifications? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel onClick={() => setConfirmOpen(false)} className="rounded-lg font-sans border-border">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleClearAll} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/95 rounded-lg font-sans"
+            >
+              Clear All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
