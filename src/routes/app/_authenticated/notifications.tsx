@@ -72,6 +72,7 @@ function NotificationsPage() {
       
       setNotifications((prev) => prev.filter((n) => n.id !== id));
       toast.success("Notification deleted.");
+      window.dispatchEvent(new CustomEvent("unread-notifications-updated"));
     } catch (err: any) {
       toast.error(err.message || "Failed to delete notification.");
     } finally {
@@ -93,6 +94,7 @@ function NotificationsPage() {
       
       setNotifications([]);
       toast.success("All notifications cleared.");
+      window.dispatchEvent(new CustomEvent("unread-notifications-updated"));
     } catch (err: any) {
       toast.error(err.message || "Failed to clear notifications.");
     } finally {

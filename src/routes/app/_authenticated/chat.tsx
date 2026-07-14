@@ -69,6 +69,8 @@ function ChatLayout() {
     const t = params.get("tab");
     if (t && ["all", "groups", "calls", "spam"].includes(t)) {
       setTab(t as any);
+    } else {
+      setTab("all");
     }
   }, [location.search]);
 
@@ -1029,7 +1031,7 @@ function ChatLayout() {
                 ))}
               </div>
             )}
-            <div className="flex gap-1.5 mt-3 overflow-x-auto no-scrollbar">
+            <div className="hidden md:flex gap-1.5 mt-3 overflow-x-auto no-scrollbar">
               <button
                 onClick={() => setTab("all")}
                 className={`flex-1 min-w-[50px] text-[10px] sm:text-xs font-bold py-1.5 px-2 rounded-full transition-colors shrink-0 ${tab === "all" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}

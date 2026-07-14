@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState, useRouter, useLocation } from "@tanstack/react-router";
-import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award, Trophy, Gift, Phone, MoreHorizontal, Coins, Crown, Target, Bell, Settings, HelpCircle } from "lucide-react";
+import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award, Trophy, Gift, Phone, MoreHorizontal, Coins, Crown, Target, Bell, Settings, HelpCircle, Ban, Share2, Star, Info, ChevronRight, Activity } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -76,9 +76,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const searchTab = (location.search as any)?.tab || "all";
   const isChatListActive = pathname === "/app/chat" || pathname === "/app/chat/";
   const [open, setOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadChatsCount, setUnreadChatsCount] = useState(0);
+  const [spamCount, setSpamCount] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -102,14 +104,30 @@ export function AppShell({ children }: { children: ReactNode }) {
         .eq("receiver_id", myId)
         .eq("seen", false);
       if (chatCount !== null && mounted) setUnreadChatsCount(chatCount);
+
+      // Spam count
+      const { count: sCount } = await supabase
+        .from("spam_list")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", myId);
+      if (sCount !== null && mounted) setSpamCount(sCount);
     };
 
     fetchCounts();
     const interval = setInterval(fetchCounts, 10000);
 
+    const handleUpdate = () => {
+      fetchCounts();
+    };
+
+    window.addEventListener("unread-notifications-updated", handleUpdate);
+    window.addEventListener("jj-message-sent", handleUpdate);
+
     return () => {
       mounted = false;
       clearInterval(interval);
+      window.removeEventListener("unread-notifications-updated", handleUpdate);
+      window.removeEventListener("jj-message-sent", handleUpdate);
     };
   }, []);
 
@@ -344,13 +362,102 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
 
             <button
-              onClick={() => setOpen(true)}
+              onClick={() => setMoreOpen(true)}
               className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold text-muted-foreground hover:text-foreground focus:outline-none transition-all duration-200 active:scale-95 hover:scale-105"
             >
               <MoreHorizontal className="h-5 w-5" />
               <span>More</span>
             </button>
           </nav>
+        )}
+
+        {/* Custom slide-up More Bottom Sheet overlay for responsive/mobile view */}
+        {moreOpen && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center animate-in fade-in duration-200">
+            {/* Backdrop overlay */}
+            <div 
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" 
+              onClick={() => setMoreOpen(false)} 
+            />
+            {/* Slide-up panel container */}
+            <div className="relative z-10 w-full max-h-[85vh] bg-card border-t border-border rounded-t-[32px] overflow-hidden flex flex-col animate-in slide-in-from-bottom duration-300 ease-out shadow-2xl safe-pb">
+              {/* Handlebar decoration */}
+              <div className="w-12 h-1.5 bg-muted rounded-full mx-auto my-3 shrink-0" />
+              
+              {/* Title & Close */}
+              <div className="px-5 pb-3 flex items-center justify-between border-b border-border/60 shrink-0">
+                <span className="font-extrabold text-base text-foreground font-sans">More Actions</span>
+                <button 
+                  onClick={() => setMoreOpen(false)}
+                  className="h-8 w-8 rounded-full bg-secondary hover:bg-secondary/80 flex items-center justify-center text-muted-foreground transition-all"
+                >
+                  <X className="h-4.5 w-4.5" />
+                </button>
+              </div>
+
+              {/* Items List */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-2 select-none">
+                {[
+                  { to: "/app/notifications", icon: Bell, label: "Announcements", badgeCount: unreadCount },
+                  { to: "/app/rewards", icon: Gift, label: "Bonus Center" },
+                  { to: "/app/next-goal", icon: Target, label: "My Activity", badge: "NEW" },
+                  { to: "/app/chat", search: { tab: "spam" }, icon: Ban, label: "Spam Chats", badgeCount: spamCount },
+                  { to: "/app/vip-rewards", icon: Crown, label: "VIP Club" },
+                  { to: "/app/wallet", icon: Wallet, label: "Wallet" },
+                  { to: "/app/refer-earn", icon: Gift, label: "Refer & Earn" },
+                  { to: "/app/security", icon: Shield, label: "Security" },
+                  { to: "/app/profile", icon: UserIcon, label: "Profile" },
+                  { to: "/app/settings", icon: Settings, label: "Settings" },
+                  { to: "/app/support", icon: HelpCircle, label: "Support & FAQ" },
+                ].map((item, idx) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={idx}
+                      to={item.to}
+                      search={item.search}
+                      onClick={() => setMoreOpen(false)}
+                      className="w-full h-12 rounded-xl flex items-center gap-3 px-3 hover:bg-secondary transition-colors text-left font-sans"
+                    >
+                      <div className="h-8.5 w-8.5 rounded-full bg-secondary flex items-center justify-center text-muted-foreground/80 shrink-0">
+                        <Icon className="h-4.5 w-4.5" />
+                      </div>
+                      <span className="flex-1 text-sm font-semibold text-foreground leading-tight">{item.label}</span>
+                      
+                      {item.badge && (
+                        <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[8px] font-black uppercase tracking-wider border border-primary/20 shrink-0 font-sans">
+                          {item.badge}
+                        </span>
+                      )}
+
+                      {item.badgeCount !== undefined && item.badgeCount > 0 && (
+                        <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-black flex items-center justify-center shrink-0 shadow-sm shadow-blue-600/20 font-mono">
+                          {item.badgeCount}
+                        </span>
+                      )}
+
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                    </Link>
+                  );
+                })}
+
+                {/* Logout Row */}
+                <button
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setConfirmOut(true);
+                  }}
+                  className="w-full h-12 rounded-xl flex items-center gap-3 px-3 hover:bg-destructive/10 text-destructive transition-colors text-left border-t border-border/40 mt-3 font-sans"
+                >
+                  <div className="h-8.5 w-8.5 rounded-full bg-destructive/10 flex items-center justify-center text-destructive shrink-0">
+                    <LogOut className="h-4.5 w-4.5" />
+                  </div>
+                  <span className="flex-1 text-sm font-bold leading-tight">Sign out</span>
+                  <ChevronRight className="h-4 w-4 text-destructive/40 shrink-0" />
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         <SignOutDialog isOpen={confirmOut} onClose={() => setConfirmOut(false)} onConfirm={signOut} />
