@@ -68,6 +68,8 @@ export const getWalletHistoryAdmin = createServerFn({ method: "POST" })
         query = query.in("action", ["credit_added", "deduct_credit", "credit_released", "transfer"]);
       } else if (data.filter === "wallet") {
         query = query.in("action", ["deposit", "deduction", "credit_released", "refund", "bonus", "transfer", "correction", "reset"]);
+      } else if (data.filter === "crypto") {
+        query = query.eq("action", "deposit").ilike("reason", "%Crypto Deposit%");
       } else {
         query = query.eq("action", data.filter);
       }

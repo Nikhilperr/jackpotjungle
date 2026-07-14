@@ -6020,6 +6020,7 @@ function Conversation({
                   <option value="all">All Transactions</option>
                   <option value="wallet">Wallet Balance</option>
                   <option value="credit">Credit Balance</option>
+                  <option value="crypto">Crypto Deposits</option>
                   <option value="cashin">Cash In</option>
                   <option value="cashout">Cash Out</option>
                 </select>
