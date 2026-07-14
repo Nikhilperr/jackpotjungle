@@ -1277,7 +1277,30 @@ export const getUsersListAdmin = createServerFn({ method: "POST" })
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: allAdminRoles } = await supabaseAdmin.from("user_roles").select("user_id, role, permissions");
+    let allAdminRoles: any[] | null = null;
+    try {
+      const { data, error } = await supabaseAdmin
+        .from("user_roles")
+        .select("user_id, role, permissions");
+      if (error) {
+        console.warn("getUsersListAdmin roles query error (might not exist yet):", error);
+        if (error.code === "42703" || error.message?.includes("permissions")) {
+          const fallback = await supabaseAdmin
+            .from("user_roles")
+            .select("user_id, role");
+          if (fallback.error) {
+            console.error("getUsersListAdmin fallback query failed:", fallback.error);
+          } else {
+            allAdminRoles = fallback.data;
+          }
+        }
+      } else {
+        allAdminRoles = data;
+      }
+    } catch (err) {
+      console.error("Exception fetching all user roles:", err);
+    }
+
     const adminIds = (allAdminRoles ?? [])
       .filter((r: any) => r.role === "admin" || r.role === "super_admin")
       .map((r: any) => r.user_id);
