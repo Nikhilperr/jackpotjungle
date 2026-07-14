@@ -12,54 +12,6 @@ const verifyDepositValidator = z.object({
   coin: z.string().optional(),
 });
 
-// Helper: sign query string for Binance API
-function signQuery(queryString: string, apiSecret: string): string {
-  return crypto.createHmac("sha256", apiSecret).update(queryString).digest("hex");
-}
-
-// Helper: build URL and headers for Binance SAPI request
-function buildBinanceRequest(path: string, method: "GET" | "POST", params: Record<string, string | number>) {
-  const apiKey = process.env.BINANCE_API_KEY;
-  const apiSecret = process.env.BINANCE_SECRET_KEY;
-  
-  if (!apiKey || !apiSecret) {
-    throw new Error("Binance API keys are not configured in your server .env file.");
-  }
-
-  const timestamp = Date.now();
-  const queryParts = Object.keys(params).map(key => `${key}=${encodeURIComponent(params[key])}`);
-  queryParts.push(`timestamp=${timestamp}`);
-  const queryString = queryParts.join("&");
-  
-  const signature = signQuery(queryString, apiSecret);
-  const url = `https://api.binance.com${path}?${queryString}&signature=${signature}`;
-  
-  return {
-    url,
-    headers: {
-      "X-MBX-APIKEY": apiKey,
-      "Accept": "application/json"
-    }
-  };
-}
-
-// Helper: make signed request to Binance SAPI
-async function callBinance(path: string, method: "GET" | "POST", params: Record<string, string | number> = {}) {
-  const { url, headers } = buildBinanceRequest(path, method, params);
-  const response = await fetch(url, {
-    method,
-    headers
-  });
-  
-  if (!response.ok) {
-    const errorBody = await response.text();
-    console.error(`[Binance API Error] ${method} ${path} -> Status: ${response.status}. Body:`, errorBody);
-    throw new Error(`Binance API Error (${response.status}): ${errorBody}`);
-  }
-  
-  return response.json();
-}
-
 // Helper: fetch current live crypto price in USDT
 async function getCryptoPrice(coin: string): Promise<number> {
   const normalized = coin.toUpperCase();
@@ -84,34 +36,21 @@ async function getCryptoPrice(coin: string): Promise<number> {
   return 1.0;
 }
 
-// Helper: hardcoded fallback deposit addresses for local/personal testing
-const FALLBACK_ADDRESSES: Record<string, Record<string, { address: string; tag?: string }>> = {
-  USDT: {
-    TRX: { address: "TXo6D8gG9XQ9Y4gG9XQ9Y4gG9XQ9Y4gG9X" },
-    BSC: { address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" },
-    ETH: { address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" },
-  },
-  BTC: {
-    BTC: { address: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" },
-    BSC: { address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" },
-  },
-  ETH: {
-    ETH: { address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" },
-    BSC: { address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" },
-  },
-  BNB: {
-    BSC: { address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" },
-  },
-  LTC: {
-    LTC: { address: "LQL9p7conobJtNuZp7coNobJtNuZp7coNo" },
-  },
-  SOL: {
-    SOL: { address: "HN7cABviGo3coNobJtNuZp7coNobJtNuZp" },
-  }
-};
+// Helper: map network code from UI to Cryptomus network code
+function mapNetworkToCryptomus(coin: string, network: string): string {
+  const c = coin.toUpperCase();
+  const n = network.toUpperCase();
+  if (n === "TRX") return "tron";
+  if (n === "BSC") return "bsc";
+  if (n === "ETH") return "eth";
+  if (n === "BTC") return "btc";
+  if (n === "LTC") return "ltc";
+  if (n === "SOL") return "sol";
+  return network.toLowerCase();
+}
 
 /**
- * Fetch/Generate unique deposit address for a specific cryptocurrency and network
+ * Fetch/Generate unique deposit address for a specific cryptocurrency and network via Cryptomus
  */
 export const getDepositAddress = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -120,6 +59,16 @@ export const getDepositAddress = createServerFn({ method: "POST" })
     const { coin, network } = data;
     const userId = context.userId;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const merchantId = process.env.CRYPTOMUS_MERCHANT_ID;
+    const apiKey = process.env.CRYPTOMUS_API_KEY;
+
+    if (!merchantId || !apiKey) {
+      return { 
+        success: false, 
+        error: "Cryptomus payment gateway keys are not configured on the server .env file yet. Please complete your project verification." 
+      };
+    }
 
     try {
       // 1. Check if we already cached this address in database
@@ -135,79 +84,56 @@ export const getDepositAddress = createServerFn({ method: "POST" })
         return { success: true, address: cached.address, tag: cached.tag, isFallback: false };
       }
 
-      // 2. Fetch or create virtual sub-account for this user
-      let { data: subaccount } = await supabaseAdmin
-        .from("user_subaccounts")
-        .select("sub_account_email")
-        .eq("user_id", userId)
-        .maybeSingle();
+      // 2. Request a static wallet address from Cryptomus
+      const orderId = `${userId}_${coin.toUpperCase()}_${network.toUpperCase()}`;
+      const cryptomusNetwork = mapNetworkToCryptomus(coin, network);
 
-      let subAccountEmail = subaccount?.sub_account_email;
+      const payload = {
+        currency: coin.toUpperCase(),
+        network: cryptomusNetwork,
+        order_id: orderId,
+        url_callback: `https://chat.playjackpotjungle.com/api/cryptomus-webhook`
+      };
 
-      if (!subAccountEmail) {
-        // Generate dynamic unique sub-account name (max 32 chars for string parameter)
-        const randStr = Math.random().toString(36).slice(2, 6);
-        const subAccountString = `jj_${userId.slice(0, 8)}_${randStr}`;
+      const jsonStr = JSON.stringify(payload);
+      const base64Str = Buffer.from(jsonStr).toString("base64");
+      const sign = crypto.createHash("md5").update(base64Str + apiKey).digest("hex");
 
-        try {
-          const createRes = await callBinance("/sapi/v1/sub-account/virtualSubAccount", "POST", {
-            subAccountString
-          });
-          if (createRes && createRes.email) {
-            subAccountEmail = createRes.email;
-            await supabaseAdmin.from("user_subaccounts").insert({
-              user_id: userId,
-              sub_account_email: subAccountEmail
-            });
-          }
-        } catch (subErr) {
-          console.warn("[Deposit Service] Sub-account API failed. Falling back to personal placeholder.", subErr);
-        }
-      }
+      const response = await fetch("https://api.cryptomus.com/v1/wallet", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "merchant": merchantId,
+          "sign": sign
+        },
+        body: jsonStr
+      });
 
-      // 3. Fetch deposit address from Binance sub-account
-      if (subAccountEmail) {
-        try {
-          const addressRes = await callBinance("/sapi/v1/capital/deposit/subAddress", "GET", {
-            email: subAccountEmail,
-            coin: coin.toUpperCase(),
-            network: network.toUpperCase()
-          });
+      const responseData = await response.json();
+      
+      if (responseData.state === 0 && responseData.result) {
+        const address = responseData.result.address;
+        const tag = responseData.result.address_terminal || null;
 
-          if (addressRes && addressRes.address) {
-            // Cache the retrieved address in the database
-            await supabaseAdmin.from("user_deposit_addresses").insert({
-              user_id: userId,
-              coin: coin.toUpperCase(),
-              network: network.toUpperCase(),
-              address: addressRes.address,
-              tag: addressRes.tag || null
-            });
+        // Cache the retrieved address in the database
+        await supabaseAdmin.from("user_deposit_addresses").insert({
+          user_id: userId,
+          coin: coin.toUpperCase(),
+          network: network.toUpperCase(),
+          address: address,
+          tag: tag
+        });
 
-            return {
-              success: true,
-              address: addressRes.address,
-              tag: addressRes.tag || null,
-              isFallback: false
-            };
-          }
-        } catch (addrErr) {
-          console.error("[Deposit Service] Failed to get subaddress from Binance:", addrErr);
-        }
-      }
-
-      // 4. Fallback if Binance is not configured/disabled or calls fail
-      const fallback = FALLBACK_ADDRESSES[coin.toUpperCase()]?.[network.toUpperCase()];
-      if (fallback) {
         return {
           success: true,
-          address: fallback.address,
-          tag: fallback.tag || null,
-          isFallback: true
+          address: address,
+          tag: tag,
+          isFallback: false
         };
+      } else {
+        console.error("[Cryptomus API Error] getDepositAddress failed:", responseData);
+        throw new Error(responseData.message || "Failed to generate wallet from Cryptomus API.");
       }
-
-      throw new Error(`No deposit address found for ${coin} on network ${network}.`);
     } catch (e: any) {
       console.error("[Deposit Service] getDepositAddress failure:", e);
       return { success: false, error: e.message };
@@ -215,7 +141,7 @@ export const getDepositAddress = createServerFn({ method: "POST" })
   });
 
 /**
- * Query Binance deposit history for the user's sub-account, checking and crediting new cashin events
+ * Query Cryptomus payment history, checking and crediting new cashin events
  */
 export const verifyDeposit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -224,62 +150,86 @@ export const verifyDeposit = createServerFn({ method: "POST" })
     const userId = context.userId;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+    const merchantId = process.env.CRYPTOMUS_MERCHANT_ID;
+    const apiKey = process.env.CRYPTOMUS_API_KEY;
+
+    if (!merchantId || !apiKey) {
+      return { success: true, credited: 0, message: "Cryptomus API keys are not configured yet." };
+    }
+
     try {
-      // 1. Fetch sub-account email
-      const { data: subaccount } = await supabaseAdmin
-        .from("user_subaccounts")
-        .select("sub_account_email")
-        .eq("user_id", userId)
-        .maybeSingle();
+      // 1. Fetch recent payment list from Cryptomus
+      const payload = {};
+      const jsonStr = JSON.stringify(payload);
+      const base64Str = Buffer.from(jsonStr).toString("base64");
+      const sign = crypto.createHash("md5").update(base64Str + apiKey).digest("hex");
 
-      if (!subaccount || !subaccount.sub_account_email) {
-        return { success: true, credited: 0, message: "No deposit records found yet. Please request a deposit address first." };
-      }
-
-      // 2. Query deposit history from Binance
-      const history = await callBinance("/sapi/v1/capital/deposit/subHisrec", "GET", {
-        email: subaccount.sub_account_email
+      const response = await fetch("https://api.cryptomus.com/v1/payment/list", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "merchant": merchantId,
+          "sign": sign
+        },
+        body: jsonStr
       });
 
-      if (!Array.isArray(history) || history.length === 0) {
-        return { success: true, credited: 0, message: "No deposits detected on your unique address yet." };
+      const responseData = await response.json();
+
+      if (responseData.state !== 0 || !responseData.result || !Array.isArray(responseData.result.items)) {
+        return { success: true, credited: 0, message: "No payments recorded yet." };
       }
 
+      const history = responseData.result.items;
       let totalCreditedUSD = 0;
       const creditedTransactions = [];
+      const userPrefix = `${userId}_`;
 
-      // 3. Process each deposit entry (both completed and pending)
+      // 2. Fetch all cached deposits for this user to check duplicates
+      const { data: matchedDeps } = await supabaseAdmin
+        .from("crypto_deposits")
+        .select("id, status, wallet_credited, txid")
+        .eq("user_id", userId);
+
       for (const dep of history) {
-        const txId = dep.txId;
-        const coin = dep.coin;
-        const network = dep.network || "UNKNOWN";
+        // Filter by user ID order_id prefix
+        if (!dep.order_id || !dep.order_id.startsWith(userPrefix)) {
+          continue;
+        }
+
+        const txId = dep.txid || dep.uuid;
+        const coin = dep.currency || "USDT";
+        const network = dep.network ? dep.network.toUpperCase() : "UNKNOWN";
         const address = dep.address || "UNKNOWN";
         const cryptoAmount = Number(dep.amount);
-        const binanceStatus = dep.status; // 1 = success, 0 = pending, etc.
-        const depositTime = dep.insertTime ? new Date(dep.insertTime).toISOString() : new Date().toISOString();
+        const cryptomusStatus = dep.status; // paid, paid_over, wrong_amount, process, confirm_check, etc.
+        const depositTime = dep.created_at ? new Date(dep.created_at).toISOString() : new Date().toISOString();
 
         if (!txId) continue;
 
-        // Check if we already audited this transaction in crypto_deposits
-        const { data: cachedDep } = await supabaseAdmin
-          .from("crypto_deposits")
-          .select("id, status, wallet_credited")
-          .eq("txid", txId)
-          .maybeSingle();
+        // Check if we already audited this transaction
+        let cachedDep = null;
+        if (matchedDeps) {
+          cachedDep = matchedDeps.find(d => 
+            (dep.txid && d.txid === dep.txid) || 
+            (d.txid === dep.uuid) || 
+            (d.txid === dep.order_id)
+          );
+        }
 
-        // Calculate USD equivalent using live exchange rates
+        // Calculate USD value using exchange rates
         const coinPrice = await getCryptoPrice(coin);
         const usdValue = Number((cryptoAmount * coinPrice).toFixed(2));
 
-        if (binanceStatus === 1) {
-          // Blockchain confirmation success
+        const isSuccess = ["paid", "paid_over", "wrong_amount"].includes(cryptomusStatus);
+        const isPending = ["process", "confirm_check"].includes(cryptomusStatus);
+
+        if (isSuccess) {
           let shouldCredit = false;
 
           if (!cachedDep) {
-            // First time seeing this deposit
             shouldCredit = true;
           } else if (cachedDep.status !== "completed" && !cachedDep.wallet_credited) {
-            // Pending transition to completed
             shouldCredit = true;
           }
 
@@ -296,7 +246,6 @@ export const verifyDeposit = createServerFn({ method: "POST" })
           }
 
           if (shouldCredit && usdValue > 0) {
-            // Fetch current profile details
             const { data: profile } = await supabaseAdmin
               .from("profiles")
               .select("wallet_balance, credit_balance, wallet_deposits")
@@ -320,7 +269,7 @@ export const verifyDeposit = createServerFn({ method: "POST" })
                 credit_after: Number(profile.credit_balance || 0),
                 reason: `Crypto Deposit (${coin.toUpperCase()} - ${network})`,
                 external_id: txId,
-                notes: `Binance SAPI deposit verify. Crypto amount: ${cryptoAmount} ${coin.toUpperCase()}`
+                notes: `Cryptomus deposit verify. Crypto amount: ${cryptoAmount} ${coin.toUpperCase()}`
               });
 
               if (!txErr) {
@@ -386,7 +335,8 @@ export const verifyDeposit = createServerFn({ method: "POST" })
                 wallet_credited: true,
                 confirmations: 1,
                 verified_at: new Date().toISOString(),
-                usd_value: usdValue
+                usd_value: usdValue,
+                txid: dep.txid || cachedDep.txid // Update with real txid if it was uuid previously
               })
               .eq("id", cachedDep.id);
           } else {
@@ -398,7 +348,6 @@ export const verifyDeposit = createServerFn({ method: "POST" })
               amount: cryptoAmount,
               usd_value: usdValue,
               txid: txId,
-              binance_ref: dep.subAccountId ? String(dep.subAccountId) : null,
               confirmations: 1,
               status: "completed",
               wallet_credited: true,
@@ -407,7 +356,7 @@ export const verifyDeposit = createServerFn({ method: "POST" })
             });
           }
 
-        } else {
+        } else if (isPending) {
           // Transaction is still pending or validating on blockchain
           if (!cachedDep) {
             await supabaseAdmin.from("crypto_deposits").insert({
@@ -418,7 +367,6 @@ export const verifyDeposit = createServerFn({ method: "POST" })
               amount: cryptoAmount,
               usd_value: usdValue,
               txid: txId,
-              binance_ref: dep.subAccountId ? String(dep.subAccountId) : null,
               confirmations: 0,
               status: "pending",
               wallet_credited: false,
