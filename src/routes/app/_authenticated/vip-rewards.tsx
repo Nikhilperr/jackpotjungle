@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
@@ -19,11 +19,64 @@ export const Route = createFileRoute("/app/_authenticated/vip-rewards")({
 
 export function getVipBadgeUrl(status: string | null | undefined): string {
   if (!status || status === "none") return "/bronze.png";
-  const normalized = status.toLowerCase();
-  if (normalized === "platinum") return "/platium.png";
-  if (normalized === "diamond") return "/dimond.png";
-  if (normalized === "black_diamond" || normalized === "blackvip") return "/blackvip.png";
-  return `/${normalized}.png`;
+  const normalized = status.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (normalized.includes("black")) return "/blackvip.png";
+  if (normalized.includes("platinum") || normalized.includes("platium")) return "/platium.png";
+  if (normalized.includes("diamond") || normalized.includes("dimond")) return "/dimond.png";
+  if (normalized.includes("gold")) return "/gold.png";
+  if (normalized.includes("silver")) return "/silver.png";
+  if (normalized.includes("bronze")) return "/bronze.png";
+  return "/bronze.png";
+}
+
+export function getVipTheme(status: string | null | undefined) {
+  const normalized = status ? status.toLowerCase() : "none";
+  if (normalized.includes("black")) {
+    return {
+      border: "border-purple-500/40",
+      text: "from-purple-400 via-fuchsia-200 to-purple-500",
+      progress: "from-purple-600 to-fuchsia-500",
+      bgGlow: "bg-purple-500/5",
+    };
+  }
+  if (normalized.includes("diamond") || normalized.includes("dimond")) {
+    return {
+      border: "border-blue-500/40",
+      text: "from-blue-400 via-cyan-200 to-blue-500",
+      progress: "from-blue-500 to-cyan-500",
+      bgGlow: "bg-blue-500/5",
+    };
+  }
+  if (normalized.includes("platinum") || normalized.includes("platium")) {
+    return {
+      border: "border-cyan-500/40",
+      text: "from-cyan-400 via-teal-200 to-cyan-500",
+      progress: "from-cyan-500 to-teal-500",
+      bgGlow: "bg-cyan-500/5",
+    };
+  }
+  if (normalized.includes("gold")) {
+    return {
+      border: "border-yellow-500/50",
+      text: "from-yellow-400 via-amber-200 to-yellow-400",
+      progress: "from-yellow-500 to-amber-500",
+      bgGlow: "bg-yellow-500/5",
+    };
+  }
+  if (normalized.includes("silver")) {
+    return {
+      border: "border-slate-400/40",
+      text: "from-slate-300 via-slate-100 to-slate-400",
+      progress: "from-slate-400 to-slate-300",
+      bgGlow: "bg-slate-400/5",
+    };
+  }
+  return {
+    border: "border-amber-700/40",
+    text: "from-amber-600 via-orange-300 to-amber-700",
+    progress: "from-amber-600 to-orange-500",
+    bgGlow: "bg-amber-700/5",
+  };
 }
 
 export function getVipBadgeStyles(status: string | null | undefined) {
@@ -58,6 +111,7 @@ export function getVipBadgeStyles(status: string | null | undefined) {
 
 function VipRewardsPage() {
   const { user, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
 
   const getVipHistoryFn = useServerFn(getUserRewardHistory);
   const getVipStatsFn = useServerFn(getUserVipDashboardStats);
@@ -175,6 +229,9 @@ function VipRewardsPage() {
     ? Number(vipDashboardStats.activeMonthEstimate.rewardAmount).toFixed(2)
     : "0.00";
 
+  const theme = getVipTheme(currentTier);
+  const isMaxTier = currentTier.toLowerCase().includes("black") || nextTier.toLowerCase().includes("max") || remainingDeposits <= 0;
+
   return (
     <AppShell>
       <div className="h-full overflow-y-auto bg-[#0B0C0E] select-none text-left">
@@ -207,8 +264,8 @@ function VipRewardsPage() {
             <div className="space-y-5 animate-in fade-in duration-300">
               
               {/* 1. HERO CARD (Rank Progression & Estimations) */}
-              <div className="rounded-3xl bg-gradient-to-b from-[#1c1d25] to-[#121317] border border-amber-500/30 p-5 sm:p-6 space-y-5 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
+              <div className={`rounded-3xl bg-gradient-to-b from-[#1c1d25] to-[#121317] border ${theme.border} p-5 sm:p-6 space-y-5 shadow-xl relative overflow-hidden`}>
+                <div className={`absolute top-0 right-0 w-24 h-24 ${theme.bgGlow} rounded-full blur-xl pointer-events-none`} />
 
                 <div className="flex items-start justify-between gap-4">
                   {/* Left Column: Shield Medal Badge */}
@@ -223,7 +280,7 @@ function VipRewardsPage() {
 
                     <div className="space-y-1">
                       <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest font-mono">Current Level</span>
-                      <h2 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-yellow-400 uppercase tracking-tight font-sans">
+                      <h2 className={`text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r ${theme.text} uppercase tracking-tight font-sans`}>
                         {currentTier} VIP
                       </h2>
                       <p className="text-[11px] text-muted-foreground font-semibold">You're a valued member!</p>
@@ -274,7 +331,7 @@ function VipRewardsPage() {
                       return (
                         <div key={idx} className="flex-1 bg-[#1e2027] h-1.5 rounded-full overflow-hidden">
                           <div 
-                            className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-300" 
+                            className={`h-full bg-gradient-to-r ${theme.progress} transition-all duration-300`} 
                             style={{ width: `${segmentProgress}%` }}
                           />
                         </div>
@@ -285,10 +342,10 @@ function VipRewardsPage() {
                   {/* Remaining calculations text */}
                   <div className="flex items-center justify-between gap-4 pt-1">
                     <p className="text-[10px] text-muted-foreground font-medium leading-relaxed">
-                      {remainingDeposits > 0 ? (
+                      {!isMaxTier ? (
                         <span>Deposit <strong className="text-foreground">${remainingDeposits.toLocaleString()}</strong> more to reach <strong className="text-amber-400">{nextTier}</strong></span>
                       ) : (
-                        <span>Max VIP achieved! Stay tuned for new badges in the future.</span>
+                        <span>Maximum VIP achieved! Enjoy elite benefits.</span>
                       )}
                     </p>
 

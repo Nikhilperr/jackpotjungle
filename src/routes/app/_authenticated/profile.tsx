@@ -21,10 +21,13 @@ export const Route = createFileRoute("/app/_authenticated/profile")({
 
 export function getVipBadgeUrl(status: string | null | undefined): string | null {
   if (!status || status === "none") return null;
-  const normalized = status.toLowerCase();
-  if (normalized === "platinum") return "/platium.png";
-  if (normalized === "diamond") return "/dimond.png";
-  if (normalized === "black_diamond" || normalized === "blackvip") return "/blackvip.png";
+  const normalized = status.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (normalized.includes("black")) return "/blackvip.png";
+  if (normalized.includes("platinum") || normalized.includes("platium")) return "/platium.png";
+  if (normalized.includes("diamond") || normalized.includes("dimond")) return "/dimond.png";
+  if (normalized.includes("gold")) return "/gold.png";
+  if (normalized.includes("silver")) return "/silver.png";
+  if (normalized.includes("bronze")) return "/bronze.png";
   return `/${normalized}.png`;
 }
 
