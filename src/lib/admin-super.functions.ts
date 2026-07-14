@@ -1498,23 +1498,45 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
     if (isCallerSuperAdmin) {
       if (data.roleUpdate && data.roleUpdate !== targetRole) {
         // Delete existing roles
-        await supabaseAdmin.from("user_roles").delete().eq("user_id", data.targetUserId);
+        const { error: deleteError } = await supabaseAdmin.from("user_roles").delete().eq("user_id", data.targetUserId);
+        if (deleteError) throw new Error(deleteError.message);
         
         // If not "user", insert new role record
         if (data.roleUpdate !== "user") {
-          await supabaseAdmin.from("user_roles").insert({
+          const insertPayload: any = {
             user_id: data.targetUserId,
-            role: data.roleUpdate,
-            permissions: data.roleUpdate === "admin" ? data.permissionsUpdate || null : null
-          });
+            role: data.roleUpdate
+          };
+          if (data.roleUpdate === "admin" && data.permissionsUpdate) {
+            insertPayload.permissions = data.permissionsUpdate;
+          }
+          
+          const { error: insertError } = await supabaseAdmin.from("user_roles").insert(insertPayload);
+          if (insertError) {
+            console.warn("Failed to insert user role with permissions:", insertError);
+            if (insertError.code === "42703" || insertError.message?.includes("permissions")) {
+              // Fallback: try inserting without permissions column
+              delete insertPayload.permissions;
+              const { error: fallbackError } = await supabaseAdmin.from("user_roles").insert(insertPayload);
+              if (fallbackError) throw new Error(fallbackError.message);
+            } else {
+              throw new Error(insertError.message);
+            }
+          }
         }
       } else if (data.permissionsUpdate && (targetRole === "admin" || targetRole === "super_admin")) {
         // Update permissions for existing admin role
-        await supabaseAdmin
+        const { error: updateError } = await supabaseAdmin
           .from("user_roles")
           .update({ permissions: data.permissionsUpdate })
           .eq("user_id", data.targetUserId)
           .eq("role", targetRole);
+        if (updateError) {
+          console.warn("Failed to update user role permissions:", updateError);
+          if (updateError.code !== "42703" && !updateError.message?.includes("permissions")) {
+            throw new Error(updateError.message);
+          }
+        }
       }
     }
 
