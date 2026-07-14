@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Copy, Check, Loader2, X, RefreshCw, AlertTriangle, Info, Coins, ShieldCheck } from "lucide-react";
+import { Copy, Check, Loader2, X, RefreshCw, AlertTriangle, Info, Coins } from "lucide-react";
 import QRCode from "qrcode";
 import { getDepositAddress, verifyDeposit } from "@/lib/deposit.functions";
 import { useServerFn } from "@tanstack/react-start";
@@ -16,14 +16,49 @@ interface CryptoOption {
   coin: string;
   name: string;
   color: string;
+  logo: React.ReactNode;
   networks: Array<{ id: string; name: string }>;
 }
+
+// Vector SVG Coin Logos (Self-contained, fast, brand-accurate)
+const UsdtLogo = () => (
+  <svg className="h-7 w-7 transition-transform duration-300 group-hover:scale-110" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#26A17B"/>
+    <path d="M12.923 7.828v1.654h3.766v2.307h-3.766v4.945c0 .356.009.658.026.906.017.247.054.453.111.616.057.164.148.286.273.367.126.082.308.122.548.122.25 0 .506-.022.766-.067.26-.044.484-.108.67-.193l.363 2.056c-.326.126-.742.235-1.248.326a6.835 6.835 0 01-1.637.137c-.772 0-1.403-.105-1.895-.316a3.292 3.292 0 01-1.258-.934c-.326-.411-.532-.942-.619-1.593a12.87 12.87 0 01-.065-1.53V11.79H6.84V9.482h3.766V7.828H5.975V5.111h12.05v2.717h-5.102z" fill="#FFF"/>
+  </svg>
+);
+
+const BtcLogo = () => (
+  <svg className="h-7 w-7 transition-transform duration-300 group-hover:scale-110" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#F7931A"/>
+    <path d="M16.662 8.595c.252-1.693-.946-2.603-2.557-3.212l.523-2.095-1.277-.318-.508 2.04c-.335-.084-.68-.163-1.025-.243l.512-2.052-1.278-.318-.522 2.095c-.278-.063-.548-.125-.808-.19l.002-.008-1.763-.44-.34 1.365s.948.217.928.23c.517.13.773.474.753.748L8.71 11.233c.033.01.077.025.125.04-.04-.01-.087-.02-.132-.033l-1.072-.268-.663 2.658 1.65.412c.307.078.61.159.91.235l-.527 2.115 1.277.319.522-2.095c.348.096.685.185 1.015.268l-.51 2.049 1.278.318.528-2.113c2.179.412 3.818.246 4.509-1.725.556-1.587-.028-2.503-1.173-3.106.833-.193 1.46-.74 1.627-1.874zm-2.9 5.48c-.395 1.587-3.07.73-3.938.514l.703-2.822c.868.217 3.633.645 3.235 2.308zm.395-5.509c-.36 1.447-2.587.712-3.31.531l.638-2.557c.722.18 3.036.516 2.672 2.026z" fill="#FFF"/>
+  </svg>
+);
+
+const EthLogo = () => (
+  <svg className="h-7 w-7 transition-transform duration-300 group-hover:scale-110" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#627EEA"/>
+    <path d="M12 2.25l-5.625 9.313L12 15l5.625-3.438L12 2.25z" fill="#FFF" fillOpacity=".6"/>
+    <path d="M12 2.25v9.313h5.625L12 2.25z" fill="#FFF" fillOpacity=".8"/>
+    <path d="M12 16.125l-5.625-3.187L12 21.75l5.625-8.812-5.625 3.187z" fill="#FFF" fillOpacity=".6"/>
+    <path d="M12 16.125v5.625l5.625-8.812-5.625 3.187z" fill="#FFF" fillOpacity=".8"/>
+    <path d="M6.375 11.563L12 15l5.625-3.438L12 8.25l-5.625 3.313z" fill="#FFF" fillOpacity=".2"/>
+  </svg>
+);
+
+const BnbLogo = () => (
+  <svg className="h-7 w-7 transition-transform duration-300 group-hover:scale-110" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#F3BA2F"/>
+    <path d="M12.001 7.151l2.585 2.587 1.83-1.83-4.415-4.415-4.415 4.415 1.83 1.83 2.585-2.587zm5.174 5.176l1.83 1.83 2.583-2.584-4.413-4.415-1.83 1.83 1.83 1.839zm-10.347 0l1.83-1.83-1.83-1.839-1.83 1.83-2.583 2.584 4.413 4.415zm5.173 5.174l-2.585-2.587-1.83 1.83 4.415 4.415 4.415-4.415-1.83-1.83-2.585 2.587zm2.588-2.587l2.586-2.587-2.586-2.587-2.588 2.587 2.588 2.587z" fill="#FFF"/>
+  </svg>
+);
 
 const CRYPTO_OPTIONS: CryptoOption[] = [
   {
     coin: "USDT",
     name: "Tether",
     color: "from-emerald-500 to-teal-600",
+    logo: <UsdtLogo />,
     networks: [
       { id: "TRX", name: "TRON (TRC20)" },
       { id: "BSC", name: "BNB Smart Chain (BEP20)" },
@@ -34,6 +69,7 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     coin: "BTC",
     name: "Bitcoin",
     color: "from-amber-500 to-orange-600",
+    logo: <BtcLogo />,
     networks: [
       { id: "BTC", name: "Bitcoin Mainnet" },
       { id: "BSC", name: "BNB Smart Chain (BEP20)" }
@@ -43,6 +79,7 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     coin: "ETH",
     name: "Ethereum",
     color: "from-indigo-500 to-purple-600",
+    logo: <EthLogo />,
     networks: [
       { id: "ETH", name: "Ethereum (ERC20)" },
       { id: "BSC", name: "BNB Smart Chain (BEP20)" }
@@ -52,6 +89,7 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     coin: "BNB",
     name: "BNB",
     color: "from-yellow-400 to-amber-500",
+    logo: <BnbLogo />,
     networks: [
       { id: "BSC", name: "BNB Smart Chain (BEP20)" }
     ]
@@ -87,7 +125,6 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
     setTag(null);
     setQrCodeUrl("");
     try {
-      // Fix Zod validation error by wrapping arguments in the required 'data' object
       const res = await getAddressFn({ data: { coin, network } });
       if (res.success && res.address) {
         setAddress(res.address);
@@ -118,7 +155,6 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
   const handleVerify = async () => {
     setVerifying(true);
     try {
-      // Fix Zod validation error by wrapping arguments in the required 'data' object
       const res = await verifyFn({ data: { coin: selectedCoin.coin } });
       if (res.success) {
         if (res.credited && res.credited > 0) {
@@ -144,7 +180,7 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
-      <DialogContent className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl p-6 flex flex-col gap-5 text-white max-h-[90vh] overflow-y-auto [&>button]:hidden">
+      <DialogContent className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl p-6 flex flex-col gap-5 text-white max-h-[90vh] overflow-y-auto [&>button]:hidden select-none">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800/80 pb-4">
           <div className="flex items-center gap-2.5">
@@ -181,17 +217,22 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
                   }}
                   className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border transition-all duration-300 relative overflow-hidden group ${
                     isActive
-                      ? "bg-zinc-900 border-primary shadow-lg shadow-primary/5"
+                      ? "bg-zinc-900 border-primary/80 shadow-lg shadow-primary/5"
                       : "bg-zinc-900/40 border-zinc-800/80 hover:bg-zinc-900 hover:border-zinc-700"
                   }`}
                 >
                   {/* Colored indicator background line */}
                   <div className={`absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r ${c.color} transform origin-left transition-transform duration-300 ${isActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-50"}`} />
 
+                  {/* Coin Brand SVG Icon */}
+                  <div className="mb-2 shrink-0">
+                    {c.logo}
+                  </div>
+
                   <span className={`text-xs font-black tracking-tight ${isActive ? "text-primary" : "text-zinc-300"}`}>
                     {c.coin}
                   </span>
-                  <span className="text-[8px] text-zinc-500 font-bold truncate mt-1 w-full text-center">
+                  <span className="text-[8px] text-zinc-500 font-bold truncate mt-0.5 w-full text-center">
                     {c.name}
                   </span>
                 </button>
@@ -224,7 +265,7 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
         </div>
 
         {/* Floating Glassmorphic Address Container */}
-        <div className="bg-zinc-950/80 border border-zinc-800/90 rounded-3xl p-5 flex flex-col items-center gap-4 relative min-h-[250px] justify-center shadow-inner">
+        <div className="bg-zinc-950/80 border border-zinc-800/90 rounded-3xl p-5 flex flex-col items-center gap-4 relative min-h-[240px] justify-center shadow-inner">
           {loadingAddress ? (
             <div className="flex flex-col items-center justify-center gap-2 py-8">
               <Loader2 className="h-7 w-7 animate-spin text-primary" />
@@ -235,7 +276,7 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
               {/* QR Code Card */}
               {qrCodeUrl && (
                 <div className="bg-white p-2 rounded-2xl shadow-xl transition-transform duration-300 hover:scale-105 select-none">
-                  <img src={qrCodeUrl} alt="Deposit QR Code" className="h-32 w-32 object-contain" />
+                  <img src={qrCodeUrl} alt="Deposit QR Code" className="h-28 w-28 object-contain" />
                 </div>
               )}
 
@@ -245,14 +286,14 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
                   Your Unique {selectedCoin.coin} Deposit Address
                 </span>
                 
-                <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800/90 rounded-2xl px-3 py-2.5 w-full">
+                <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800/90 rounded-2xl px-3 py-2 w-full">
                   <span className="text-xs font-mono font-bold break-all flex-1 text-zinc-200 select-all leading-relaxed text-left pl-1">
                     {address || "Fetching address..."}
                   </span>
                   <button
                     onClick={handleCopy}
                     disabled={!address}
-                    className="h-8 w-8 rounded-xl flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all duration-200 border border-zinc-700/60"
+                    className="h-8 w-8 rounded-xl flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all duration-200 border border-zinc-700/60 shrink-0"
                   >
                     {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
                   </button>
@@ -261,11 +302,11 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
 
               {/* Tag / Memo if needed */}
               {tag && (
-                <div className="w-full space-y-1.5 mt-1">
+                <div className="w-full space-y-1.5 mt-0.5">
                   <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest text-center block">
                     Required MEMO / TAG
                   </span>
-                  <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800/90 rounded-2xl px-3 py-2.5 w-full">
+                  <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800/90 rounded-2xl px-3 py-2 w-full">
                     <span className="text-xs font-mono font-bold break-all flex-1 text-zinc-200 select-all text-left pl-1">
                       {tag}
                     </span>
@@ -274,7 +315,7 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
                         navigator.clipboard.writeText(tag);
                         toast.success("MEMO/TAG copied.");
                       }}
-                      className="h-8 w-8 rounded-xl flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all duration-200 border border-zinc-700/60"
+                      className="h-8 w-8 rounded-xl flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all duration-200 border border-zinc-700/60 shrink-0"
                     >
                       <Copy className="h-3.5 w-3.5" />
                     </button>
