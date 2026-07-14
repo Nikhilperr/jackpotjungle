@@ -94,7 +94,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       const { count: notifCount } = await supabase
         .from("user_notifications")
         .select("id", { count: "exact", head: true })
-        .eq("user_id", myId);
+        .eq("user_id", myId)
+        .eq("seen", false);
       if (notifCount !== null && mounted) setUnreadCount(notifCount);
 
       // Unread chats

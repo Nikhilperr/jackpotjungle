@@ -49,6 +49,16 @@ function NotificationsPage() {
 
       if (error) throw error;
       setNotifications((data as any[]) || []);
+
+      // Automatically mark fetched notifications as seen/read
+      if (data && data.some((n: any) => !n.seen)) {
+        await supabase
+          .from("user_notifications")
+          .update({ seen: true })
+          .eq("user_id", user.id)
+          .eq("seen", false);
+        window.dispatchEvent(new CustomEvent("unread-notifications-updated"));
+      }
     } catch (err: any) {
       console.error("Failed to load notifications:", err.message);
     } finally {
