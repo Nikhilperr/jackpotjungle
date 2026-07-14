@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { Bell, Trash2, Loader2, Sparkles, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { deleteNotificationUser, clearAllNotificationsUser, markNotificationsSeenUser } from "@/lib/user-ai.functions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +40,10 @@ function NotificationsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  const deleteFn = useServerFn(deleteNotificationUser);
+  const clearAllFn = useServerFn(clearAllNotificationsUser);
+  const markSeenFn = useServerFn(markNotificationsSeenUser);
+
   const fetchNotifications = async () => {
     if (!user) return;
     try {
@@ -50,13 +56,9 @@ function NotificationsPage() {
       if (error) throw error;
       setNotifications((data as any[]) || []);
 
-      // Automatically mark fetched notifications as seen/read
+      // Automatically mark fetched notifications as seen/read via server function
       if (data && data.some((n: any) => !n.seen)) {
-        await supabase
-          .from("user_notifications")
-          .update({ seen: true })
-          .eq("user_id", user.id)
-          .eq("seen", false);
+        await markSeenFn();
         window.dispatchEvent(new CustomEvent("unread-notifications-updated"));
       }
     } catch (err: any) {
@@ -73,12 +75,8 @@ function NotificationsPage() {
   const handleDelete = async (id: string) => {
     setDeleting(id);
     try {
-      const { error } = await supabase
-        .from("user_notifications")
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
+      const res = await deleteFn({ data: { id } });
+      if (!res.success) throw new Error(res.error || "Failed to delete notification.");
       
       setNotifications((prev) => prev.filter((n) => n.id !== id));
       toast.success("Notification deleted.");
@@ -95,12 +93,8 @@ function NotificationsPage() {
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from("user_notifications")
-        .delete()
-        .eq("user_id", user.id);
-
-      if (error) throw error;
+      const res = await clearAllFn();
+      if (!res.success) throw new Error(res.error || "Failed to clear notifications.");
       
       setNotifications([]);
       toast.success("All notifications cleared.");

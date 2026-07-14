@@ -295,3 +295,57 @@ ${matchingTopicContext}
       };
     }
   });
+
+export const markNotificationsSeenUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { error } = await supabaseAdmin
+        .from("user_notifications")
+        .update({ seen: true })
+        .eq("user_id", context.userId)
+        .eq("seen", false);
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  });
+
+export const clearAllNotificationsUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { error } = await supabaseAdmin
+        .from("user_notifications")
+        .delete()
+        .eq("user_id", context.userId);
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  });
+
+export const deleteNotificationUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(z.object({
+    id: z.string().uuid(),
+  }))
+  .handler(async ({ data, context }) => {
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { error } = await supabaseAdmin
+        .from("user_notifications")
+        .delete()
+        .eq("id", data.id)
+        .eq("user_id", context.userId);
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  });
+
