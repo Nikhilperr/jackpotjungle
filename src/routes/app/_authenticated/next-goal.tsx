@@ -3,7 +3,7 @@ import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Target, Crown, Sparkles, Loader2, CheckCircle2, ChevronRight, Lock } from "lucide-react";
+import { Target, Crown, Sparkles, Loader2, CheckCircle2, ChevronRight, Lock, Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/app/_authenticated/next-goal")({

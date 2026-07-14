@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
-import { HelpCircle, ChevronDown, Sparkles, MessageCircle, AlertCircle } from "lucide-react";
-import { useState } from "react";
+import { HelpCircle, ChevronDown, Sparkles, AlertCircle } from "lucide-react";
+import React, { useState } from "react";
 
 export const Route = createFileRoute("/app/_authenticated/help")({
   ssr: false,
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/app/_authenticated/help")({
 
 type FAQItem = {
   q: string;
-  a: string;
+  a: React.ReactNode;
   category: string;
 };
 
@@ -22,27 +22,75 @@ function HelpFAQPage() {
     {
       category: "Wallet & Cashin/Cashout",
       q: "How long do crypto deposit (cash-in) confirmations take?",
-      a: "Crypto deposits are validated on the blockchain and updated automatically. Most confirmations are processed in under 2 minutes. Once the minimum confirmations are reached, your balance will reflect in your wallet instantly.",
+      a: (
+        <div className="space-y-2 text-muted-foreground">
+          <p>Blockchain confirmation times depend on current network congestion:</p>
+          <div className="grid grid-cols-2 gap-2 text-[11px] bg-background/50 p-2.5 rounded-xl border border-border/40 font-mono">
+            <div className="text-foreground">Bitcoin (BTC):</div>
+            <div className="text-foreground font-bold text-right">1-2 blocks (~10-15 min)</div>
+            <div className="text-foreground">Litecoin (LTC):</div>
+            <div className="text-foreground font-bold text-right">1-2 blocks (~2-4 min)</div>
+            <div className="text-foreground">USDT / USDC:</div>
+            <div className="text-foreground font-bold text-right">Instant to 2 min</div>
+          </div>
+          <p>Once the transactions are validated, credits are automatically added to your balance.</p>
+        </div>
+      ),
     },
     {
       category: "Wallet & Cashin/Cashout",
       q: "How do I withdraw (cash-out) my social casino credits?",
-      a: "To request a cash-out, navigate to the Wallet tab, select Withdraw, specify your currency and wallet address, and click submit. Our hosts audit transactions manually within 10-30 minutes for security purposes.",
+      a: (
+        <div className="space-y-2 text-muted-foreground">
+          <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl text-foreground text-[11px] font-semibold leading-relaxed mb-2">
+            ⚠️ IMPORTANT: Withdrawals are NOT automated. You must directly message our support hosts in this chat.
+          </div>
+          <p>To request a withdrawal:</p>
+          <ol className="list-decimal list-inside space-y-1.5 pl-1">
+            <li>Send your registered username and requested cash-out amount.</li>
+            <li>Provide your receiving cryptocurrency wallet address (or payment identifier).</li>
+            <li>Our hosts will audit the ledger logs and process the payout within 10 to 30 minutes.</li>
+          </ol>
+        </div>
+      ),
     },
     {
       category: "VIP & Loyalty perks",
       q: "How does the VIP Club progression milestone work?",
-      a: "Every dollar you deposit increases your VIP Experience Points (XP). As your XP reaches milestone thresholds, you progress through VIP levels (Bronze, Silver, Gold, Platinum, Diamond) which yield larger cashback ratios and weekly reward bonuses.",
-    },
-    {
-      category: "Bonuses & Vouchers",
-      q: "How do I claim a 7-Day Login Streak or Milestones reward?",
-      a: "Go to the Rewards Center, find the active reward (e.g. Daily lucky spin), and click 'Claim Reward'. Our system will run automated checks on your daily logs, after which your host will credit your balance.",
+      a: (
+        <div className="space-y-2.5 text-muted-foreground">
+          <p>Your total lifetime cash-ins translate directly to VIP Experience Points (XP). Level targets:</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 bg-background/50 p-3 rounded-xl border border-border/40 font-mono text-[11px]">
+            <div className="text-foreground">Bronze:</div>
+            <div className="text-right">$100.00 Target</div>
+            <div className="text-foreground">Silver:</div>
+            <div className="text-right">$250.00 Target</div>
+            <div className="text-foreground">Gold:</div>
+            <div className="text-right">$500.00 Target</div>
+            <div className="text-foreground">Platinum:</div>
+            <div className="text-right">$1,000.00 Target</div>
+            <div className="text-foreground">Diamond:</div>
+            <div className="text-right">$5,000.00 Target</div>
+            <div className="text-primary font-bold">Black Diamond:</div>
+            <div className="text-primary text-right font-bold">$10,000.00 Target</div>
+          </div>
+          <p>Contact a support host upon hitting a milestone tier to claim your bonus payout.</p>
+        </div>
+      ),
     },
     {
       category: "Messenger & Referrals",
       q: "How do I claim referred friend bonuses?",
-      a: "Referral bonuses are not automatic. After linking the referrer relationship in User Settings, the host verifies the criteria based on play history and issues the credits manually via direct Page Message vouchers.",
+      a: (
+        <div className="space-y-2 text-muted-foreground">
+          <p>Referral credits are manually audited to prevent abuse:</p>
+          <ol className="list-disc list-inside space-y-1.5 pl-1">
+            <li>Direct message a support host with your friend's platform username.</li>
+            <li>Once the host verifies their active play history and initial deposits, they will issue your cash bonus credits.</li>
+            <li>Voucher codes are delivered directly in your support messenger thread.</li>
+          </ol>
+        </div>
+      ),
     },
   ];
 
@@ -98,7 +146,7 @@ function HelpFAQPage() {
                     <ChevronDown className={`h-4.5 w-4.5 text-muted-foreground shrink-0 transition-transform duration-300 ${isOpen ? "rotate-180 text-primary" : ""}`} />
                   </button>
                   {isOpen && (
-                    <div className="px-5 pb-5 pt-1 text-xs text-muted-foreground leading-relaxed border-t border-border/40 text-left bg-secondary/10 animate-in slide-in-from-top-2 duration-200">
+                    <div className="px-5 pb-5 pt-3 text-xs text-muted-foreground leading-relaxed border-t border-border/40 text-left bg-secondary/10 animate-in slide-in-from-top-2 duration-200">
                       {faq.a}
                     </div>
                   )}
