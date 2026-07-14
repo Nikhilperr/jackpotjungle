@@ -526,30 +526,123 @@ export function AutoResponsesView({ meId }: { meId: string }) {
 
 /* ============ LOGS ============ */
 export function LogsView() {
-  const [tab, setTab] = useState<"activity" | "login">("activity");
+  const [tab, setTab] = useState<"activity" | "login" | "deposits">("activity");
   const [rows, setRows] = useState<any[]>([]);
   async function load() {
-    const table = tab === "activity" ? "activity_logs" : "login_logs";
-    const { data } = await sb.from(table).select("*").order("created_at", { ascending: false }).limit(200);
-    setRows(data ?? []);
+    if (tab === "deposits") {
+      const { data, error } = await sb
+        .from("crypto_deposits")
+        .select("*, profiles(username, avatar_url, first_name, last_name)")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) {
+        console.error("Failed to load crypto deposits logs:", error);
+      }
+      setRows(data ?? []);
+    } else {
+      const table = tab === "activity" ? "activity_logs" : "login_logs";
+      const { data } = await sb.from(table).select("*").order("created_at", { ascending: false }).limit(200);
+      setRows(data ?? []);
+    }
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [tab]);
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-5xl mx-auto">
       <h2 className="text-xl font-bold mb-3">Logs</h2>
       <div className="flex gap-2 mb-4">
         <button onClick={() => setTab("activity")} className={`px-3 h-9 rounded-lg text-sm ${tab === "activity" ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>Activity</button>
         <button onClick={() => setTab("login")} className={`px-3 h-9 rounded-lg text-sm ${tab === "login" ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>Logins</button>
+        <button onClick={() => setTab("deposits")} className={`px-3 h-9 rounded-lg text-sm ${tab === "deposits" ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>Crypto Deposits</button>
       </div>
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        {rows.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No logs.</p> : rows.map((r) => (
-          <div key={r.id} className="px-4 py-2 border-b border-border last:border-0 text-sm flex items-center gap-3">
-            <Activity className="h-3 w-3 text-muted-foreground" />
-            <span className="font-mono text-xs">{r.user_id?.slice(0, 8) ?? "—"}</span>
-            <span className="flex-1 truncate">{tab === "activity" ? r.action : (r.success ? "Login" : "Login failed") + (r.user_agent ? ` · ${r.user_agent.slice(0, 60)}` : "")}</span>
-            <span className="text-xs text-muted-foreground shrink-0">{formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}</span>
+        {rows.length === 0 ? (
+          <p className="p-6 text-center text-sm text-muted-foreground">No logs.</p>
+        ) : tab === "deposits" ? (
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-border bg-secondary/50 text-muted-foreground font-bold">
+                  <th className="p-3">Player</th>
+                  <th className="p-3">Coin / Net</th>
+                  <th className="p-3 text-right">Crypto Amt</th>
+                  <th className="p-3 text-right">USD Value</th>
+                  <th className="p-3">Wallet Address</th>
+                  <th className="p-3">TXID</th>
+                  <th className="p-3">Deposit Time</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3 text-center">Credited</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const displayName = r.profiles?.username || r.user_id?.slice(0, 8) || "—";
+                  return (
+                    <tr key={r.id} className="border-b border-border/40 hover:bg-secondary/20">
+                      <td className="p-3 flex items-center gap-2 font-semibold">
+                        <Avatar name={displayName} url={r.profiles?.avatar_url} size={24} />
+                        <span className="truncate max-w-[100px]" title={displayName}>@{displayName}</span>
+                      </td>
+                      <td className="p-3 font-medium">
+                        <span className="px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] uppercase font-bold text-foreground">
+                          {r.coin} · {r.network}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right font-mono font-bold text-foreground">
+                        {r.amount}
+                      </td>
+                      <td className="p-3 text-right font-mono font-bold text-green-600">
+                        ${Number(r.usd_value).toFixed(2)}
+                      </td>
+                      <td className="p-3 font-mono text-[10px] text-muted-foreground select-all max-w-[120px] truncate" title={r.address}>
+                        {r.address}
+                      </td>
+                      <td className="p-3 font-mono text-[10px] max-w-[120px] truncate" title={r.txid}>
+                        <div className="flex items-center gap-1.5 leading-none">
+                          <span className="truncate flex-1 select-all">{r.txid}</span>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(r.txid);
+                              toast.success("TXID copied");
+                            }}
+                            className="text-primary hover:underline font-bold text-[9px] shrink-0"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      </td>
+                      <td className="p-3 text-muted-foreground whitespace-nowrap">
+                        {new Date(r.deposit_time).toLocaleString()}
+                      </td>
+                      <td className="p-3">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          r.status === "completed" ? "bg-green-500/10 text-green-500" : "bg-amber-500/10 text-amber-500"
+                        }`}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        {r.wallet_credited ? (
+                          <span className="text-green-500 font-extrabold text-sm" title="Wallet Credited">✓</span>
+                        ) : (
+                          <span className="text-muted-foreground font-bold" title="Not Credited">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        ))}
+        ) : (
+          rows.map((r) => (
+            <div key={r.id} className="px-4 py-2 border-b border-border last:border-0 text-sm flex items-center gap-3">
+              <Activity className="h-3 w-3 text-muted-foreground" />
+              <span className="font-mono text-xs">{r.user_id?.slice(0, 8) ?? "—"}</span>
+              <span className="flex-1 truncate">{tab === "activity" ? r.action : (r.success ? "Login" : "Login failed") + (r.user_agent ? ` · ${r.user_agent.slice(0, 60)}` : "")}</span>
+              <span className="text-xs text-muted-foreground shrink-0">{formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}</span>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
@@ -592,21 +685,24 @@ export function UserDetailPanel({
   const [isBlocked, setIsBlocked] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [role, setRole] = useState<"admin" | "super_admin" | "user">("user");
+  const [cryptoDeposits, setCryptoDeposits] = useState<any[]>([]);
 
   async function loadAll() {
-    const [t, all, n, ref, prof, r] = await Promise.all([
+    const [t, all, n, ref, prof, r, crypto] = await Promise.all([
       sb.from("user_tags").select("tag_id, tags(id,name,color)").eq("user_id", userId),
       sb.from("tags").select("*"),
       sb.from("user_notes").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
       sb.from("referrals").select("referrer_id").eq("referred_id", userId).maybeSingle(),
       sb.from("profiles").select("is_blocked, first_name, last_name, phone, address, friend_code, created_at, wallet_balance, credit_balance, wallet_deposits, wallet_released, wallet_used, vip_status").eq("id", userId).maybeSingle(),
       sb.from("user_roles").select("role").eq("user_id", userId),
+      sb.from("crypto_deposits").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(50),
     ]);
     setTags((t.data ?? []).map((r: any) => r.tags));
     setAllTags(all.data ?? []);
     setNotes(n.data ?? []);
     setIsBlocked(!!prof.data?.is_blocked);
     setProfileData(prof.data || null);
+    setCryptoDeposits(crypto.data ?? []);
 
     // Map stats for display in details card
     setTotals({
@@ -863,7 +959,7 @@ export function UserDetailPanel({
       </section>
 
       {/* Notes */}
-      <section className="p-4">
+      <section className="p-4 border-b border-border">
         <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">Internal notes</p>
         <Textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Add internal note…" rows={2} className="text-sm mb-2" />
         <Button size="sm" onClick={addNote} className="w-full mb-3"><Plus className="h-3 w-3 mr-1" /> Add note</Button>
@@ -877,6 +973,48 @@ export function UserDetailPanel({
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Crypto Deposit History (Read Only) */}
+      <section className="p-4 border-b border-border">
+        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2 flex items-center gap-1">
+          <Coins className="h-3.5 w-3.5 text-primary" /> Crypto Deposit History
+        </p>
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          {cryptoDeposits.map((d) => (
+            <div key={d.id} className="text-xs p-3 bg-secondary/50 rounded-xl border border-border/40 space-y-1">
+              <div className="flex justify-between items-center font-bold">
+                <span className="text-foreground">{d.coin} ({d.network})</span>
+                <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-extrabold ${
+                  d.status === "completed" ? "bg-green-500/10 text-green-500" : "bg-amber-500/10 text-amber-500"
+                }`}>
+                  {d.status}
+                </span>
+              </div>
+              <div className="text-muted-foreground space-y-0.5 text-[11px]">
+                <p>Amount: <span className="font-semibold text-foreground">{d.amount} {d.coin}</span> (${Number(d.usd_value).toFixed(2)})</p>
+                <div className="flex items-center gap-1 select-all">
+                  <span>TXID:</span>
+                  <span className="font-mono text-foreground truncate max-w-[120px]">{d.txid}</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(d.txid);
+                      toast.success("TXID copied");
+                    }}
+                    className="text-primary hover:underline font-bold text-[10px] shrink-0"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p>Credited: <span className="font-semibold text-foreground">{d.wallet_credited ? "Yes" : "No"}</span></p>
+                <p>Time: <span className="font-semibold text-foreground">{new Date(d.deposit_time).toLocaleString()}</span></p>
+              </div>
+            </div>
+          ))}
+          {cryptoDeposits.length === 0 && (
+            <p className="text-xs text-center text-muted-foreground py-4">No crypto deposits recorded.</p>
+          )}
         </div>
       </section>
 

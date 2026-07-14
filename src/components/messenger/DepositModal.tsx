@@ -12,12 +12,20 @@ interface DepositModalProps {
   onSuccess?: (creditedAmount: number) => void;
 }
 
+interface NetworkSpec {
+  id: string;
+  name: string;
+  minDeposit: string;
+  confirmations: number;
+  arrivalEst: string;
+}
+
 interface CryptoOption {
   coin: string;
   name: string;
   color: string;
   logo: React.ReactNode;
-  networks: Array<{ id: string; name: string }>;
+  networks: NetworkSpec[];
 }
 
 // Vector SVG Coin Logos (Self-contained, fast, brand-accurate)
@@ -60,9 +68,9 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     color: "from-emerald-500 to-teal-600",
     logo: <UsdtLogo />,
     networks: [
-      { id: "TRX", name: "TRON (TRC20)" },
-      { id: "BSC", name: "BNB Smart Chain (BEP20)" },
-      { id: "ETH", name: "Ethereum (ERC20)" }
+      { id: "TRX", name: "TRON (TRC20)", minDeposit: "10.00 USDT", confirmations: 1, arrivalEst: "~2 mins" },
+      { id: "BSC", name: "BNB Smart Chain (BEP20)", minDeposit: "10.00 USDT", confirmations: 15, arrivalEst: "~3 mins" },
+      { id: "ETH", name: "Ethereum (ERC20)", minDeposit: "10.00 USDT", confirmations: 30, arrivalEst: "~5 mins" }
     ]
   },
   {
@@ -71,8 +79,8 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     color: "from-amber-500 to-orange-600",
     logo: <BtcLogo />,
     networks: [
-      { id: "BTC", name: "Bitcoin Mainnet" },
-      { id: "BSC", name: "BNB Smart Chain (BEP20)" }
+      { id: "BTC", name: "Bitcoin Mainnet", minDeposit: "0.0001 BTC", confirmations: 2, arrivalEst: "~10 mins" },
+      { id: "BSC", name: "BNB Smart Chain (BEP20)", minDeposit: "0.0001 BTC", confirmations: 15, arrivalEst: "~3 mins" }
     ]
   },
   {
@@ -81,8 +89,8 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     color: "from-indigo-500 to-purple-600",
     logo: <EthLogo />,
     networks: [
-      { id: "ETH", name: "Ethereum (ERC20)" },
-      { id: "BSC", name: "BNB Smart Chain (BEP20)" }
+      { id: "ETH", name: "Ethereum (ERC20)", minDeposit: "0.005 ETH", confirmations: 30, arrivalEst: "~5 mins" },
+      { id: "BSC", name: "BNB Smart Chain (BEP20)", minDeposit: "0.005 ETH", confirmations: 15, arrivalEst: "~3 mins" }
     ]
   },
   {
@@ -91,7 +99,7 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     color: "from-yellow-400 to-amber-500",
     logo: <BnbLogo />,
     networks: [
-      { id: "BSC", name: "BNB Smart Chain (BEP20)" }
+      { id: "BSC", name: "BNB Smart Chain (BEP20)", minDeposit: "0.01 BNB", confirmations: 15, arrivalEst: "~3 mins" }
     ]
   }
 ];
@@ -101,7 +109,7 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
   const verifyFn = useServerFn(verifyDeposit);
 
   const [selectedCoin, setSelectedCoin] = useState<CryptoOption>(CRYPTO_OPTIONS[0]);
-  const [selectedNetwork, setSelectedNetwork] = useState(CRYPTO_OPTIONS[0].networks[0]);
+  const [selectedNetwork, setSelectedNetwork] = useState<NetworkSpec>(CRYPTO_OPTIONS[0].networks[0]);
 
   const [address, setAddress] = useState("");
   const [tag, setTag] = useState<string | null>(null);
@@ -118,6 +126,28 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
       loadAddress(selectedCoin.coin, selectedNetwork.id);
     }
   }, [open, selectedCoin, selectedNetwork]);
+
+  // Background verification polling loop (auto verifies while modal is open)
+  useEffect(() => {
+    if (!open || !address || verifying) return;
+    
+    const interval = setInterval(async () => {
+      try {
+        const res = await verifyFn({ data: { coin: selectedCoin.coin } });
+        if (res.success && res.credited && res.credited > 0) {
+          toast.success(`Deposit Confirmed! $${res.credited.toFixed(2)} has been credited to your available balance.`);
+          if (onSuccess) {
+            onSuccess(res.credited);
+          }
+          onClose();
+        }
+      } catch (e) {
+        console.warn("[Deposit Modal] Auto-verify cycle failed:", e);
+      }
+    }, 20000); // check every 20s
+
+    return () => clearInterval(interval);
+  }, [open, address, selectedCoin, verifyFn, onSuccess, onClose, verifying]);
 
   const loadAddress = async (coin: string, network: string) => {
     setLoadingAddress(true);
@@ -181,6 +211,7 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
   return (
     <Dialog open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
       <DialogContent className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl p-6 flex flex-col gap-5 text-white max-h-[90vh] overflow-y-auto [&>button]:hidden select-none">
+        
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800/80 pb-4">
           <div className="flex items-center gap-2.5">
@@ -194,12 +225,24 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
               <p className="text-[10px] text-zinc-400 font-medium">Instant wallet credits on block confirmation</p>
             </div>
           </div>
-          <button 
-            onClick={onClose} 
-            className="h-8 w-8 rounded-full bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 hover:text-red-400 flex items-center justify-center transition-all duration-200"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          
+          <div className="flex items-center gap-1.5">
+            {/* Refresh Button */}
+            <button
+              onClick={() => loadAddress(selectedCoin.coin, selectedNetwork.id)}
+              disabled={loadingAddress}
+              title="Refresh Address"
+              className="h-8 w-8 rounded-full bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 hover:text-primary flex items-center justify-center transition-all duration-200 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loadingAddress ? "animate-spin" : ""}`} />
+            </button>
+            <button 
+              onClick={onClose} 
+              className="h-8 w-8 rounded-full bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 hover:text-red-400 flex items-center justify-center transition-all duration-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Currency Card Grid Selection */}
@@ -221,20 +264,10 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
                       : "bg-zinc-900/40 border-zinc-800/80 hover:bg-zinc-900 hover:border-zinc-700"
                   }`}
                 >
-                  {/* Colored indicator background line */}
                   <div className={`absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r ${c.color} transform origin-left transition-transform duration-300 ${isActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-50"}`} />
-
-                  {/* Coin Brand SVG Icon */}
-                  <div className="mb-2 shrink-0">
-                    {c.logo}
-                  </div>
-
-                  <span className={`text-xs font-black tracking-tight ${isActive ? "text-primary" : "text-zinc-300"}`}>
-                    {c.coin}
-                  </span>
-                  <span className="text-[8px] text-zinc-500 font-bold truncate mt-0.5 w-full text-center">
-                    {c.name}
-                  </span>
+                  <div className="mb-2 shrink-0">{c.logo}</div>
+                  <span className={`text-xs font-black tracking-tight ${isActive ? "text-primary" : "text-zinc-300"}`}>{c.coin}</span>
+                  <span className="text-[8px] text-zinc-500 font-bold truncate mt-0.5 w-full text-center">{c.name}</span>
                 </button>
               );
             })}
@@ -265,7 +298,7 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
         </div>
 
         {/* Floating Glassmorphic Address Container */}
-        <div className="bg-zinc-950/80 border border-zinc-800/90 rounded-3xl p-5 flex flex-col items-center gap-4 relative min-h-[240px] justify-center shadow-inner">
+        <div className="bg-zinc-950/80 border border-zinc-800/90 rounded-3xl p-5 flex flex-col items-center gap-4 relative min-h-[220px] justify-center shadow-inner">
           {loadingAddress ? (
             <div className="flex flex-col items-center justify-center gap-2 py-8">
               <Loader2 className="h-7 w-7 animate-spin text-primary" />
@@ -326,7 +359,25 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
           )}
         </div>
 
-        {/* Notices */}
+        {/* Specifications Panel (Binance Look & Feel) */}
+        {!loadingAddress && address && (
+          <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 space-y-2.5 text-xs text-zinc-300">
+            <div className="flex justify-between items-center">
+              <span className="text-zinc-500 font-bold text-[9px] uppercase tracking-wider">Minimum Deposit</span>
+              <span className="font-extrabold text-foreground">{selectedNetwork.minDeposit}</span>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-zinc-850">
+              <span className="text-zinc-500 font-bold text-[9px] uppercase tracking-wider">Expected Arrival</span>
+              <span className="font-extrabold text-foreground">{selectedNetwork.arrivalEst}</span>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-zinc-850">
+              <span className="text-zinc-500 font-bold text-[9px] uppercase tracking-wider">Required Confirmations</span>
+              <span className="font-extrabold text-foreground">{selectedNetwork.confirmations} Block Confirmations</span>
+            </div>
+          </div>
+        )}
+
+        {/* Warnings */}
         {isFallback && !loadingAddress && (
           <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] p-3 rounded-2xl flex gap-2.5 leading-relaxed">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -363,7 +414,7 @@ export function DepositModal({ open, onClose, onSuccess }: DepositModalProps) {
             ) : (
               <RefreshCw className="h-3.5 w-3.5" />
             )}
-            <span>Verify Deposit</span>
+            <span>I've Sent Deposit</span>
           </button>
         </div>
       </DialogContent>

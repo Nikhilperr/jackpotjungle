@@ -8,6 +8,9 @@ import { useRole } from "@/hooks/useRole";
 import { usePresence } from "@/hooks/usePresence";
 import { useChatNotifications } from "@/hooks/useChatNotifications";
 import { useNativePush } from "@/hooks/useNativePush";
+import { useServerFn } from "@tanstack/react-start";
+import { verifyDeposit } from "@/lib/deposit.functions";
+import { toast } from "sonner";
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
@@ -77,6 +80,30 @@ export function AppShell({ children }: { children: ReactNode }) {
   usePresence();
   useChatNotifications();
   useNativePush();
+
+  const verifyFn = useServerFn(verifyDeposit);
+
+  // Background polling for crypto deposits
+  useEffect(() => {
+    let mounted = true;
+    const interval = setInterval(async () => {
+      if (!mounted) return;
+      try {
+        const res = await verifyFn({ data: {} });
+        if (res.success && res.credited && res.credited > 0) {
+          toast.success(`Crypto Deposit Confirmed! $${res.credited.toFixed(2)} has been credited to your available balance.`);
+          window.dispatchEvent(new CustomEvent("wallet-updated"));
+        }
+      } catch (e) {
+        console.warn("[Background Poll] failed:", e);
+      }
+    }, 120000); // 2 minutes
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [verifyFn]);
 
 
   async function signOut() {
@@ -235,7 +262,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link
               to="/app/chat"
               search={{ tab: "all" }}
-              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold ${
+              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-all duration-200 active:scale-95 hover:scale-105 ${
                 pathname === "/app/chat" && (searchTab === "all" || (!searchTab || searchTab === "spam"))
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
@@ -248,7 +275,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link
               to="/app/chat"
               search={{ tab: "calls" }}
-              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold ${
+              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-all duration-200 active:scale-95 hover:scale-105 ${
                 pathname === "/app/chat" && searchTab === "calls"
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
@@ -261,7 +288,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link
               to="/app/chat"
               search={{ tab: "groups" }}
-              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold ${
+              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-all duration-200 active:scale-95 hover:scale-105 ${
                 pathname === "/app/chat" && searchTab === "groups"
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
@@ -273,7 +300,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             <button
               onClick={() => setOpen(true)}
-              className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold text-muted-foreground hover:text-foreground focus:outline-none"
+              className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold text-muted-foreground hover:text-foreground focus:outline-none transition-all duration-200 active:scale-95 hover:scale-105"
             >
               <MoreHorizontal className="h-5 w-5" />
               <span>More</span>

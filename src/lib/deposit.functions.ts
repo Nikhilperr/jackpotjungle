@@ -240,86 +240,188 @@ export const verifyDeposit = createServerFn({ method: "POST" })
       let totalCreditedUSD = 0;
       const creditedTransactions = [];
 
-      // 3. Process each completed deposit (status === 1)
+      // 3. Process each deposit entry (both completed and pending)
       for (const dep of history) {
-        if (dep.status !== 1) continue; // Skip pending deposits
-        
         const txId = dep.txId;
         const coin = dep.coin;
+        const network = dep.network || "UNKNOWN";
+        const address = dep.address || "UNKNOWN";
         const cryptoAmount = Number(dep.amount);
+        const binanceStatus = dep.status; // 1 = success, 0 = pending, etc.
+        const depositTime = dep.insertTime ? new Date(dep.insertTime).toISOString() : new Date().toISOString();
 
-        // Check if transaction has already been credited in the database
-        const { data: existing } = await supabaseAdmin
-          .from("wallet_transactions")
-          .select("id")
-          .eq("external_id", txId)
+        if (!txId) continue;
+
+        // Check if we already audited this transaction in crypto_deposits
+        const { data: cachedDep } = await supabaseAdmin
+          .from("crypto_deposits")
+          .select("id, status, wallet_credited")
+          .eq("txid", txId)
           .maybeSingle();
 
-        if (existing) continue; // Already processed
-
-        // 4. Calculate USD equivalent using live exchange rates
+        // Calculate USD equivalent using live exchange rates
         const coinPrice = await getCryptoPrice(coin);
         const usdValue = Number((cryptoAmount * coinPrice).toFixed(2));
 
-        if (usdValue <= 0) continue;
+        if (binanceStatus === 1) {
+          // Blockchain confirmation success
+          let shouldCredit = false;
 
-        // 5. Query user profiles current wallet balance inside a secure transaction block
-        const { data: profile } = await supabaseAdmin
-          .from("profiles")
-          .select("wallet_balance, credit_balance, wallet_deposits")
-          .eq("id", userId)
-          .single();
+          if (!cachedDep) {
+            // First time seeing this deposit
+            shouldCredit = true;
+          } else if (cachedDep.status !== "completed" && !cachedDep.wallet_credited) {
+            // Pending transition to completed
+            shouldCredit = true;
+          }
 
-        if (!profile) continue;
+          // Double check wallet_ledger to ensure 100% duplicate protection
+          if (shouldCredit) {
+            const { data: existingTx } = await supabaseAdmin
+              .from("wallet_transactions")
+              .select("id")
+              .eq("external_id", txId)
+              .maybeSingle();
+            if (existingTx) {
+              shouldCredit = false;
+            }
+          }
 
-        const currentBalance = Number(profile.wallet_balance || 0);
-        const currentDeposits = Number(profile.wallet_deposits || 0);
-        const newBalance = currentBalance + usdValue;
-        const newDeposits = currentDeposits + usdValue;
+          if (shouldCredit && usdValue > 0) {
+            // Fetch current profile details
+            const { data: profile } = await supabaseAdmin
+              .from("profiles")
+              .select("wallet_balance, credit_balance, wallet_deposits")
+              .eq("id", userId)
+              .single();
 
-        // Insert wallet transaction
-        const { error: txErr } = await supabaseAdmin.from("wallet_transactions").insert({
-          user_id: userId,
-          action: "cashin",
-          amount: usdValue,
-          avail_before: currentBalance,
-          avail_after: newBalance,
-          credit_before: Number(profile.credit_balance || 0),
-          credit_after: Number(profile.credit_balance || 0),
-          reason: `Crypto Deposit (${coin.toUpperCase()} - ${dep.network})`,
-          external_id: txId,
-          notes: `Binance SAPI deposit verify. Crypto amount: ${cryptoAmount} ${coin.toUpperCase()}`
-        });
+            if (profile) {
+              const currentBalance = Number(profile.wallet_balance || 0);
+              const currentDeposits = Number(profile.wallet_deposits || 0);
+              const newBalance = currentBalance + usdValue;
+              const newDeposits = currentDeposits + usdValue;
 
-        if (txErr) {
-          console.error(`[Verify Deposit] Failed to record wallet transaction for ${txId}:`, txErr);
-          continue;
+              // Insert transaction in ledger (Only crediting Available Balance)
+              const { error: txErr } = await supabaseAdmin.from("wallet_transactions").insert({
+                user_id: userId,
+                action: "deposit",
+                amount: usdValue,
+                avail_before: currentBalance,
+                avail_after: newBalance,
+                credit_before: Number(profile.credit_balance || 0),
+                credit_after: Number(profile.credit_balance || 0),
+                reason: `Crypto Deposit (${coin.toUpperCase()} - ${network})`,
+                external_id: txId,
+                notes: `Binance SAPI deposit verify. Crypto amount: ${cryptoAmount} ${coin.toUpperCase()}`
+              });
+
+              if (!txErr) {
+                // Update user profile balance
+                await supabaseAdmin
+                  .from("profiles")
+                  .update({
+                    wallet_balance: newBalance,
+                    wallet_deposits: newDeposits,
+                    wallet_last_updated: new Date().toISOString()
+                  })
+                  .eq("id", userId);
+
+                totalCreditedUSD += usdValue;
+                creditedTransactions.push({ txId, amount: usdValue, coin });
+
+                // Send system chat notification direct message
+                try {
+                  const { data: bot } = await supabaseAdmin
+                    .from("profiles")
+                    .select("id")
+                    .or("username.eq.jackpotjungle,username.eq.system_updates")
+                    .limit(1)
+                    .maybeSingle();
+
+                  const senderId = bot?.id;
+                  if (senderId) {
+                    const notifText = `🎰 *Deposit Confirmed!*\n\nYour deposit of **${cryptoAmount} ${coin.toUpperCase()}** over network **${network}** has been successfully credited.\n\n💰 **+$${usdValue.toFixed(2)} USD** has been added to your **Available Wallet Balance**.`;
+                    await supabaseAdmin.from("messages").insert({
+                      sender_id: senderId,
+                      receiver_id: userId,
+                      content: notifText
+                    });
+                  }
+                } catch (msgErr) {
+                  console.error("[Verify Deposit] Error sending update message:", msgErr);
+                }
+              } else {
+                console.error(`[Verify Deposit] Failed to record wallet transaction for ${txId}:`, txErr);
+                continue;
+              }
+            }
+          }
+
+          // Save completed audit trail
+          if (cachedDep) {
+            await supabaseAdmin
+              .from("crypto_deposits")
+              .update({
+                status: "completed",
+                wallet_credited: true,
+                confirmations: 1,
+                verified_at: new Date().toISOString(),
+                usd_value: usdValue
+              })
+              .eq("id", cachedDep.id);
+          } else {
+            await supabaseAdmin.from("crypto_deposits").insert({
+              user_id: userId,
+              coin: coin.toUpperCase(),
+              network: network.toUpperCase(),
+              address,
+              amount: cryptoAmount,
+              usd_value: usdValue,
+              txid: txId,
+              binance_ref: dep.subAccountId ? String(dep.subAccountId) : null,
+              confirmations: 1,
+              status: "completed",
+              wallet_credited: true,
+              deposit_time: depositTime,
+              verified_at: new Date().toISOString()
+            });
+          }
+
+        } else {
+          // Transaction is still pending or validating on blockchain
+          if (!cachedDep) {
+            await supabaseAdmin.from("crypto_deposits").insert({
+              user_id: userId,
+              coin: coin.toUpperCase(),
+              network: network.toUpperCase(),
+              address,
+              amount: cryptoAmount,
+              usd_value: usdValue,
+              txid: txId,
+              binance_ref: dep.subAccountId ? String(dep.subAccountId) : null,
+              confirmations: 0,
+              status: "pending",
+              wallet_credited: false,
+              deposit_time: depositTime
+            });
+          } else {
+            await supabaseAdmin
+              .from("crypto_deposits")
+              .update({
+                status: "pending",
+                confirmations: 0,
+                usd_value: usdValue
+              })
+              .eq("id", cachedDep.id);
+          }
         }
-
-        // Update profile balance
-        const { error: profileErr } = await supabaseAdmin
-          .from("profiles")
-          .update({
-            wallet_balance: newBalance,
-            wallet_deposits: newDeposits,
-            wallet_last_updated: new Date().toISOString()
-          })
-          .eq("id", userId);
-
-        if (profileErr) {
-          console.error(`[Verify Deposit] Failed to update profile balances for user:`, profileErr);
-          continue;
-        }
-
-        totalCreditedUSD += usdValue;
-        creditedTransactions.push({ txId, amount: usdValue, coin });
       }
 
       if (totalCreditedUSD > 0) {
         return {
           success: true,
           credited: totalCreditedUSD,
-          message: `Successfully verified and credited $${totalCreditedUSD.toFixed(2)} to your wallet!`,
+          message: `Successfully verified and credited $${totalCreditedUSD.toFixed(2)} to your available balance!`,
           transactions: creditedTransactions
         };
       }
