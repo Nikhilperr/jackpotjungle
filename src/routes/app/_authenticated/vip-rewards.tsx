@@ -361,7 +361,7 @@ function VipRewardsPage() {
               </div>
 
               {/* 2. VIP BENEFITS ROW */}
-              <div id="vip-benefits-anchor" className={`rounded-3xl bg-[#121317] border ${theme.border} p-5 space-y-4 shadow-sm`}>
+              <div id="vip-benefits-anchor" className={`rounded-3xl bg-card border ${theme.border} p-5 space-y-4 shadow-sm text-foreground`}>
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5">
                     <Percent className={`h-4.5 w-4.5 ${theme.primary}`} />
@@ -387,7 +387,7 @@ function VipRewardsPage() {
                   ].map((b, idx) => {
                     const Icon = b.icon;
                     return (
-                      <div key={idx} className="space-y-2 p-2 bg-[#1c1d25]/40 rounded-2xl border border-border/10 flex flex-col items-center">
+                      <div key={idx} className="space-y-2 p-2 bg-secondary/15 rounded-2xl border border-border/30 flex flex-col items-center">
                         <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${b.color} shrink-0`}>
                           <Icon className="h-4.5 w-4.5" />
                         </div>
@@ -402,7 +402,7 @@ function VipRewardsPage() {
               </div>
 
               {/* 3. INVITE FRIENDS & EARN CARD */}
-              <div className={`rounded-3xl bg-[#121317] border ${theme.border} p-5 space-y-4 shadow-sm`}>
+              <div className={`rounded-3xl bg-card border ${theme.border} p-5 space-y-4 shadow-sm text-foreground`}>
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5 font-sans">
                     <Users className={`h-4.5 w-4.5 ${theme.primary}`} />
@@ -420,7 +420,7 @@ function VipRewardsPage() {
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between gap-4 bg-[#0a0b0d]/50 border border-border/10 rounded-2xl p-4">
+                <div className="flex items-center justify-between gap-4 bg-secondary/10 border border-border/20 rounded-2xl p-4">
                   <div className="flex items-center gap-3">
                     <div className={`text-3xl font-black ${theme.numberColor} font-mono leading-none`}>
                       {vipDashboardStats?.referrals?.total || 0}
@@ -439,7 +439,7 @@ function VipRewardsPage() {
                       navigator.clipboard.writeText(refLink);
                       toast.success("Referral link copied! Share with your friends. 📢");
                     }}
-                    className="rounded-xl bg-[#20212b] border border-border/30 text-foreground text-xs font-bold h-9 px-4 flex items-center gap-1.5 hover:bg-secondary transition-all"
+                    className="rounded-xl bg-secondary border border-border/30 text-foreground text-xs font-bold h-9 px-4 flex items-center gap-1.5 hover:bg-secondary/70 transition-all"
                   >
                     <Share2 className={`h-3.5 w-3.5 ${theme.primary}`} />
                     <span>Invite Friends</span>
@@ -448,7 +448,7 @@ function VipRewardsPage() {
               </div>
 
               {/* 4. REWARD WALLET */}
-              <div className={`rounded-3xl bg-[#121317] border ${theme.border} p-5 space-y-4 shadow-sm`}>
+              <div className={`rounded-3xl bg-card border ${theme.border} p-5 space-y-4 shadow-sm text-foreground`}>
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5 font-sans">
                     <Award className={`h-4.5 w-4.5 ${theme.primary}`} />
@@ -462,7 +462,7 @@ function VipRewardsPage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 bg-[#0a0b0d]/50 border border-border/10 rounded-2xl p-4 font-sans text-xs">
+                <div className="grid grid-cols-3 gap-2 bg-secondary/10 border border-border/20 rounded-2xl p-4 font-sans text-xs">
                   <div>
                     <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider block">Available Reward</span>
                     <span className="text-sm sm:text-base font-black text-foreground font-mono block mt-1">
@@ -471,7 +471,7 @@ function VipRewardsPage() {
                     <span className="text-[8px] text-emerald-400 font-semibold block mt-0.5">Ready to withdraw</span>
                   </div>
 
-                  <div className="border-l border-border/10 pl-3">
+                  <div className="border-l border-border/20 pl-3">
                     <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider block">Pending Reward</span>
                     <span className="text-sm sm:text-base font-black text-foreground font-mono block mt-1">
                       ${currentRewardAmount}
@@ -479,7 +479,7 @@ function VipRewardsPage() {
                     <span className="text-[8px] text-muted-foreground font-medium block mt-0.5">Updates Sunday</span>
                   </div>
 
-                  <div className="border-l border-border/10 pl-3">
+                  <div className="border-l border-border/20 pl-3">
                     <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider block">Next Payout</span>
                     <span className="text-sm sm:text-base font-black text-foreground font-mono block mt-1">
                       This Sunday
@@ -490,7 +490,7 @@ function VipRewardsPage() {
               </div>
 
               {/* 5. REWARD HISTORY */}
-              <div className={`rounded-3xl bg-[#121317] border ${theme.border} p-5 space-y-4 shadow-sm`}>
+              <div className={`rounded-3xl bg-card border ${theme.border} p-5 space-y-4 shadow-sm text-foreground`}>
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5 font-sans">
                     <History className={`h-4.5 w-4.5 ${theme.primary}`} />
@@ -504,7 +504,7 @@ function VipRewardsPage() {
                 </div>
 
                 {vipRewardsHistory.length === 0 ? (
-                  <div className="py-12 bg-[#0a0b0d]/50 border border-dashed border-border/40 rounded-2xl flex flex-col items-center justify-center text-center p-6">
+                  <div className="py-12 bg-secondary/10 border border-dashed border-border/40 rounded-2xl flex flex-col items-center justify-center text-center p-6">
                     <div className={`h-14 w-14 ${theme.iconBg} ${theme.primary} rounded-full flex items-center justify-center mb-3`}>
                       <Gift className="h-6 w-6" />
                     </div>
@@ -513,7 +513,7 @@ function VipRewardsPage() {
                       Deposit and play to unlock your first VIP reward.
                     </p>
                     <Link to="/app/wallet" className="mt-4">
-                      <Button className="rounded-full bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-800 hover:to-indigo-700 text-white text-xs font-black h-8 px-4 flex items-center gap-1 shadow-sm">
+                      <Button className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-black h-8 px-4 flex items-center gap-1 shadow-sm">
                         <span>Deposit Now</span>
                         <ArrowRight className="h-3 w-3" />
                       </Button>
@@ -532,7 +532,7 @@ function VipRewardsPage() {
                         return (
                           <div 
                             key={row.id} 
-                            className="p-3 bg-[#0a0b0d]/40 border border-border/10 rounded-xl flex items-center justify-between gap-3 text-xs"
+                            className="p-3 bg-secondary/10 border border-border/20 rounded-xl flex items-center justify-between gap-3 text-xs"
                           >
                             <div className="flex items-center gap-2.5">
                               <div className="h-8 w-8 bg-secondary/80 rounded-lg flex items-center justify-center shrink-0">
@@ -597,7 +597,7 @@ function VipRewardsPage() {
 
       {/* Referrals Dialog */}
       <Dialog open={referralsModalOpen} onOpenChange={setReferralsModalOpen}>
-        <DialogContent className="max-w-md max-h-[80vh] flex flex-col bg-[#121317] border border-border/20 text-left select-none text-foreground">
+        <DialogContent className="max-w-md max-h-[80vh] flex flex-col bg-card border border-border/30 text-left select-none text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-extrabold font-sans">
               <Users className="h-5 w-5 text-primary" /> Referral History
@@ -609,7 +609,7 @@ function VipRewardsPage() {
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">
             {/* Referrer Details */}
-            <div className="bg-[#0a0b0d]/50 border border-border/10 rounded-xl p-4 space-y-2">
+            <div className="bg-secondary/10 border border-border/20 rounded-xl p-4 space-y-2">
               <p className="text-[10px] text-muted-foreground uppercase font-black tracking-wider font-mono">Referred By</p>
               {loadingReferrals ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
