@@ -3086,7 +3086,7 @@ function Conversation({
     }
   }, [walletAction]);
 
-  const loadWalletDetails = async (customUserId?: string) => {
+  const loadWalletDetails = async (customUserId?: string, skipTransactionsUpdate = false) => {
     const targetUserId = customUserId || conv.userId;
     if (!targetUserId) return;
     setLoadingWalletDetails(true);
@@ -3094,7 +3094,9 @@ function Conversation({
       const { getWalletDetailsAdmin } = await import("@/lib/wallet.functions");
       const res = await getWalletDetailsAdmin({ data: { targetUserId } });
       setWalletDetails(res.profile);
-      setWalletTransactions(res.transactions ?? []);
+      if (!skipTransactionsUpdate) {
+        setWalletTransactions(res.transactions ?? []);
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to load wallet stats");
     } finally {
@@ -3106,7 +3108,7 @@ function Conversation({
     const targetUserId = customUserId || conv.userId;
     if (!targetUserId) return;
     setLoadingHistory(true);
-    loadWalletDetails(targetUserId);
+    loadWalletDetails(targetUserId, true);
     try {
       const { getWalletHistoryAdmin } = await import("@/lib/wallet.functions");
       const res = await getWalletHistoryAdmin({
