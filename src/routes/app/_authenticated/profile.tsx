@@ -315,23 +315,6 @@ function ProfilePage() {
           </div>
 
           <div className="space-y-6">
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <CodeCard label="Friend code" value={profile.friend_code} onCopy={() => copy(profile.friend_code, "Friend code")} />
-                <CodeCard label="Referral code" value={profile.referral_code} onCopy={() => copy(profile.referral_code, "Referral code")} />
-              </div>
-
-              <Link to="/app/refer-earn" className="w-full">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full rounded-2xl gap-1.5 h-11 font-bold text-xs"
-                >
-                  <Users className="h-4 w-4" />
-                  <span>See your referrals</span>
-                </Button>
-              </Link>
-            </div>
 
             <form onSubmit={save} className="bg-secondary rounded-2xl p-5 space-y-4">
               <h2 className="font-semibold text-foreground">Edit profile</h2>
