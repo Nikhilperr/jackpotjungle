@@ -241,7 +241,7 @@ function VipRewardsPage() {
           <div className="flex items-center gap-2">
             <HamburgerButton />
             <h1 className="font-extrabold text-foreground flex items-center gap-2 font-sans text-base">
-              <Crown className="h-5 w-5 text-amber-500" />
+              <Crown className={`h-5 w-5 ${theme.primary}`} />
               <span>VIP Club</span>
             </h1>
           </div>
@@ -361,10 +361,10 @@ function VipRewardsPage() {
               </div>
 
               {/* 2. VIP BENEFITS ROW */}
-              <div id="vip-benefits-anchor" className="rounded-3xl bg-[#121317] border border-border/20 p-5 space-y-4 shadow-sm">
+              <div id="vip-benefits-anchor" className={`rounded-3xl bg-[#121317] border ${theme.border} p-5 space-y-4 shadow-sm`}>
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5">
-                    <Percent className="h-4.5 w-4.5 text-primary" />
+                    <Percent className={`h-4.5 w-4.5 ${theme.primary}`} />
                     <span>VIP Benefits</span>
                   </h3>
                   <button 
@@ -402,10 +402,10 @@ function VipRewardsPage() {
               </div>
 
               {/* 3. INVITE FRIENDS & EARN CARD */}
-              <div className="rounded-3xl bg-[#121317] border border-border/20 p-5 space-y-4 shadow-sm">
+              <div className={`rounded-3xl bg-[#121317] border ${theme.border} p-5 space-y-4 shadow-sm`}>
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5 font-sans">
-                    <Users className="h-4.5 w-4.5 text-primary" />
+                    <Users className={`h-4.5 w-4.5 ${theme.primary}`} />
                     <span>Invite Friends & Earn</span>
                   </h3>
                   <button 
@@ -422,7 +422,7 @@ function VipRewardsPage() {
 
                 <div className="flex items-center justify-between gap-4 bg-[#0a0b0d]/50 border border-border/10 rounded-2xl p-4">
                   <div className="flex items-center gap-3">
-                    <div className="text-3xl font-black text-green-400 font-mono leading-none">
+                    <div className={`text-3xl font-black ${theme.numberColor} font-mono leading-none`}>
                       {vipDashboardStats?.referrals?.total || 0}
                     </div>
                     <div>
@@ -441,17 +441,17 @@ function VipRewardsPage() {
                     }}
                     className="rounded-xl bg-[#20212b] border border-border/30 text-foreground text-xs font-bold h-9 px-4 flex items-center gap-1.5 hover:bg-secondary transition-all"
                   >
-                    <Share2 className="h-3.5 w-3.5 text-primary" />
+                    <Share2 className={`h-3.5 w-3.5 ${theme.primary}`} />
                     <span>Invite Friends</span>
                   </Button>
                 </div>
               </div>
 
               {/* 4. REWARD WALLET */}
-              <div className="rounded-3xl bg-[#121317] border border-border/20 p-5 space-y-4 shadow-sm">
+              <div className={`rounded-3xl bg-[#121317] border ${theme.border} p-5 space-y-4 shadow-sm`}>
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5 font-sans">
-                    <Award className="h-4.5 w-4.5 text-primary" />
+                    <Award className={`h-4.5 w-4.5 ${theme.primary}`} />
                     <span>Reward Wallet</span>
                   </h3>
                   <button 
@@ -490,10 +490,10 @@ function VipRewardsPage() {
               </div>
 
               {/* 5. REWARD HISTORY */}
-              <div className="rounded-3xl bg-[#121317] border border-border/20 p-5 space-y-4 shadow-sm">
+              <div className={`rounded-3xl bg-[#121317] border ${theme.border} p-5 space-y-4 shadow-sm`}>
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5 font-sans">
-                    <History className="h-4.5 w-4.5 text-primary" />
+                    <History className={`h-4.5 w-4.5 ${theme.primary}`} />
                     <span>Reward History</span>
                   </h3>
                   {vipRewardsHistory.length > 0 && (
@@ -505,7 +505,7 @@ function VipRewardsPage() {
 
                 {vipRewardsHistory.length === 0 ? (
                   <div className="py-12 bg-[#0a0b0d]/50 border border-dashed border-border/40 rounded-2xl flex flex-col items-center justify-center text-center p-6">
-                    <div className="h-14 w-14 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-3">
+                    <div className={`h-14 w-14 ${theme.iconBg} ${theme.primary} rounded-full flex items-center justify-center mb-3`}>
                       <Gift className="h-6 w-6" />
                     </div>
                     <h4 className="font-bold text-xs text-foreground">No rewards yet!</h4>
