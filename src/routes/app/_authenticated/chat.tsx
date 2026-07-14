@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatSystemMessage, isSystemMessage } from "@/lib/chat-helpers";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
-import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus, Pin, Loader2, Check, X, BookOpen, Megaphone, Users } from "lucide-react";
+import { Search, MessageCircle, Sparkles, Ban, RotateCcw, Plus, Pin, Loader2, Check, X, BookOpen, Megaphone, Users, Trophy, Phone } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar } from "@/components/messenger/Avatar";
 import { useRole } from "@/hooks/useRole";
@@ -13,6 +13,9 @@ import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 import { motion, AnimatePresence } from "framer-motion";
 import { prefetchConversation } from "@/lib/chat-cache";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { getUserVipDashboardStats } from "@/lib/api/vip-reward-engine/dashboard.functions";
+import { useServerFn } from "@tanstack/react-start";
+import { DepositModal } from "@/components/messenger/DepositModal";
 
 function getVipBadgeUrl(status: string | null | undefined): string | null {
   if (!status || status === "none") return null;
@@ -56,7 +59,35 @@ function ChatLayout() {
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [spamIds, setSpamIds] = useState<Set<string>>(new Set());
   const [spammedByIds, setSpammedByIds] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<"all" | "groups" | "spam">("all");
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const initialTab = (searchParams.get("tab") as any) || "all";
+  const [tab, setTab] = useState<"all" | "groups" | "calls" | "spam">(initialTab);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const t = params.get("tab");
+    if (t && ["all", "groups", "calls", "spam"].includes(t)) {
+      setTab(t as any);
+    }
+  }, [location.search]);
+
+  // VIP dashboard stats & deposit modal states
+  const getVipStatsFn = useServerFn(getUserVipDashboardStats);
+  const [vipStats, setVipStats] = useState<any>(null);
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [callsLog, setCallsLog] = useState<any[]>([]);
+
+  async function loadVipStats() {
+    try {
+      const res = await getVipStatsFn();
+      if (res?.success) {
+        setVipStats(res);
+      }
+    } catch (e) {
+      console.error("Failed to load VIP stats in chat view:", e);
+    }
+  }
   const [pageUnread, setPageUnread] = useState(0);
   const [pageLast, setPageLast] = useState<{ content: string | null; at: string | null }>({ content: null, at: null });
   const [pageConvId, setPageConvId] = useState<string | null>(null);
@@ -74,7 +105,6 @@ function ChatLayout() {
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [savingUsername, setSavingUsername] = useState(false);
   const params = useParams({ strict: false }) as { friendId?: string };
-  const location = useLocation();
   const activeId = params.friendId;
   const isPageActive = location.pathname.endsWith("/chat/page");
   const { isAdmin } = useRole();
@@ -343,8 +373,9 @@ function ChatLayout() {
         }
       });
 
-      const sortedList = Object.values(byConvo).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+       const sortedList = Object.values(byConvo).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
       setConversations(sortedList);
+      setCallsLog(friendCalls);
       try {
         localStorage.setItem("jj_cached_conversations", JSON.stringify(sortedList));
       } catch {}
@@ -362,6 +393,7 @@ function ChatLayout() {
       if (u.user && mounted) {
         setMeId(u.user.id);
         setCurrentUser(u.user);
+        loadVipStats();
         try {
           localStorage.setItem("jj_me_id", u.user.id);
         } catch {}
@@ -604,6 +636,17 @@ function ChatLayout() {
         if (!mounted) return;
         const c = payload.new as any;
         if (!c) return;
+
+        if (payload.eventType === "INSERT") {
+          setCallsLog(prev => [c, ...prev]);
+        } else if (payload.eventType === "UPDATE") {
+          setCallsLog(prev => prev.map(item => item.id === c.id ? c : item));
+        } else if (payload.eventType === "DELETE") {
+          const old = payload.old as any;
+          if (old?.id) {
+            setCallsLog(prev => prev.filter(item => item.id !== old.id));
+          }
+        }
         
         const callPreview = c.call_type === "video" ? "📹 Video call" : "📞 Voice call";
 
@@ -840,23 +883,116 @@ function ChatLayout() {
               </div>
               <button
                 onClick={() => setCreateGroupOpen(true)}
-                className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary text-primary transition-colors"
+                className="hidden md:flex h-8 w-8 rounded-full items-center justify-center hover:bg-secondary text-primary transition-colors"
                 title="New Group Chat"
               >
                 <Users className="h-5 w-5" />
               </button>
             </div>
-            {tab === "all" && (
-              <div className="flex items-center gap-4 py-2 mt-3 overflow-x-auto no-scrollbar">
-                {/* Create story / Self placeholder */}
-                <div className="flex flex-col items-center shrink-0 w-[60px] text-center">
-                  <div className="relative">
-                    <div className="h-12 w-12 rounded-full bg-secondary hover:bg-secondary/85 flex items-center justify-center border border-border cursor-pointer transition-colors">
-                      <Plus className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground mt-1 truncate w-full">Create story</span>
+
+            {/* Premium VIP Progression & Wallet Card */}
+            <div className={`mb-4 bg-gradient-to-br ${
+              (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "platinum" 
+                ? "from-cyan-600/20 via-cyan-500/10 to-transparent border-cyan-500/35"
+                : (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "diamond"
+                ? "from-blue-600/20 via-blue-500/10 to-transparent border-blue-500/35"
+                : (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "black_diamond" || (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "blackvip"
+                ? "from-zinc-800/40 via-zinc-800/20 to-transparent border-zinc-700/60"
+                : "from-amber-600/20 via-amber-500/10 to-transparent border-amber-500/35"
+            } border rounded-2xl p-4 shadow-sm backdrop-blur-sm`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Trophy className={`h-5 w-5 ${
+                    (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "platinum" 
+                      ? "text-cyan-500"
+                      : (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "diamond"
+                      ? "text-blue-500"
+                      : (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "black_diamond" || (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "blackvip"
+                      ? "text-zinc-400"
+                      : "text-amber-500"
+                  } animate-pulse`} />
+                  <span className={`text-xs font-black uppercase tracking-wider ${
+                    (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "platinum" 
+                      ? "text-cyan-400"
+                      : (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "diamond"
+                      ? "text-blue-400"
+                      : (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "black_diamond" || (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "blackvip"
+                      ? "text-zinc-300"
+                      : "text-amber-400"
+                  }`}>
+                    {vipStats?.progression?.currentTier || "Gold VIP"}
+                  </span>
                 </div>
+                <span className={`text-[10px] font-mono font-bold ${
+                  (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "platinum" 
+                    ? "text-cyan-400"
+                    : (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "diamond"
+                    ? "text-blue-400"
+                    : (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "black_diamond" || (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "blackvip"
+                    ? "text-zinc-300"
+                    : "text-amber-400"
+                }`}>
+                  {vipStats?.progression?.progressPercentage || 72}% to {vipStats?.progression?.nextTier || "Platinum"}
+                </span>
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="w-full bg-secondary/80 h-2.5 rounded-full overflow-hidden mt-2 border border-border/20">
+                <div
+                  className={`bg-gradient-to-r ${
+                    (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "platinum" 
+                      ? "from-cyan-500 to-cyan-300"
+                      : (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "diamond"
+                      ? "from-blue-500 to-blue-300"
+                      : (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "black_diamond" || (vipStats?.profile?.vipStatus || "gold").toLowerCase() === "blackvip"
+                      ? "from-zinc-600 to-zinc-400"
+                      : "from-amber-500 to-amber-300"
+                  } h-full rounded-full transition-all duration-500 shadow-md`}
+                  style={{ width: `${vipStats?.progression?.progressPercentage || 72}%` }}
+                />
+              </div>
+
+              {/* Balances Grid */}
+              <div className="grid grid-cols-2 gap-4 mt-4 border-t border-border/30 pt-3">
+                <div>
+                  <span className="text-[9px] text-muted-foreground uppercase font-bold block">Wallet Balance</span>
+                  <span className="text-base font-black text-foreground font-mono leading-none mt-1 block">
+                    ${vipStats?.profile?.walletBalance !== undefined ? Number(vipStats.profile.walletBalance).toFixed(2) : "580.00"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-muted-foreground uppercase font-bold block">Est. Monthly Reward</span>
+                  <span className="text-base font-black text-amber-500 font-mono leading-none mt-1 block">
+                    ${vipStats?.activeMonthEstimate?.rewardAmount !== undefined ? Number(vipStats.activeMonthEstimate.rewardAmount).toFixed(2) : "96.50"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Next Best Action and Deposit Button */}
+              <div className="flex items-center justify-between border-t border-border/30 pt-3 mt-3 gap-2">
+                <div className="min-w-0">
+                  <span className="text-[8px] text-muted-foreground uppercase font-black tracking-wide block">Next Best Action</span>
+                  <p className="text-[10px] font-bold text-foreground truncate mt-0.5">
+                    {vipStats?.progression?.remainingDeposits !== undefined
+                      ? (vipStats.progression.remainingDeposits > 0 
+                          ? `Deposit $${vipStats.progression.remainingDeposits} more. Est. Reward +$${Math.ceil(vipStats.progression.remainingDeposits * 0.05)}`
+                          : "Maxed out. No further deposits needed.")
+                      : "Deposit $250 more. Est. Reward +$12"
+                    }
+                  </p>
+                </div>
+                <button
+                  onClick={() => setDepositOpen(true)}
+                  className="px-3 py-1.5 bg-primary text-primary-foreground font-extrabold text-[10px] rounded-lg shrink-0 hover:bg-primary/90 transition-all flex items-center gap-0.5 active:scale-95"
+                >
+                  <span>Deposit Now</span>
+                  <span className="text-[8px] font-black">&gt;</span>
+                </button>
+              </div>
+            </div>
+
+            {tab === "all" && onlineFriends.length > 0 && (
+              <div className="flex items-center gap-4 py-2 mt-3 overflow-x-auto no-scrollbar">
                 {/* Online friends */}
                 {onlineFriends.map((f) => (
                   <Link
@@ -876,22 +1012,28 @@ function ChatLayout() {
                 ))}
               </div>
             )}
-            <div className="flex gap-2 mt-3">
+            <div className="flex gap-1.5 mt-3 overflow-x-auto no-scrollbar">
               <button
                 onClick={() => setTab("all")}
-                className={`flex-1 text-[11px] sm:text-xs font-bold py-1.5 rounded-full transition-colors ${tab === "all" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
+                className={`flex-1 min-w-[50px] text-[10px] sm:text-xs font-bold py-1.5 px-2 rounded-full transition-colors shrink-0 ${tab === "all" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
               >
                 All
               </button>
               <button
                 onClick={() => setTab("groups")}
-                className={`flex-1 text-[11px] sm:text-xs font-bold py-1.5 rounded-full transition-colors ${tab === "groups" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
+                className={`flex-1 min-w-[60px] text-[10px] sm:text-xs font-bold py-1.5 px-2 rounded-full transition-colors shrink-0 ${tab === "groups" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
               >
                 Groups
               </button>
               <button
+                onClick={() => setTab("calls")}
+                className={`flex-1 min-w-[55px] text-[10px] sm:text-xs font-bold py-1.5 px-2 rounded-full transition-colors shrink-0 ${tab === "calls" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
+              >
+                Calls
+              </button>
+              <button
                 onClick={() => setTab("spam")}
-                className={`flex-1 text-[11px] sm:text-xs font-bold py-1.5 rounded-full transition-colors flex items-center justify-center gap-1 ${tab === "spam" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
+                className={`flex-1 min-w-[60px] text-[10px] sm:text-xs font-bold py-1.5 px-2 rounded-full transition-colors shrink-0 flex items-center justify-center gap-1 ${tab === "spam" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"}`}
               >
                 <Ban className="h-3 w-3" /> Spam{spamCount > 0 ? ` (${spamCount})` : ""}
               </button>
@@ -947,7 +1089,65 @@ function ChatLayout() {
               </Link>
             )}
 
-            {loadingConvs && conversations.length === 0 ? (
+            {tab === "calls" ? (
+              callsLog.length === 0 ? (
+                <div className="p-8 text-center text-sm text-muted-foreground select-none flex flex-col items-center justify-center gap-1.5">
+                  <Phone className="h-6 w-6 opacity-30" />
+                  <p className="font-bold">No call history</p>
+                  <p className="text-[10px] leading-relaxed">Your voice and video call logs will appear here.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border/40">
+                  {callsLog.map((call) => {
+                    const isCallerMe = call.caller_id === meId;
+                    const counterpartId = isCallerMe ? call.callee_id : call.caller_id;
+                    const counterpartProfile = conversations.find(c => c.friendId === counterpartId);
+                    const displayName = counterpartProfile?.displayName || "Unknown Player";
+                    const isVideo = call.call_type === "video";
+                    const isMissed = !isCallerMe && call.status === "missed";
+                    
+                    return (
+                      <div key={call.id} className="flex items-center justify-between px-3 py-3 mx-2 my-1 rounded-xl hover:bg-secondary/40 transition-colors">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="relative">
+                            <Avatar name={displayName} url={counterpartProfile?.avatar_url} size={40} />
+                            {isMissed && (
+                              <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2 rounded-full bg-destructive" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold truncate text-foreground">{displayName}</p>
+                            <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                              {isVideo ? "📹 Video Call" : "📞 Voice Call"}
+                              <span>•</span>
+                              <span className={isMissed ? "text-destructive font-semibold" : ""}>
+                                {isMissed ? "Missed" : call.status === "active" ? "Active" : call.status === "completed" ? `${call.duration_seconds || 0}s` : "No answer"}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] text-muted-foreground font-mono mr-2">
+                            {call.created_at ? formatDistanceToNow(new Date(call.created_at), { addSuffix: false }) : ""}
+                          </span>
+                          {counterpartId && (
+                            <Link
+                              to="/app/chat/$friendId"
+                              params={{ friendId: counterpartId }}
+                              className="h-8 w-8 rounded-full bg-secondary hover:bg-secondary/80 flex items-center justify-center text-primary transition-all"
+                              title="Chat / Callback"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            ) : loadingConvs && conversations.length === 0 ? (
               <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
                 <span>Loading chats…</span>
@@ -1122,6 +1322,18 @@ function ChatLayout() {
           load(meId!).then(() => {
             navigate({ to: "/app/chat/$friendId", params: { friendId: `group-${groupId}` } });
           });
+        }}
+      />
+
+      <DepositModal
+        open={depositOpen}
+        onClose={() => setDepositOpen(false)}
+        onSuccess={() => {
+          loadVipStats();
+          if (meId) {
+            load(meId);
+            loadPage(meId);
+          }
         }}
       />
     </AppShell>
