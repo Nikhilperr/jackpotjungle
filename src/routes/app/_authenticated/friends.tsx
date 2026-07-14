@@ -5,7 +5,7 @@ import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Avatar } from "./chat";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, UserPlus, Check, X, MessageCircle, RefreshCw, UserMinus, Plus, Clock, Users } from "lucide-react";
+import { Search, UserPlus, Check, X, MessageCircle, RefreshCw, UserMinus, Clock, Users, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 import { getVipBadgeUrl, getVipBadgeStyles } from "./profile";
@@ -51,11 +51,14 @@ function writeCache(key: string, value: unknown) {
 
 function FriendsPage() {
   const [meId, setMeId] = useState<string | null>(null);
-  const [usernameInput, setUsernameInput] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [searchResult, setSearchResult] = useState<Profile | null>(null);
+  
+  // Live search for finding users in the database
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Profile[]>([]);
+  const [searchingUsers, setSearchingUsers] = useState(false);
+
+  // Live search for filtering existing friends
   const [friendSearchQuery, setFriendSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"list" | "requests" | "add">("list");
 
   const [requests, setRequests] = useState<RequestRow[]>(() =>
     typeof window !== "undefined" ? readCache<RequestRow[]>(REQUESTS_CACHE_KEY) ?? [] : []
@@ -110,6 +113,7 @@ function FriendsPage() {
     }
   }
 
+  // Load user session on mount
   useEffect(() => {
     let mounted = true;
     supabase.auth.getUser().then(({ data }) => {
@@ -135,30 +139,37 @@ function FriendsPage() {
     };
   }, []);
 
-  async function findByUsername(e: React.FormEvent) {
-    e.preventDefault();
-    const searchVal = usernameInput.trim();
-    if (!searchVal) return;
-    setSearching(true);
-    setSearchResult(null);
-    
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, username, avatar_url, vip_status")
-      .ilike("username", searchVal)
-      .maybeSingle();
+  // Debounced live search for database users
+  useEffect(() => {
+    if (!meId) return;
+    const q = userSearchQuery.trim();
+    if (!q) {
+      setSearchResults([]);
+      return;
+    }
 
-    setSearching(false);
-    if (error || !data) { 
-      toast.error("No user found with that username."); 
-      return; 
-    }
-    if (data.id === meId) { 
-      toast.info("That's your own profile 😄"); 
-      return; 
-    }
-    setSearchResult(data as Profile);
-  }
+    let active = true;
+    const searchUsers = async () => {
+      setSearchingUsers(true);
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, username, avatar_url, vip_status")
+        .neq("id", meId)
+        .ilike("username", `%${q}%`)
+        .limit(8);
+
+      if (active && data) {
+        setSearchResults(data as Profile[]);
+      }
+      setSearchingUsers(false);
+    };
+
+    const timer = setTimeout(searchUsers, 200);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [userSearchQuery, meId]);
 
   async function sendRequest(receiverId: string) {
     if (!meId) return;
@@ -185,7 +196,7 @@ function FriendsPage() {
       .maybeSingle();
     if (existingReq) {
       if (existingReq.sender_id === meId) toast.info("You've already sent a friend request to this user.");
-      else toast.info("This user has already sent you a friend request — check pending to accept.");
+      else toast.info("This user has already sent you a friend request.");
       return;
     }
 
@@ -194,13 +205,11 @@ function FriendsPage() {
       receiver_id: receiverId,
     });
     if (error) {
-      if (error.code === "23505") toast.info("A friend request already exists between you two.");
-      else toast.error(error.message);
+      toast.error(error.message);
     } else { 
       toast.success("Friend request sent!"); 
-      setSearchResult(null); 
-      setUsernameInput(""); 
-      setActiveTab("list");
+      setUserSearchQuery("");
+      setSearchResults([]);
     }
   }
 
@@ -247,13 +256,13 @@ function FriendsPage() {
   return (
     <AppShell>
       <div className="h-full overflow-y-auto bg-background/30 select-none">
-        {/* Page Header */}
+        {/* Sticky Header */}
         <div className="p-3 border-b border-border flex items-center justify-between bg-card/60 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <HamburgerButton />
             <h1 className="font-extrabold text-foreground flex items-center gap-2 font-sans">
               <Users className="h-5 w-5 text-primary" />
-              <span>Social Friends</span>
+              <span>Social Connections</span>
             </h1>
           </div>
           <Button
@@ -270,77 +279,56 @@ function FriendsPage() {
                 await promise;
               }
             }}
-            className="h-8 w-8 rounded-full bg-secondary hover:bg-secondary/80 flex items-center justify-center p-0"
+            className="h-8.5 w-8.5 rounded-full bg-secondary hover:bg-secondary/80 flex items-center justify-center p-0"
           >
             <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
           </Button>
         </div>
 
         <PullToRefresh onRefresh={async () => { if (meId) { await load(meId); } }}>
-          <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
-            
-            {/* Navigation Tabs (Mobile optimized) */}
-            <div className="flex p-1 bg-secondary/60 rounded-2xl border border-border/60">
-              <button
-                onClick={() => setActiveTab("list")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === "list" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                My Friends ({friends.length})
-              </button>
-              <button
-                onClick={() => setActiveTab("requests")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all relative ${activeTab === "requests" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Requests
-                {incoming.length > 0 && (
-                  <span className="absolute top-1.5 right-4 h-4 min-w-[16px] px-1 bg-primary text-primary-foreground text-[8px] font-black rounded-full flex items-center justify-center animate-pulse">
-                    {incoming.length}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setActiveTab("add")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === "add" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Add Friend
-              </button>
-            </div>
-
-            {/* Content Windows */}
-            <div className="animate-in fade-in duration-300">
+          {/* Main Dashboard Layout Grid */}
+          <div className="max-w-6xl mx-auto p-4 md:p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start text-left">
               
-              {/* Tab 1: Friends list */}
-              {activeTab === "list" && (
-                <div className="space-y-4 text-left">
-                  {/* Live Search bar */}
+              {/* Left Column: My Friends (Width: 8/12 on LG) */}
+              <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+                <div className="rounded-3xl bg-card border border-border/60 p-5 space-y-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-black text-base text-foreground font-sans">
+                      My Friends ({friends.length})
+                    </h2>
+                  </div>
+
+                  {/* Friends search bar */}
                   <div className="relative">
-                    <Search className="absolute left-4 top-3.5 h-4.5 w-4.5 text-muted-foreground/60" />
+                    <Search className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground/60" />
                     <Input
                       placeholder="Search friends by username..."
                       value={friendSearchQuery}
                       onChange={(e) => setFriendSearchQuery(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3 rounded-2xl bg-card border-border/80 font-sans focus:outline-none focus:ring-1 focus:ring-primary/20 placeholder:text-muted-foreground/45"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-secondary/40 border-transparent placeholder:text-muted-foreground/45 text-sm font-sans"
                     />
                   </div>
 
+                  {/* Friends Stream */}
                   {filteredFriends.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       {filteredFriends.map((friend) => {
                         const vipInfo = getVipBadgeStyles(friend.vip_status);
                         return (
                           <div 
                             key={friend.id}
-                            className="p-4 rounded-3xl bg-card/75 border border-border/60 hover:border-border transition-all flex items-center justify-between gap-4 shadow-sm"
+                            className="p-3.5 rounded-2xl bg-secondary/20 border border-border/40 hover:border-border transition-all flex items-center justify-between gap-3"
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <Avatar name={friend.username} url={friend.avatar_url} size={44} />
+                              <Avatar name={friend.username} url={friend.avatar_url} size={40} />
                               <div className="min-w-0 space-y-0.5">
-                                <span className="font-bold text-sm text-foreground truncate block leading-tight">
+                                <span className="font-bold text-xs text-foreground truncate block leading-tight">
                                   {friend.username}
                                 </span>
                                 {friend.vip_status && friend.vip_status !== "none" && vipInfo && (
                                   <span 
-                                    className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wide border inline-block leading-none"
+                                    className="px-1.5 py-0.5 rounded text-[7px] font-black uppercase tracking-wide border inline-block leading-none"
                                     style={{
                                       color: vipInfo.color,
                                       backgroundColor: `${vipInfo.color}15`,
@@ -353,11 +341,11 @@ function FriendsPage() {
                               </div>
                             </div>
                             
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5 shrink-0">
                               <Button 
                                 onClick={() => navigate({ to: "/chat/$friendId", params: { friendId: friend.id } })} 
                                 size="sm" 
-                                className="rounded-full h-8.5 text-[11px] font-bold gap-1 px-3 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/15"
+                                className="rounded-full h-8 text-[10px] font-bold px-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/10"
                               >
                                 <MessageCircle className="h-3.5 w-3.5" />
                                 <span>Chat</span>
@@ -366,9 +354,9 @@ function FriendsPage() {
                                 onClick={() => removeFriend(friend.id)} 
                                 variant="ghost" 
                                 size="sm"
-                                className="h-8.5 w-8.5 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 p-0 shrink-0"
+                                className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 p-0"
                               >
-                                <UserMinus className="h-4 w-4" />
+                                <UserMinus className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </div>
@@ -376,180 +364,174 @@ function FriendsPage() {
                       })}
                     </div>
                   ) : (
-                    <div className="py-16 text-center space-y-3 bg-card/45 border border-dashed border-border/80 rounded-3xl select-none">
-                      <Users className="h-8 w-8 text-muted-foreground/40 mx-auto" />
+                    <div className="py-16 text-center space-y-3 bg-secondary/5 border border-dashed border-border/60 rounded-2xl select-none">
+                      <Users className="h-8 w-8 text-muted-foreground/35 mx-auto" />
                       <div className="space-y-1">
-                        <h4 className="font-bold text-sm text-foreground">No friends found</h4>
-                        <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                          {friendSearchQuery ? "Try searching for a different username query." : "You haven't added any friends yet. Toggle 'Add Friend' to get started."}
+                        <h4 className="font-bold text-xs text-foreground">No friends found</h4>
+                        <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
+                          {friendSearchQuery ? "Try searching for a different username query." : "Search global users on the right to start building your chat list!"}
                         </p>
                       </div>
                     </div>
                   )}
                 </div>
-              )}
+              </div>
 
-              {/* Tab 2: Pending Requests */}
-              {activeTab === "requests" && (
-                <div className="space-y-6 text-left">
-                  {/* Incoming Requests */}
+              {/* Right Column: Search database & Pending requests (Width: 4/12 on LG) */}
+              <div className="lg:col-span-5 xl:col-span-4 space-y-6">
+                
+                {/* Panel A: Live User search bar */}
+                <div className="rounded-3xl bg-card border border-border/60 p-5 space-y-3.5 shadow-sm">
                   <div>
-                    <h3 className="font-extrabold text-xs text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-primary" />
-                      <span>Received Requests ({incoming.length})</span>
-                    </h3>
-                    {incoming.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {incoming.map((r) => (
-                          <div key={r.id} className="p-4 rounded-3xl bg-card border border-border/60 flex items-center justify-between gap-3 shadow-sm animate-in fade-in duration-200">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <Avatar name={r.profile?.username ?? "?"} url={r.profile?.avatar_url} size={40} />
+                    <h3 className="font-black text-sm text-foreground font-sans">Find Users</h3>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
+                      Search and connect with other social casino players live.
+                    </p>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground/60" />
+                    <Input
+                      placeholder="Type username to search..."
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-secondary/40 border-transparent placeholder:text-muted-foreground/45 text-sm font-sans"
+                    />
+                  </div>
+
+                  {/* Search Results stream */}
+                  {searchResults.length > 0 && (
+                    <div className="space-y-2 pt-1 border-t border-border/40 max-h-[220px] overflow-y-auto pr-1 no-scrollbar animate-in slide-in-from-top-2 duration-200">
+                      {searchResults.map((user) => {
+                        const isAlreadyFriend = friends.some((f) => f.id === user.id);
+                        const isIncoming = incoming.some((r) => r.profile?.id === user.id);
+                        const isOutgoing = outgoing.some((r) => r.profile?.id === user.id);
+                        const vipInfo = getVipBadgeStyles(user.vip_status);
+
+                        return (
+                          <div 
+                            key={user.id}
+                            className="p-2.5 rounded-xl bg-secondary/10 flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar name={user.username} url={user.avatar_url} size={30} />
                               <div className="min-w-0">
-                                <span className="font-bold text-sm text-foreground truncate block leading-tight">
-                                  {r.profile?.username}
+                                <span className="font-bold text-xs text-foreground truncate block leading-tight">
+                                  {user.username}
                                 </span>
-                                <span className="text-[10px] text-muted-foreground leading-none">wants to connect</span>
+                                {user.vip_status && user.vip_status !== "none" && vipInfo && (
+                                  <span 
+                                    className="px-1 py-0.5 rounded text-[6px] font-black uppercase tracking-wide border inline-block leading-none"
+                                    style={{
+                                      color: vipInfo.color,
+                                      backgroundColor: `${vipInfo.color}15`,
+                                      borderColor: `${vipInfo.color}30`
+                                    }}
+                                  >
+                                    {vipInfo.label}
+                                  </span>
+                                )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-1.5">
+
+                            {/* Relationship-dependent Action */}
+                            {isAlreadyFriend ? (
+                              <span className="text-[10px] text-muted-foreground font-bold pr-2">Friend</span>
+                            ) : isOutgoing ? (
+                              <span className="text-[10px] text-primary font-bold pr-2 flex items-center gap-1">
+                                <Clock className="h-3 w-3" /> Sent
+                              </span>
+                            ) : isIncoming ? (
+                              <span className="text-[10px] text-green-500 font-bold pr-2">Received</span>
+                            ) : (
+                              <Button 
+                                onClick={() => sendRequest(user.id)} 
+                                size="sm" 
+                                className="rounded-full h-7 w-7 p-0 flex items-center justify-center bg-primary text-primary-foreground shrink-0 shadow-sm"
+                              >
+                                <UserPlus className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {searchingUsers && (
+                    <p className="text-[10px] text-muted-foreground text-center">Searching user directory...</p>
+                  )}
+
+                  {userSearchQuery && searchResults.length === 0 && !searchingUsers && (
+                    <p className="text-[10px] text-muted-foreground text-center">No users match that search query.</p>
+                  )}
+                </div>
+
+                {/* Panel B: Pending Connection requests */}
+                {totalRequests > 0 && (
+                  <div className="rounded-3xl bg-card border border-border/60 p-5 space-y-4 shadow-sm">
+                    <h3 className="font-black text-sm text-foreground font-sans">
+                      Pending Connection Invites ({totalRequests})
+                    </h3>
+
+                    {/* Received requests */}
+                    {incoming.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-[9px] uppercase tracking-wider font-black text-muted-foreground block">Received Connection Requests</span>
+                        {incoming.map((r) => (
+                          <div key={r.id} className="p-3 rounded-2xl bg-secondary/15 border border-border/40 flex items-center justify-between gap-2.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar name={r.profile?.username ?? "?"} url={r.profile?.avatar_url} size={30} />
+                              <span className="font-bold text-xs text-foreground truncate block">{r.profile?.username}</span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
                               <Button 
                                 size="sm" 
                                 onClick={() => respond(r.id, "accepted")} 
-                                className="rounded-full h-8.5 w-8.5 bg-green-600 hover:bg-green-700 text-white p-0"
+                                className="rounded-full h-7 w-7 bg-green-600 hover:bg-green-700 text-white p-0"
                               >
-                                <Check className="h-4 w-4" />
+                                <Check className="h-3.5 w-3.5" />
                               </Button>
                               <Button 
                                 size="sm" 
                                 variant="ghost" 
                                 onClick={() => respond(r.id, "rejected")} 
-                                className="rounded-full h-8.5 w-8.5 text-muted-foreground hover:text-destructive p-0"
+                                className="rounded-full h-7 w-7 text-muted-foreground hover:text-destructive p-0"
                               >
-                                <X className="h-4 w-4" />
+                                <X className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground p-4 bg-card/45 border border-dashed border-border/80 rounded-2xl text-center">No incoming connection requests.</p>
                     )}
-                  </div>
 
-                  {/* Outgoing Requests */}
-                  <div>
-                    <h3 className="font-extrabold text-xs text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span>Sent Requests ({outgoing.length})</span>
-                    </h3>
-                    {outgoing.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Sent requests */}
+                    {outgoing.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t border-border/40">
+                        <span className="text-[9px] uppercase tracking-wider font-black text-muted-foreground block">Sent Connection Requests</span>
                         {outgoing.map((r) => (
-                          <div key={r.id} className="p-4 rounded-3xl bg-card border border-border/60 flex items-center justify-between gap-3 shadow-sm animate-in fade-in duration-200">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <Avatar name={r.profile?.username ?? "?"} url={r.profile?.avatar_url} size={40} />
-                              <div className="min-w-0">
-                                <span className="font-bold text-sm text-foreground truncate block leading-tight">
-                                  {r.profile?.username}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground leading-none">Pending confirmation</span>
-                              </div>
+                          <div key={r.id} className="p-3 rounded-2xl bg-secondary/15 border border-border/40 flex items-center justify-between gap-2.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar name={r.profile?.username ?? "?"} url={r.profile?.avatar_url} size={30} />
+                              <span className="font-bold text-xs text-foreground truncate block">{r.profile?.username}</span>
                             </div>
                             <Button 
                               size="sm" 
                               variant="ghost" 
                               onClick={() => unsendRequest(r.id)} 
-                              className="rounded-full h-8.5 text-[11px] font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-3.5"
+                              className="rounded-full h-7 text-[10px] font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-2.5 shrink-0"
                             >
                               Unsend
                             </Button>
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground p-4 bg-card/45 border border-dashed border-border/80 rounded-2xl text-center">No pending outgoing requests.</p>
                     )}
                   </div>
+                )}
 
-                </div>
-              )}
-
-              {/* Tab 3: Add Friend */}
-              {activeTab === "add" && (
-                <div className="max-w-xl mx-auto space-y-6 text-left">
-                  <div className="space-y-2 border border-border bg-card rounded-3xl p-6 shadow-sm">
-                    <h2 className="text-base font-black text-foreground font-sans">Add Friend by Username</h2>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Enter the exact username of the person you'd like to add. Once submitted, they will receive a request to connect in their Requests tab.
-                    </p>
-                    
-                    <form onSubmit={findByUsername} className="flex gap-2 pt-2">
-                      <div className="relative flex-1">
-                        <Search className="h-4.5 w-4.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
-                        <Input
-                          placeholder="Search unique username..."
-                          value={usernameInput}
-                          onChange={(e) => setUsernameInput(e.target.value)}
-                          className="pl-10.5 rounded-full bg-secondary border-transparent focus:border-primary/50 text-sm font-sans h-11"
-                        />
-                      </div>
-                      <Button type="submit" disabled={searching} className="rounded-full h-11 px-5 text-xs font-bold shadow-md">
-                        {searching ? "Searching…" : "Find User"}
-                      </Button>
-                    </form>
-                  </div>
-
-                  {searchResult && (() => {
-                    const isAlreadyFriend = friends.some((f) => f.id === searchResult.id);
-                    const vipInfo = getVipBadgeStyles(searchResult.vip_status);
-                    return (
-                      <div className="flex items-center justify-between gap-4 p-5 rounded-3xl bg-primary/5 border border-primary/20 shadow-sm animate-in zoom-in-95 duration-250">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <Avatar name={searchResult.username} url={searchResult.avatar_url} size={48} />
-                          <div className="min-w-0 space-y-0.5">
-                            <span className="font-extrabold text-sm text-foreground truncate block leading-tight">
-                              {searchResult.username}
-                            </span>
-                            {searchResult.vip_status && searchResult.vip_status !== "none" && vipInfo && (
-                              <span 
-                                className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wide border inline-block leading-none"
-                                style={{
-                                  color: vipInfo.color,
-                                  backgroundColor: `${vipInfo.color}15`,
-                                  borderColor: `${vipInfo.color}30`
-                                }}
-                              >
-                                {vipInfo.label}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {isAlreadyFriend ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground font-semibold">Already friends</span>
-                            <Button 
-                              onClick={() => {
-                                setSearchResult(null);
-                                setUsernameInput("");
-                                navigate({ to: "/chat/$friendId", params: { friendId: searchResult.id } });
-                              }} 
-                              size="sm" 
-                              variant="secondary" 
-                              className="rounded-full"
-                            >
-                              <MessageCircle className="h-4 w-4 mr-1" /> Chat
-                            </Button>
-                          </div>
-                        ) : (
-                          <Button onClick={() => sendRequest(searchResult.id)} size="sm" className="rounded-full h-9 font-bold px-4">
-                            <UserPlus className="h-4 w-4 mr-1.5" /> Add Friend
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
+              </div>
 
             </div>
           </div>
