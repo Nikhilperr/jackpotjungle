@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar } from "@/components/messenger/Avatar";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff, ArrowLeft, Users, Search, Share, Shield, ShieldCheck, History, Smartphone, Laptop, Globe, User, CheckCircle } from "lucide-react";
+import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff, ArrowLeft, Users, Search, Share, Shield, ShieldCheck, History, Smartphone, Laptop, Globe, User, CheckCircle, Coins } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { sendBroadcast, deleteAdminUser, setUserBlocked, resetUserPassword, getActiveSessionsUser, terminateSessionUser, getPushNotificationTargetCount, sendCustomPushNotificationAllUsers } from "@/lib/admin-super.functions";
 import {
