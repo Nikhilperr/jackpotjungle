@@ -234,20 +234,20 @@ function VipRewardsPage() {
 
   return (
     <AppShell>
-      <div className="h-full overflow-y-auto bg-[#0B0C0E] select-none text-left">
+      <div className="h-full overflow-y-auto bg-[#0B0C0E] select-none text-left text-white">
         
         {/* Page Header */}
-        <div className="p-4 border-b border-border/20 flex items-center justify-between bg-card/40 backdrop-blur-md sticky top-0 z-10">
+        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-[#121317] sticky top-0 z-10 text-white">
           <div className="flex items-center gap-2">
             <HamburgerButton />
-            <h1 className="font-extrabold text-foreground flex items-center gap-2 font-sans text-base">
-              <Crown className={`h-5 w-5 ${theme.primary}`} />
+            <h1 className={`font-extrabold flex items-center gap-2 font-sans text-base ${theme.primary}`}>
+              <Crown className="h-5 w-5" />
               <span>VIP Club</span>
             </h1>
           </div>
           <button 
             onClick={() => navigate({ to: "/app/help" })}
-            className="h-8 w-8 rounded-full hover:bg-secondary/40 flex items-center justify-center text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white"
           >
             <HelpCircle className="h-4.5 w-4.5" />
           </button>
@@ -279,11 +279,11 @@ function VipRewardsPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest font-mono">Current Level</span>
+                      <span className="text-[10px] text-zinc-400 uppercase font-black tracking-widest font-mono">Current Level</span>
                       <h2 className={`text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r ${theme.text} uppercase tracking-tight font-sans`}>
                         {currentTier} VIP
                       </h2>
-                      <p className="text-[11px] text-muted-foreground font-semibold">You're a valued member!</p>
+                      <p className="text-[11px] text-zinc-400 font-semibold">You're a valued member!</p>
                     </div>
                   </div>
 
@@ -293,7 +293,7 @@ function VipRewardsPage() {
                       const el = document.getElementById("vip-benefits-anchor");
                       el?.scrollIntoView({ behavior: "smooth" });
                     }}
-                    className="rounded-full bg-[#20212b] border border-border/30 px-3 py-1.5 text-[10px] font-black text-amber-400 hover:text-white flex items-center gap-1 transition-colors shrink-0"
+                    className="rounded-full bg-[#20212b] border border-white/10 px-3 py-1.5 text-[10px] font-black text-amber-400 hover:text-white flex items-center gap-1 transition-colors shrink-0"
                   >
                     <span>VIP Benefits</span>
                     <ChevronRight className="h-3 w-3" />
@@ -301,26 +301,26 @@ function VipRewardsPage() {
                 </div>
 
                 {/* Substats: Current Reward & Next Payout */}
-                <div className="grid grid-cols-2 gap-4 bg-[#0a0b0d]/70 rounded-2xl p-4 border border-border/10 font-sans">
+                <div className="grid grid-cols-2 gap-4 bg-[#0a0b0d]/70 rounded-2xl p-4 border border-white/10 font-sans">
                   <div>
-                    <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Current Reward</span>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Current Reward</span>
                     <span className="text-xl sm:text-2xl font-black text-green-400 font-mono block mt-1">
                       ${currentRewardAmount}
                     </span>
                   </div>
-                  <div className="border-l border-border/15 pl-4 space-y-0.5">
-                    <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Next Payout</span>
-                    <span className="text-sm sm:text-base font-extrabold text-foreground block">
+                  <div className="border-l border-white/10 pl-4 space-y-0.5">
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Next Payout</span>
+                    <span className="text-sm sm:text-base font-extrabold text-white block">
                       This Sunday
                     </span>
-                    <span className="text-[9px] text-muted-foreground block font-medium">Updates monthly calculations</span>
+                    <span className="text-[9px] text-zinc-400 block font-medium">Updates monthly calculations</span>
                   </div>
                 </div>
 
                 {/* Segmented Progress bar container */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold">
-                    <span className="text-muted-foreground">VIP Progress</span>
+                    <span className="text-zinc-300">VIP Progress</span>
                     <span className="text-amber-400 font-mono">{progressPercentage}%</span>
                   </div>
 
@@ -341,9 +341,9 @@ function VipRewardsPage() {
 
                   {/* Remaining calculations text */}
                   <div className="flex items-center justify-between gap-4 pt-1">
-                    <p className="text-[10px] text-muted-foreground font-medium leading-relaxed">
+                    <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">
                       {!isMaxTier ? (
-                        <span>Deposit <strong className="text-foreground">${remainingDeposits.toLocaleString()}</strong> more to reach <strong className="text-amber-400">{nextTier}</strong></span>
+                        <span>Deposit <strong className="text-white">${remainingDeposits.toLocaleString()}</strong> more to reach <strong className="text-amber-400">{nextTier}</strong></span>
                       ) : (
                         <span>Maximum VIP achieved! Enjoy elite benefits.</span>
                       )}
