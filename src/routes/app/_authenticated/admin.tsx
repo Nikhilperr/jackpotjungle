@@ -69,6 +69,7 @@ import {
   Sparkles,
   Crown,
   TrendingUp,
+  HelpCircle,
 } from "lucide-react";
 import { VipRewardSettingsView } from "@/components/admin/VipRewardSettingsView";
 import VipAnalyticsDashboardView from "@/components/admin/VipAnalyticsDashboardView";
