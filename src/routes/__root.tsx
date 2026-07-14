@@ -182,6 +182,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/3b60700a-6191-4115-ae1c-a83f871c2482" },
       { name: "twitter:card", content: "summary_large_image" },
       { property: "og:type", content: "website" },
+      { name: "cryptomus", content: "3f5b6bcf" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
