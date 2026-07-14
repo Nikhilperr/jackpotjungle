@@ -51,76 +51,14 @@ interface CryptoOption {
   networks: NetworkSpec[];
 }
 
-// Vector SVG Coin Logos (Highly refined, brand-accurate gradients)
-const UsdtLogo = () => (
-  <svg className="h-8 w-8 transition-all duration-300 group-hover:scale-110" viewBox="0 0 24 24" fill="none">
-    <circle cx="12" cy="12" r="12" fill="#26A17B"/>
-    <path d="M12.9 9.3v-1c1.8-.1 3.1-.4 3.1-.9 0-.5-1.3-.8-3.1-.9V4.5H11.1v1.9c-1.8.1-3.1.4-3.1.9 0 .5 1.3.8 3.1.9v1c-2.3.1-4.1.5-4.1 1 0 .5 1.7 1 4.1 1.1v8.1h1.9v-8.1c2.3-.1 4.1-.5 4.1-1.1 0-.5-1.8-.9-4.1-1zm-1.8 1.5c-1.9 0-3.5-.3-3.5-.6s1.6-.6 3.5-.6 3.5.3 3.5.6-1.6.6-3.5.6z" fill="#FFF"/>
-  </svg>
-);
-
-const BtcLogo = () => (
-  <svg className="h-8 w-8 transition-all duration-300 group-hover:scale-110" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#F7931A"/>
-    <path d="M16.662 8.595c.252-1.693-.946-2.603-2.557-3.212l.523-2.095-1.277-.318-.508 2.04c-.335-.084-.68-.163-1.025-.243l.512-2.052-1.278-.318-.522 2.095c-.278-.063-.548-.125-.808-.19l.002-.008-1.763-.44-.34 1.365s.948.217.928.23c.517.13.773.474.753.748L8.71 11.233c.033.01.077.025.125.04-.04-.01-.087-.02-.132-.033l-1.072-.268-.663 2.658 1.65.412c.307.078.61.159.91.235l-.527 2.115 1.277.319.522-2.095c.348.096.685.185 1.015.268l-.51 2.049 1.278.318.528-2.113c2.179.412 3.818.246 4.509-1.725.556-1.587-.028-2.503-1.173-3.106.833-.193 1.46-.74 1.627-1.874zm-2.9 5.48c-.395 1.587-3.07.73-3.938.514l.703-2.822c.868.217 3.633.645 3.235 2.308zm.395-5.509c-.36 1.447-2.587.712-3.31.531l.638-2.557c.722.18 3.036.516 2.672 2.026z" fill="#FFF"/>
-  </svg>
-);
-
-const EthLogo = () => (
-  <svg className="h-8 w-8 transition-all duration-300 group-hover:scale-110" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#627EEA"/>
-    <path d="M12 2.25l-5.625 9.313L12 15l5.625-3.438L12 2.25z" fill="#FFF" fillOpacity=".6"/>
-    <path d="M12 2.25v9.313h5.625L12 2.25z" fill="#FFF" fillOpacity=".8"/>
-    <path d="M12 16.125l-5.625-3.187L12 21.75l5.625-8.812-5.625 3.187z" fill="#FFF" fillOpacity=".6"/>
-    <path d="M12 16.125v5.625l5.625-8.812-5.625 3.187z" fill="#FFF" fillOpacity=".8"/>
-    <path d="M6.375 11.563L12 15l5.625-3.438L12 8.25l-5.625 3.313z" fill="#FFF" fillOpacity=".2"/>
-  </svg>
-);
-
-const BnbLogo = () => (
-  <svg className="h-8 w-8 transition-all duration-300 group-hover:scale-110" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#F3BA2F"/>
-    <path d="M12.001 7.151l2.585 2.587 1.83-1.83-4.415-4.415-4.415 4.415 1.83 1.83 2.585-2.587zm5.174 5.176l1.83 1.83 2.583-2.584-4.413-4.415-1.83 1.83 1.83 1.839zm-10.347 0l1.83-1.83-1.83-1.839-1.83 1.83-2.583 2.584 4.413 4.415zm5.173 5.174l-2.585-2.587-1.83 1.83 4.415 4.415 4.415-4.415-1.83-1.83-2.585 2.587zm2.588-2.587l2.586-2.587-2.586-2.587-2.588 2.587 2.588 2.587z" fill="#FFF"/>
-  </svg>
-);
-
-const LtcLogo = () => (
-  <svg className="h-8 w-8 transition-all duration-300 group-hover:scale-110" viewBox="0 0 24 24" fill="currentColor">
-    <circle cx="12" cy="12" r="12" fill="#345D9D"/>
-    <path d="M12.2 4.5l-2.6 9.8-1.7.6-.3 1.2 1.7-.6-.8 3.1h6.6l.7-2.6h-3.6l1.2-4.6 1.7-.6.3-1.2-1.7.6 1.1-4.3h-2.6z" fill="#FFF"/>
-  </svg>
-);
-
-const SolLogo = () => (
-  <svg className="h-8 w-8 transition-all duration-300 group-hover:scale-110" viewBox="0 0 24 24" fill="none">
-    <circle cx="12" cy="12" r="12" fill="#000"/>
-    <path d="M5.5 6.2h13l-2.5 2.5h-13z" fill="url(#solana-grad1)"/>
-    <path d="M18.5 11.5h-13l2.5 2.5h13z" fill="url(#solana-grad2)"/>
-    <path d="M5.5 15.3h13l-2.5 2.5h-13z" fill="url(#solana-grad3)"/>
-    <defs>
-      <linearGradient id="solana-grad1" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stopColor="#9945FF" />
-        <stop offset="100%" stopColor="#14F195" />
-      </linearGradient>
-      <linearGradient id="solana-grad2" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stopColor="#9945FF" />
-        <stop offset="100%" stopColor="#14F195" />
-      </linearGradient>
-      <linearGradient id="solana-grad3" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stopColor="#9945FF" />
-        <stop offset="100%" stopColor="#14F195" />
-      </linearGradient>
-    </defs>
-  </svg>
-);
-
+// Transparent Official Icons from globally cached CDN
 const CRYPTO_OPTIONS: CryptoOption[] = [
   {
     coin: "USDT",
     name: "Tether",
     color: "from-emerald-500/20 to-teal-600/20 border-emerald-500/35",
     glowColor: "shadow-emerald-500/10 border-emerald-500",
-    logo: <UsdtLogo />,
+    logo: <img src="https://assets.coingecko.com/coins/images/325/large/Tether.png" alt="USDT" className="h-7 w-7 object-contain select-none shrink-0" />,
     networks: [
       { id: "TRX", name: "TRON (TRC20)", minDeposit: "10.00 USDT", confirmations: 1, arrivalEst: "~2 mins", feeInfo: "No platform fees.", status: "Operational" },
       { id: "BSC", name: "BNB Smart Chain (BEP20)", minDeposit: "10.00 USDT", confirmations: 15, arrivalEst: "~3 mins", feeInfo: "No platform fees.", status: "Operational" },
@@ -132,7 +70,7 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     name: "Bitcoin",
     color: "from-amber-500/20 to-orange-600/20 border-amber-500/35",
     glowColor: "shadow-amber-500/10 border-amber-500",
-    logo: <BtcLogo />,
+    logo: <img src="https://assets.coingecko.com/coins/images/1/large/bitcoin.png" alt="BTC" className="h-7 w-7 object-contain select-none shrink-0" />,
     networks: [
       { id: "BTC", name: "Bitcoin Mainnet", minDeposit: "0.0001 BTC", confirmations: 2, arrivalEst: "~10 mins", feeInfo: "No platform fees.", status: "Operational" },
       { id: "BSC", name: "BNB Smart Chain (BEP20)", minDeposit: "0.0001 BTC", confirmations: 15, arrivalEst: "~3 mins", feeInfo: "No platform fees.", status: "Operational" }
@@ -143,7 +81,7 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     name: "Ethereum",
     color: "from-indigo-500/20 to-purple-600/20 border-indigo-500/35",
     glowColor: "shadow-indigo-500/10 border-indigo-500",
-    logo: <EthLogo />,
+    logo: <img src="https://assets.coingecko.com/coins/images/279/large/ethereum.png" alt="ETH" className="h-7 w-7 object-contain select-none shrink-0" />,
     networks: [
       { id: "ETH", name: "Ethereum (ERC20)", minDeposit: "0.005 ETH", confirmations: 30, arrivalEst: "~5 mins", feeInfo: "No platform fees.", status: "Operational" },
       { id: "BSC", name: "BNB Smart Chain (BEP20)", minDeposit: "0.005 ETH", confirmations: 15, arrivalEst: "~3 mins", feeInfo: "No platform fees.", status: "Operational" }
@@ -154,7 +92,7 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     name: "BNB",
     color: "from-yellow-400/20 to-amber-500/20 border-yellow-400/35",
     glowColor: "shadow-yellow-400/10 border-yellow-400",
-    logo: <BnbLogo />,
+    logo: <img src="https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png" alt="BNB" className="h-7 w-7 object-contain select-none shrink-0" />,
     networks: [
       { id: "BSC", name: "BNB Smart Chain (BEP20)", minDeposit: "0.01 BNB", confirmations: 15, arrivalEst: "~3 mins", feeInfo: "No platform fees.", status: "Operational" }
     ]
@@ -164,7 +102,7 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     name: "Litecoin",
     color: "from-blue-500/20 to-indigo-600/20 border-blue-500/35",
     glowColor: "shadow-blue-500/10 border-blue-500",
-    logo: <LtcLogo />,
+    logo: <img src="https://assets.coingecko.com/coins/images/2/large/litecoin.png" alt="LTC" className="h-7 w-7 object-contain select-none shrink-0" />,
     networks: [
       { id: "LTC", name: "Litecoin Mainnet", minDeposit: "0.01 LTC", confirmations: 6, arrivalEst: "~5 mins", feeInfo: "No platform fees.", status: "Operational" }
     ]
@@ -174,7 +112,7 @@ const CRYPTO_OPTIONS: CryptoOption[] = [
     name: "Solana",
     color: "from-purple-500/20 to-teal-500/20 border-purple-500/35",
     glowColor: "shadow-purple-500/10 border-purple-500",
-    logo: <SolLogo />,
+    logo: <img src="https://assets.coingecko.com/coins/images/4128/large/solana.png" alt="SOL" className="h-7 w-7 object-contain select-none shrink-0" />,
     networks: [
       { id: "SOL", name: "Solana Mainnet", minDeposit: "0.05 SOL", confirmations: 32, arrivalEst: "~1 min", feeInfo: "No platform fees.", status: "Operational" }
     ]
@@ -428,7 +366,7 @@ function DepositPage() {
             <div className="border-l border-border h-6 mx-1" />
             <h1 className="font-extrabold text-base tracking-tight flex items-center gap-2">
               <Coins className="h-5 w-5 text-primary animate-pulse" />
-              <span className="bg-gradient-to-r from-primary via-orange-400 to-amber-500 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-primary via-orange-400 to-amber-500 bg-clip-text text-transparent font-black">
                 Crypto Deposit Terminal
               </span>
             </h1>
@@ -561,8 +499,12 @@ function DepositPage() {
                   <>
                     {/* Large QR Hero */}
                     {qrCodeUrl && (
-                      <div className="bg-white p-3.5 rounded-3xl shadow-xl transition-all duration-300 hover:scale-105 select-none ring-4 ring-secondary/50">
-                        <img src={qrCodeUrl} alt="Deposit QR Code" className="h-40 w-40 object-contain" />
+                      <div className="bg-white p-4 rounded-3xl shadow-xl border border-zinc-100 flex items-center justify-center relative ring-4 ring-secondary/50">
+                        <img src={qrCodeUrl} alt="Deposit QR Code" className="h-44 w-44 object-contain" />
+                        {/* Custom logo center overlay */}
+                        <div className="absolute h-10 w-10 bg-white rounded-full p-1 border border-zinc-200 shadow-md flex items-center justify-center">
+                          {selectedCoin.logo}
+                        </div>
                       </div>
                     )}
 
@@ -594,43 +536,63 @@ function DepositPage() {
                         </div>
                       </div>
 
-                      <div className="bg-zinc-900 border border-border/80 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-inner hover:border-zinc-800 transition-colors group">
-                        <div className="space-y-1 flex-1 min-w-0">
-                          <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest leading-none block">
-                            Deposit Address ({selectedNetwork.name})
-                          </span>
-                          <span className="text-xs font-mono font-bold break-all text-zinc-200 select-all leading-relaxed text-left block">
-                            {address || "Requesting address..."}
+                      {/* Premium Redesigned Deposit Address Card */}
+                      <div className="w-full bg-secondary/35 border border-border/80 rounded-2xl p-5 shadow-sm space-y-3 relative hover:border-primary/40 transition-all">
+                        <div className="flex justify-between items-center">
+                          <div className="space-y-0.5">
+                            <span className="text-[9px] font-black text-muted-foreground uppercase tracking-wider block">
+                              Deposit Address
+                            </span>
+                            <span className="text-xs font-black text-foreground">
+                              {selectedCoin.coin} ({selectedNetwork.name})
+                            </span>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-[10px] font-black uppercase tracking-wide">
+                            {selectedNetwork.id}
                           </span>
                         </div>
-                        <button
-                          onClick={handleCopy}
-                          disabled={!address}
-                          className="h-10 w-10 rounded-xl flex items-center justify-center bg-zinc-850 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all duration-200 border border-zinc-700/60 shrink-0 shadow-sm"
-                        >
-                          {copied ? <Check className="h-4.5 w-4.5 text-green-400" /> : <Copy className="h-4.5 w-4.5" />}
-                        </button>
+
+                        <div className="flex items-center justify-between gap-3 bg-card border border-border/50 rounded-xl p-3 shadow-inner">
+                          <span className="text-xs font-mono font-bold break-all text-foreground select-all text-left">
+                            {address || "Requesting address..."}
+                          </span>
+                          <button
+                            onClick={handleCopy}
+                            disabled={!address}
+                            className="h-9 w-9 rounded-lg flex items-center justify-center bg-secondary hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-all duration-200 border border-border shrink-0 shadow-sm"
+                          >
+                            {copied ? <Check className="h-4.5 w-4.5 text-green-500" /> : <Copy className="h-4.5 w-4.5" />}
+                          </button>
+                        </div>
                       </div>
                     </div>
 
                     {/* MEMO / TAG Container */}
                     {tag && (
                       <div className="w-full">
-                        <div className="bg-zinc-900 border border-border/80 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-inner hover:border-zinc-800 transition-colors group">
-                          <div className="space-y-1 flex-1 min-w-0">
-                            <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest leading-none block font-extrabold">
-                              Required MEMO / TAG (Required or funds will be lost)
-                            </span>
-                            <span className="text-sm font-mono font-bold break-all text-zinc-200 select-all block text-left">
+                        <div className="bg-secondary/35 border border-border/80 rounded-2xl p-5 shadow-sm space-y-3 relative hover:border-primary/40 transition-all">
+                          <div className="flex justify-between items-center">
+                            <div className="space-y-0.5">
+                              <span className="text-[9px] font-black text-amber-500 uppercase tracking-wider block font-extrabold">
+                                Required MEMO / TAG (Or funds will be lost)
+                              </span>
+                              <span className="text-xs font-black text-foreground">
+                                {selectedCoin.coin} Tag
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 bg-card border border-border/50 rounded-xl p-3 shadow-inner">
+                            <span className="text-xs font-mono font-bold break-all text-foreground select-all text-left">
                               {tag}
                             </span>
+                            <button
+                              onClick={handleCopyTag}
+                              className="h-9 w-9 rounded-lg flex items-center justify-center bg-secondary hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-all duration-200 border border-border shrink-0 shadow-sm"
+                            >
+                              {copiedTag ? <Check className="h-4.5 w-4.5 text-green-500" /> : <Copy className="h-4.5 w-4.5" />}
+                            </button>
                           </div>
-                          <button
-                            onClick={handleCopyTag}
-                            className="h-10 w-10 rounded-xl flex items-center justify-center bg-zinc-850 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all duration-200 border border-zinc-700/60 shrink-0 shadow-sm"
-                          >
-                            {copiedTag ? <Check className="h-4.5 w-4.5 text-green-400" /> : <Copy className="h-4.5 w-4.5" />}
-                          </button>
                         </div>
                       </div>
                     )}
