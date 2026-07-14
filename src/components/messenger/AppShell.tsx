@@ -401,45 +401,52 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {[
                   { to: "/app/notifications", icon: Bell, label: "Announcements", badgeCount: unreadCount },
                   { to: "/app/rewards", icon: Gift, label: "Bonus Center" },
-                  { to: "/app/next-goal", icon: Target, label: "My Activity", badge: "NEW" },
-                  { to: "/app/chat", search: { tab: "spam" }, icon: Ban, label: "Spam Chats", badgeCount: spamCount },
-                  { to: "/app/vip-rewards", icon: Crown, label: "VIP Club" },
-                  { to: "/app/wallet", icon: Wallet, label: "Wallet" },
-                  { to: "/app/refer-earn", icon: Gift, label: "Refer & Earn" },
-                  { to: "/app/security", icon: Shield, label: "Security" },
-                  { to: "/app/profile", icon: UserIcon, label: "Profile" },
-                  { to: "/app/settings", icon: Settings, label: "Settings" },
-                  { to: "/app/support", icon: HelpCircle, label: "Support & FAQ" },
+                  { to: "/app/next-goal", icon: Activity, label: "My Activity" },
+                  { to: "/app/support", icon: Phone, label: "Support" },
+                  { to: "/app/help", icon: HelpCircle, label: "Help & FAQ" },
+                  { onClick: () => toast.info("Rate App feature will be available once the app is published! 🚀"), icon: Star, label: "Rate App" },
+                  { onClick: () => toast.info("Share App feature will be available once the app is published! 📢"), icon: Share2, label: "Share App" },
+                  { to: "/app/about", icon: Info, label: "About Us" },
                 ].map((item, idx) => {
                   const Icon = item.icon;
-                  return (
-                    <Link
-                      key={idx}
-                      to={item.to}
-                      search={item.search}
-                      onClick={() => setMoreOpen(false)}
-                      className="w-full h-12 rounded-xl flex items-center gap-3 px-3 hover:bg-secondary transition-colors text-left font-sans"
-                    >
-                      <div className="h-8.5 w-8.5 rounded-full bg-secondary flex items-center justify-center text-muted-foreground/80 shrink-0">
-                        <Icon className="h-4.5 w-4.5" />
-                      </div>
-                      <span className="flex-1 text-sm font-semibold text-foreground leading-tight">{item.label}</span>
-                      
-                      {item.badge && (
-                        <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[8px] font-black uppercase tracking-wider border border-primary/20 shrink-0 font-sans">
-                          {item.badge}
-                        </span>
-                      )}
-
-                      {item.badgeCount !== undefined && item.badgeCount > 0 && (
-                        <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-black flex items-center justify-center shrink-0 shadow-sm shadow-blue-600/20 font-mono">
-                          {item.badgeCount}
-                        </span>
-                      )}
-
-                      <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
-                    </Link>
-                  );
+                  if (item.to) {
+                    return (
+                      <Link
+                        key={idx}
+                        to={item.to}
+                        onClick={() => setMoreOpen(false)}
+                        className="w-full h-12 rounded-xl flex items-center gap-3 px-3 hover:bg-secondary transition-colors text-left font-sans"
+                      >
+                        <div className="h-8.5 w-8.5 rounded-full bg-secondary flex items-center justify-center text-muted-foreground/80 shrink-0">
+                          <Icon className="h-4.5 w-4.5" />
+                        </div>
+                        <span className="flex-1 text-sm font-semibold text-foreground leading-tight">{item.label}</span>
+                        {item.badgeCount !== undefined && item.badgeCount > 0 && (
+                          <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-black flex items-center justify-center shrink-0 shadow-sm shadow-blue-600/20 font-mono">
+                            {item.badgeCount}
+                          </span>
+                        )}
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                      </Link>
+                    );
+                  } else {
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setMoreOpen(false);
+                          item.onClick?.();
+                        }}
+                        className="w-full h-12 rounded-xl flex items-center gap-3 px-3 hover:bg-secondary transition-colors text-left font-sans"
+                      >
+                        <div className="h-8.5 w-8.5 rounded-full bg-secondary flex items-center justify-center text-muted-foreground/80 shrink-0">
+                          <Icon className="h-4.5 w-4.5" />
+                        </div>
+                        <span className="flex-1 text-sm font-semibold text-foreground leading-tight">{item.label}</span>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                      </button>
+                    );
+                  }
                 })}
 
                 {/* Logout Row */}

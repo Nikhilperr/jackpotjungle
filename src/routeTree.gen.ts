@@ -55,10 +55,12 @@ import { Route as AppAuthenticatedOnboardingRouteImport } from './routes/app/_au
 import { Route as AppAuthenticatedNotificationsRouteImport } from './routes/app/_authenticated/notifications'
 import { Route as AppAuthenticatedNextGoalRouteImport } from './routes/app/_authenticated/next-goal'
 import { Route as AppAuthenticatedLeaderboardRouteImport } from './routes/app/_authenticated/leaderboard'
+import { Route as AppAuthenticatedHelpRouteImport } from './routes/app/_authenticated/help'
 import { Route as AppAuthenticatedFriendsRouteImport } from './routes/app/_authenticated/friends'
 import { Route as AppAuthenticatedDepositRouteImport } from './routes/app/_authenticated/deposit'
 import { Route as AppAuthenticatedChatRouteImport } from './routes/app/_authenticated/chat'
 import { Route as AppAuthenticatedAdminRouteImport } from './routes/app/_authenticated/admin'
+import { Route as AppAuthenticatedAboutRouteImport } from './routes/app/_authenticated/about'
 import { Route as AuthenticatedChatPageRouteImport } from './routes/_authenticated/chat.page'
 import { Route as AuthenticatedChatFriendIdRouteImport } from './routes/_authenticated/chat.$friendId'
 import { Route as AppAuthenticatedChatIndexRouteImport } from './routes/app/_authenticated/chat.index'
@@ -303,6 +305,11 @@ const AppAuthenticatedLeaderboardRoute =
     path: '/leaderboard',
     getParentRoute: () => AppAuthenticatedRouteRoute,
   } as any)
+const AppAuthenticatedHelpRoute = AppAuthenticatedHelpRouteImport.update({
+  id: '/help',
+  path: '/help',
+  getParentRoute: () => AppAuthenticatedRouteRoute,
+} as any)
 const AppAuthenticatedFriendsRoute = AppAuthenticatedFriendsRouteImport.update({
   id: '/friends',
   path: '/friends',
@@ -321,6 +328,11 @@ const AppAuthenticatedChatRoute = AppAuthenticatedChatRouteImport.update({
 const AppAuthenticatedAdminRoute = AppAuthenticatedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => AppAuthenticatedRouteRoute,
+} as any)
+const AppAuthenticatedAboutRoute = AppAuthenticatedAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => AppAuthenticatedRouteRoute,
 } as any)
 const AuthenticatedChatPageRoute = AuthenticatedChatPageRouteImport.update({
@@ -399,10 +411,12 @@ export interface FileRoutesByFullPath {
   '/app/': typeof AppIndexRoute
   '/chat/$friendId': typeof AuthenticatedChatFriendIdRoute
   '/chat/page': typeof AuthenticatedChatPageRoute
+  '/app/about': typeof AppAuthenticatedAboutRoute
   '/app/admin': typeof AppAuthenticatedAdminRoute
   '/app/chat': typeof AppAuthenticatedChatRouteWithChildren
   '/app/deposit': typeof AppAuthenticatedDepositRoute
   '/app/friends': typeof AppAuthenticatedFriendsRoute
+  '/app/help': typeof AppAuthenticatedHelpRoute
   '/app/leaderboard': typeof AppAuthenticatedLeaderboardRoute
   '/app/next-goal': typeof AppAuthenticatedNextGoalRoute
   '/app/notifications': typeof AppAuthenticatedNotificationsRoute
@@ -454,9 +468,11 @@ export interface FileRoutesByTo {
   '/app/verify-otp': typeof AppVerifyOtpRoute
   '/chat/$friendId': typeof AuthenticatedChatFriendIdRoute
   '/chat/page': typeof AuthenticatedChatPageRoute
+  '/app/about': typeof AppAuthenticatedAboutRoute
   '/app/admin': typeof AppAuthenticatedAdminRoute
   '/app/deposit': typeof AppAuthenticatedDepositRoute
   '/app/friends': typeof AppAuthenticatedFriendsRoute
+  '/app/help': typeof AppAuthenticatedHelpRoute
   '/app/leaderboard': typeof AppAuthenticatedLeaderboardRoute
   '/app/next-goal': typeof AppAuthenticatedNextGoalRoute
   '/app/notifications': typeof AppAuthenticatedNotificationsRoute
@@ -513,10 +529,12 @@ export interface FileRoutesById {
   '/app/': typeof AppIndexRoute
   '/_authenticated/chat/$friendId': typeof AuthenticatedChatFriendIdRoute
   '/_authenticated/chat/page': typeof AuthenticatedChatPageRoute
+  '/app/_authenticated/about': typeof AppAuthenticatedAboutRoute
   '/app/_authenticated/admin': typeof AppAuthenticatedAdminRoute
   '/app/_authenticated/chat': typeof AppAuthenticatedChatRouteWithChildren
   '/app/_authenticated/deposit': typeof AppAuthenticatedDepositRoute
   '/app/_authenticated/friends': typeof AppAuthenticatedFriendsRoute
+  '/app/_authenticated/help': typeof AppAuthenticatedHelpRoute
   '/app/_authenticated/leaderboard': typeof AppAuthenticatedLeaderboardRoute
   '/app/_authenticated/next-goal': typeof AppAuthenticatedNextGoalRoute
   '/app/_authenticated/notifications': typeof AppAuthenticatedNotificationsRoute
@@ -572,10 +590,12 @@ export interface FileRouteTypes {
     | '/app/'
     | '/chat/$friendId'
     | '/chat/page'
+    | '/app/about'
     | '/app/admin'
     | '/app/chat'
     | '/app/deposit'
     | '/app/friends'
+    | '/app/help'
     | '/app/leaderboard'
     | '/app/next-goal'
     | '/app/notifications'
@@ -627,9 +647,11 @@ export interface FileRouteTypes {
     | '/app/verify-otp'
     | '/chat/$friendId'
     | '/chat/page'
+    | '/app/about'
     | '/app/admin'
     | '/app/deposit'
     | '/app/friends'
+    | '/app/help'
     | '/app/leaderboard'
     | '/app/next-goal'
     | '/app/notifications'
@@ -685,10 +707,12 @@ export interface FileRouteTypes {
     | '/app/'
     | '/_authenticated/chat/$friendId'
     | '/_authenticated/chat/page'
+    | '/app/_authenticated/about'
     | '/app/_authenticated/admin'
     | '/app/_authenticated/chat'
     | '/app/_authenticated/deposit'
     | '/app/_authenticated/friends'
+    | '/app/_authenticated/help'
     | '/app/_authenticated/leaderboard'
     | '/app/_authenticated/next-goal'
     | '/app/_authenticated/notifications'
@@ -1057,6 +1081,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthenticatedLeaderboardRouteImport
       parentRoute: typeof AppAuthenticatedRouteRoute
     }
+    '/app/_authenticated/help': {
+      id: '/app/_authenticated/help'
+      path: '/help'
+      fullPath: '/app/help'
+      preLoaderRoute: typeof AppAuthenticatedHelpRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
     '/app/_authenticated/friends': {
       id: '/app/_authenticated/friends'
       path: '/friends'
@@ -1083,6 +1114,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/app/admin'
       preLoaderRoute: typeof AppAuthenticatedAdminRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
+    '/app/_authenticated/about': {
+      id: '/app/_authenticated/about'
+      path: '/about'
+      fullPath: '/app/about'
+      preLoaderRoute: typeof AppAuthenticatedAboutRouteImport
       parentRoute: typeof AppAuthenticatedRouteRoute
     }
     '/_authenticated/chat/page': {
@@ -1189,10 +1227,12 @@ const AppAuthenticatedChatRouteWithChildren =
   AppAuthenticatedChatRoute._addFileChildren(AppAuthenticatedChatRouteChildren)
 
 interface AppAuthenticatedRouteRouteChildren {
+  AppAuthenticatedAboutRoute: typeof AppAuthenticatedAboutRoute
   AppAuthenticatedAdminRoute: typeof AppAuthenticatedAdminRoute
   AppAuthenticatedChatRoute: typeof AppAuthenticatedChatRouteWithChildren
   AppAuthenticatedDepositRoute: typeof AppAuthenticatedDepositRoute
   AppAuthenticatedFriendsRoute: typeof AppAuthenticatedFriendsRoute
+  AppAuthenticatedHelpRoute: typeof AppAuthenticatedHelpRoute
   AppAuthenticatedLeaderboardRoute: typeof AppAuthenticatedLeaderboardRoute
   AppAuthenticatedNextGoalRoute: typeof AppAuthenticatedNextGoalRoute
   AppAuthenticatedNotificationsRoute: typeof AppAuthenticatedNotificationsRoute
@@ -1209,10 +1249,12 @@ interface AppAuthenticatedRouteRouteChildren {
 }
 
 const AppAuthenticatedRouteRouteChildren: AppAuthenticatedRouteRouteChildren = {
+  AppAuthenticatedAboutRoute: AppAuthenticatedAboutRoute,
   AppAuthenticatedAdminRoute: AppAuthenticatedAdminRoute,
   AppAuthenticatedChatRoute: AppAuthenticatedChatRouteWithChildren,
   AppAuthenticatedDepositRoute: AppAuthenticatedDepositRoute,
   AppAuthenticatedFriendsRoute: AppAuthenticatedFriendsRoute,
+  AppAuthenticatedHelpRoute: AppAuthenticatedHelpRoute,
   AppAuthenticatedLeaderboardRoute: AppAuthenticatedLeaderboardRoute,
   AppAuthenticatedNextGoalRoute: AppAuthenticatedNextGoalRoute,
   AppAuthenticatedNotificationsRoute: AppAuthenticatedNotificationsRoute,
