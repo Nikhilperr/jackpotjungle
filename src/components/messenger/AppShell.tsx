@@ -71,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { isAdmin } = useRole();
   const location = useLocation();
   const searchTab = (location.search as any)?.tab || "all";
+  const isChatListActive = pathname === "/app/chat" || pathname === "/app/chat/";
   const [open, setOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
   usePresence();
@@ -223,60 +224,62 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        <main className="flex-1 min-w-0 min-h-0 flex flex-col safe-pt safe-pb safe-pl safe-pr pb-16 md:pb-0">
+        <main className={`flex-1 min-w-0 min-h-0 flex flex-col safe-pt safe-pb safe-pl safe-pr ${isChatListActive ? "pb-16 md:pb-0" : "pb-0"}`}>
           <OnlineStatusBanner />
           {children}
         </main>
 
-        {/* Bottom navigation bar for mobile layout only */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/85 backdrop-blur-md border-t border-border/80 h-16 flex items-center justify-around px-4 py-2 safe-pb">
-          <Link
-            to="/app/chat"
-            search={{ tab: "all" }}
-            className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold ${
-              pathname === "/app/chat" && (searchTab === "all" || (!searchTab || searchTab === "spam"))
-                ? "text-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <MessageCircle className="h-5 w-5" />
-            <span>Chats</span>
-          </Link>
+        {/* Bottom navigation bar for mobile layout only (hidden when a specific chat is open) */}
+        {isChatListActive && (
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/85 backdrop-blur-md border-t border-border/80 h-16 flex items-center justify-around px-4 py-2 safe-pb">
+            <Link
+              to="/app/chat"
+              search={{ tab: "all" }}
+              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold ${
+                pathname === "/app/chat" && (searchTab === "all" || (!searchTab || searchTab === "spam"))
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <MessageCircle className="h-5 w-5" />
+              <span>Chats</span>
+            </Link>
 
-          <Link
-            to="/app/chat"
-            search={{ tab: "calls" }}
-            className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold ${
-              pathname === "/app/chat" && searchTab === "calls"
-                ? "text-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Phone className="h-5 w-5" />
-            <span>Calls</span>
-          </Link>
+            <Link
+              to="/app/chat"
+              search={{ tab: "calls" }}
+              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold ${
+                pathname === "/app/chat" && searchTab === "calls"
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Phone className="h-5 w-5" />
+              <span>Calls</span>
+            </Link>
 
-          <Link
-            to="/app/chat"
-            search={{ tab: "groups" }}
-            className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold ${
-              pathname === "/app/chat" && searchTab === "groups"
-                ? "text-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Users className="h-5 w-5" />
-            <span>Groups</span>
-          </Link>
+            <Link
+              to="/app/chat"
+              search={{ tab: "groups" }}
+              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold ${
+                pathname === "/app/chat" && searchTab === "groups"
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Users className="h-5 w-5" />
+              <span>Groups</span>
+            </Link>
 
-          <button
-            onClick={() => setOpen(true)}
-            className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold text-muted-foreground hover:text-foreground focus:outline-none"
-          >
-            <MoreHorizontal className="h-5 w-5" />
-            <span>More</span>
-          </button>
-        </nav>
+            <button
+              onClick={() => setOpen(true)}
+              className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold text-muted-foreground hover:text-foreground focus:outline-none"
+            >
+              <MoreHorizontal className="h-5 w-5" />
+              <span>More</span>
+            </button>
+          </nav>
+        )}
 
         <SignOutDialog isOpen={confirmOut} onClose={() => setConfirmOut(false)} onConfirm={signOut} />
       </div>
