@@ -91,13 +91,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       try {
         const res = await verifyFn({ data: {} });
         if (res.success && res.credited && res.credited > 0) {
-          toast.success(`Crypto Deposit Confirmed! $${res.credited.toFixed(2)} has been credited to your available balance.`);
-          window.dispatchEvent(new CustomEvent("wallet-updated"));
+          toast.success(`You just received $${res.credited.toFixed(2)} in your wallet! 💰`);
+          window.dispatchEvent(new CustomEvent("wallet-updated", { detail: { credited: res.credited } }));
         }
       } catch (e) {
         console.warn("[Background Poll] failed:", e);
       }
-    }, 120000); // 2 minutes
+    }, 30000); // 30 seconds
 
     return () => {
       mounted = false;
