@@ -115,6 +115,11 @@ export function UsersManagementView({ meId }: { meId: string }) {
   const [editLanguage, setEditLanguage] = useState("en");
   const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(null);
   const [editCoverPhoto, setEditCoverPhoto] = useState<string | null>(null);
+  const [editReferredBy, setEditReferredBy] = useState<string | null>(null);
+  const [referrerProfile, setReferrerProfile] = useState<any>(null);
+  const [referrerQuery, setReferrerQuery] = useState("");
+  const [referrerResults, setReferrerResults] = useState<any[]>([]);
+  const [searchingReferrer, setSearchingReferrer] = useState(false);
 
   // File refs
   const avatarFileRef = useRef<HTMLInputElement>(null);
@@ -134,6 +139,49 @@ export function UsersManagementView({ meId }: { meId: string }) {
         setIsSuperAdmin(!!data);
       });
   }, [meId]);
+
+  useEffect(() => {
+    if (editReferredBy) {
+      supabase
+        .from("profiles")
+        .select("id, username, first_name, last_name")
+        .eq("id", editReferredBy)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            setReferrerProfile(data);
+          } else {
+            setReferrerProfile(null);
+          }
+        });
+    } else {
+      setReferrerProfile(null);
+    }
+  }, [editReferredBy]);
+
+  useEffect(() => {
+    if (!referrerQuery.trim()) {
+      setReferrerResults([]);
+      return;
+    }
+    const delayDebounce = setTimeout(async () => {
+      setSearchingReferrer(true);
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("id, username, first_name, last_name, email")
+          .or(`username.ilike.%${referrerQuery}%,email.ilike.%${referrerQuery}%,first_name.ilike.%${referrerQuery}%,last_name.ilike.%${referrerQuery}%`)
+          .neq("id", selectedUser?.id || "") // Can't refer oneself
+          .limit(5);
+        setReferrerResults(data || []);
+      } catch (err) {
+        console.warn("Referrer search error:", err);
+      } finally {
+        setSearchingReferrer(false);
+      }
+    }, 300);
+    return () => clearTimeout(delayDebounce);
+  }, [referrerQuery, selectedUser?.id]);
 
   const canEditSelectedUser = useMemo(() => {
     if (!selectedUser) return false;
@@ -200,6 +248,9 @@ export function UsersManagementView({ meId }: { meId: string }) {
     setEditLanguage(u.language || "en");
     setEditAvatarUrl(u.avatar_url);
     setEditCoverPhoto(u.cover_photo);
+    setEditReferredBy(u.referred_by || null);
+    setReferrerQuery("");
+    setReferrerResults([]);
     setDrawerOpen(true);
   };
 
@@ -268,7 +319,8 @@ export function UsersManagementView({ meId }: { meId: string }) {
             theme: editTheme,
             language: editLanguage,
             avatar_url: editAvatarUrl,
-            cover_photo: editCoverPhoto
+            cover_photo: editCoverPhoto,
+            referred_by: editReferredBy
           },
           roleUpdate: isSuperAdmin ? (editRole as any) : undefined,
           permissionsUpdate: isSuperAdmin && editRole === "admin" ? editPermissions : undefined
@@ -826,6 +878,84 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         placeholder="Casinò bio..."
                         disabled={!canEditSelectedUser}
                       />
+                    </div>
+
+                    {/* Referrer Relationship (Referred By) */}
+                    <div className="space-y-2 border-t border-border/40 pt-4 mt-2">
+                      <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+                        <Gift className="h-4 w-4 text-primary" />
+                        Referral Link Relationship
+                      </label>
+                      
+                      {referrerProfile ? (
+                        <div className="bg-secondary/40 border border-border/80 rounded-xl p-3.5 flex items-center justify-between gap-3 text-left">
+                          <div>
+                            <p className="text-xs font-bold text-foreground">
+                              {referrerProfile.first_name && referrerProfile.last_name 
+                                ? `${referrerProfile.first_name} ${referrerProfile.last_name}` 
+                                : referrerProfile.username}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground font-mono">@{referrerProfile.username} · ID: {referrerProfile.id.substring(0, 13)}...</p>
+                          </div>
+                          {canEditSelectedUser && (
+                            <Button 
+                              type="button" 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => setEditReferredBy(null)}
+                              className="h-8 text-destructive hover:bg-destructive/10 rounded-lg text-xs font-bold font-sans"
+                            >
+                              Remove Link
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {canEditSelectedUser ? (
+                            <div className="relative">
+                              <Input
+                                value={referrerQuery}
+                                onChange={(e) => setReferrerQuery(e.target.value)}
+                                placeholder="Search by username or email to link referrer..."
+                                className="bg-secondary/40 border-border/80 text-xs rounded-xl pr-8"
+                              />
+                              {searchingReferrer && (
+                                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                              )}
+                              
+                              {referrerResults.length > 0 && (
+                                <div className="absolute left-0 right-0 z-30 mt-1.5 rounded-xl border border-border bg-popover text-popover-foreground shadow-lg overflow-hidden divide-y divide-border/60">
+                                  {referrerResults.map((r) => (
+                                    <button
+                                      key={r.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setEditReferredBy(r.id);
+                                        setReferrerQuery("");
+                                        setReferrerResults([]);
+                                      }}
+                                      className="w-full px-3 py-2 text-left text-xs hover:bg-secondary flex flex-col gap-0.5"
+                                    >
+                                      <span className="font-bold text-foreground">
+                                        {r.first_name && r.last_name ? `${r.first_name} ${r.last_name}` : r.username}
+                                      </span>
+                                      <span className="text-[10px] text-muted-foreground">@{r.username} · {r.email}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground font-semibold italic">No referrer relationship linked</p>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="bg-primary/5 border border-primary/10 rounded-xl p-3 select-none text-left">
+                        <p className="text-[11px] text-primary/80 font-medium leading-relaxed">
+                          💡 <strong>Referral Bonus Info:</strong> Referral bonuses are not automatic. After linking the relationship, the bonus reward must be manually verified and sent via Page Message in the user chat based on page rules.
+                        </p>
+                      </div>
                     </div>
 
                     {/* Theme & Language */}

@@ -226,6 +226,36 @@ export const MIGRATIONS_SQL = `
 
         ALTER TABLE public.system_announcements REPLICA IDENTITY FULL;
 
+        -- Create public.support_links table for WhatsApp and Telegram links
+        CREATE TABLE IF NOT EXISTS public.support_links (
+          id TEXT PRIMARY KEY,
+          url TEXT NOT NULL DEFAULT '',
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        ALTER TABLE public.support_links ENABLE ROW LEVEL SECURITY;
+
+        GRANT SELECT, INSERT, UPDATE, DELETE ON public.support_links TO authenticated;
+        GRANT ALL ON public.support_links TO service_role;
+
+        DROP POLICY IF EXISTS "anyone can read support links" ON public.support_links;
+        CREATE POLICY "anyone can read support links" ON public.support_links FOR SELECT TO authenticated
+          USING (true);
+
+        DROP POLICY IF EXISTS "super_admin can manage support links" ON public.support_links;
+        CREATE POLICY "super_admin can manage support links" ON public.support_links FOR ALL TO authenticated
+          USING (public.has_role(auth.uid(), 'super_admin'::app_role))
+          WITH CHECK (public.has_role(auth.uid(), 'super_admin'::app_role));
+
+        -- Seed default values if empty
+        INSERT INTO public.support_links (id, url)
+        VALUES 
+          ('whatsapp', 'https://chat.whatsapp.com/BRtQ4NFSgVGLE9t5sF7ETr'),
+          ('telegram', '')
+        ON CONFLICT (id) DO NOTHING;
+
+        ALTER TABLE public.support_links REPLICA IDENTITY FULL;
+
         -- Create public.group_invites table for secure invite links
         CREATE TABLE IF NOT EXISTS public.group_invites (
           token TEXT PRIMARY KEY,
@@ -1473,6 +1503,7 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
       language?: string;
       verified?: boolean;
       status?: string;
+      referred_by?: string | null;
     };
     roleUpdate?: "user" | "admin" | "super_admin";
     permissionsUpdate?: string[];
@@ -2378,6 +2409,49 @@ export const sendCustomPushNotificationAllUsers = createServerFn({ method: "POST
       return { success: true, sentCount: tokens.length };
     } catch (e: any) {
       console.error("[sendCustomPushNotificationAllUsers Error]:", e);
+      return { success: false, error: e.message };
+    }
+  });
+
+export const getSupportLinks = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    try {
+      const { data, error } = await context.supabase
+        .from("support_links")
+        .select("id, url");
+      if (error) throw error;
+      return { success: true, links: data ?? [] };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  });
+
+export const updateSupportLinksAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { whatsapp: string; telegram: string }) => d)
+  .handler(async ({ data, context }) => {
+    try {
+      const { data: roleRows, error: rolesErr } = await context.supabase
+        .from("user_roles").select("role").eq("user_id", context.userId);
+      if (rolesErr) throw new Error(rolesErr.message);
+      const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin");
+      if (!isSuperAdmin) throw new Error("Super administrators only.");
+
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+      const { error: waErr } = await supabaseAdmin
+        .from("support_links")
+        .upsert({ id: "whatsapp", url: data.whatsapp, updated_at: new Date().toISOString() });
+      if (waErr) throw waErr;
+
+      const { error: tgErr } = await supabaseAdmin
+        .from("support_links")
+        .upsert({ id: "telegram", url: data.telegram, updated_at: new Date().toISOString() });
+      if (tgErr) throw tgErr;
+
+      return { success: true };
+    } catch (e: any) {
       return { success: false, error: e.message };
     }
   });

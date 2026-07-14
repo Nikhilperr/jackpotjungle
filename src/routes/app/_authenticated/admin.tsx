@@ -127,6 +127,8 @@ import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 import { CreateGroupModal } from "./chat";
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 import { GroupDetailPanel, GroupAddMembersModal, GroupShareModal } from "./chat.$friendId";
+import { useServerFn } from "@tanstack/react-start";
+import { getSupportLinks, updateSupportLinksAdmin } from "@/lib/admin-super.functions";
 
 type Tab =
   | "inbox"
@@ -150,7 +152,8 @@ type Tab =
   | "aichat"
   | "user_ai_knowledge"
   | "vip_settings"
-  | "vip_dashboard";
+  | "vip_dashboard"
+  | "support_settings";
 
 type AdminSearch = {
   c?: string;
@@ -166,7 +169,7 @@ export const Route = createFileRoute("/app/_authenticated/admin")({
       "inbox", "teamchat", "quickreplies", "tags", "broadcasts", "followups",
       "autoresp", "referrals", "logs", "users", "admins", "super", "profile",
       "rules", "updates", "monitor", "monthly_profit", "push_notifications",
-      "aichat", "user_ai_knowledge", "vip_settings", "vip_dashboard"
+      "aichat", "user_ai_knowledge", "vip_settings", "vip_dashboard", "support_settings"
     ];
     const incomingTab = search.tab as Tab;
     return {
@@ -318,7 +321,7 @@ function AdminPage() {
       if (!isAdmin) {
         navigate({ to: "/app/chat", replace: true });
       } else if (!isSuperAdmin) {
-        const superAdminOnlyTabs = ["rules", "updates", "admins", "super", "vip_settings", "monthly_profit", "vip_dashboard"];
+        const superAdminOnlyTabs = ["rules", "updates", "admins", "super", "vip_settings", "monthly_profit", "vip_dashboard", "support_settings"];
         const isRestrictedTab = superAdminOnlyTabs.includes(tab) || !hasPerm(tab);
         if (isRestrictedTab) {
           const allowedTabs = ["inbox", "aichat", "user_ai_knowledge", "teamchat", "quickreplies", "tags", "broadcasts", "followups", "autoresp", "referrals", "logs", "users", "monitor", "push_notifications", "profile"];
@@ -468,6 +471,7 @@ function AdminPage() {
             <SideBtn active={tab === "vip_settings"} onClick={() => selectTab("vip_settings")} icon={Crown} label="VIP Settings" />
             <SideBtn active={tab === "monthly_profit"} onClick={() => selectTab("monthly_profit")} icon={Coins} label="Monthly Profit" />
             <SideBtn active={tab === "vip_dashboard"} onClick={() => selectTab("vip_dashboard")} icon={TrendingUp} label="VIP Dashboard" />
+            <SideBtn active={tab === "support_settings"} onClick={() => selectTab("support_settings")} icon={HelpCircle} label="Support Settings" />
           </>
         )}
         <p className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wide text-muted-foreground">My account</p>
@@ -567,6 +571,13 @@ function AdminPage() {
           <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "vip_dashboard" ? "" : "hidden"}`}>
             <ScrollWrap onOpenNav={() => setNavOpen(true)} title="VIP & Loyalty Dashboard">
               <VipAnalyticsDashboardView isSuperAdmin={isSuperAdmin} />
+            </ScrollWrap>
+          </div>
+        )}
+        {isSuperAdmin && (
+          <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "support_settings" ? "" : "hidden"}`}>
+            <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Support Settings">
+              <SupportSettingsView />
             </ScrollWrap>
           </div>
         )}
@@ -7709,5 +7720,105 @@ const AdminTeamConversationItem = React.memo(function AdminTeamConversationItem(
     </div>
   );
 });
+
+function SupportSettingsView() {
+  const getLinksFn = useServerFn(getSupportLinks);
+  const updateLinksFn = useServerFn(updateSupportLinksAdmin);
+  const [whatsapp, setWhatsapp] = useState("");
+  const [telegram, setTelegram] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    getLinksFn()
+      .then((res) => {
+        if (!mounted || !res.success || !res.links) return;
+        const wa = res.links.find((l: any) => l.id === "whatsapp")?.url || "";
+        const tg = res.links.find((l: any) => l.id === "telegram")?.url || "";
+        setWhatsapp(wa);
+        setTelegram(tg);
+      })
+      .catch((err) => console.warn("Failed to load links:", err))
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [getLinksFn]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await updateLinksFn({ data: { whatsapp: whatsapp.trim(), telegram: telegram.trim() } });
+      if (res.success) {
+        toast.success("Support links successfully updated!");
+      } else {
+        toast.error(res.error || "Failed to update support links.");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update support links.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="py-20 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <span className="text-xs text-muted-foreground font-semibold font-mono">Loading configurations...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-xl mx-auto p-4 space-y-6">
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4 text-left">
+        <div className="space-y-1">
+          <h3 className="font-bold text-sm text-foreground font-sans">Global Support Settings</h3>
+          <p className="text-xs text-muted-foreground font-sans">Modify the official WhatsApp and Telegram support channel links. This section is strictly visible to Super Administrators.</p>
+        </div>
+
+        <div className="space-y-4 pt-2">
+          {/* WhatsApp Field */}
+          <div className="space-y-1.5 text-left">
+            <label className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block">WhatsApp Invitation Link</label>
+            <Input
+              value={whatsapp}
+              onChange={(e) => setWhatsapp(e.target.value)}
+              placeholder="e.g. https://chat.whatsapp.com/..."
+              className="bg-secondary border-border/80 h-11 rounded-xl text-xs font-semibold"
+            />
+          </div>
+
+          {/* Telegram Field */}
+          <div className="space-y-1.5 text-left">
+            <label className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block">Telegram Channel / Username Link</label>
+            <Input
+              value={telegram}
+              onChange={(e) => setTelegram(e.target.value)}
+              placeholder="e.g. https://t.me/..."
+              className="bg-secondary border-border/80 h-11 rounded-xl text-xs font-semibold"
+            />
+          </div>
+        </div>
+
+        <div className="pt-4 border-t border-border/40 flex justify-end">
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-xl h-11 px-6 font-bold text-xs"
+          >
+            {saving ? "Saving changes..." : "Save Config Links"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 

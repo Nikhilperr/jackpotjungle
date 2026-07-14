@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState, useRouter, useLocation } from "@tanstack/react-router";
-import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award, Trophy, Gift, Phone, MoreHorizontal, Coins } from "lucide-react";
+import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award, Trophy, Gift, Phone, MoreHorizontal, Coins, Crown, Target, Bell, Settings, HelpCircle } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -77,6 +77,42 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isChatListActive = pathname === "/app/chat" || pathname === "/app/chat/";
   const [open, setOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadChatsCount, setUnreadChatsCount] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    
+    const fetchCounts = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id || !mounted) return;
+      const myId = session.user.id;
+
+      // Unread notifications
+      const { count: notifCount } = await supabase
+        .from("user_notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", myId);
+      if (notifCount !== null && mounted) setUnreadCount(notifCount);
+
+      // Unread chats
+      const { count: chatCount } = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("receiver_id", myId)
+        .eq("seen", false);
+      if (chatCount !== null && mounted) setUnreadChatsCount(chatCount);
+    };
+
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 10000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   usePresence();
   useChatNotifications();
   useNativePush();
@@ -171,21 +207,24 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const navItems = [
-    { to: "/app/chat", icon: MessageCircle, label: "Chats" },
+    { to: "/app/chat", icon: MessageCircle, label: "Chats", notificationCount: unreadChatsCount },
     { to: "/app/friends", icon: Users, label: "Friends" },
-    { to: "/app/refer-earn", icon: Gift, label: "Refer & Earn" },
-    { to: "/app/leaderboard", icon: Trophy, label: "Leaderboard", badge: "Soon" },
+    { to: "/app/vip-rewards", icon: Crown, label: "VIP Club" },
+    { to: "/app/rewards", icon: Gift, label: "Rewards" },
     { to: "/app/wallet", icon: Wallet, label: "Wallet" },
-    { to: "/app/deposit", icon: Coins, label: "Deposit Crypto" },
+    { to: "/app/refer-earn", icon: Gift, label: "Refer & Earn" },
+    { to: "/app/next-goal", icon: Target, label: "Next Goal", badge: "NEW" },
+    { to: "/app/notifications", icon: Bell, label: "Notifications", notificationCount: unreadCount },
     { to: "/app/security", icon: Shield, label: "Security" },
-    { to: "/app/vip-rewards", icon: Award, label: "VIP Rewards" },
+    { to: "/app/profile", icon: UserIcon, label: "Profile" },
+    { to: "/app/settings", icon: Settings, label: "Settings" },
+    { to: "/app/support", icon: HelpCircle, label: "Help & Support" },
   ];
 
   const allNavItems = [...navItems];
   if (isAdmin) {
     allNavItems.push({ to: "/app/admin", icon: Shield, label: "Admin" });
   }
-  allNavItems.push({ to: "/app/profile", icon: UserIcon, label: "Profile" });
 
   const Drawer = (
     <aside className="w-72 h-full bg-card border-r border-border flex flex-col">
@@ -202,7 +241,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <X className="h-5 w-5" />
         </button>
       </div>
-      <nav className="flex-1 px-2 py-3 space-y-1">
+      <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
         {allNavItems.map((n) => {
           const active = pathname.startsWith(n.to);
           return (
@@ -219,6 +258,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               {n.badge && (
                 <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[9px] font-black uppercase tracking-wider border border-primary/20 shrink-0">
                   {n.badge}
+                </span>
+              )}
+              {n.notificationCount !== undefined && n.notificationCount > 0 && (
+                <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-black flex items-center justify-center shrink-0 shadow-sm shadow-blue-600/20">
+                  {n.notificationCount}
                 </span>
               )}
             </Link>
