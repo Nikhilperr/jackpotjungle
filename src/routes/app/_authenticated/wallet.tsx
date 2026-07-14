@@ -1,10 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Wallet, History, FileText, Download, Printer, Loader2 } from "lucide-react";
+import { Wallet, History, FileText, Download, Printer, Loader2, Coins } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getWalletHistoryUser } from "@/lib/wallet.functions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -415,6 +415,16 @@ function WalletPage() {
                 <FileText className="h-3.5 w-3.5" />
                 Statement
               </Button>
+            </div>
+
+            <div className="pt-2 border-t border-border/40">
+              <Link
+                to="/app/deposit"
+                className="w-full h-11 bg-primary text-primary-foreground font-black rounded-full text-xs flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all shadow-md cursor-pointer select-none"
+              >
+                <Coins className="h-4.5 w-4.5" />
+                <span>Deposit with Crypto</span>
+              </Link>
             </div>
           </div>
         </div>

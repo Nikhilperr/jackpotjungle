@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState, useRouter, useLocation } from "@tanstack/react-router";
-import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award, Trophy, Gift, Phone, MoreHorizontal } from "lucide-react";
+import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award, Trophy, Gift, Phone, MoreHorizontal, Coins } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -176,6 +176,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/app/refer-earn", icon: Gift, label: "Refer & Earn" },
     { to: "/app/leaderboard", icon: Trophy, label: "Leaderboard", badge: "Soon" },
     { to: "/app/wallet", icon: Wallet, label: "Wallet" },
+    { to: "/app/deposit", icon: Coins, label: "Deposit Crypto" },
     { to: "/app/security", icon: Shield, label: "Security" },
     { to: "/app/vip-rewards", icon: Award, label: "VIP Rewards" },
   ];
