@@ -79,6 +79,8 @@ async function getCryptoPrice(coin: string): Promise<number> {
   if (normalized === "BTC") return 90000;
   if (normalized === "ETH") return 3500;
   if (normalized === "BNB") return 600;
+  if (normalized === "LTC") return 120;
+  if (normalized === "SOL") return 180;
   return 1.0;
 }
 
@@ -99,6 +101,12 @@ const FALLBACK_ADDRESSES: Record<string, Record<string, { address: string; tag?:
   },
   BNB: {
     BSC: { address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" },
+  },
+  LTC: {
+    LTC: { address: "LQL9p7conobJtNuZp7coNobJtNuZp7coNo" },
+  },
+  SOL: {
+    SOL: { address: "HN7cABviGo3coNobJtNuZp7coNobJtNuZp" },
   }
 };
 
@@ -349,6 +357,18 @@ export const verifyDeposit = createServerFn({ method: "POST" })
                   }
                 } catch (msgErr) {
                   console.error("[Verify Deposit] Error sending update message:", msgErr);
+                }
+
+                // Insert into user_notifications table for push/in-app notification center
+                try {
+                  await supabaseAdmin.from("user_notifications").insert({
+                    user_id: userId,
+                    title: "Deposit Confirmed 💰",
+                    content: `Your deposit of ${cryptoAmount} ${coin.toUpperCase()} ($${usdValue.toFixed(2)} USD) has been successfully credited to your Available balance.`,
+                    seen: false
+                  });
+                } catch (notifTableErr) {
+                  console.error("[Verify Deposit] Error writing user notification:", notifTableErr);
                 }
               } else {
                 console.error(`[Verify Deposit] Failed to record wallet transaction for ${txId}:`, txErr);
