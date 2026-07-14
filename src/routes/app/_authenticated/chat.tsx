@@ -15,7 +15,7 @@ import { prefetchConversation } from "@/lib/chat-cache";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getUserVipDashboardStats } from "@/lib/api/vip-reward-engine/dashboard.functions";
 import { useServerFn } from "@tanstack/react-start";
-import { DepositModal } from "@/components/messenger/DepositModal";
+
 
 function getVipBadgeUrl(status: string | null | undefined): string | null {
   if (!status || status === "none") return null;
@@ -996,13 +996,13 @@ function ChatLayout() {
                       )}
                     </div>
                     
-                    <button
-                      onClick={() => setDepositOpen(true)}
+                    <Link
+                      to="/app/deposit"
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-2xl shrink-0 transition-all flex items-center gap-1 shadow-sm shadow-blue-500/10"
                     >
                       <span>Deposit Now</span>
                       <span className="text-[9px] font-black">&gt;</span>
-                    </button>
+                    </Link>
                   </div>
                 </div>
               );
@@ -1342,17 +1342,7 @@ function ChatLayout() {
         }}
       />
 
-      <DepositModal
-        open={depositOpen}
-        onClose={() => setDepositOpen(false)}
-        onSuccess={() => {
-          loadVipStats();
-          if (meId) {
-            load(meId);
-            loadPage(meId);
-          }
-        }}
-      />
+
     </AppShell>
   );
 }

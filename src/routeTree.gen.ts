@@ -51,6 +51,7 @@ import { Route as AppAuthenticatedProfileRouteImport } from './routes/app/_authe
 import { Route as AppAuthenticatedOnboardingRouteImport } from './routes/app/_authenticated/onboarding'
 import { Route as AppAuthenticatedLeaderboardRouteImport } from './routes/app/_authenticated/leaderboard'
 import { Route as AppAuthenticatedFriendsRouteImport } from './routes/app/_authenticated/friends'
+import { Route as AppAuthenticatedDepositRouteImport } from './routes/app/_authenticated/deposit'
 import { Route as AppAuthenticatedChatRouteImport } from './routes/app/_authenticated/chat'
 import { Route as AppAuthenticatedAdminRouteImport } from './routes/app/_authenticated/admin'
 import { Route as AuthenticatedChatPageRouteImport } from './routes/_authenticated/chat.page'
@@ -274,6 +275,11 @@ const AppAuthenticatedFriendsRoute = AppAuthenticatedFriendsRouteImport.update({
   path: '/friends',
   getParentRoute: () => AppAuthenticatedRouteRoute,
 } as any)
+const AppAuthenticatedDepositRoute = AppAuthenticatedDepositRouteImport.update({
+  id: '/deposit',
+  path: '/deposit',
+  getParentRoute: () => AppAuthenticatedRouteRoute,
+} as any)
 const AppAuthenticatedChatRoute = AppAuthenticatedChatRouteImport.update({
   id: '/chat',
   path: '/chat',
@@ -362,6 +368,7 @@ export interface FileRoutesByFullPath {
   '/chat/page': typeof AuthenticatedChatPageRoute
   '/app/admin': typeof AppAuthenticatedAdminRoute
   '/app/chat': typeof AppAuthenticatedChatRouteWithChildren
+  '/app/deposit': typeof AppAuthenticatedDepositRoute
   '/app/friends': typeof AppAuthenticatedFriendsRoute
   '/app/leaderboard': typeof AppAuthenticatedLeaderboardRoute
   '/app/onboarding': typeof AppAuthenticatedOnboardingRoute
@@ -410,6 +417,7 @@ export interface FileRoutesByTo {
   '/chat/$friendId': typeof AuthenticatedChatFriendIdRoute
   '/chat/page': typeof AuthenticatedChatPageRoute
   '/app/admin': typeof AppAuthenticatedAdminRoute
+  '/app/deposit': typeof AppAuthenticatedDepositRoute
   '/app/friends': typeof AppAuthenticatedFriendsRoute
   '/app/leaderboard': typeof AppAuthenticatedLeaderboardRoute
   '/app/onboarding': typeof AppAuthenticatedOnboardingRoute
@@ -464,6 +472,7 @@ export interface FileRoutesById {
   '/_authenticated/chat/page': typeof AuthenticatedChatPageRoute
   '/app/_authenticated/admin': typeof AppAuthenticatedAdminRoute
   '/app/_authenticated/chat': typeof AppAuthenticatedChatRouteWithChildren
+  '/app/_authenticated/deposit': typeof AppAuthenticatedDepositRoute
   '/app/_authenticated/friends': typeof AppAuthenticatedFriendsRoute
   '/app/_authenticated/leaderboard': typeof AppAuthenticatedLeaderboardRoute
   '/app/_authenticated/onboarding': typeof AppAuthenticatedOnboardingRoute
@@ -517,6 +526,7 @@ export interface FileRouteTypes {
     | '/chat/page'
     | '/app/admin'
     | '/app/chat'
+    | '/app/deposit'
     | '/app/friends'
     | '/app/leaderboard'
     | '/app/onboarding'
@@ -565,6 +575,7 @@ export interface FileRouteTypes {
     | '/chat/$friendId'
     | '/chat/page'
     | '/app/admin'
+    | '/app/deposit'
     | '/app/friends'
     | '/app/leaderboard'
     | '/app/onboarding'
@@ -618,6 +629,7 @@ export interface FileRouteTypes {
     | '/_authenticated/chat/page'
     | '/app/_authenticated/admin'
     | '/app/_authenticated/chat'
+    | '/app/_authenticated/deposit'
     | '/app/_authenticated/friends'
     | '/app/_authenticated/leaderboard'
     | '/app/_authenticated/onboarding'
@@ -954,6 +966,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthenticatedFriendsRouteImport
       parentRoute: typeof AppAuthenticatedRouteRoute
     }
+    '/app/_authenticated/deposit': {
+      id: '/app/_authenticated/deposit'
+      path: '/deposit'
+      fullPath: '/app/deposit'
+      preLoaderRoute: typeof AppAuthenticatedDepositRouteImport
+      parentRoute: typeof AppAuthenticatedRouteRoute
+    }
     '/app/_authenticated/chat': {
       id: '/app/_authenticated/chat'
       path: '/chat'
@@ -1074,6 +1093,7 @@ const AppAuthenticatedChatRouteWithChildren =
 interface AppAuthenticatedRouteRouteChildren {
   AppAuthenticatedAdminRoute: typeof AppAuthenticatedAdminRoute
   AppAuthenticatedChatRoute: typeof AppAuthenticatedChatRouteWithChildren
+  AppAuthenticatedDepositRoute: typeof AppAuthenticatedDepositRoute
   AppAuthenticatedFriendsRoute: typeof AppAuthenticatedFriendsRoute
   AppAuthenticatedLeaderboardRoute: typeof AppAuthenticatedLeaderboardRoute
   AppAuthenticatedOnboardingRoute: typeof AppAuthenticatedOnboardingRoute
@@ -1088,6 +1108,7 @@ interface AppAuthenticatedRouteRouteChildren {
 const AppAuthenticatedRouteRouteChildren: AppAuthenticatedRouteRouteChildren = {
   AppAuthenticatedAdminRoute: AppAuthenticatedAdminRoute,
   AppAuthenticatedChatRoute: AppAuthenticatedChatRouteWithChildren,
+  AppAuthenticatedDepositRoute: AppAuthenticatedDepositRoute,
   AppAuthenticatedFriendsRoute: AppAuthenticatedFriendsRoute,
   AppAuthenticatedLeaderboardRoute: AppAuthenticatedLeaderboardRoute,
   AppAuthenticatedOnboardingRoute: AppAuthenticatedOnboardingRoute,
