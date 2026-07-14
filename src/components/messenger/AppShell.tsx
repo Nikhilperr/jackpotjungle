@@ -399,8 +399,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               {/* Items List */}
               <div className="flex-1 overflow-y-auto p-4 space-y-2 select-none">
                 {[
-                  { to: "/app/notifications", icon: Bell, label: "Announcements", badgeCount: unreadCount },
-                  { to: "/app/rewards", icon: Gift, label: "Bonus Center" },
                   { to: "/app/next-goal", icon: Activity, label: "My Activity" },
                   { to: "/app/support", icon: Phone, label: "Support" },
                   { to: "/app/help", icon: HelpCircle, label: "Help & FAQ" },
@@ -448,21 +446,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                     );
                   }
                 })}
-
-                {/* Logout Row */}
-                <button
-                  onClick={() => {
-                    setMoreOpen(false);
-                    setConfirmOut(true);
-                  }}
-                  className="w-full h-12 rounded-xl flex items-center gap-3 px-3 hover:bg-destructive/10 text-destructive transition-colors text-left border-t border-border/40 mt-3 font-sans"
-                >
-                  <div className="h-8.5 w-8.5 rounded-full bg-destructive/10 flex items-center justify-center text-destructive shrink-0">
-                    <LogOut className="h-4.5 w-4.5" />
-                  </div>
-                  <span className="flex-1 text-sm font-bold leading-tight">Sign out</span>
-                  <ChevronRight className="h-4 w-4 text-destructive/40 shrink-0" />
-                </button>
               </div>
             </div>
           </div>
