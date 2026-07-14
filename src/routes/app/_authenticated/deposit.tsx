@@ -15,10 +15,8 @@ import {
   ArrowRight, 
   History, 
   Share2, 
-  ExternalLink, 
   Lock, 
-  ShieldCheck, 
-  CheckCircle2,
+  ShieldCheck,
   ChevronDown
 } from "lucide-react";
 import { getDepositAddress, verifyDeposit } from "@/lib/deposit.functions";
@@ -150,23 +148,20 @@ function DepositPage() {
   const [verifying, setVerifying] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
 
-  // Success view state
-  const [justCredited, setJustCredited] = useState<number | null>(null);
-
   // Live status timeline tracking
   const [latestDeposit, setLatestDeposit] = useState<any>(null);
 
-  // Listen for the custom global "wallet-updated" event (so success animation triggers even if verification runs in background)
+  // Listen for the custom global "wallet-updated" event to trigger redirection immediately
   useEffect(() => {
     const handleWalletUpdate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.credited) {
-        setJustCredited(detail.credited);
+        navigate({ to: "/app/chat" });
       }
     };
     window.addEventListener("wallet-updated", handleWalletUpdate);
     return () => window.removeEventListener("wallet-updated", handleWalletUpdate);
-  }, []);
+  }, [navigate]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -230,18 +225,18 @@ function DepositPage() {
       try {
         const res = await verifyFn({ data: { coin: selectedCoin.coin } });
         if (res.success && res.credited && res.credited > 0) {
-          setJustCredited(res.credited);
           toast.success(`You just received $${res.credited.toFixed(2)} in your wallet! 💰`);
           window.dispatchEvent(new CustomEvent("wallet-updated", { detail: { credited: res.credited } }));
           fetchHistory();
+          navigate({ to: "/app/chat" });
         }
       } catch (e) {
         console.warn("[Deposit Page] Polling failed:", e);
       }
-    }, 15000); // 15s checks
+    }, 15000);
 
     return () => clearInterval(interval);
-  }, [address, selectedCoin, verifyFn, verifying]);
+  }, [address, selectedCoin, verifyFn, verifying, navigate]);
 
   const loadAddress = async (coin: string, network: string) => {
     setLoadingAddress(true);
@@ -322,15 +317,6 @@ function DepositPage() {
     }
   };
 
-  const handleWalletRedirect = () => {
-    if (!address) return;
-    let uri = "";
-    if (selectedCoin.coin === "BTC") uri = `bitcoin:${address}`;
-    else if (selectedCoin.coin === "ETH") uri = `ethereum:${address}`;
-    else uri = `ethereum:${address}`;
-    window.location.href = uri;
-  };
-
   const getActiveStep = () => {
     if (!latestDeposit) return 0;
     if (latestDeposit.status === "completed") return 3;
@@ -341,55 +327,6 @@ function DepositPage() {
   };
 
   const activeStep = getActiveStep();
-
-  // If a deposit was completed, show the success view overlay with tick animation
-  if (justCredited !== null) {
-    return (
-      <AppShell>
-        <div className="h-full flex flex-col justify-center items-center bg-background p-4 text-center select-none">
-          <div className="max-w-md w-full bg-card border border-border/80 rounded-3xl p-8 shadow-2xl space-y-6 flex flex-col items-center select-none">
-            
-            {/* Animated Pulsing Tick Circle */}
-            <div className="h-20 w-20 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center text-green-500 animate-pulse">
-              <CheckCircle2 className="h-12 w-12 stroke-[2.5px] text-green-500" />
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black text-foreground">Deposit Confirmed!</h2>
-              <p className="text-xs text-muted-foreground font-semibold">
-                Your transaction has been verified. Funds have been credited to your available balance.
-              </p>
-            </div>
-
-            {/* Credit details info box */}
-            <div className="px-6 py-3.5 bg-secondary/40 border border-border/60 rounded-2xl text-center w-full">
-              <span className="text-[9px] uppercase font-black tracking-widest text-muted-foreground block leading-none">Credited USD Value</span>
-              <span className="text-2xl font-black text-green-600 mt-2 block font-mono">
-                +${justCredited.toFixed(2)} USD
-              </span>
-            </div>
-
-            <button
-              onClick={() => {
-                setJustCredited(null);
-                setSelectedNetwork(null);
-              }}
-              className="w-full h-12 bg-primary text-primary-foreground font-black rounded-2xl text-xs hover:opacity-90 active:scale-[0.98] transition-all shadow-md"
-            >
-              Deposit Again
-            </button>
-
-            <Link
-              to="/app/chat"
-              className="text-xs font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            >
-              Back to Chats
-            </Link>
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
 
   return (
     <AppShell>
@@ -561,19 +498,10 @@ function DepositPage() {
                             onClick={handleShare}
                             disabled={!address}
                             title="Share Address"
-                            className="h-8 px-2.5 rounded-lg border border-border/80 hover:bg-secondary flex items-center justify-center gap-1.5 text-[10px] font-black text-muted-foreground hover:text-foreground transition-all duration-200 disabled:opacity-50"
+                            className="h-8 px-3 rounded-xl border border-border/85 hover:bg-secondary flex items-center justify-center gap-1.5 text-[10px] font-black text-muted-foreground hover:text-foreground transition-all duration-200 disabled:opacity-50"
                           >
                             <Share2 className="h-3.5 w-3.5" />
-                            <span>Share</span>
-                          </button>
-                          <button
-                            onClick={handleWalletRedirect}
-                            disabled={!address}
-                            title="Pay with Wallet"
-                            className="h-8 px-2.5 rounded-lg border border-border/80 hover:bg-secondary flex items-center justify-center gap-1.5 text-[10px] font-black text-muted-foreground hover:text-foreground transition-all duration-200 disabled:opacity-50"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            <span>Open Wallet</span>
+                            <span>Share Address</span>
                           </button>
                         </div>
                       </div>
