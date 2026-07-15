@@ -74,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { isAdmin } = useRole();
   const location = useLocation();
   const searchTab = (location.search as any)?.tab || "all";
-  const showBottomBar = !pathname.startsWith("/app/chat/");
+  const showBottomBar = !pathname.startsWith("/app/chat/") && !pathname.startsWith("/app/deposit");
   const [open, setOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
