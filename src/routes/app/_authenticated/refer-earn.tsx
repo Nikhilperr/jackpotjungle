@@ -96,7 +96,7 @@ function ReferEarnPage() {
     <AppShell>
       <div className="h-full overflow-y-auto">
         {/* Page Header */}
-        <div className="p-3 border-b border-border flex items-center gap-2">
+        <div className="p-3 border-b border-border flex items-center gap-2 bg-card/90 backdrop-blur-md sticky top-0 z-10">
           <HamburgerButton />
           <h1 className="font-bold">Refer & Earn</h1>
         </div>
