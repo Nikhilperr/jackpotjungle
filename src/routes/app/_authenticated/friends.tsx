@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
-import { Avatar } from "./chat";
+import { Avatar } from "@/components/messenger/Avatar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, UserPlus, Check, X, MessageCircle, RefreshCw, UserMinus, Clock, Users, ArrowRight } from "lucide-react";
@@ -255,153 +255,69 @@ function FriendsPage() {
 
   return (
     <AppShell>
-      <div className="h-full overflow-y-auto bg-background/30 select-none">
-        {/* Sticky Header */}
-        <div className="p-3 border-b border-border flex items-center justify-between bg-card/60 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-2">
-            <HamburgerButton />
-            <h1 className="font-extrabold text-foreground flex items-center gap-2 font-sans">
-              <Users className="h-5 w-5 text-primary" />
-              <span>Social Connections</span>
-            </h1>
+      <div className="flex h-full w-full overflow-hidden bg-background">
+        {/* Left Column / Sidebar */}
+        <div className="flex flex-col w-full md:max-w-sm md:border-r md:border-border min-h-0 shrink-0 bg-background">
+          {/* Sticky Header */}
+          <div className="p-3 border-b border-border flex items-center justify-between bg-card/60 backdrop-blur-md sticky top-0 z-10">
+            <div className="flex items-center gap-2">
+              <HamburgerButton />
+              <h1 className="font-extrabold text-foreground flex items-center gap-2 font-sans">
+                <Users className="h-5 w-5 text-primary" />
+                <span>Social Connections</span>
+              </h1>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                if (meId) {
+                  const promise = load(meId);
+                  toast.promise(promise, {
+                    loading: "Syncing lists...",
+                    success: "Synchronized!",
+                    error: "Failed to sync lists.",
+                  });
+                  await promise;
+                }
+              }}
+              className="h-8.5 w-8.5 rounded-full bg-secondary hover:bg-secondary/80 flex items-center justify-center p-0"
+            >
+              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
-              if (meId) {
-                const promise = load(meId);
-                toast.promise(promise, {
-                  loading: "Syncing lists...",
-                  success: "Synchronized!",
-                  error: "Failed to sync lists.",
-                });
-                await promise;
-              }
-            }}
-            className="h-8.5 w-8.5 rounded-full bg-secondary hover:bg-secondary/80 flex items-center justify-center p-0"
-          >
-            <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
-          </Button>
-        </div>
 
-        <PullToRefresh onRefresh={async () => { if (meId) { await load(meId); } }}>
-          {/* Main Dashboard Layout Grid */}
-          <div className="max-w-6xl mx-auto p-4 md:p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start text-left">
-              
-              {/* Left Column: My Friends (Width: 8/12 on LG) */}
-              <div className="lg:col-span-7 xl:col-span-8 space-y-4">
-                <div className="rounded-3xl bg-card border border-border/60 p-5 space-y-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-black text-base text-foreground font-sans">
-                      My Friends ({friends.length})
-                    </h2>
-                  </div>
-
-                  {/* Friends search bar */}
-                  <div className="relative">
-                    <Search className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground/60" />
-                    <Input
-                      placeholder="Search friends by username..."
-                      value={friendSearchQuery}
-                      onChange={(e) => setFriendSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-secondary/40 border-transparent placeholder:text-muted-foreground/45 text-sm font-sans"
-                    />
-                  </div>
-
-                  {/* Friends Stream */}
-                  {filteredFriends.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                      {filteredFriends.map((friend) => {
-                        const vipInfo = getVipBadgeStyles(friend.vip_status);
-                        return (
-                          <div 
-                            key={friend.id}
-                            className="p-3.5 rounded-2xl bg-secondary/20 border border-border/40 hover:border-border transition-all flex items-center justify-between gap-3"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <Avatar name={friend.username} url={friend.avatar_url} size={40} />
-                              <div className="min-w-0 space-y-0.5">
-                                <span className="font-bold text-xs text-foreground truncate block leading-tight">
-                                  {friend.username}
-                                </span>
-                                {friend.vip_status && friend.vip_status !== "none" && vipInfo && (
-                                  <span 
-                                    className="px-1.5 py-0.5 rounded text-[7px] font-black uppercase tracking-wide border inline-block leading-none"
-                                    style={{
-                                      color: vipInfo.color,
-                                      backgroundColor: `${vipInfo.color}15`,
-                                      borderColor: `${vipInfo.color}30`
-                                    }}
-                                  >
-                                    {vipInfo.label}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <Button 
-                                onClick={() => navigate({ to: "/chat/$friendId", params: { friendId: friend.id } })} 
-                                size="sm" 
-                                className="rounded-full h-8 text-[10px] font-bold px-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/10"
-                              >
-                                <MessageCircle className="h-3.5 w-3.5" />
-                                <span>Chat</span>
-                              </Button>
-                              <Button 
-                                onClick={() => removeFriend(friend.id)} 
-                                variant="ghost" 
-                                size="sm"
-                                className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 p-0"
-                              >
-                                <UserMinus className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="py-16 text-center space-y-3 bg-secondary/5 border border-dashed border-border/60 rounded-2xl select-none">
-                      <Users className="h-8 w-8 text-muted-foreground/35 mx-auto" />
-                      <div className="space-y-1">
-                        <h4 className="font-bold text-xs text-foreground">No friends found</h4>
-                        <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
-                          {friendSearchQuery ? "Try searching for a different username query." : "Search global users on the right to start building your chat list!"}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <PullToRefresh onRefresh={async () => { if (meId) { await load(meId); } }}>
+              <div className="p-4 space-y-4">
+                {/* 1. Privacy First */}
+                <div className="p-3.5 rounded-2xl bg-secondary/15 border border-border/40 text-left space-y-1.5 shadow-sm">
+                  <h4 className="font-extrabold text-xs text-foreground flex items-center gap-1.5">
+                    <span>Privacy First</span>
+                  </h4>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Add friends using their username or Friend ID. No suggestions shown.
+                  </p>
                 </div>
-              </div>
 
-              {/* Right Column: Search database & Pending requests (Width: 4/12 on LG) */}
-              <div className="lg:col-span-5 xl:col-span-4 space-y-6">
-                
-                {/* Panel A: Live User search bar */}
-                <div className="rounded-3xl bg-card border border-border/60 p-5 space-y-3.5 shadow-sm">
+                {/* 2. Find Friends / Search database */}
+                <div className="rounded-2xl bg-card border border-border/60 p-4 space-y-3 shadow-sm">
                   <div>
-                    <h3 className="font-black text-sm text-foreground font-sans">Find Users</h3>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
-                      Search and connect with other social casino players live.
-                    </p>
+                    <h3 className="font-black text-xs text-foreground font-sans">Find Users</h3>
                   </div>
 
                   <div className="relative">
-                    <Search className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground/60" />
+                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground/60" />
                     <Input
-                      placeholder="Type username to search..."
+                      placeholder="Enter Username or Friend ID..."
                       value={userSearchQuery}
                       onChange={(e) => setUserSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-secondary/40 border-transparent placeholder:text-muted-foreground/45 text-sm font-sans"
+                      className="w-full pl-9 pr-3 py-1.5 h-9 rounded-xl bg-secondary/40 border-transparent placeholder:text-muted-foreground/45 text-xs font-sans"
                     />
                   </div>
 
-                  {/* Search Results stream */}
                   {searchResults.length > 0 && (
-                    <div className="space-y-2 pt-1 border-t border-border/40 max-h-[220px] overflow-y-auto pr-1 no-scrollbar animate-in slide-in-from-top-2 duration-200">
+                    <div className="space-y-1.5 pt-1 border-t border-border/40 max-h-[180px] overflow-y-auto pr-1 no-scrollbar animate-in slide-in-from-top-2 duration-250">
                       {searchResults.map((user) => {
                         const isAlreadyFriend = friends.some((f) => f.id === user.id);
                         const isIncoming = incoming.some((r) => r.profile?.id === user.id);
@@ -411,21 +327,21 @@ function FriendsPage() {
                         return (
                           <div 
                             key={user.id}
-                            className="p-2.5 rounded-xl bg-secondary/10 flex items-center justify-between gap-3"
+                            className="p-2 rounded-lg bg-secondary/10 flex items-center justify-between gap-2.5"
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              <Avatar name={user.username} url={user.avatar_url} size={30} />
+                              <Avatar name={user.username} url={user.avatar_url} size={26} />
                               <div className="min-w-0">
-                                <span className="font-bold text-xs text-foreground truncate block leading-tight">
+                                <span className="font-bold text-[11px] text-foreground truncate block leading-tight">
                                   {user.username}
                                 </span>
                                 {user.vip_status && user.vip_status !== "none" && vipInfo && (
                                   <span 
-                                    className="px-1 py-0.5 rounded text-[6px] font-black uppercase tracking-wide border inline-block leading-none"
+                                    className="px-1 py-0.5 rounded text-[5px] font-black uppercase tracking-wide border inline-block leading-none"
                                     style={{
                                       color: vipInfo.color,
-                                      backgroundColor: `${vipInfo.color}15`,
-                                      borderColor: `${vipInfo.color}30`
+                                      backgroundColor: `${vipInfo.color}10`,
+                                      borderColor: `${vipInfo.color}25`
                                     }}
                                   >
                                     {vipInfo.label}
@@ -434,22 +350,21 @@ function FriendsPage() {
                               </div>
                             </div>
 
-                            {/* Relationship-dependent Action */}
                             {isAlreadyFriend ? (
-                              <span className="text-[10px] text-muted-foreground font-bold pr-2">Friend</span>
+                              <span className="text-[9px] text-muted-foreground font-bold pr-1">Friend</span>
                             ) : isOutgoing ? (
-                              <span className="text-[10px] text-primary font-bold pr-2 flex items-center gap-1">
-                                <Clock className="h-3 w-3" /> Sent
+                              <span className="text-[9px] text-primary font-bold pr-1 flex items-center gap-0.5">
+                                <Clock className="h-2.5 w-2.5" /> Sent
                               </span>
                             ) : isIncoming ? (
-                              <span className="text-[10px] text-green-500 font-bold pr-2">Received</span>
+                              <span className="text-[9px] text-green-500 font-bold pr-1">Received</span>
                             ) : (
                               <Button 
                                 onClick={() => sendRequest(user.id)} 
                                 size="sm" 
-                                className="rounded-full h-7 w-7 p-0 flex items-center justify-center bg-primary text-primary-foreground shrink-0 shadow-sm"
+                                className="rounded-full h-6 w-6 p-0 flex items-center justify-center bg-primary text-primary-foreground shrink-0 shadow-sm"
                               >
-                                <UserPlus className="h-3.5 w-3.5" />
+                                <UserPlus className="h-3 w-3" />
                               </Button>
                             )}
                           </div>
@@ -459,83 +374,180 @@ function FriendsPage() {
                   )}
 
                   {searchingUsers && (
-                    <p className="text-[10px] text-muted-foreground text-center">Searching user directory...</p>
+                    <p className="text-[9px] text-muted-foreground text-center">Searching user directory...</p>
                   )}
 
                   {userSearchQuery && searchResults.length === 0 && !searchingUsers && (
-                    <p className="text-[10px] text-muted-foreground text-center">No users match that search query.</p>
+                    <p className="text-[9px] text-muted-foreground text-center">No users match that search query.</p>
                   )}
                 </div>
 
-                {/* Panel B: Pending Connection requests */}
+                {/* 3. Friend Requests (tabs inside requests pane if there are active request entries) */}
                 {totalRequests > 0 && (
-                  <div className="rounded-3xl bg-card border border-border/60 p-5 space-y-4 shadow-sm">
-                    <h3 className="font-black text-sm text-foreground font-sans">
-                      Pending Connection Invites ({totalRequests})
+                  <div className="rounded-2xl bg-card border border-border/60 p-4 space-y-3 shadow-sm">
+                    <h3 className="font-black text-xs text-foreground font-sans">
+                      Friend Requests
                     </h3>
 
-                    {/* Received requests */}
-                    {incoming.length > 0 && (
-                      <div className="space-y-2">
-                        <span className="text-[9px] uppercase tracking-wider font-black text-muted-foreground block">Received Connection Requests</span>
-                        {incoming.map((r) => (
-                          <div key={r.id} className="p-3 rounded-2xl bg-secondary/15 border border-border/40 flex items-center justify-between gap-2.5">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Avatar name={r.profile?.username ?? "?"} url={r.profile?.avatar_url} size={30} />
-                              <span className="font-bold text-xs text-foreground truncate block">{r.profile?.username}</span>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <Button 
-                                size="sm" 
-                                onClick={() => respond(r.id, "accepted")} 
-                                className="rounded-full h-7 w-7 bg-green-600 hover:bg-green-700 text-white p-0"
-                              >
-                                <Check className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                onClick={() => respond(r.id, "rejected")} 
-                                className="rounded-full h-7 w-7 text-muted-foreground hover:text-destructive p-0"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    {/* Simple tab selector for requests inside the sidebar */}
+                    <div className="flex gap-1.5 border-b border-border/40 pb-1.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">
+                        Incoming ({incoming.length}) • Outgoing ({outgoing.length})
+                      </span>
+                    </div>
 
-                    {/* Sent requests */}
-                    {outgoing.length > 0 && (
-                      <div className="space-y-2 pt-2 border-t border-border/40">
-                        <span className="text-[9px] uppercase tracking-wider font-black text-muted-foreground block">Sent Connection Requests</span>
-                        {outgoing.map((r) => (
-                          <div key={r.id} className="p-3 rounded-2xl bg-secondary/15 border border-border/40 flex items-center justify-between gap-2.5">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Avatar name={r.profile?.username ?? "?"} url={r.profile?.avatar_url} size={30} />
-                              <span className="font-bold text-xs text-foreground truncate block">{r.profile?.username}</span>
-                            </div>
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              onClick={() => unsendRequest(r.id)} 
-                              className="rounded-full h-7 text-[10px] font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-2.5 shrink-0"
-                            >
-                              Unsend
-                            </Button>
-                          </div>
-                        ))}
+                    {incoming.map((r) => (
+                      <div key={r.id} className="p-2 rounded-xl bg-secondary/15 border border-border/40 flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Avatar name={r.profile?.username ?? "?"} url={r.profile?.avatar_url} size={24} />
+                          <span className="font-bold text-[10px] text-foreground truncate block">{r.profile?.username}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button 
+                            size="sm" 
+                            onClick={() => respond(r.id, "accepted")} 
+                            className="rounded-full h-6 w-6 bg-green-600 hover:bg-green-700 text-white p-0"
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            onClick={() => respond(r.id, "rejected")} 
+                            className="rounded-full h-6 w-6 text-muted-foreground hover:text-destructive p-0"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
-                    )}
+                    ))}
+
+                    {outgoing.map((r) => (
+                      <div key={r.id} className="p-2 rounded-xl bg-secondary/15 border border-border/40 flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Avatar name={r.profile?.username ?? "?"} url={r.profile?.avatar_url} size={24} />
+                          <span className="font-bold text-[10px] text-foreground truncate block">{r.profile?.username}</span>
+                        </div>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => unsendRequest(r.id)} 
+                          className="rounded-full h-6 text-[9px] font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-2 shrink-0"
+                        >
+                          Unsend
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 )}
 
-              </div>
+                {/* 4. My Friends list */}
+                <div className="rounded-2xl bg-card border border-border/60 p-4 space-y-3 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-black text-xs text-foreground font-sans uppercase tracking-wider">
+                      My Friends ({friends.length})
+                    </h2>
+                  </div>
 
-            </div>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground/60" />
+                    <Input
+                      placeholder="Search my friends..."
+                      value={friendSearchQuery}
+                      onChange={(e) => setFriendSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 h-9 rounded-xl bg-secondary/40 border-transparent placeholder:text-muted-foreground/45 text-xs font-sans"
+                    />
+                  </div>
+
+                  {filteredFriends.length > 0 ? (
+                    <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1 no-scrollbar">
+                      {filteredFriends.map((friend) => {
+                        const vipInfo = getVipBadgeStyles(friend.vip_status);
+                        return (
+                          <div 
+                            key={friend.id}
+                            className="p-2 rounded-xl bg-secondary/20 border border-border/40 hover:border-border transition-all flex items-center justify-between gap-2"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar name={friend.username} url={friend.avatar_url} size={30} />
+                              <div className="min-w-0">
+                                <span className="font-bold text-xs text-foreground truncate block leading-tight">
+                                  {friend.username}
+                                </span>
+                                {friend.vip_status && friend.vip_status !== "none" && vipInfo && (
+                                  <span 
+                                    className="px-1 py-0.5 rounded text-[5px] font-black uppercase tracking-wide border inline-block leading-none"
+                                    style={{
+                                      color: vipInfo.color,
+                                      backgroundColor: `${vipInfo.color}10`,
+                                      borderColor: `${vipInfo.color}25`
+                                    }}
+                                  >
+                                    {vipInfo.label}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button 
+                                onClick={() => navigate({ to: "/chat/$friendId", params: { friendId: friend.id } })} 
+                                size="sm" 
+                                className="rounded-full h-7 text-[9px] font-bold px-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/10"
+                              >
+                                <MessageCircle className="h-3 w-3" />
+                                <span>Chat</span>
+                              </Button>
+                              <Button 
+                                onClick={() => removeFriend(friend.id)} 
+                                variant="ghost" 
+                                size="sm"
+                                className="h-7 w-7 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 p-0"
+                              >
+                                <UserMinus className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center space-y-2 bg-secondary/5 border border-dashed border-border/60 rounded-xl select-none">
+                      <Users className="h-6 w-6 text-muted-foreground/35 mx-auto" />
+                      <div className="space-y-1">
+                        <h4 className="font-bold text-[11px] text-foreground">No friends</h4>
+                        <p className="text-[10px] text-muted-foreground max-w-xs mx-auto leading-relaxed px-2">
+                          {friendSearchQuery ? "Try searching for a different username query." : "Search global users to build your connections!"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. Privacy Settings summary */}
+                <div className="p-3 rounded-2xl bg-secondary/10 border border-border/40 text-left space-y-1">
+                  <h4 className="font-bold text-[10px] text-foreground flex items-center gap-1.5">
+                    <span>Privacy Settings</span>
+                  </h4>
+                  <p className="text-[9px] text-muted-foreground leading-normal">
+                    Manage who can find you and send friend requests. Control your online visibility and chat notifications anytime.
+                  </p>
+                </div>
+              </div>
+            </PullToRefresh>
           </div>
-        </PullToRefresh>
+        </div>
+
+        {/* Right Pane (Desktop/Tablet welcome empty state) */}
+        <div className="hidden md:flex flex-col flex-1 min-h-0 w-full overflow-hidden bg-secondary/5 items-center justify-center p-8 text-center select-none">
+          <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-4 animate-pulse">
+            <Users className="h-8 w-8" />
+          </div>
+          <h3 className="text-base font-extrabold text-foreground">Social Connections</h3>
+          <p className="text-xs text-muted-foreground max-w-sm mt-1 leading-relaxed">
+            Select a friend from your list to start a conversation, play games, or invite them to a group chat!
+          </p>
+        </div>
       </div>
     </AppShell>
   );

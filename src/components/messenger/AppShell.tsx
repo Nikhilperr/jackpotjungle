@@ -74,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { isAdmin } = useRole();
   const location = useLocation();
   const searchTab = (location.search as any)?.tab || "all";
-  const isChatListActive = pathname === "/app/chat" || pathname === "/app/chat/";
+  const showBottomBar = !pathname.startsWith("/app/chat/");
   const [open, setOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
@@ -315,13 +315,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        <main className={`flex-1 min-w-0 min-h-0 flex flex-col safe-pt safe-pb safe-pl safe-pr ${isChatListActive ? "pb-16 md:pb-0" : "pb-0"}`}>
+        <main className={`flex-1 min-w-0 min-h-0 flex flex-col safe-pt safe-pb safe-pl safe-pr ${showBottomBar ? "pb-16 md:pb-0" : "pb-0"}`}>
           <OnlineStatusBanner />
           {children}
         </main>
 
         {/* Bottom navigation bar for mobile layout only (hidden when a specific chat is open) */}
-        {isChatListActive && (
+        {showBottomBar && (
           <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/85 backdrop-blur-md border-t border-border/80 h-16 flex items-center justify-around px-4 py-2 safe-pb">
             <Link
               to="/app/chat"
