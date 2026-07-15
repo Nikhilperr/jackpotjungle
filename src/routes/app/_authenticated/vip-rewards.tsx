@@ -33,49 +33,67 @@ export function getVipTheme(status: string | null | undefined) {
   const normalized = status ? status.toLowerCase() : "none";
   if (normalized.includes("black")) {
     return {
-      border: "border-purple-500/40",
-      text: "from-purple-400 via-fuchsia-200 to-purple-500",
+      border: "border-purple-500/40 dark:border-purple-500/20",
+      text: "from-purple-600 via-fuchsia-500 to-purple-800 dark:from-purple-400 dark:via-fuchsia-200 dark:to-purple-500",
       progress: "from-purple-600 to-fuchsia-500",
       bgGlow: "bg-purple-500/5",
+      primary: "text-purple-600 dark:text-purple-400",
+      numberColor: "text-purple-600 dark:text-purple-400",
+      iconBg: "bg-purple-500/10",
     };
   }
   if (normalized.includes("diamond") || normalized.includes("dimond")) {
     return {
-      border: "border-blue-500/40",
-      text: "from-blue-400 via-cyan-200 to-blue-500",
+      border: "border-blue-500/40 dark:border-blue-500/20",
+      text: "from-blue-600 via-cyan-500 to-blue-800 dark:from-blue-400 dark:via-cyan-200 dark:to-blue-500",
       progress: "from-blue-500 to-cyan-500",
       bgGlow: "bg-blue-500/5",
+      primary: "text-blue-600 dark:text-blue-400",
+      numberColor: "text-blue-600 dark:text-blue-400",
+      iconBg: "bg-blue-500/10",
     };
   }
   if (normalized.includes("platinum") || normalized.includes("platium")) {
     return {
-      border: "border-cyan-500/40",
-      text: "from-cyan-400 via-teal-200 to-cyan-500",
+      border: "border-cyan-500/40 dark:border-cyan-500/20",
+      text: "from-cyan-600 via-teal-500 to-cyan-800 dark:from-cyan-400 dark:via-teal-200 dark:to-cyan-500",
       progress: "from-cyan-500 to-teal-500",
       bgGlow: "bg-cyan-500/5",
+      primary: "text-cyan-600 dark:text-cyan-400",
+      numberColor: "text-cyan-600 dark:text-cyan-400",
+      iconBg: "bg-cyan-500/10",
     };
   }
   if (normalized.includes("gold")) {
     return {
-      border: "border-yellow-500/50",
-      text: "from-yellow-400 via-amber-200 to-yellow-400",
+      border: "border-yellow-500/50 dark:border-yellow-500/25",
+      text: "from-yellow-600 via-amber-500 to-yellow-800 dark:from-yellow-400 dark:via-amber-200 dark:to-yellow-400",
       progress: "from-yellow-500 to-amber-500",
       bgGlow: "bg-yellow-500/5",
+      primary: "text-yellow-600 dark:text-yellow-400",
+      numberColor: "text-yellow-600 dark:text-yellow-400",
+      iconBg: "bg-yellow-500/10",
     };
   }
   if (normalized.includes("silver")) {
     return {
-      border: "border-slate-400/40",
-      text: "from-slate-300 via-slate-100 to-slate-400",
+      border: "border-slate-400/40 dark:border-slate-400/20",
+      text: "from-slate-600 via-slate-400 to-slate-800 dark:from-slate-300 dark:via-slate-100 dark:to-slate-400",
       progress: "from-slate-400 to-slate-300",
       bgGlow: "bg-slate-400/5",
+      primary: "text-slate-600 dark:text-slate-400",
+      numberColor: "text-slate-600 dark:text-slate-400",
+      iconBg: "bg-slate-400/10",
     };
   }
   return {
-    border: "border-amber-700/40",
-    text: "from-amber-600 via-orange-300 to-amber-700",
-    progress: "from-amber-600 to-orange-500",
-    bgGlow: "bg-amber-700/5",
+    border: "border-primary/40 dark:border-primary/20",
+    text: "from-primary via-orange-400 to-amber-600 dark:from-primary dark:via-orange-300 dark:to-amber-500",
+    progress: "from-primary to-orange-500",
+    bgGlow: "bg-primary/5",
+    primary: "text-primary",
+    numberColor: "text-primary",
+    iconBg: "bg-primary/10",
   };
 }
 
@@ -234,10 +252,10 @@ function VipRewardsPage() {
 
   return (
     <AppShell>
-      <div className="h-full overflow-y-auto bg-[#0B0C0E] select-none text-left text-white">
+      <div className="h-full overflow-y-auto bg-background select-none text-left text-foreground">
         
         {/* Page Header */}
-        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-[#121317] sticky top-0 z-10 text-white">
+        <div className="p-4 border-b border-border flex items-center justify-between bg-card sticky top-0 z-10 text-foreground">
           <div className="flex items-center gap-2">
             <HamburgerButton />
             <h1 className={`font-extrabold flex items-center gap-2 font-sans text-base ${theme.primary}`}>
@@ -247,7 +265,7 @@ function VipRewardsPage() {
           </div>
           <button 
             onClick={() => navigate({ to: "/app/help" })}
-            className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white"
+            className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
           >
             <HelpCircle className="h-4.5 w-4.5" />
           </button>
@@ -264,13 +282,13 @@ function VipRewardsPage() {
             <div className="space-y-5 animate-in fade-in duration-300">
               
               {/* 1. HERO CARD (Rank Progression & Estimations) */}
-              <div className={`rounded-3xl bg-gradient-to-b from-[#1c1d25] to-[#121317] border ${theme.border} p-5 sm:p-6 space-y-5 shadow-xl relative overflow-hidden`}>
+              <div className={`rounded-3xl bg-card border ${theme.border} p-5 sm:p-6 space-y-5 shadow-sm relative overflow-hidden`}>
                 <div className={`absolute top-0 right-0 w-24 h-24 ${theme.bgGlow} rounded-full blur-xl pointer-events-none`} />
 
                 <div className="flex items-start justify-between gap-4">
                   {/* Left Column: Shield Medal Badge */}
                   <div className="flex items-center gap-3.5">
-                    <div className="h-20 w-20 sm:h-24 sm:w-24 shrink-0 flex items-center justify-center drop-shadow-[0_8px_16px_rgba(245,158,11,0.25)]">
+                    <div className="h-20 w-20 sm:h-24 sm:w-24 shrink-0 flex items-center justify-center drop-shadow-[0_8px_16px_rgba(245,158,11,0.15)]">
                       <img 
                         src={getVipBadgeUrl(currentTier)} 
                         alt={`${currentTier} Badge`} 
@@ -279,11 +297,11 @@ function VipRewardsPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-[10px] text-zinc-400 uppercase font-black tracking-widest font-mono">Current Level</span>
+                      <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest font-mono">Current Level</span>
                       <h2 className={`text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r ${theme.text} uppercase tracking-tight font-sans`}>
                         {currentTier} VIP
                       </h2>
-                      <p className="text-[11px] text-zinc-400 font-semibold">You're a valued member!</p>
+                      <p className="text-[11px] text-muted-foreground font-semibold">You're a valued member!</p>
                     </div>
                   </div>
 
@@ -293,7 +311,7 @@ function VipRewardsPage() {
                       const el = document.getElementById("vip-benefits-anchor");
                       el?.scrollIntoView({ behavior: "smooth" });
                     }}
-                    className="rounded-full bg-[#20212b] border border-white/10 px-3 py-1.5 text-[10px] font-black text-amber-400 hover:text-white flex items-center gap-1 transition-colors shrink-0"
+                    className="rounded-full bg-secondary border border-border px-3 py-1.5 text-[10px] font-black text-primary hover:text-primary/80 flex items-center gap-1 transition-colors shrink-0"
                   >
                     <span>VIP Benefits</span>
                     <ChevronRight className="h-3 w-3" />
@@ -301,27 +319,27 @@ function VipRewardsPage() {
                 </div>
 
                 {/* Substats: Current Reward & Next Payout */}
-                <div className="grid grid-cols-2 gap-4 bg-[#0a0b0d]/70 rounded-2xl p-4 border border-white/10 font-sans">
+                <div className="grid grid-cols-2 gap-4 bg-secondary/15 rounded-2xl p-4 border border-border font-sans">
                   <div>
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Current Reward</span>
-                    <span className="text-xl sm:text-2xl font-black text-green-400 font-mono block mt-1">
+                    <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Current Reward</span>
+                    <span className="text-xl sm:text-2xl font-black text-green-500 font-mono block mt-1">
                       ${currentRewardAmount}
                     </span>
                   </div>
-                  <div className="border-l border-white/10 pl-4 space-y-0.5">
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Next Payout</span>
-                    <span className="text-sm sm:text-base font-extrabold text-white block">
+                  <div className="border-l border-border pl-4 space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Next Payout</span>
+                    <span className="text-sm sm:text-base font-extrabold text-foreground block">
                       This Sunday
                     </span>
-                    <span className="text-[9px] text-zinc-400 block font-medium">Updates monthly calculations</span>
+                    <span className="text-[9px] text-muted-foreground block font-medium">Updates monthly calculations</span>
                   </div>
                 </div>
 
                 {/* Segmented Progress bar container */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold">
-                    <span className="text-zinc-300">VIP Progress</span>
-                    <span className="text-amber-400 font-mono">{progressPercentage}%</span>
+                    <span className="text-foreground">VIP Progress</span>
+                    <span className={`font-mono font-bold ${theme.primary}`}>{progressPercentage}%</span>
                   </div>
 
                   {/* Segmented Progress: 5 Equal rounded bars filled dynamically */}
@@ -329,7 +347,7 @@ function VipRewardsPage() {
                     {[0, 1, 2, 3, 4].map((idx) => {
                       const segmentProgress = Math.max(0, Math.min(100, ((progressPercentage - idx * 20) / 20) * 100));
                       return (
-                        <div key={idx} className="flex-1 bg-[#1e2027] h-1.5 rounded-full overflow-hidden">
+                        <div key={idx} className="flex-1 bg-secondary h-1.5 rounded-full overflow-hidden">
                           <div 
                             className={`h-full bg-gradient-to-r ${theme.progress} transition-all duration-300`} 
                             style={{ width: `${segmentProgress}%` }}
@@ -341,16 +359,16 @@ function VipRewardsPage() {
 
                   {/* Remaining calculations text */}
                   <div className="flex items-center justify-between gap-4 pt-1">
-                    <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">
+                    <p className="text-[10px] text-muted-foreground font-medium leading-relaxed">
                       {!isMaxTier ? (
-                        <span>Deposit <strong className="text-white">${remainingDeposits.toLocaleString()}</strong> more to reach <strong className="text-amber-400">{nextTier}</strong></span>
+                        <span>Deposit <strong className="text-foreground">${remainingDeposits.toLocaleString()}</strong> more to reach <strong className={`font-bold ${theme.primary}`}>{nextTier}</strong></span>
                       ) : (
                         <span>Maximum VIP achieved! Enjoy elite benefits.</span>
                       )}
                     </p>
 
                     <Link to="/app/wallet" className="shrink-0">
-                      <Button className="rounded-full bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-800 hover:to-indigo-700 text-white text-xs font-black h-9 px-4.5 flex items-center gap-1 shadow-md">
+                      <Button className="rounded-full bg-primary hover:bg-primary/95 text-primary-foreground text-xs font-black h-9 px-4.5 flex items-center gap-1 shadow-sm">
                         <span>Deposit Now</span>
                         <ArrowRight className="h-3.5 w-3.5" />
                       </Button>
