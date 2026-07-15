@@ -272,7 +272,7 @@ function VipRewardsPage() {
         </div>
 
         {/* Dashboard Frame */}
-        <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
+        <div className="max-w-3xl mx-auto p-4 pb-28 md:pb-6 md:p-6 space-y-6">
           
           {loadingVipHistory || loadingVipDashboard ? (
             <div className="flex h-64 items-center justify-center">

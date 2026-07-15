@@ -289,7 +289,7 @@ function FriendsPage() {
 
           <div className="flex-1 overflow-y-auto min-h-0">
             <PullToRefresh onRefresh={async () => { if (meId) { await load(meId); } }}>
-              <div className="p-4 space-y-4">
+              <div className="p-4 pb-28 md:pb-4 space-y-4">
                 {/* 1. Privacy First */}
                 <div className="p-3.5 rounded-2xl bg-secondary/15 border border-border/40 text-left space-y-1.5 shadow-sm">
                   <h4 className="font-extrabold text-xs text-foreground flex items-center gap-1.5">

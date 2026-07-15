@@ -346,7 +346,7 @@ function WalletPage() {
           <h1 className="font-bold">Wallet</h1>
         </div>
 
-        <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-6 animate-in fade-in duration-300">
+        <div className="max-w-2xl mx-auto p-4 pb-28 md:pb-6 md:p-6 space-y-6 animate-in fade-in duration-300">
           <div className="bg-secondary rounded-2xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold flex items-center gap-2 text-foreground">
