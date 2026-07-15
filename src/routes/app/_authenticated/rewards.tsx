@@ -83,7 +83,7 @@ function RewardsPage() {
         </div>
 
         {/* Page Body */}
-        <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-6 animate-in fade-in duration-300">
+        <div className="max-w-5xl mx-auto p-4 pb-28 md:pb-6 md:p-6 space-y-6 animate-in fade-in duration-300">
           {/* Header Banner */}
           <div className="rounded-3xl bg-gradient-to-br from-primary/20 via-purple-600/10 to-amber-500/10 border border-border/80 p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden shadow-lg select-none">
             <div className="space-y-3 max-w-2xl text-left">
