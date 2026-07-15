@@ -170,7 +170,7 @@ function DepositPage() {
     }
     setVerifyingTxid(true);
     try {
-      const res = await verifyFn({ data: { txid: txidInput.trim(), coin: selectedCoin.coin } });
+      const res = await verifyFn({ data: { txid: txidInput.trim(), coin: selectedCoin.coin, network: selectedNetwork?.id || "" } });
       if (res.success) {
         toast.success(res.message || "Deposit successfully claimed! 💰");
         if (res.credited && res.credited > 0) {
@@ -255,26 +255,7 @@ function DepositPage() {
     };
   }, [user?.id]);
 
-  // Page-specific auto-verify loop
-  useEffect(() => {
-    if (!address || verifying) return;
-    
-    const interval = setInterval(async () => {
-      try {
-        const res = await verifyFn({ data: { coin: selectedCoin.coin } });
-        if (res.success && res.credited && res.credited > 0) {
-          toast.success(`You just received $${res.credited.toFixed(2)} in your wallet! 💰`);
-          window.dispatchEvent(new CustomEvent("wallet-updated", { detail: { credited: res.credited } }));
-          fetchHistory();
-          navigate({ to: "/app/chat" });
-        }
-      } catch (e) {
-        console.warn("[Deposit Page] Polling failed:", e);
-      }
-    }, 15000);
 
-    return () => clearInterval(interval);
-  }, [address, selectedCoin, verifyFn, verifying, navigate]);
 
   const loadAddress = async (coin: string, network: string) => {
     setLoadingAddress(true);
