@@ -661,48 +661,7 @@ function DepositPage() {
           <div className="md:col-span-5 space-y-6 w-full">
             {selectedNetwork ? (
               <>
-                {/* Live Progress Timeline Stepper */}
-                <div className="bg-card border border-border/70 rounded-3xl p-5 shadow-sm space-y-4 transition-all duration-300">
-                  <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest block">Live Deposit Progress</label>
-                  
-                  <div className="relative pl-6 space-y-5 border-l-2 border-border/60 ml-2 py-1">
-                    {TIMELINE_STEPS.map((step, idx) => {
-                      const isCompleted = idx < activeStep;
-                      const isActive = idx === activeStep;
-                      
-                      let dotColor = "bg-zinc-800 border-zinc-700";
-                      let textColor = "text-muted-foreground";
-                      
-                      if (isCompleted) {
-                        dotColor = "bg-green-500 border-transparent";
-                        textColor = "text-green-500 font-bold";
-                      } else if (isActive) {
-                        dotColor = "bg-primary border-transparent ring-4 ring-primary/20";
-                        textColor = "text-primary font-black";
-                      }
 
-                      return (
-                        <div key={step.id} className="relative group select-none">
-                          <span className={`absolute -left-[31px] top-1 h-3.5 w-3.5 rounded-full border transition-all duration-300 ${dotColor} flex items-center justify-center`}>
-                            {isCompleted && <Check className="h-2 w-2 text-zinc-950 stroke-[3px]" />}
-                            {isActive && <span className="h-1.5 w-1.5 rounded-full bg-zinc-950 animate-ping" />}
-                          </span>
-                          
-                          <div className="space-y-0.5">
-                            <span className={`text-[11px] block transition-colors duration-300 uppercase tracking-wide font-extrabold ${textColor}`}>
-                              {step.label}
-                            </span>
-                            <p className="text-[10px] text-muted-foreground leading-normal font-medium">
-                              {isActive && latestDeposit?.status === "pending" && (latestDeposit.confirmations ?? 0) > 0
-                                ? `Confirming block verification steps: ${latestDeposit.confirmations} active.`
-                                : step.desc}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
 
                 {/* Network Information Card */}
                 {!loadingAddress && address && (

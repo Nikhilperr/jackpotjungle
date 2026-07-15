@@ -18,15 +18,55 @@ function signQuery(queryString: string, apiSecret: string): string {
   return crypto.createHmac("sha256", apiSecret).update(queryString).digest("hex");
 }
 
-// Helper: build URL and headers for Binance SAPI request
-function buildBinanceRequest(path: string, method: "GET" | "POST", params: Record<string, string | number>) {
-  const apiKey = process.env.BINANCE_API_KEY;
-  const apiSecret = process.env.BINANCE_SECRET_KEY;
-  
-  if (!apiKey || !apiSecret) {
-    throw new Error("Binance API keys are not configured in your server .env file.");
+let cachedBinanceApiKey = "";
+let cachedBinanceSecretKey = "";
+
+async function getBinanceKeys(supabaseAdmin: any): Promise<{ apiKey: string; apiSecret: string }> {
+  // 1. Try env variables first
+  const envKey = process.env.BINANCE_API_KEY;
+  const envSecret = process.env.BINANCE_SECRET_KEY;
+
+  if (envKey && envSecret) {
+    return { apiKey: envKey, apiSecret: envSecret };
   }
 
+  // 2. Try in-memory cache
+  if (cachedBinanceApiKey && cachedBinanceSecretKey) {
+    return { apiKey: cachedBinanceApiKey, apiSecret: cachedBinanceSecretKey };
+  }
+
+  // 3. Query Supabase system_settings table
+  try {
+    const { data } = await supabaseAdmin
+      .from("system_settings")
+      .select("value")
+      .eq("key", "binance_keys")
+      .maybeSingle();
+
+    if (data?.value) {
+      const val = data.value as any;
+      if (val.api_key && val.secret_key) {
+        cachedBinanceApiKey = val.api_key;
+        cachedBinanceSecretKey = val.secret_key;
+        return { apiKey: val.api_key, apiSecret: val.secret_key };
+      }
+    }
+  } catch (e) {
+    console.error("[Deposit Service] Failed to retrieve Binance keys from DB:", e);
+  }
+
+  throw new Error("Binance API keys are not configured in your server .env file or system settings database.");
+}
+
+// Helper: make signed request to Binance SAPI
+async function callBinance(
+  supabaseAdmin: any,
+  path: string,
+  method: "GET" | "POST",
+  params: Record<string, string | number> = {}
+) {
+  const { apiKey, apiSecret } = await getBinanceKeys(supabaseAdmin);
+  
   const timestamp = Date.now();
   const queryParts = Object.keys(params).map(key => `${key}=${encodeURIComponent(params[key])}`);
   queryParts.push(`timestamp=${timestamp}`);
@@ -34,22 +74,13 @@ function buildBinanceRequest(path: string, method: "GET" | "POST", params: Recor
   
   const signature = signQuery(queryString, apiSecret);
   const url = `https://api.binance.com${path}?${queryString}&signature=${signature}`;
-  
-  return {
-    url,
+
+  const response = await fetch(url, {
+    method,
     headers: {
       "X-MBX-APIKEY": apiKey,
       "Accept": "application/json"
     }
-  };
-}
-
-// Helper: make signed request to Binance SAPI
-async function callBinance(path: string, method: "GET" | "POST", params: Record<string, string | number> = {}) {
-  const { url, headers } = buildBinanceRequest(path, method, params);
-  const response = await fetch(url, {
-    method,
-    headers
   });
   
   if (!response.ok) {
@@ -109,9 +140,7 @@ export const getDepositAddress = createServerFn({ method: "POST" })
       if (cached) {
         return { success: true, address: cached.address, tag: cached.tag, isFallback: false };
       }
-
-      // 2. Fetch deposit address from Binance main account
-      const addressRes = await callBinance("/sapi/v1/capital/deposit/address", "GET", {
+      const addressRes = await callBinance(supabaseAdmin, "/sapi/v1/capital/deposit/address", "GET", {
         coin: coin.toUpperCase(),
         network: network.toUpperCase()
       });
@@ -191,8 +220,7 @@ export const verifyDeposit = createServerFn({ method: "POST" })
         }
       }
 
-      // 2. Fetch deposit history from Binance main account
-      const history = await callBinance("/sapi/v1/capital/deposit/hisrec", "GET", {
+      const history = await callBinance(supabaseAdmin, "/sapi/v1/capital/deposit/hisrec", "GET", {
         coin: targetCoin.toUpperCase()
       });
 
