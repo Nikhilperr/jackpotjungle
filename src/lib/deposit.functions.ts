@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import crypto from "crypto";
+import http from "http";
+import https from "https";
 
 const getAddressValidator = z.object({
   coin: z.string(),
@@ -14,9 +16,93 @@ const verifyDepositValidator = z.object({
   network: z.string(),
 });
 
+// Cache working proxy in-memory
+let activeProxy: { host: string; port: number } | null = null;
+
 // Helper: sign query string for Binance API
 function signQuery(queryString: string, apiSecret: string): string {
   return crypto.createHmac("sha256", apiSecret).update(queryString).digest("hex");
+}
+
+// Native CONNECT tunnel proxy fetch
+function fetchViaProxy(url: string, proxyHost: string, proxyPort: number, options: any = {}): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const reqOptions = {
+      host: proxyHost,
+      port: proxyPort,
+      method: 'CONNECT',
+      path: `${parsedUrl.hostname}:443`,
+      headers: {
+        Host: parsedUrl.hostname
+      }
+    };
+
+    // Timeout proxy CONNECT after 3 seconds
+    const req = http.request(reqOptions);
+    req.setTimeout(3000);
+    
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error("Proxy CONNECT timeout"));
+    });
+
+    req.on('connect', (res, socket, head) => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`CONNECT failed: ${res.statusCode}`));
+        return;
+      }
+
+      const agent = new https.Agent({ socket, rejectUnauthorized: false });
+      const clientReq = https.request({
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: options.method || 'GET',
+        headers: options.headers,
+        agent: agent
+      }, (clientRes) => {
+        let data = '';
+        clientRes.on('data', chunk => data += chunk);
+        clientRes.on('end', () => {
+          resolve({
+            status: clientRes.statusCode,
+            statusText: clientRes.statusMessage,
+            text: () => Promise.resolve(data),
+            json: () => {
+              try {
+                return Promise.resolve(JSON.parse(data));
+              } catch (e) {
+                return Promise.reject(new Error(`Failed to parse proxy response: ${data}`));
+              }
+            }
+          });
+        });
+      });
+
+      clientReq.on('error', reject);
+      if (options.body) clientReq.write(options.body);
+      clientReq.end();
+    });
+
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+// Fetch proxy list from free API
+async function getProxies(): Promise<{ host: string; port: number }[]> {
+  try {
+    const res = await fetch("https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=1000&country=all&ssl=yes&anonymity=all");
+    if (!res.ok) return [];
+    const text = await res.text();
+    return text.split("\n").map(p => p.trim()).filter(p => p.includes(":")).map(p => {
+      const [host, port] = p.split(":");
+      return { host, port: parseInt(port, 10) };
+    });
+  } catch (e) {
+    console.error("[Proxy] Failed to fetch proxy list:", e);
+    return [];
+  }
 }
 
 let cachedBinanceApiKey = "";
@@ -59,7 +145,7 @@ async function getBinanceKeys(supabaseAdmin: any): Promise<{ apiKey: string; api
   throw new Error("Binance API keys are not configured in your server .env file or system settings database.");
 }
 
-// Helper: make signed request to Binance SAPI
+// Helper: make signed request to Binance SAPI (with automatic geoblocking proxy fallback)
 async function callBinance(
   supabaseAdmin: any,
   path: string,
@@ -75,40 +161,83 @@ async function callBinance(
   
   const signature = signQuery(queryString, apiSecret);
   const url = `https://api.binance.com${path}?${queryString}&signature=${signature}`;
+  const headers = {
+    "X-MBX-APIKEY": apiKey,
+    "Accept": "application/json"
+  };
 
-  const response = await fetch(url, {
-    method,
-    headers: {
-      "X-MBX-APIKEY": apiKey,
-      "Accept": "application/json"
+  // 1. Try currently active proxy if we have one cached
+  if (activeProxy) {
+    try {
+      const res = await fetchViaProxy(url, activeProxy.host, activeProxy.port, { method, headers });
+      if (res.status === 200) {
+        return res.json();
+      } else if (res.status === 451) {
+        activeProxy = null; // Stale or flagged proxy
+      }
+    } catch (e) {
+      activeProxy = null; // Connection issue
     }
-  });
-  
-  if (!response.ok) {
-    const errorBody = await response.text();
-    console.error(`[Binance API Error] ${method} ${path} -> Status: ${response.status}. Body:`, errorBody);
-    throw new Error(`Binance API Error (${response.status}): ${errorBody}`);
   }
-  
-  return response.json();
+
+  // 2. Try direct call (in case geo-restrictions are resolved or not applicable)
+  try {
+    const directRes = await fetch(url, { method, headers });
+    if (directRes.status === 200) {
+      return directRes.json();
+    }
+    if (directRes.status !== 451) {
+      const errorBody = await directRes.text();
+      throw new Error(`Binance API Error (${directRes.status}): ${errorBody}`);
+    }
+  } catch (directErr: any) {
+    if (!directErr.message?.includes("451") && !directErr.message?.includes("fetch failed")) {
+      throw directErr;
+    }
+  }
+
+  // 3. Scan for a new working proxy to bypass the geoblock
+  console.log("[Binance SAPI] Direct request geo-blocked. Resolving anonymous proxy...");
+  const proxyList = await getProxies();
+  if (proxyList.length === 0) {
+    throw new Error("Binance SAPI requests are geoblocked on this VPS, and no proxies are currently available.");
+  }
+
+  // Try up to 30 proxies from the scraped list
+  for (let i = 0; i < Math.min(proxyList.length, 30); i++) {
+    const proxy = proxyList[i];
+    try {
+      const res = await fetchViaProxy(url, proxy.host, proxy.port, { method, headers });
+      if (res.status === 200) {
+        console.log(`[Binance SAPI] Successfully bypassed geoblocking using proxy: ${proxy.host}:${proxy.port}`);
+        activeProxy = proxy;
+        return res.json();
+      }
+    } catch (e) {
+      // Continue searching
+    }
+  }
+
+  throw new Error("Binance SAPI geoblock bypass failed: No working proxy tunnel could be established.");
 }
 
-// Helper: fetch current live crypto price in USDT
+// Helper: fetch current live crypto price in USD using non-restricted public API
 async function getCryptoPrice(coin: string): Promise<number> {
   const normalized = coin.toUpperCase();
-  if (normalized === "USDT" || normalized === "BUSD" || normalized === "USDC") {
+  if (["USDT", "BUSD", "USDC"].includes(normalized)) {
     return 1.0;
   }
   try {
-    const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${normalized}USDT`);
+    const res = await fetch(`https://api.coinbase.com/v2/prices/${normalized}-USD/spot`);
     if (res.ok) {
       const data = await res.json();
-      return Number(data.price || 0);
+      const price = Number(data?.data?.amount);
+      if (price > 0) return price;
     }
   } catch (e) {
-    console.error(`Failed to fetch real-time price for ${coin}:`, e);
+    console.error(`Failed to fetch live price for ${coin}:`, e);
   }
-  // Hardcoded fallback exchange rates if Binance is offline
+  // Hardcoded fallback exchange rates if external API is down
   if (normalized === "BTC") return 90000;
   if (normalized === "ETH") return 3500;
   if (normalized === "BNB") return 600;
