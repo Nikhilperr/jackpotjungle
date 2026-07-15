@@ -9,8 +9,57 @@ const getAddressValidator = z.object({
 });
 
 const verifyDepositValidator = z.object({
+  txid: z.string().optional(),
   coin: z.string().optional(),
 });
+
+// Helper: sign query string for Binance API
+function signQuery(queryString: string, apiSecret: string): string {
+  return crypto.createHmac("sha256", apiSecret).update(queryString).digest("hex");
+}
+
+// Helper: build URL and headers for Binance SAPI request
+function buildBinanceRequest(path: string, method: "GET" | "POST", params: Record<string, string | number>) {
+  const apiKey = process.env.BINANCE_API_KEY;
+  const apiSecret = process.env.BINANCE_SECRET_KEY;
+  
+  if (!apiKey || !apiSecret) {
+    throw new Error("Binance API keys are not configured in your server .env file.");
+  }
+
+  const timestamp = Date.now();
+  const queryParts = Object.keys(params).map(key => `${key}=${encodeURIComponent(params[key])}`);
+  queryParts.push(`timestamp=${timestamp}`);
+  const queryString = queryParts.join("&");
+  
+  const signature = signQuery(queryString, apiSecret);
+  const url = `https://api.binance.com${path}?${queryString}&signature=${signature}`;
+  
+  return {
+    url,
+    headers: {
+      "X-MBX-APIKEY": apiKey,
+      "Accept": "application/json"
+    }
+  };
+}
+
+// Helper: make signed request to Binance SAPI
+async function callBinance(path: string, method: "GET" | "POST", params: Record<string, string | number> = {}) {
+  const { url, headers } = buildBinanceRequest(path, method, params);
+  const response = await fetch(url, {
+    method,
+    headers
+  });
+  
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`[Binance API Error] ${method} ${path} -> Status: ${response.status}. Body:`, errorBody);
+    throw new Error(`Binance API Error (${response.status}): ${errorBody}`);
+  }
+  
+  return response.json();
+}
 
 // Helper: fetch current live crypto price in USDT
 async function getCryptoPrice(coin: string): Promise<number> {
@@ -36,21 +85,8 @@ async function getCryptoPrice(coin: string): Promise<number> {
   return 1.0;
 }
 
-// Helper: map network code from UI to Cryptomus network code
-function mapNetworkToCryptomus(coin: string, network: string): string {
-  const c = coin.toUpperCase();
-  const n = network.toUpperCase();
-  if (n === "TRX") return "tron";
-  if (n === "BSC") return "bsc";
-  if (n === "ETH") return "eth";
-  if (n === "BTC") return "btc";
-  if (n === "LTC") return "ltc";
-  if (n === "SOL") return "sol";
-  return network.toLowerCase();
-}
-
 /**
- * Fetch/Generate unique deposit address for a specific cryptocurrency and network via Cryptomus
+ * Fetch/Generate unique deposit address for a specific cryptocurrency and network via Binance Main Account
  */
 export const getDepositAddress = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -59,16 +95,6 @@ export const getDepositAddress = createServerFn({ method: "POST" })
     const { coin, network } = data;
     const userId = context.userId;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    const merchantId = process.env.CRYPTOMUS_MERCHANT_ID;
-    const apiKey = process.env.CRYPTOMUS_API_KEY;
-
-    if (!merchantId || !apiKey) {
-      return { 
-        success: false, 
-        error: "Cryptomus payment gateway keys are not configured on the server .env file yet. Please complete your project verification." 
-      };
-    }
 
     try {
       // 1. Check if we already cached this address in database
@@ -84,56 +110,31 @@ export const getDepositAddress = createServerFn({ method: "POST" })
         return { success: true, address: cached.address, tag: cached.tag, isFallback: false };
       }
 
-      // 2. Request a static wallet address from Cryptomus
-      const orderId = `${userId}_${coin.toUpperCase()}_${network.toUpperCase()}`;
-      const cryptomusNetwork = mapNetworkToCryptomus(coin, network);
-
-      const payload = {
-        currency: coin.toUpperCase(),
-        network: cryptomusNetwork,
-        order_id: orderId,
-        url_callback: `https://chat.playjackpotjungle.com/api/cryptomus-webhook`
-      };
-
-      const jsonStr = JSON.stringify(payload);
-      const base64Str = Buffer.from(jsonStr).toString("base64");
-      const sign = crypto.createHash("md5").update(base64Str + apiKey).digest("hex");
-
-      const response = await fetch("https://api.cryptomus.com/v1/wallet", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "merchant": merchantId,
-          "sign": sign
-        },
-        body: jsonStr
+      // 2. Fetch deposit address from Binance main account
+      const addressRes = await callBinance("/sapi/v1/capital/deposit/address", "GET", {
+        coin: coin.toUpperCase(),
+        network: network.toUpperCase()
       });
 
-      const responseData = await response.json();
-      
-      if (responseData.state === 0 && responseData.result) {
-        const address = responseData.result.address;
-        const tag = responseData.result.address_terminal || null;
-
+      if (addressRes && addressRes.address) {
         // Cache the retrieved address in the database
         await supabaseAdmin.from("user_deposit_addresses").insert({
           user_id: userId,
           coin: coin.toUpperCase(),
           network: network.toUpperCase(),
-          address: address,
-          tag: tag
+          address: addressRes.address,
+          tag: addressRes.tag || null
         });
 
         return {
           success: true,
-          address: address,
-          tag: tag,
+          address: addressRes.address,
+          tag: addressRes.tag || null,
           isFallback: false
         };
-      } else {
-        console.error("[Cryptomus API Error] getDepositAddress failed:", responseData);
-        throw new Error(responseData.message || "Failed to generate wallet from Cryptomus API.");
       }
+      
+      throw new Error(`No deposit address returned from Binance API.`);
     } catch (e: any) {
       console.error("[Deposit Service] getDepositAddress failure:", e);
       return { success: false, error: e.message };
@@ -141,264 +142,231 @@ export const getDepositAddress = createServerFn({ method: "POST" })
   });
 
 /**
- * Query Cryptomus payment history, checking and crediting new cashin events
+ * Query Binance deposit history for the main account, matching the user's TXID
  */
 export const verifyDeposit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(verifyDepositValidator)
-  .handler(async ({ context }) => {
+  .handler(async ({ data, context }) => {
     const userId = context.userId;
+    const { txid, coin } = data;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const merchantId = process.env.CRYPTOMUS_MERCHANT_ID;
-    const apiKey = process.env.CRYPTOMUS_API_KEY;
+    // If no txid is provided, check if the user has any pending deposits in the database
+    let targetTxid = txid;
+    let targetCoin = coin;
 
-    if (!merchantId || !apiKey) {
-      return { success: true, credited: 0, message: "Cryptomus API keys are not configured yet." };
+    if (!targetTxid) {
+      const { data: pendingDep } = await supabaseAdmin
+        .from("crypto_deposits")
+        .select("txid, coin")
+        .eq("user_id", userId)
+        .eq("status", "pending")
+        .limit(1)
+        .maybeSingle();
+
+      if (pendingDep) {
+        targetTxid = pendingDep.txid;
+        targetCoin = pendingDep.coin;
+      }
+    }
+
+    if (!targetTxid || !targetCoin) {
+      return { success: true, credited: 0, message: "No pending or new deposit transactions to verify." };
     }
 
     try {
-      // 1. Fetch recent payment list from Cryptomus
-      const payload = {};
-      const jsonStr = JSON.stringify(payload);
-      const base64Str = Buffer.from(jsonStr).toString("base64");
-      const sign = crypto.createHash("md5").update(base64Str + apiKey).digest("hex");
+      // 1. Check if this TXID has already been claimed by anyone in database
+      const { data: existingDep } = await supabaseAdmin
+        .from("crypto_deposits")
+        .select("id, user_id, status, wallet_credited")
+        .eq("txid", targetTxid.trim())
+        .maybeSingle();
 
-      const response = await fetch("https://api.cryptomus.com/v1/payment/list", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "merchant": merchantId,
-          "sign": sign
-        },
-        body: jsonStr
+      if (existingDep && existingDep.wallet_credited) {
+        if (existingDep.user_id === userId) {
+          return { success: false, error: "You have already claimed this deposit." };
+        } else {
+          return { success: false, error: "This deposit has already been claimed by another user." };
+        }
+      }
+
+      // 2. Fetch deposit history from Binance main account
+      const history = await callBinance("/sapi/v1/capital/deposit/hisrec", "GET", {
+        coin: targetCoin.toUpperCase()
       });
 
-      const responseData = await response.json();
-
-      if (responseData.state !== 0 || !responseData.result || !Array.isArray(responseData.result.items)) {
-        return { success: true, credited: 0, message: "No payments recorded yet." };
+      if (!Array.isArray(history) || history.length === 0) {
+        return { success: false, error: "No matching deposits found on your Binance account yet." };
       }
 
-      const history = responseData.result.items;
-      let totalCreditedUSD = 0;
-      const creditedTransactions = [];
-      const userPrefix = `${userId}_`;
+      // 3. Find the deposit matching the provided txid
+      const dep = history.find(d => d.txId && d.txId.toLowerCase() === targetTxid.trim().toLowerCase());
 
-      // 2. Fetch all cached deposits for this user to check duplicates
-      const { data: matchedDeps } = await supabaseAdmin
-        .from("crypto_deposits")
-        .select("id, status, wallet_credited, txid")
-        .eq("user_id", userId);
-
-      for (const dep of history) {
-        // Filter by user ID order_id prefix
-        if (!dep.order_id || !dep.order_id.startsWith(userPrefix)) {
-          continue;
-        }
-
-        const txId = dep.txid || dep.uuid;
-        const coin = dep.currency || "USDT";
-        const network = dep.network ? dep.network.toUpperCase() : "UNKNOWN";
-        const address = dep.address || "UNKNOWN";
-        const cryptoAmount = Number(dep.amount);
-        const cryptomusStatus = dep.status; // paid, paid_over, wrong_amount, process, confirm_check, etc.
-        const depositTime = dep.created_at ? new Date(dep.created_at).toISOString() : new Date().toISOString();
-
-        if (!txId) continue;
-
-        // Check if we already audited this transaction
-        let cachedDep = null;
-        if (matchedDeps) {
-          cachedDep = matchedDeps.find(d => 
-            (dep.txid && d.txid === dep.txid) || 
-            (d.txid === dep.uuid) || 
-            (d.txid === dep.order_id)
-          );
-        }
-
-        // Calculate USD value using exchange rates
-        const coinPrice = await getCryptoPrice(coin);
-        const usdValue = Number((cryptoAmount * coinPrice).toFixed(2));
-
-        const isSuccess = ["paid", "paid_over", "wrong_amount"].includes(cryptomusStatus);
-        const isPending = ["process", "confirm_check"].includes(cryptomusStatus);
-
-        if (isSuccess) {
-          let shouldCredit = false;
-
-          if (!cachedDep) {
-            shouldCredit = true;
-          } else if (cachedDep.status !== "completed" && !cachedDep.wallet_credited) {
-            shouldCredit = true;
-          }
-
-          // Double check wallet_ledger to ensure 100% duplicate protection
-          if (shouldCredit) {
-            const { data: existingTx } = await supabaseAdmin
-              .from("wallet_transactions")
-              .select("id")
-              .eq("external_id", txId)
-              .maybeSingle();
-            if (existingTx) {
-              shouldCredit = false;
-            }
-          }
-
-          if (shouldCredit && usdValue > 0) {
-            const { data: profile } = await supabaseAdmin
-              .from("profiles")
-              .select("wallet_balance, credit_balance, wallet_deposits")
-              .eq("id", userId)
-              .single();
-
-            if (profile) {
-              const currentBalance = Number(profile.wallet_balance || 0);
-              const currentDeposits = Number(profile.wallet_deposits || 0);
-              const newBalance = currentBalance + usdValue;
-              const newDeposits = currentDeposits + usdValue;
-
-              // Insert transaction in ledger (Only crediting Available Balance)
-              const { error: txErr } = await supabaseAdmin.from("wallet_transactions").insert({
-                user_id: userId,
-                action: "deposit",
-                amount: usdValue,
-                avail_before: currentBalance,
-                avail_after: newBalance,
-                credit_before: Number(profile.credit_balance || 0),
-                credit_after: Number(profile.credit_balance || 0),
-                reason: `Crypto Deposit (${coin.toUpperCase()} - ${network})`,
-                external_id: txId,
-                notes: `Cryptomus deposit verify. Crypto amount: ${cryptoAmount} ${coin.toUpperCase()}`
-              });
-
-              if (!txErr) {
-                // Update user profile balance
-                await supabaseAdmin
-                  .from("profiles")
-                  .update({
-                    wallet_balance: newBalance,
-                    wallet_deposits: newDeposits,
-                    wallet_last_updated: new Date().toISOString()
-                  })
-                  .eq("id", userId);
-
-                totalCreditedUSD += usdValue;
-                creditedTransactions.push({ txId, amount: usdValue, coin });
-
-                // Send system chat notification direct message
-                try {
-                  const { data: bot } = await supabaseAdmin
-                    .from("profiles")
-                    .select("id")
-                    .or("username.eq.jackpotjungle,username.eq.system_updates")
-                    .limit(1)
-                    .maybeSingle();
-
-                  const senderId = bot?.id;
-                  if (senderId) {
-                    const notifText = `🎰 *Deposit Confirmed!*\n\nYour deposit of **${cryptoAmount} ${coin.toUpperCase()}** over network **${network}** has been successfully credited.\n\n💰 **+$${usdValue.toFixed(2)} USD** has been added to your **Available Wallet Balance**.`;
-                    await supabaseAdmin.from("messages").insert({
-                      sender_id: senderId,
-                      receiver_id: userId,
-                      content: notifText
-                    });
-                  }
-                } catch (msgErr) {
-                  console.error("[Verify Deposit] Error sending update message:", msgErr);
-                }
-
-                // Insert into user_notifications table for push/in-app notification center
-                try {
-                  await supabaseAdmin.from("user_notifications").insert({
-                    user_id: userId,
-                    title: "Deposit Confirmed 💰",
-                    content: `Your deposit of ${cryptoAmount} ${coin.toUpperCase()} ($${usdValue.toFixed(2)} USD) has been successfully credited to your Available balance.`,
-                    seen: false
-                  });
-                } catch (notifTableErr) {
-                  console.error("[Verify Deposit] Error writing user notification:", notifTableErr);
-                }
-              } else {
-                console.error(`[Verify Deposit] Failed to record wallet transaction for ${txId}:`, txErr);
-                continue;
-              }
-            }
-          }
-
-          // Save completed audit trail
-          if (cachedDep) {
-            await supabaseAdmin
-              .from("crypto_deposits")
-              .update({
-                status: "completed",
-                wallet_credited: true,
-                confirmations: 1,
-                verified_at: new Date().toISOString(),
-                usd_value: usdValue,
-                txid: dep.txid || cachedDep.txid // Update with real txid if it was uuid previously
-              })
-              .eq("id", cachedDep.id);
-          } else {
-            await supabaseAdmin.from("crypto_deposits").insert({
-              user_id: userId,
-              coin: coin.toUpperCase(),
-              network: network.toUpperCase(),
-              address,
-              amount: cryptoAmount,
-              usd_value: usdValue,
-              txid: txId,
-              confirmations: 1,
-              status: "completed",
-              wallet_credited: true,
-              deposit_time: depositTime,
-              verified_at: new Date().toISOString()
-            });
-          }
-
-        } else if (isPending) {
-          // Transaction is still pending or validating on blockchain
-          if (!cachedDep) {
-            await supabaseAdmin.from("crypto_deposits").insert({
-              user_id: userId,
-              coin: coin.toUpperCase(),
-              network: network.toUpperCase(),
-              address,
-              amount: cryptoAmount,
-              usd_value: usdValue,
-              txid: txId,
-              confirmations: 0,
-              status: "pending",
-              wallet_credited: false,
-              deposit_time: depositTime
-            });
-          } else {
-            await supabaseAdmin
-              .from("crypto_deposits")
-              .update({
-                status: "pending",
-                confirmations: 0,
-                usd_value: usdValue
-              })
-              .eq("id", cachedDep.id);
-          }
-        }
-      }
-
-      if (totalCreditedUSD > 0) {
-        return {
-          success: true,
-          credited: totalCreditedUSD,
-          message: `Successfully verified and credited $${totalCreditedUSD.toFixed(2)} to your available balance!`,
-          transactions: creditedTransactions
+      if (!dep) {
+        return { 
+          success: false, 
+          error: "Could not find a deposit matching this Transaction ID. Please ensure the transaction is completed on your wallet." 
         };
       }
 
-      return {
-        success: true,
-        credited: 0,
-        message: "No new completed deposits found. If you recently sent funds, please wait a few moments for blockchain confirmations."
-      };
+      const txId = dep.txId;
+      const network = dep.network || "UNKNOWN";
+      const address = dep.address || "UNKNOWN";
+      const cryptoAmount = Number(dep.amount);
+      const binanceStatus = dep.status; // 1 = success, 0 = pending, 6 = credited but cannot withdraw
+      const depositTime = dep.insertTime ? new Date(dep.insertTime).toISOString() : new Date().toISOString();
+
+      // Calculate USD value using exchange rates
+      const coinPrice = await getCryptoPrice(targetCoin);
+      const usdValue = Number((cryptoAmount * coinPrice).toFixed(2));
+
+      if (binanceStatus === 1) {
+        let shouldCredit = true;
+
+        // Double check wallet_transactions to prevent duplicate crediting
+        const { data: existingTx } = await supabaseAdmin
+          .from("wallet_transactions")
+          .select("id")
+          .eq("external_id", txId)
+          .maybeSingle();
+        
+        if (existingTx) {
+          shouldCredit = false;
+        }
+
+        if (shouldCredit && usdValue > 0) {
+          // Credit user profile
+          const { data: profile } = await supabaseAdmin
+            .from("profiles")
+            .select("wallet_balance, credit_balance, wallet_deposits")
+            .eq("id", userId)
+            .single();
+
+          if (profile) {
+            const currentBalance = Number(profile.wallet_balance || 0);
+            const currentDeposits = Number(profile.wallet_deposits || 0);
+            const newBalance = currentBalance + usdValue;
+            const newDeposits = currentDeposits + usdValue;
+
+            // Record transaction ledger
+            const { error: txErr } = await supabaseAdmin.from("wallet_transactions").insert({
+              user_id: userId,
+              action: "deposit",
+              amount: usdValue,
+              avail_before: currentBalance,
+              avail_after: newBalance,
+              credit_before: Number(profile.credit_balance || 0),
+              credit_after: Number(profile.credit_balance || 0),
+              reason: `Crypto Deposit (${targetCoin.toUpperCase()} - ${network})`,
+              external_id: txId,
+              notes: `Binance main account TXID claim. Crypto amount: ${cryptoAmount} ${targetCoin.toUpperCase()}`
+            });
+
+            if (!txErr) {
+              await supabaseAdmin
+                .from("profiles")
+                .update({
+                  wallet_balance: newBalance,
+                  wallet_deposits: newDeposits,
+                  wallet_last_updated: new Date().toISOString()
+                })
+                .eq("id", userId);
+
+              // Create deposit record
+              if (existingDep) {
+                await supabaseAdmin
+                  .from("crypto_deposits")
+                  .update({
+                    status: "completed",
+                    wallet_credited: true,
+                    confirmations: 1,
+                    verified_at: new Date().toISOString(),
+                    usd_value: usdValue
+                  })
+                  .eq("id", existingDep.id);
+              } else {
+                await supabaseAdmin.from("crypto_deposits").insert({
+                  user_id: userId,
+                  coin: targetCoin.toUpperCase(),
+                  network: network.toUpperCase(),
+                  address,
+                  amount: cryptoAmount,
+                  usd_value: usdValue,
+                  txid: txId,
+                  confirmations: 1,
+                  status: "completed",
+                  wallet_credited: true,
+                  deposit_time: depositTime,
+                  verified_at: new Date().toISOString()
+                });
+              }
+
+              // Send system notifications
+              try {
+                const { data: bot } = await supabaseAdmin
+                  .from("profiles")
+                  .select("id")
+                  .or("username.eq.jackpotjungle,username.eq.system_updates")
+                  .limit(1)
+                  .maybeSingle();
+
+                const senderId = bot?.id;
+                if (senderId) {
+                  const notifText = `🎰 *Deposit Confirmed!*\n\nYour deposit of **${cryptoAmount} ${targetCoin.toUpperCase()}** over network **${network}** has been successfully credited.\n\n💰 **+$${usdValue.toFixed(2)} USD** has been added to your **Available Wallet Balance**.`;
+                  await supabaseAdmin.from("messages").insert({
+                    sender_id: senderId,
+                    receiver_id: userId,
+                    content: notifText
+                  });
+                }
+              } catch (msgErr) {
+                console.error("[Verify Deposit] Error sending update message:", msgErr);
+              }
+
+              try {
+                await supabaseAdmin.from("user_notifications").insert({
+                  user_id: userId,
+                  title: "Deposit Confirmed 💰",
+                  content: `Your deposit of ${cryptoAmount} ${targetCoin.toUpperCase()} ($${usdValue.toFixed(2)} USD) has been successfully credited to your Available balance.`,
+                  seen: false
+                });
+              } catch (notifTableErr) {
+                console.error("[Verify Deposit] Error writing user notification:", notifTableErr);
+              }
+
+              return {
+                success: true,
+                credited: usdValue,
+                message: `Successfully verified and credited $${usdValue.toFixed(2)} to your available balance!`
+              };
+            }
+          }
+        }
+      } else {
+        // Pending status on Binance
+        if (!existingDep) {
+          await supabaseAdmin.from("crypto_deposits").insert({
+            user_id: userId,
+            coin: targetCoin.toUpperCase(),
+            network: network.toUpperCase(),
+            address,
+            amount: cryptoAmount,
+            usd_value: usdValue,
+            txid: txId,
+            confirmations: 0,
+            status: "pending",
+            wallet_credited: false,
+            deposit_time: depositTime
+          });
+        }
+        return {
+          success: false,
+          error: "Your transaction is still pending blockchain confirmation on Binance. Please try claiming again in 1-2 minutes."
+        };
+      }
+
+      return { success: false, error: "Failed to process claim. Please contact support." };
     } catch (e: any) {
       console.error("[Deposit Service] verifyDeposit failure:", e);
       return { success: false, error: e.message };

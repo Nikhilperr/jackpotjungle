@@ -148,8 +148,46 @@ function DepositPage() {
   const [verifying, setVerifying] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
 
+  // TXID Claim States
+  const [txidInput, setTxidInput] = useState("");
+  const [verifyingTxid, setVerifyingTxid] = useState(false);
+
   // Live status timeline tracking
   const [latestDeposit, setLatestDeposit] = useState<any>(null);
+
+  const getTxidPlaceholder = () => {
+    const network = selectedNetwork?.id.toUpperCase();
+    if (network === "BSC" || network === "ETH") {
+      return "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b";
+    }
+    return "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2";
+  };
+
+  const handleClaimDeposit = async () => {
+    if (!txidInput.trim()) {
+      toast.error("Please enter a valid Transaction ID.");
+      return;
+    }
+    setVerifyingTxid(true);
+    try {
+      const res = await verifyFn({ data: { txid: txidInput.trim(), coin: selectedCoin.coin } });
+      if (res.success) {
+        toast.success(res.message || "Deposit successfully claimed! 💰");
+        if (res.credited && res.credited > 0) {
+          window.dispatchEvent(new CustomEvent("wallet-updated", { detail: { credited: res.credited } }));
+        }
+        fetchHistory();
+        navigate({ to: "/app/chat" });
+      } else {
+        toast.error(res.error || "Failed to verify deposit.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Verification request failed.");
+    } finally {
+      setTxidInput("");
+      setVerifyingTxid(false);
+    }
+  };
 
   // Listen for the custom global "wallet-updated" event to trigger redirection immediately
   useEffect(() => {
@@ -566,6 +604,52 @@ function DepositPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* Transaction ID Claim Card */}
+                    <div className="w-full bg-secondary/35 border border-border/80 rounded-2xl p-5 shadow-sm space-y-3 relative hover:border-primary/40 transition-all">
+                      <div className="space-y-0.5">
+                        <span className="text-[9px] font-black text-primary uppercase tracking-wider block font-extrabold">
+                          Claim Your Deposit
+                        </span>
+                        <span className="text-xs font-black text-foreground">
+                          Enter Transaction ID (TXID / Hash)
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 bg-card border border-border/50 rounded-xl px-3 py-1 shadow-inner">
+                          <input
+                            type="text"
+                            value={txidInput}
+                            onChange={(e) => setTxidInput(e.target.value)}
+                            placeholder="Paste your transaction hash here..."
+                            className="w-full bg-transparent border-none text-xs font-mono text-foreground focus:outline-none focus:ring-0 placeholder:text-muted-foreground/50 h-9"
+                          />
+                        </div>
+                        
+                        <div className="text-[9px] text-muted-foreground leading-normal pl-1">
+                          <span className="font-bold">How to find:</span> Check your sending wallet's transaction receipt/history and copy the "Transaction ID", "Hash", or "TXID".
+                          <span className="block mt-1 font-mono text-muted-foreground/60 select-all">
+                            Example: {getTxidPlaceholder()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleClaimDeposit}
+                        disabled={verifyingTxid || !txidInput.trim()}
+                        className="w-full h-10 rounded-xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-wider hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5 shadow-md shadow-primary/10 mt-1"
+                      >
+                        {verifyingTxid ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Verifying Transaction...</span>
+                          </>
+                        ) : (
+                          <span>Claim Deposit Balance</span>
+                        )}
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
