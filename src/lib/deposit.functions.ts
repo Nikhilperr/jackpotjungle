@@ -38,9 +38,9 @@ function fetchViaProxy(url: string, proxyHost: string, proxyPort: number, option
       }
     };
 
-    // Timeout proxy CONNECT after 3 seconds
+    // Timeout proxy CONNECT after 2.5 seconds (prevents slow proxies from dragging down the request)
     const req = http.request(reqOptions);
-    req.setTimeout(3000);
+    req.setTimeout(2500);
     
     req.on('timeout', () => {
       req.destroy();
@@ -105,6 +105,68 @@ async function getProxies(): Promise<{ host: string; port: number }[]> {
   }
 }
 
+// Race top 20 proxies concurrently using native CONNECT ping requests
+async function findFastestProxy(proxyList: { host: string; port: number }[]): Promise<{ host: string; port: number }> {
+  const candidates = proxyList.slice(0, 25); // Test top 25 candidates
+  
+  const promises = candidates.map(proxy => {
+    return new Promise<{ host: string; port: number }>(async (resolve, reject) => {
+      try {
+        const res = await fetchViaProxy("https://api.binance.com/api/v3/ping", proxy.host, proxy.port);
+        if (res.status === 200) {
+          resolve(proxy);
+        } else {
+          reject(new Error("Ping failed"));
+        }
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
+
+  try {
+    return await Promise.any(promises);
+  } catch (err) {
+    throw new Error("No working proxy succeeded in parallel ping race.");
+  }
+}
+
+// Load cached proxy from DB settings
+async function getCachedProxy(supabaseAdmin: any): Promise<{ host: string; port: number } | null> {
+  if (activeProxy) return activeProxy;
+  try {
+    const { data } = await supabaseAdmin
+      .from("system_settings")
+      .select("value")
+      .eq("key", "active_binance_proxy")
+      .maybeSingle();
+    if (data?.value) {
+      const val = data.value as any;
+      if (val.host && val.port) {
+        activeProxy = { host: val.host, port: Number(val.port) };
+        return activeProxy;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load proxy from DB:", e);
+  }
+  return null;
+}
+
+// Persist working proxy to DB settings
+async function saveCachedProxy(supabaseAdmin: any, proxy: { host: string; port: number }) {
+  activeProxy = proxy;
+  try {
+    await supabaseAdmin.from("system_settings").upsert({
+      key: "active_binance_proxy",
+      value: { host: proxy.host, port: proxy.port },
+      updated_at: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error("Failed to save proxy to DB:", e);
+  }
+}
+
 let cachedBinanceApiKey = "";
 let cachedBinanceSecretKey = "";
 
@@ -145,7 +207,7 @@ async function getBinanceKeys(supabaseAdmin: any): Promise<{ apiKey: string; api
   throw new Error("Binance API keys are not configured in your server .env file or system settings database.");
 }
 
-// Helper: make signed request to Binance SAPI (with automatic geoblocking proxy fallback)
+// Helper: make signed request to Binance SAPI (with automatic parallel geoblocking proxy fallback)
 async function callBinance(
   supabaseAdmin: any,
   path: string,
@@ -166,17 +228,20 @@ async function callBinance(
     "Accept": "application/json"
   };
 
-  // 1. Try currently active proxy if we have one cached
-  if (activeProxy) {
+  // 1. Try currently active proxy loaded from DB/memory
+  const proxy = await getCachedProxy(supabaseAdmin);
+  if (proxy) {
     try {
-      const res = await fetchViaProxy(url, activeProxy.host, activeProxy.port, { method, headers });
+      const res = await fetchViaProxy(url, proxy.host, proxy.port, { method, headers });
       if (res.status === 200) {
         return res.json();
       } else if (res.status === 451) {
-        activeProxy = null; // Stale or flagged proxy
+        activeProxy = null; // Clear from memory
+        await supabaseAdmin.from("system_settings").delete().eq("key", "active_binance_proxy").catch(() => {});
       }
     } catch (e) {
-      activeProxy = null; // Connection issue
+      activeProxy = null;
+      await supabaseAdmin.from("system_settings").delete().eq("key", "active_binance_proxy").catch(() => {});
     }
   }
 
@@ -196,29 +261,30 @@ async function callBinance(
     }
   }
 
-  // 3. Scan for a new working proxy to bypass the geoblock
-  console.log("[Binance SAPI] Direct request geo-blocked. Resolving anonymous proxy...");
+  // 3. Scan for a new working proxy concurrently using a fast parallel ping race
+  console.log("[Binance SAPI] Direct request geo-blocked. Racing anonymous proxies in parallel...");
   const proxyList = await getProxies();
   if (proxyList.length === 0) {
     throw new Error("Binance SAPI requests are geoblocked on this VPS, and no proxies are currently available.");
   }
 
-  // Try up to 30 proxies from the scraped list
-  for (let i = 0; i < Math.min(proxyList.length, 30); i++) {
-    const proxy = proxyList[i];
-    try {
-      const res = await fetchViaProxy(url, proxy.host, proxy.port, { method, headers });
-      if (res.status === 200) {
-        console.log(`[Binance SAPI] Successfully bypassed geoblocking using proxy: ${proxy.host}:${proxy.port}`);
-        activeProxy = proxy;
-        return res.json();
-      }
-    } catch (e) {
-      // Continue searching
-    }
-  }
+  try {
+    const winningProxy = await findFastestProxy(proxyList);
+    console.log(`[Binance SAPI] Race winner: ${winningProxy.host}:${winningProxy.port}. Executing request...`);
+    
+    // Save winning proxy to DB for persistent use
+    await saveCachedProxy(supabaseAdmin, winningProxy);
 
-  throw new Error("Binance SAPI geoblock bypass failed: No working proxy tunnel could be established.");
+    const res = await fetchViaProxy(url, winningProxy.host, winningProxy.port, { method, headers });
+    if (res.status === 200) {
+      return res.json();
+    } else {
+      const errorBody = await res.text();
+      throw new Error(`Binance API Error via proxy: ${errorBody}`);
+    }
+  } catch (err: any) {
+    throw new Error(`Binance SAPI geoblock bypass failed: ${err.message}`);
+  }
 }
 
 // Helper: fetch current live crypto price in USD using non-restricted public API
