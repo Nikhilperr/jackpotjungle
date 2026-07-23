@@ -9,16 +9,8 @@ export type SmtpConfig = {
   from: string;
 };
 
-/** Load SMTP settings from env and common self-host .env locations. */
-export function loadSmtpConfig(): SmtpConfig {
-  const smtpConfig: {
-    host?: string;
-    port?: string;
-    user?: string;
-    pass?: string;
-    from?: string;
-  } = {};
-
+function readEnvFiles(): Record<string, string> {
+  const out: Record<string, string> = {};
   const cwd = process.cwd();
   const possiblePaths = [
     path.join(cwd, ".env"),
@@ -40,55 +32,60 @@ export function loadSmtpConfig(): SmtpConfig {
         const trimmed = line.trim();
         if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
         const [k, ...vParts] = trimmed.split("=");
+        const key = k.trim();
         const val = vParts.join("=").trim().replace(/(^["']|["']$)/g, "");
-        const keyUpper = k.trim().toUpperCase();
-        if (keyUpper === "SMTP_HOST") smtpConfig.host = val;
-        else if (keyUpper === "SMTP_PORT") smtpConfig.port = val;
-        else if (keyUpper === "SMTP_USER" || keyUpper === "SMTP_ADMIN_EMAIL") smtpConfig.user = val;
-        else if (keyUpper === "SMTP_PASS") smtpConfig.pass = val;
-        else if (
-          keyUpper === "SMTP_SENDER" ||
-          keyUpper === "SMTP_SENDER_NAME" ||
-          keyUpper === "SMTP_FROM"
-        ) {
-          smtpConfig.from = val;
-        }
+        if (key && out[key] === undefined) out[key] = val;
       }
     } catch {
       /* ignore */
     }
   }
+  return out;
+}
 
-  const host = smtpConfig.host || process.env.SMTP_HOST || "smtp.gmail.com";
-  const port = parseInt(smtpConfig.port || process.env.SMTP_PORT || "587", 10);
-  const user = smtpConfig.user || process.env.SMTP_USER || "";
-  const pass = smtpConfig.pass || process.env.SMTP_PASS || "";
-  const from = smtpConfig.from || process.env.SMTP_FROM || user || "noreply@playjackpotjungle.com";
+/** Load SMTP settings — includes GoTrue docker names (GOTRUE_SMTP_*). */
+export function loadSmtpConfig(): SmtpConfig {
+  const fileEnv = readEnvFiles();
+  const pick = (...keys: string[]) => {
+    for (const k of keys) {
+      const fromFile = fileEnv[k];
+      if (fromFile) return fromFile;
+      const fromProc = process.env[k];
+      if (fromProc) return fromProc;
+    }
+    return "";
+  };
+
+  const host = pick("SMTP_HOST", "GOTRUE_SMTP_HOST") || "smtp.gmail.com";
+  const port = parseInt(pick("SMTP_PORT", "GOTRUE_SMTP_PORT") || "587", 10);
+  const user = pick("SMTP_USER", "SMTP_ADMIN_EMAIL", "GOTRUE_SMTP_USER", "GOTRUE_SMTP_ADMIN_EMAIL");
+  const pass = pick("SMTP_PASS", "GOTRUE_SMTP_PASS", "GOTRUE_SMTP_PASSWORD");
+  const from =
+    pick("SMTP_FROM", "SMTP_SENDER", "SMTP_SENDER_NAME", "GOTRUE_SMTP_ADMIN_EMAIL", "GOTRUE_SMTP_SENDER_NAME") ||
+    user ||
+    "noreply@playjackpotjungle.com";
 
   return { host, port, user, pass, from };
 }
 
-export async function sendSmtpMail(opts: {
-  to: string;
-  subject: string;
-  text: string;
-  html: string;
-  fromName?: string;
-}): Promise<{ messageId: string }> {
-  const cfg = loadSmtpConfig();
-  if (!cfg.user || !cfg.pass) {
-    throw new Error("SMTP is not configured on the server (missing SMTP_USER / SMTP_PASS).");
-  }
-
+async function sendOnce(
+  cfg: SmtpConfig,
+  opts: { to: string; subject: string; text: string; html: string; fromName?: string },
+  port: number,
+  secure: boolean,
+): Promise<{ messageId: string }> {
   const nodemailer = (await import("nodemailer")).default;
   const transporter = nodemailer.createTransport({
     host: cfg.host,
-    port: cfg.port,
-    secure: cfg.port === 465,
+    port,
+    secure,
     auth: { user: cfg.user, pass: cfg.pass },
-    connectionTimeout: 8000,
-    greetingTimeout: 8000,
-    socketTimeout: 12000,
+    // DigitalOcean / many VPS hosts hang on IPv6 SMTP — force IPv4.
+    family: 4,
+    connectionTimeout: 6000,
+    greetingTimeout: 6000,
+    socketTimeout: 10000,
+    tls: { rejectUnauthorized: false },
   });
 
   try {
@@ -103,4 +100,35 @@ export async function sendSmtpMail(opts: {
   } finally {
     transporter.close();
   }
+}
+
+export async function sendSmtpMail(opts: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  fromName?: string;
+}): Promise<{ messageId: string }> {
+  const cfg = loadSmtpConfig();
+  if (!cfg.user || !cfg.pass) {
+    throw new Error("SMTP is not configured on the server (missing SMTP_USER / SMTP_PASS).");
+  }
+
+  const attempts: Array<{ port: number; secure: boolean }> = [
+    { port: cfg.port, secure: cfg.port === 465 },
+  ];
+  // Failover: if primary is 587, also try 465 (and vice versa).
+  if (cfg.port !== 465) attempts.push({ port: 465, secure: true });
+  if (cfg.port !== 587) attempts.push({ port: 587, secure: false });
+
+  let lastErr: unknown;
+  for (const a of attempts) {
+    try {
+      return await sendOnce(cfg, opts, a.port, a.secure);
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[SMTP] send failed host=${cfg.host} port=${a.port}:`, (e as Error)?.message || e);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Failed to send email via SMTP.");
 }
