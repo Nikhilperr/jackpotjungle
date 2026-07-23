@@ -2,8 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { createHash } from "node:crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { goTrueSendEmailOtp, goTrueSendRecoveryOtp } from "@/lib/gotrue-mail.server";
-import { sendSmtpMail } from "@/lib/smtp.server";
+import { sendTransactionalMail } from "@/lib/mail.server";
 
 function hashCode(email: string, code: string) {
   return createHash("sha256").update(`${email}:${code}`).digest("hex");
@@ -49,7 +48,7 @@ async function sendCodeEmail(opts: {
   kind: "login" | "recovery";
 }) {
   const isLogin = opts.kind === "login";
-  await sendSmtpMail({
+  return sendTransactionalMail({
     to: opts.email,
     fromName: "Jackpot Jungle",
     subject: isLogin
@@ -73,8 +72,7 @@ async function sendCodeEmail(opts: {
 
 /**
  * Login email OTP after password.
- * 1) Ask GoTrue (browser mailer) via localhost Kong — avoids DigitalOcean host SMTP block
- * 2) Fallback: generateLink + SMTP (host, then Auth-container network)
+ * generateLink (works) + HTTPS mail (Brevo/Resend/webhook) — skips GoTrue /otp (504 on DO).
  */
 export const sendLoginEmailOtp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -86,14 +84,6 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
     }
 
     const user = await assertSessionOwnsEmail(context.userId, email);
-
-    // Preferred: same Auth mailer the website uses (works even when PM2 host SMTP is blocked).
-    const go = await goTrueSendEmailOtp(email);
-    if (go.ok) {
-      console.log(`[AuthOTP] Login OTP emailed via GoTrue (${go.base}) for ${context.userId}`);
-      return { sent: true, via: "gotrue" as const };
-    }
-    console.warn("[AuthOTP] GoTrue mailer failed, falling back to generateLink+SMTP:", go.error);
 
     const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
@@ -120,22 +110,16 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
     });
 
     try {
-      await sendCodeEmail({ email, code, kind: "login" });
+      const sent = await sendCodeEmail({ email, code, kind: "login" });
+      console.log(`[AuthOTP] Login OTP to ${email} via ${sent.via}`);
+      return { sent: true, via: sent.via };
     } catch (e: any) {
-      console.error("[AuthOTP] SMTP send failed:", e?.message || e);
-      throw new Error(
-        "Could not send the verification email. DigitalOcean may be blocking SMTP ports 465/587 — open a DO support ticket to unlock SMTP, or ensure Auth (GoTrue) mailer works on localhost:8000.",
-      );
+      console.error("[AuthOTP] send failed:", e?.message || e);
+      throw new Error(e?.message || "Could not send the verification email.");
     }
-
-    console.log(`[AuthOTP] Email OTP sent via SMTP fallback to ${email}`);
-    return { sent: true, via: "smtp" as const };
   });
 
-/**
- * Verify email OTP for the signed-in password session (SMTP-fallback codes only).
- * GoTrue-delivered codes should be verified with supabase.auth.verifyOtp on the client.
- */
+/** Verify SMTP/HTTPS-fallback login codes (hashed in user_metadata). */
 export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((d: { email: string; code: string }) => d)
@@ -164,7 +148,7 @@ export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Forgot-password: GoTrue recover first, then SMTP fallback. */
+/** Forgot-password OTP — same HTTPS mail path. */
 export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
   .validator((d: { email: string }) => d)
   .handler(async ({ data }) => {
@@ -173,13 +157,6 @@ export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
       throw new Error("A valid email address is required.");
     }
 
-    const go = await goTrueSendRecoveryOtp(email);
-    if (go.ok) {
-      console.log(`[AuthOTP] Recovery OTP emailed via GoTrue (${go.base})`);
-      return { sent: true, via: "gotrue" as const };
-    }
-    console.warn("[AuthOTP] GoTrue recover failed, SMTP fallback:", go.error);
-
     try {
       const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
         type: "recovery",
@@ -187,7 +164,7 @@ export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
       });
       if (linkErr) {
         console.warn("[AuthOTP] recovery generateLink:", linkErr.message);
-        return { sent: true, via: "email" as const };
+        return { sent: true, via: "none" };
       }
 
       const code = String(
@@ -195,22 +172,19 @@ export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
       ).slice(0, 8);
       if (code.length < 6) {
         console.warn("[AuthOTP] recovery link missing email_otp");
-        return { sent: true, via: "email" as const };
+        return { sent: true, via: "none" };
       }
 
-      await sendCodeEmail({ email, code, kind: "recovery" });
-      console.log(`[AuthOTP] Recovery email OTP sent via SMTP to ${email}`);
+      const sent = await sendCodeEmail({ email, code, kind: "recovery" });
+      console.log(`[AuthOTP] Recovery OTP to ${email} via ${sent.via}`);
+      return { sent: true, via: sent.via };
     } catch (e: any) {
-      console.error("[AuthOTP] Recovery SMTP send failed:", e?.message || e);
-      throw new Error(
-        "Could not send the verification email. Unlock SMTP on DigitalOcean or fix Auth mailer.",
-      );
+      console.error("[AuthOTP] Recovery send failed:", e?.message || e);
+      throw new Error(e?.message || "Could not send the verification email.");
     }
-
-    return { sent: true, via: "smtp" as const };
   });
 
-/** After forgot-password reset: drop Authenticator 2FA so the user can sign in and re-enroll. */
+/** After forgot-password reset: drop Authenticator 2FA. */
 export const disableMfaAfterPasswordReset = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
