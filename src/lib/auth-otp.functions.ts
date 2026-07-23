@@ -1,11 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { createHash, randomInt } from "node:crypto";
-import { sendSmtpMail } from "@/lib/smtp.server";
-
-type OtpEntry = { hash: string; exp: number; via: "gotrue" | "smtp" };
-const otpStore: Map<string, OtpEntry> =
-  ((globalThis as any).__jjLoginOtpStore as Map<string, OtpEntry>) ||
-  (((globalThis as any).__jjLoginOtpStore = new Map()), (globalThis as any).__jjLoginOtpStore);
+import { sendTransactionalMail } from "@/lib/mail.server";
 
 function hashCode(email: string, code: string) {
   return createHash("sha256").update(`${email}:${code}`).digest("hex");
@@ -13,10 +8,6 @@ function hashCode(email: string, code: string) {
 
 function authBase() {
   return (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
-}
-
-function anonKey() {
-  return process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
 }
 
 function serviceKey() {
@@ -39,21 +30,19 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
-async function gotrueFetch(path: string, body: Record<string, unknown>, useService = false) {
+async function adminFetch(path: string, init: RequestInit = {}) {
   const base = authBase();
-  const key = useService ? serviceKey() || anonKey() : anonKey();
+  const key = serviceKey();
   if (!base || !key) throw new Error("Auth server is not configured.");
-
   const res = await fetch(`${base}${path}`, {
-    method: "POST",
+    ...init,
     headers: {
       apikey: key,
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
+      ...(init.headers || {}),
     },
-    body: JSON.stringify(body),
   });
-
   const text = await res.text();
   let json: any = null;
   try {
@@ -64,9 +53,61 @@ async function gotrueFetch(path: string, body: Record<string, unknown>, useServi
   return { res, json, text };
 }
 
+async function findUserIdByEmail(email: string): Promise<string | null> {
+  // generate_link is reliable on this host and returns the user id.
+  const gen = await adminFetch("/auth/v1/admin/generate_link", {
+    method: "POST",
+    body: JSON.stringify({ type: "magiclink", email }),
+  });
+  if (gen.res.ok && gen.json?.id) return String(gen.json.id);
+  return null;
+}
+
+async function storeOtpForUser(userId: string, email: string, code: string) {
+  const exp = Date.now() + 10 * 60 * 1000;
+  const current = await adminFetch(`/auth/v1/admin/users/${userId}`, { method: "GET" });
+  const prev = current.json?.user_metadata || {};
+  const { res, json } = await adminFetch(`/auth/v1/admin/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      user_metadata: {
+        ...prev,
+        jj_login_otp_hash: hashCode(email, code),
+        jj_login_otp_exp: exp,
+      },
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(json?.msg || json?.message || "Could not store verification code.");
+  }
+  return exp;
+}
+
+async function readStoredOtp(userId: string): Promise<{ hash: string; exp: number } | null> {
+  const { res, json } = await adminFetch(`/auth/v1/admin/users/${userId}`, { method: "GET" });
+  if (!res.ok) return null;
+  const meta = json?.user_metadata || json?.raw_user_meta_data || {};
+  const hash = meta.jj_login_otp_hash;
+  const exp = Number(meta.jj_login_otp_exp || 0);
+  if (!hash || !exp) return null;
+  return { hash, exp };
+}
+
+async function clearStoredOtp(userId: string) {
+  await adminFetch(`/auth/v1/admin/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      user_metadata: {
+        jj_login_otp_hash: null,
+        jj_login_otp_exp: null,
+      },
+    }),
+  }).catch(() => {});
+}
+
 /**
- * Send login email OTP via GoTrue's mailer first (works on this VPS).
- * Fallback: admin generateLink + app SMTP (IPv4, GOTRUE_SMTP_*).
+ * App-level login email OTP after password auth.
+ * Delivers via Resend/Brevo HTTPS (SMTP is blocked on this VPS).
  */
 export const sendLoginEmailOtp = createServerFn({ method: "POST" })
   .validator((d: { email: string }) => d)
@@ -76,74 +117,14 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
       throw new Error("A valid email address is required.");
     }
 
-    // 1) Preferred: GoTrue /otp — uses Auth container SMTP (already proven live).
-    try {
-      const { res, json, text } = await withTimeout(
-        gotrueFetch("/auth/v1/otp", { email, create_user: false }),
-        10000,
-        "Sending verification email",
-      );
+    const userId = await withTimeout(findUserIdByEmail(email), 8000, "Account lookup");
+    if (!userId) throw new Error("No account found for that email.");
 
-      if (res.ok || res.status === 200) {
-        otpStore.set(email, {
-          hash: "", // verified via GoTrue
-          exp: Date.now() + 10 * 60 * 1000,
-          via: "gotrue",
-        });
-        console.log(`[AuthOTP] Sent via GoTrue /otp to ${email}`);
-        return { sent: true, via: "gotrue" as const };
-      }
+    const code = String(randomInt(100000, 999999));
+    await withTimeout(storeOtpForUser(userId, email, code), 8000, "Saving code");
 
-      if (res.status === 429) {
-        throw new Error("Too many codes sent. Wait about a minute, then tap Resend code.");
-      }
-
-      const msg =
-        (typeof json?.msg === "string" && json.msg) ||
-        (typeof json?.message === "string" && json.message) ||
-        (typeof json?.error_description === "string" && json.error_description) ||
-        text?.slice(0, 120) ||
-        `Auth mailer returned ${res.status}`;
-      console.warn(`[AuthOTP] GoTrue /otp failed ${res.status}: ${msg}`);
-      // Fall through to SMTP fallback unless hard rate-limit style message
-      if (/rate limit|too many/i.test(msg)) {
-        throw new Error("Too many codes sent. Wait about a minute, then tap Resend code.");
-      }
-    } catch (e: any) {
-      // Rate-limit is definitive — don't spam SMTP too.
-      if (typeof e?.message === "string" && /Too many codes/i.test(e.message)) {
-        throw e;
-      }
-      console.warn("[AuthOTP] GoTrue /otp error, trying SMTP fallback:", e?.message || e);
-    }
-
-    // 2) Fallback: generate 6-digit code (or from generateLink) + SMTP
-    let code = String(randomInt(100000, 999999));
-    try {
-      const { res, json } = await withTimeout(
-        gotrueFetch(
-          "/auth/v1/admin/generate_link",
-          { type: "magiclink", email },
-          true,
-        ),
-        8000,
-        "Generating verification code",
-      );
-      if (res.ok && json?.email_otp) {
-        code = String(json.email_otp);
-      }
-    } catch (e: any) {
-      console.warn("[AuthOTP] generate_link failed, using local code:", e?.message || e);
-    }
-
-    otpStore.set(email, {
-      hash: hashCode(email, code),
-      exp: Date.now() + 10 * 60 * 1000,
-      via: "smtp",
-    });
-
-    await withTimeout(
-      sendSmtpMail({
+    const mail = await withTimeout(
+      sendTransactionalMail({
         to: email,
         fromName: "Jackpot Jungle",
         subject: `${code} is your Jackpot Jungle verification code`,
@@ -164,12 +145,12 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
           </div>
         `,
       }),
-      14000,
+      15000,
       "Sending email",
     );
 
-    console.log(`[AuthOTP] Sent via SMTP fallback to ${email}`);
-    return { sent: true, via: "smtp" as const };
+    console.log(`[AuthOTP] Sent login OTP to ${email} via ${mail.via}`);
+    return { sent: true, via: mail.via };
   });
 
 export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
@@ -181,47 +162,18 @@ export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
       throw new Error("Enter the 6-digit code from your email.");
     }
 
-    const entry = otpStore.get(email);
+    const userId = await withTimeout(findUserIdByEmail(email), 8000, "Account lookup");
+    if (!userId) throw new Error("No account found for that email.");
 
-    // Always try GoTrue verify first (codes sent by /otp or generateLink magiclink).
-    for (const type of ["email", "magiclink"] as const) {
-      try {
-        const { res, json } = await withTimeout(
-          gotrueFetch("/auth/v1/verify", {
-            type,
-            email,
-            token: code,
-          }),
-          8000,
-          "Verifying code",
-        );
-        if (res.ok) {
-          otpStore.delete(email);
-          return { ok: true, via: "gotrue" as const };
-        }
-        // Invalid token → try next type / fallback
-        if (res.status !== 401 && res.status !== 403 && res.status !== 422) {
-          const msg = json?.msg || json?.message || `Verify failed (${res.status})`;
-          console.warn(`[AuthOTP] verify type=${type}: ${msg}`);
-        }
-      } catch (e: any) {
-        console.warn(`[AuthOTP] verify type=${type} error:`, e?.message || e);
-      }
+    const stored = await withTimeout(readStoredOtp(userId), 8000, "Reading code");
+    if (!stored || stored.exp < Date.now()) {
+      await clearStoredOtp(userId);
+      throw new Error("Code expired. Tap Resend code for a new one.");
     }
-
-    // App SMTP fallback codes
-    if (entry?.via === "smtp" && entry.hash && entry.exp >= Date.now()) {
-      if (entry.hash === hashCode(email, code)) {
-        otpStore.delete(email);
-        return { ok: true, via: "smtp" as const };
-      }
+    if (stored.hash !== hashCode(email, code)) {
       throw new Error("Invalid verification code.");
     }
 
-    if (entry && entry.exp < Date.now()) {
-      otpStore.delete(email);
-      throw new Error("Code expired. Tap Resend code for a new one.");
-    }
-
-    throw new Error("Invalid or expired verification code. Tap Resend code and try again.");
+    await clearStoredOtp(userId);
+    return { ok: true };
   });

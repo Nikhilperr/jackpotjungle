@@ -411,7 +411,7 @@ function LoginForm({
       toast.error(
         formatAuthError(
           err,
-          "Couldn't send the verification code. Check server SMTP settings, then try Resend.",
+          "Couldn't send the verification code. The mail server may be blocked — add RESEND_API_KEY on the VPS, then try Resend.",
         ),
       );
     } finally {
