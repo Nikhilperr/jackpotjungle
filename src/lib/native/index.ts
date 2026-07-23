@@ -2,51 +2,53 @@ import { isNative, getSafePlugin } from "./utils";
 import { initBackButtonHandler } from "./navigation";
 import { initNetworkMonitoring } from "./network";
 import { initLifecycleMonitoring } from "./state";
+import { initViewportHeightLock } from "./viewport-height";
+import { localDbWarm } from "@/lib/local-db";
 export { registerBackAction } from "./navigation";
 export { isNative } from "./utils";
-
-// Stub implementation for SplashScreen plugin
-const SplashScreenStub = {
-  hide: () => Promise.resolve()
-};
-
-const SplashScreen = getSafePlugin("SplashScreen", SplashScreenStub);
+export { runAfterFirstPaint } from "./defer";
 
 let isInitialized = false;
 
-/**
- * Initializes all native-specific bridge services when running inside
- * the Android/iOS Capacitor wrapper.
- */
-export function initializeNativeBridge(router: any) {
-  if (!isNative()) {
-    return;
+async function hideNativeSplash() {
+  try {
+    const { SplashScreen } = await import("@capacitor/splash-screen");
+    await SplashScreen.hide({ fadeOutDuration: 100 });
+  } catch {
+    const SplashScreen = getSafePlugin("SplashScreen", {
+      hide: () => Promise.resolve(),
+    });
+    await SplashScreen.hide().catch(() => {});
   }
+}
 
-  if (isInitialized) {
-    console.log("[NativeBridge] Native bridge already initialized. Skipping.");
-    return;
-  }
+export function initializeNativeBridge(router: any) {
+  if (!isNative()) return;
+
+  if (isInitialized) return;
   isInitialized = true;
 
-  console.log("[NativeBridge] Initializing native integration layer...");
-
   try {
-    // 1. Initialize Network Monitor
+    localDbWarm();
+    initViewportHeightLock();
     initNetworkMonitoring(router);
-
-    // 2. Initialize Android physical Back Button listener
     initBackButtonHandler(router);
-
-    // 3. Initialize App state lifecycle hooks (Presence and Route Cache)
     initLifecycleMonitoring(router);
 
-    // 4. Programmatically dismiss the native splash screen now that app is mounted & running
-    setTimeout(() => {
-      SplashScreen.hide()
-        .then(() => console.log("[NativeBridge] SplashScreen dismissed successfully."))
-        .catch((err) => console.warn("[NativeBridge] SplashScreen hide failed:", err));
-    }, 50); // 50ms grace period for initial rendering to settle
+    // Keep Capacitor splash until chats/auth has painted — avoids black gap.
+    const hideAfterPaint = () => {
+      window.removeEventListener("jj-app-ready", onReady);
+      // Wait 2 frames so React chrome is on screen under the splash.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          void hideNativeSplash();
+        });
+      });
+    };
+    const onReady = () => hideAfterPaint();
+    window.addEventListener("jj-app-ready", onReady);
+    if ((window as any).__jjAppReadyFired) hideAfterPaint();
+    window.setTimeout(onReady, 4000);
   } catch (error) {
     console.error("[NativeBridge] Critical error during bridge initialization:", error);
   }

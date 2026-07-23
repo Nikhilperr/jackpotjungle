@@ -1,5 +1,4 @@
 import { ReactNode } from "react";
-import { motion } from "framer-motion";
 
 interface AuthCardProps {
   children: ReactNode;
@@ -7,22 +6,10 @@ interface AuthCardProps {
   delay?: number;
 }
 
-export function AuthCard({ children, className = "", delay = 0 }: AuthCardProps) {
+export function AuthCard({ children, className = "" }: AuthCardProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.98, filter: "blur(6px)" }}
-      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-      exit={{ opacity: 0, scale: 0.98, filter: "blur(6px)" }}
-      transition={{ 
-        type: "spring", 
-        stiffness: 140, 
-        damping: 24, 
-        mass: 1.1,
-        delay 
-      }}
-      className={`w-full transition-all duration-300 ${className}`}
-    >
+    <div className={`w-full ${className}`}>
       {children}
-    </motion.div>
+    </div>
   );
 }

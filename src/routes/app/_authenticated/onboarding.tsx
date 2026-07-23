@@ -69,17 +69,17 @@ function OnboardingPage() {
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (u.user && mounted) {
-        setMeId(u.user.id);
-        setEmail(u.user.email ?? "");
-        
-        // Load existing profile details if any
+
+    async function initUser(user: any) {
+      if (!user || !mounted) return;
+      setMeId(user.id);
+      setEmail(user.email ?? "");
+      
+      try {
         const { data: profile } = await supabase
           .from("profiles")
           .select("*")
-          .eq("id", u.user.id)
+          .eq("id", user.id)
           .maybeSingle();
 
         if (profile && mounted) {
@@ -90,7 +90,6 @@ function OnboardingPage() {
           setAddress(profile.address ?? "");
           
           if (profile.phone) {
-            // Split country code and number
             const match = profile.phone.match(/^(\+\d+)\s*(.*)$/);
             if (match) {
               setPhoneDial(match[1]);
@@ -100,8 +99,31 @@ function OnboardingPage() {
             }
           }
         }
+      } catch (err) {
+        console.error("Failed to load user profile in onboarding:", err);
+      }
+    }
+
+    (async () => {
+      // 1. Instantly check cache to avoid blocking network call
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await initUser(session.user);
+      } else {
+        // 2. Fallback to auth getUser if session isn't loaded yet
+        const { data: u } = await supabase.auth.getUser();
+        if (u.user) {
+          await initUser(u.user);
+        }
       }
     })();
+
+    // 3. Keep sync with auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user && mounted) {
+        await initUser(session.user);
+      }
+    });
 
     // Handle clicks outside country picker
     function handleClickOutside(event: MouseEvent) {
@@ -113,6 +135,7 @@ function OnboardingPage() {
 
     return () => {
       mounted = false;
+      subscription.unsubscribe();
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
@@ -209,7 +232,10 @@ function OnboardingPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!meId) return;
+    if (!meId) {
+      toast.error("User session not found. Please log in again.");
+      return;
+    }
     if (!firstName.trim() || !lastName.trim()) {
       toast.error("First Name and Last Name are required.");
       return;
@@ -223,48 +249,34 @@ function OnboardingPage() {
     try {
       const fullPhone = phoneNumber.trim() ? `${phoneDial} ${phoneNumber.trim()}` : null;
       
-      // Check if the user profile row already exists in the table
+      // 1. Fetch friend_code and referral_code if they exist
       const { data: existing } = await supabase
         .from("profiles")
-        .select("id, friend_code, referral_code")
+        .select("friend_code, referral_code")
         .eq("id", meId)
         .maybeSingle();
 
-      if (existing) {
-        // Update the existing profile
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .update({
-            first_name: firstName.trim(),
-            last_name: lastName.trim(),
-            username: username.trim(),
-            phone: fullPhone,
-            address: address.trim() || null,
-            avatar_url: avatarUrl,
-          })
-          .eq("id", meId);
+      const randCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+      const friendCode = existing?.friend_code || `JJM-${randCode()}`;
+      const referralCode = existing?.referral_code || `JJREF-${randCode()}`;
 
-        if (profileError) throw profileError;
-      } else {
-        // Insert a new profile and generate valid unique friend/referral codes to satisfy NOT NULL constraints
-        const randCode = () => Math.floor(100000 + Math.random() * 900000).toString();
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .insert({
-            id: meId,
-            username: username.trim(),
-            email: email,
-            first_name: firstName.trim(),
-            last_name: lastName.trim(),
-            phone: fullPhone,
-            address: address.trim() || null,
-            avatar_url: avatarUrl,
-            friend_code: `JJM-${randCode()}`,
-            referral_code: `JJREF-${randCode()}`,
-          });
+      // 2. Perform atomic upsert to insert or update the profile safely
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert({
+          id: meId,
+          username: username.trim(),
+          email: email || null,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          phone: fullPhone,
+          address: address.trim() || null,
+          avatar_url: avatarUrl,
+          friend_code: friendCode,
+          referral_code: referralCode,
+        });
 
-        if (profileError) throw profileError;
-      }
+      if (profileError) throw profileError;
 
       // Update auth metadata to mark complete
       const { error: authError } = await supabase.auth.updateUser({
@@ -292,6 +304,17 @@ function OnboardingPage() {
   );
 
   const selectedCountry = COUNTRIES.find((c) => c.code === phoneDial) || COUNTRIES[0];
+
+  if (!meId) {
+    return (
+      <AuthLayout hideHeader={true}>
+        <div className="flex flex-col items-center justify-center p-12 min-h-[300px]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground mt-4 font-semibold">Loading session details...</p>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout hideHeader={true}>

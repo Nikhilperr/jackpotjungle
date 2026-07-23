@@ -4,7 +4,7 @@ import { X, Loader2 } from "lucide-react";
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
 };
 
 export function SignOutDialog({ isOpen, onClose, onConfirm }: Props) {
@@ -26,8 +26,11 @@ export function SignOutDialog({ isOpen, onClose, onConfirm }: Props) {
   if (!isOpen) return null;
 
   const handleConfirm = () => {
+    if (busy) return;
     setBusy(true);
-    onConfirm();
+    void Promise.resolve(onConfirm()).catch(() => {
+      setBusy(false);
+    });
   };
 
   return (

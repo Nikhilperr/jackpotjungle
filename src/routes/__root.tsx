@@ -18,8 +18,9 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { runAutoDatabaseMigrations } from "@/lib/admin-super.functions";
 import { Capacitor } from "@capacitor/core";
-import { initializeNativeBridge } from "@/lib/native";
 import { getSharedInitialSession, clearSharedSessionCache } from "@/lib/auth-wait";
+import { initializeNativeBridge } from "@/lib/native";
+
 
 
 function NotFoundComponent() {
@@ -104,23 +105,50 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     const session = await getSharedInitialSession();
     const hashParams = session ? `#access_token=${session.access_token}&refresh_token=${session.refresh_token}` : "";
 
+    // ── Restore last route on cold boot/root load if logged in ───────────────
+    if (pathname === "/" || (!pathname.startsWith("/app/") && !isFrameworkOrAssetPath(pathname))) {
+      if (session?.user) {
+        if (typeof window !== "undefined") {
+          try {
+            const lastRoute = localStorage.getItem("chancerealm_last_route");
+            if (lastRoute && lastRoute !== "/" && !lastRoute.includes("/auth") && !lastRoute.includes("/reset-password")) {
+              console.log("[__root beforeLoad] Restoring last active route on startup:", lastRoute);
+              throw redirect({ to: lastRoute, search: location.search });
+            }
+          } catch (e) {
+            if (e && typeof e === "object" && "to" in e) {
+              throw e;
+            }
+          }
+        }
+      }
+    }
+
     if (Capacitor.isNativePlatform()) {
       if (pathname === "/" || (!pathname.startsWith("/app/") && !isFrameworkOrAssetPath(pathname))) {
         if (session?.user) {
-          if (typeof window !== "undefined") {
-            const cachedRole = localStorage.getItem("jj_user_role");
-            if (cachedRole) {
-              const isAdmin = cachedRole === "admin" || cachedRole === "super_admin";
-              throw redirect({ to: isAdmin ? "/app/admin" : "/app/chat", search: location.search });
-            }
+          // Native-first: never block cold boot on a user_roles network round-trip.
+          // Prefer cached role; default to chat and refresh role in the background.
+          const cachedRole =
+            typeof window !== "undefined" ? localStorage.getItem("jj_user_role") : null;
+          if (cachedRole === "admin" || cachedRole === "super_admin") {
+            throw redirect({ to: "/app/admin", search: location.search });
           }
-          const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id);
-          const userRole = roles?.[0]?.role || "user";
-          if (typeof window !== "undefined") {
-            localStorage.setItem("jj_user_role", userRole);
+          if (!cachedRole) {
+            void supabase
+              .from("user_roles")
+              .select("role")
+              .eq("user_id", session.user.id)
+              .then(({ data: roles }) => {
+                const userRole = roles?.[0]?.role || "user";
+                try {
+                  localStorage.setItem("jj_user_role", userRole);
+                } catch {
+                  /* ignore */
+                }
+              });
           }
-          const isAdmin = userRole === "admin" || userRole === "super_admin";
-          throw redirect({ to: isAdmin ? "/app/admin" : "/app/chat", search: location.search });
+          throw redirect({ to: "/app/chat", search: location.search });
         } else {
           throw redirect({ to: "/app/auth", search: location.search });
         }
@@ -171,7 +199,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" },
       { title: "Jackpot Jungle Messenger" },
       { name: "description", content: "Private real-time chat for the Jackpot Jungle community." },
       { property: "og:title", content: "Jackpot Jungle Messenger" },
@@ -196,13 +224,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  // Capacitor boots via client-only ReactDOM.createRoot(#root). Nesting a full
+  // <html>/<body>/<Scripts/> document shell inside that div made Android
+  // WebView's CrRendererMain spin at ~100% CPU (login input freeze). Use a
+  // fragment shell on native; keep the document shell for web/SSR.
+  if (typeof window !== "undefined" && Capacitor.isNativePlatform()) {
+    return <>{children}</>;
+  }
+
   return (
     <html lang="en">
       <head>
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: `
           try {
-            const t = localStorage.getItem('theme') || 'jackpot';
+            const t = localStorage.getItem('theme') || 'amoled';
             document.documentElement.classList.add(t);
           } catch (e) {}
         ` }} />
@@ -221,7 +257,10 @@ function RootComponent() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Run database auto-migrations on load
+    // Native-first: never hit the VPS migration serverFn on APK cold start.
+    // Super-admin maintenance still runs migrations from the admin UI.
+    if (Capacitor.isNativePlatform()) return;
+
     runAutoDatabaseMigrations()
       .then((r: any) => {
         if (r && !r.success) {
@@ -237,6 +276,29 @@ function RootComponent() {
 
   useEffect(() => {
     initializeNativeBridge(router);
+  }, [router]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).onNativeRouteReceived = (path: string) => {
+        console.log("[__root.tsx] Received native route dispatch:", path);
+        let cleanPath = path;
+        try {
+          if (path.includes("://")) {
+            const urlObj = new URL(path);
+            cleanPath = urlObj.pathname + urlObj.search + urlObj.hash;
+          }
+        } catch (e) {
+          console.error("[__root.tsx] Failed to parse path URL:", e);
+        }
+        router.history.push(cleanPath);
+      };
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).onNativeRouteReceived;
+      }
+    };
   }, [router]);
 
   useEffect(() => {
@@ -257,10 +319,18 @@ function RootComponent() {
         clearSharedSessionCache();
         if (typeof window !== "undefined") {
           localStorage.removeItem("jj_user_role");
+          // Logout flow navigates with location.replace — skip invalidate races
+          // that paint a blank authenticated shell (looks like the app closed).
+          if (
+            sessionStorage.getItem("jj_signing_out") === "1" ||
+            window.location.pathname.startsWith("/app/auth")
+          ) {
+            return;
+          }
         }
-      } else if (event === "TOKEN_REFRESHED") {
-        clearSharedSessionCache();
       }
+      // Do not clear session cache or invalidate on TOKEN_REFRESHED — that
+      // re-runs every beforeLoad and flashes loading ↔ chats on native.
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
 
       const currentUserId = session?.user?.id ?? null;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Play, Pause, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getCachedMedia, releaseCachedMedia } from "@/lib/media-cache";
 
 type Props = {
   src: string;
@@ -34,12 +35,14 @@ export function VoiceMessage({ src, mine }: Props) {
   const [duration, setDuration] = useState(0);
   const [current, setCurrent] = useState(0);
   const barsRef = useRef<number[]>(makeBars(src));
+  const resolvedUrlRef = useRef<string>("");
 
   useEffect(() => {
+    let active = true;
     const a = new Audio();
     a.preload = "metadata";
-    a.src = src;
     audioRef.current = a;
+
     const onMeta = () => setDuration(a.duration || 0);
     const onTime = () => setCurrent(a.currentTime || 0);
     const onEnd = () => { setPlaying(false); setCurrent(0); a.currentTime = 0; };
@@ -47,6 +50,7 @@ export function VoiceMessage({ src, mine }: Props) {
     const onPause = () => setPlaying(false);
     const onWait = () => setLoading(true);
     const onCanPlay = () => setLoading(false);
+    
     a.addEventListener("loadedmetadata", onMeta);
     a.addEventListener("durationchange", onMeta);
     a.addEventListener("timeupdate", onTime);
@@ -55,7 +59,25 @@ export function VoiceMessage({ src, mine }: Props) {
     a.addEventListener("pause", onPause);
     a.addEventListener("waiting", onWait);
     a.addEventListener("canplay", onCanPlay);
+
+    // Fetch and load from Cache API
+    getCachedMedia(src, "volatile").then((cached) => {
+      if (active) {
+        resolvedUrlRef.current = cached;
+        a.src = cached;
+      } else {
+        if (cached.startsWith("blob:")) {
+          releaseCachedMedia(cached);
+        }
+      }
+    }).catch(() => {
+      if (active) {
+        a.src = src;
+      }
+    });
+
     return () => {
+      active = false;
       a.pause();
       a.removeEventListener("loadedmetadata", onMeta);
       a.removeEventListener("durationchange", onMeta);
@@ -66,6 +88,12 @@ export function VoiceMessage({ src, mine }: Props) {
       a.removeEventListener("waiting", onWait);
       a.removeEventListener("canplay", onCanPlay);
       audioRef.current = null;
+
+      // Release volatile audio URL
+      if (resolvedUrlRef.current) {
+        releaseCachedMedia(resolvedUrlRef.current);
+        resolvedUrlRef.current = "";
+      }
     };
   }, [src]);
 

@@ -12,9 +12,19 @@ import { toast } from "sonner";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 import { motion, AnimatePresence } from "framer-motion";
 import { prefetchConversation } from "@/lib/chat-cache";
+import {
+  shouldFullRebuildInbox,
+  setInboxSyncedAt,
+  getInboxSyncedAt,
+  fetchInboxDeltaPatches,
+  persistInboxCache,
+} from "@/lib/inbox-sync";
+import { NetworkManager } from "@/lib/network-manager";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getUserVipDashboardStats } from "@/lib/api/vip-reward-engine/dashboard.functions";
 import { useServerFn } from "@tanstack/react-start";
+import { ChatListSkeleton } from "@/components/messenger/ChatListSkeleton";
+import { signalShellReady } from "@/lib/shell-ready";
 
 
 function getVipBadgeUrl(status: string | null | undefined): string | null {
@@ -51,12 +61,42 @@ function ChatLayout() {
     if (typeof window === "undefined") return [];
     try {
       const stored = localStorage.getItem("jj_cached_conversations");
-      return stored ? JSON.parse(stored) : [];
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
   });
-  const [loadingConvs, setLoadingConvs] = useState(true);
+
+  // Hydrate / upgrade durable IndexedDB inbox store after mount.
+  useEffect(() => {
+    void import("@/lib/local-db").then(async ({ localDbGetInbox, localDbSetInbox }) => {
+      if (conversations.length > 0) {
+        await localDbSetInbox(conversations);
+        return;
+      }
+      const rows = await localDbGetInbox<Conversation>();
+      if (rows?.length) setConversations(rows);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cold-start hydrate once
+  }, []);
+  const [loadingConvs, setLoadingConvs] = useState(() => {
+    // Cache hit → no loading gate (Messenger-style instant inbox).
+    if (typeof window === "undefined") return true;
+    try {
+      const stored = localStorage.getItem("jj_cached_conversations");
+      const parsed = stored ? JSON.parse(stored) : [];
+      return !(Array.isArray(parsed) && parsed.length > 0);
+    } catch {
+      return true;
+    }
+  });
+
+  // Drop native splash as soon as chat chrome is on screen (skeleton OK).
+  useEffect(() => {
+    signalShellReady();
+  }, []);
+
   const [spamIds, setSpamIds] = useState<Set<string>>(new Set());
   const [spammedByIds, setSpammedByIds] = useState<Set<string>>(new Set());
   const location = useLocation();
@@ -76,15 +116,45 @@ function ChatLayout() {
 
   // VIP dashboard stats & deposit modal states
   const getVipStatsFn = useServerFn(getUserVipDashboardStats);
-  const [vipStats, setVipStats] = useState<any>(null);
+  const [vipStats, setVipStats] = useState<any>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = localStorage.getItem("jj_cached_my_vip_stats");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [depositOpen, setDepositOpen] = useState(false);
   const [callsLog, setCallsLog] = useState<any[]>([]);
 
-  async function loadVipStats() {
+  async function loadVipStats(userId?: string) {
     try {
       const res = await getVipStatsFn();
       if (res?.success) {
         setVipStats(res);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem("jj_cached_my_vip_stats", JSON.stringify(res));
+            
+            const targetUid = userId || meId || localStorage.getItem("jj_me_id");
+            if (targetUid) {
+              const cachedProfileStr = localStorage.getItem("jj_cached_my_profile");
+              const cachedProfile = cachedProfileStr ? JSON.parse(cachedProfileStr) : {};
+              const updatedProfile = {
+                ...cachedProfile,
+                id: targetUid,
+                username: res.profile.username || cachedProfile.username,
+                vip_status: res.profile.vipStatus || cachedProfile.vip_status,
+                wallet_balance: res.profile.walletBalance !== undefined ? res.profile.walletBalance : cachedProfile.wallet_balance,
+                credit_balance: res.profile.creditBalance !== undefined ? res.profile.creditBalance : cachedProfile.credit_balance,
+              };
+              localStorage.setItem("jj_cached_my_profile", JSON.stringify(updatedProfile));
+            }
+          } catch (cacheErr) {
+            console.error("Failed to write to local storage cache:", cacheErr);
+          }
+        }
       }
     } catch (e) {
       console.error("Failed to load VIP stats in chat view:", e);
@@ -114,13 +184,12 @@ function ChatLayout() {
   const hasActive = !!activeId || isPageActive;
   const [isMobile, setIsMobile] = useState(false);
 
+  // One-time mobile check — DO NOT use window resize listener here.
+  // On Android/MIUI, soft keyboard open/close fires resize events which
+  // trigger setIsMobile state changes and cause full React re-render trees
+  // during the keyboard animation, freezing the UI for 1-3 seconds.
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    setIsMobile(window.innerWidth < 768);
   }, []);
 
   async function loadSystemAnnouncements() {
@@ -209,6 +278,75 @@ function ChatLayout() {
 
     setPageLast({ content, at });
     setPageUnread(arr.filter((m) => m.from_page && !m.seen).length);
+  }
+
+  async function fetchAndAppendConversation(convoKey: string, msgCreatedAt: string) {
+    if (!meId) return;
+    try {
+      const isGroup = convoKey.startsWith("group-");
+      let newConvo: Conversation;
+
+      if (isGroup) {
+        const groupId = convoKey.substring(6);
+        const { data: grp } = await supabase
+          .from("groups")
+          .select("id, name, avatar_url, created_at")
+          .eq("id", groupId)
+          .maybeSingle();
+        if (!grp) return;
+
+        newConvo = {
+          friendId: convoKey,
+          username: grp.name,
+          displayName: grp.name,
+          avatar_url: grp.avatar_url,
+          online: false,
+          lastMessage: "Conversation started",
+          lastAt: msgCreatedAt || grp.created_at || new Date().toISOString(),
+          unread: 0,
+          vip_status: "none",
+          isGroup: true,
+          allText: grp.name.toLowerCase()
+        };
+      } else {
+        const friendId = convoKey;
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id, username, first_name, last_name, avatar_url, vip_status, online, last_seen")
+          .eq("id", friendId)
+          .maybeSingle();
+        if (!prof) return;
+
+        const dispName = (prof.first_name || prof.last_name) 
+          ? `${prof.first_name ?? ""} ${prof.last_name ?? ""}`.trim() 
+          : prof.username;
+
+        newConvo = {
+          friendId: convoKey,
+          username: prof.username,
+          displayName: dispName,
+          avatar_url: prof.avatar_url,
+          online: prof.online || false,
+          lastMessage: "Say hi 👋",
+          lastAt: msgCreatedAt || new Date().toISOString(),
+          unread: 0,
+          vip_status: prof.vip_status || "none",
+          isGroup: false,
+          allText: prof.username.toLowerCase() + " " + dispName.toLowerCase()
+        };
+      }
+
+      setConversations((prev) => {
+        if (prev.some((c) => c.friendId === convoKey)) return prev;
+        const next = [newConvo, ...prev];
+        try {
+          localStorage.setItem("jj_cached_conversations", JSON.stringify(next));
+        } catch {}
+        return next.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+      });
+    } catch (err) {
+      console.error("Error adding new conversation slot:", err);
+    }
   }
 
   async function load(myId: string) {
@@ -375,16 +513,85 @@ function ChatLayout() {
         }
       });
 
-       const sortedList = Object.values(byConvo).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
-      setConversations(sortedList);
+      const sortedList = Object.values(byConvo).sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+
+      setConversations((prev) => {
+        const prevMap = new Map(prev.map((c) => [c.friendId, c]));
+        let hasChanged = false;
+
+        const merged = sortedList.map((newConvo) => {
+          const oldConvo = prevMap.get(newConvo.friendId);
+          if (!oldConvo) {
+            hasChanged = true;
+            return newConvo;
+          }
+
+          const changed =
+            oldConvo.username !== newConvo.username ||
+            oldConvo.displayName !== newConvo.displayName ||
+            oldConvo.avatar_url !== newConvo.avatar_url ||
+            oldConvo.online !== newConvo.online ||
+            oldConvo.lastMessage !== newConvo.lastMessage ||
+            oldConvo.lastAt !== newConvo.lastAt ||
+            oldConvo.unread !== newConvo.unread ||
+            oldConvo.vip_status !== newConvo.vip_status;
+
+          if (changed) {
+            hasChanged = true;
+            return { ...oldConvo, ...newConvo };
+          }
+          return oldConvo;
+        });
+
+        if (prev.length !== sortedList.length) {
+          hasChanged = true;
+        }
+
+        if (!hasChanged) return prev;
+        return merged.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+      });
       setCallsLog(friendCalls);
       try {
-        localStorage.setItem("jj_cached_conversations", JSON.stringify(sortedList));
+        await persistInboxCache(sortedList);
       } catch {}
     } catch (err) {
       console.error("Error loading conversations:", err);
     } finally {
       setLoadingConvs(false);
+    }
+  }
+
+  /** Soft delta sync — merge recent message previews without rebuilding from 500 rows. */
+  async function loadInboxDelta(myId: string) {
+    try {
+      const synced = getInboxSyncedAt();
+      const sinceIso = synced ? new Date(synced).toISOString() : null;
+      const patches = await fetchInboxDeltaPatches(myId, sinceIso);
+      if (!patches.length) {
+        setInboxSyncedAt();
+        return;
+      }
+      setConversations((prev) => {
+        let next = [...prev];
+        for (const p of patches) {
+          const idx = next.findIndex((c) => c.friendId === p.peerKey);
+          if (idx === -1) continue;
+          const row = { ...next[idx] };
+          if (!row.lastAt || p.lastAt > row.lastAt) {
+            row.lastMessage = p.lastMessage;
+            row.lastAt = p.lastAt;
+          }
+          row.unread = (row.unread || 0) + p.unreadBump;
+          next[idx] = row;
+        }
+        next = next.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+        void persistInboxCache(next);
+        return next;
+      });
+      setInboxSyncedAt();
+    } catch (err) {
+      console.warn("[inbox-delta] soft sync failed, falling back to full load:", err);
+      await load(myId);
     }
   }
 
@@ -395,10 +602,14 @@ function ChatLayout() {
       if (u.user && mounted) {
         setMeId(u.user.id);
         setCurrentUser(u.user);
-        loadVipStats();
         try {
           localStorage.setItem("jj_me_id", u.user.id);
         } catch {}
+        // Defer VIP serverFn until after inbox paint — cache already seeds vipStats.
+        const { runAfterFirstPaint } = await import("@/lib/native/defer");
+        runAfterFirstPaint(() => {
+          if (mounted) loadVipStats(u.user!.id);
+        }, 2000);
       }
     })();
     return () => { mounted = false; };
@@ -505,7 +716,17 @@ function ChatLayout() {
     if (!meId) return;
     let mounted = true;
 
-    load(meId);
+    // Native-first: warm cache paints instantly; skip immediate full 500-msg rebuild
+    // unless cache is empty/stale. Soft-revalidate shortly after first paint.
+    let softTimer: ReturnType<typeof setTimeout> | null = null;
+    if (shouldFullRebuildInbox()) {
+      load(meId);
+    } else {
+      setLoadingConvs(false);
+      softTimer = setTimeout(() => {
+        if (mounted) void loadInboxDelta(meId);
+      }, 1500);
+    }
     loadPage(meId);
     loadSpam(meId);
     loadSystemAnnouncements();
@@ -533,8 +754,7 @@ function ChatLayout() {
           setConversations((prev) => {
             const idx = prev.findIndex((c) => c.friendId === convoKey);
             if (idx === -1) {
-              // New chat/relationship/group, load from DB to fetch profile and metadata
-              load(meId);
+              fetchAndAppendConversation(convoKey, m.created_at);
               return prev;
             }
             
@@ -585,14 +805,126 @@ function ChatLayout() {
           }
         }
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => {
-        if (mounted) load(meId);
+      .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, (payload) => {
+        if (!mounted || !meId) return;
+        const oldRow = payload.old as any;
+        const newRow = payload.new as any;
+        
+        if (payload.eventType === "DELETE" && oldRow) {
+          const friendId = oldRow.user_a === meId ? oldRow.user_b : oldRow.user_a;
+          setConversations((prev) => {
+            const next = prev.filter((c) => c.friendId !== friendId);
+            try {
+              localStorage.setItem("jj_cached_conversations", JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+        } else if (payload.eventType === "INSERT" && newRow) {
+          const friendId = newRow.user_a === meId ? newRow.user_b : newRow.user_a;
+          fetchAndAppendConversation(friendId, new Date().toISOString());
+        }
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "groups" }, () => {
-        if (mounted) load(meId);
+      .on("postgres_changes", { event: "*", schema: "public", table: "groups" }, (payload) => {
+        if (!mounted || !meId) return;
+        const oldRow = payload.old as any;
+        const newRow = payload.new as any;
+        
+        if (payload.eventType === "DELETE" && oldRow) {
+          const convoKey = `group-${oldRow.id}`;
+          setConversations((prev) => {
+            const next = prev.filter((c) => c.friendId !== convoKey);
+            try {
+              localStorage.setItem("jj_cached_conversations", JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+        } else if (payload.eventType === "INSERT" && newRow) {
+          const convoKey = `group-${newRow.id}`;
+          fetchAndAppendConversation(convoKey, new Date().toISOString());
+        } else if (payload.eventType === "UPDATE" && newRow) {
+          const convoKey = `group-${newRow.id}`;
+          setConversations((prev) => {
+            const idx = prev.findIndex((c) => c.friendId === convoKey);
+            if (idx === -1) return prev;
+            const updated = {
+              ...prev[idx],
+              username: newRow.name,
+              displayName: newRow.name,
+              avatar_url: newRow.avatar_url
+            };
+            const next = prev.map((c, i) => i === idx ? updated : c);
+            try {
+              localStorage.setItem("jj_cached_conversations", JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+        }
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => {
-        if (mounted) load(meId);
+      .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, (payload) => {
+        if (!mounted || !meId) return;
+        const oldRow = payload.old as any;
+        const newRow = payload.new as any;
+        
+        if (payload.eventType === "DELETE" && oldRow && oldRow.user_id === meId) {
+          const convoKey = `group-${oldRow.group_id}`;
+          setConversations((prev) => {
+            const next = prev.filter((c) => c.friendId !== convoKey);
+            try {
+              localStorage.setItem("jj_cached_conversations", JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+        } else if (payload.eventType === "INSERT" && newRow && newRow.user_id === meId) {
+          const convoKey = `group-${newRow.group_id}`;
+          fetchAndAppendConversation(convoKey, new Date().toISOString());
+        }
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (payload) => {
+        if (!mounted) return;
+        const p = payload.new as any;
+        if (!p) return;
+
+        if (meId && p.id === meId) {
+          try {
+            const cachedStr = localStorage.getItem("jj_cached_my_profile");
+            const cached = cachedStr ? JSON.parse(cachedStr) : {};
+            localStorage.setItem("jj_cached_my_profile", JSON.stringify({ ...cached, ...p }));
+          } catch {}
+          if (p.vip_status) {
+            setVipStats((prev) => {
+              if (prev && prev.vip_status === p.vip_status) return prev;
+              const next = prev ? { ...prev, vip_status: p.vip_status } : { vip_status: p.vip_status, vip_progress: 0, monthly_estimate: 0 };
+              try {
+                localStorage.setItem("jj_cached_my_vip_stats", JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+          }
+          return;
+        }
+        
+        setConversations((prev) => {
+          const idx = prev.findIndex((c) => c.friendId === p.id);
+          if (idx === -1) return prev;
+          
+          const old = prev[idx];
+          const hasChanged = old.online !== p.online || old.avatar_url !== p.avatar_url || old.username !== p.username || old.vip_status !== p.vip_status;
+          if (!hasChanged) return prev;
+          
+          const updated = {
+            ...old,
+            online: p.online || false,
+            avatar_url: p.avatar_url || old.avatar_url,
+            username: p.username || old.username,
+            vip_status: p.vip_status || old.vip_status
+          };
+          
+          const next = prev.map((c, i) => i === idx ? updated : c);
+          try {
+            localStorage.setItem("jj_cached_conversations", JSON.stringify(next));
+          } catch {}
+          return next;
+        });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "page_messages" }, (payload) => {
         if (!mounted) return;
@@ -682,8 +1014,19 @@ function ChatLayout() {
       })
       .subscribe();
 
+    const onForeground = () => {
+      if (!mounted) return;
+      void NetworkManager.processQueues().catch(() => {});
+      // Soft inbox catch-up on resume (not a forced full rebuild).
+      void loadInboxDelta(meId);
+      loadPage(meId);
+    };
+    window.addEventListener("jj-app-foreground", onForeground);
+
     return () => {
       mounted = false;
+      if (softTimer) clearTimeout(softTimer);
+      window.removeEventListener("jj-app-foreground", onForeground);
       supabase.removeChannel(channel);
       supabase.removeChannel(systemChannel);
     };
@@ -1167,10 +1510,7 @@ function ChatLayout() {
                 </div>
               )
             ) : loadingConvs && conversations.length === 0 ? (
-              <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <span>Loading chats…</span>
-              </div>
+              <ChatListSkeleton rows={9} />
             ) : sorted.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
                 {tab === "spam"
@@ -1842,7 +2182,7 @@ const ConversationItem = React.memo(function ConversationItem({
           onClick={(e) => toggleSpam(e, c.friendId, isSpam)}
           title={isSpam ? "Remove from spam" : "Move to spam"}
           aria-label={isSpam ? "Remove from spam" : "Move to spam"}
-          className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-background border border-border items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex md:opacity-0 md:group-hover:opacity-100"
+          className="absolute right-3 top-1/2 -translate-y-1/2 touch-target rounded-full bg-background/95 border border-border items-center justify-center text-muted-foreground active:bg-secondary flex opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 transition-opacity"
           style={isSpam ? { opacity: 1 } : undefined}
         >
           {isSpam ? <RotateCcw className="h-4 w-4" /> : <Ban className="h-4 w-4" />}

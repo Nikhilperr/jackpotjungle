@@ -1,6 +1,8 @@
+import { memo } from "react";
 import { toCDNUrl } from "@/config";
+import { CachedImage } from "./CachedImage";
 
-export function Avatar({
+function AvatarComponent({
   name = "Friend",
   url,
   size = 48,
@@ -25,7 +27,14 @@ export function Avatar({
   }
 
   return displayUrl ? (
-    <img src={displayUrl} alt={safeName} className="rounded-full object-cover" style={{ width: size, height: size }} />
+    <CachedImage
+      src={displayUrl}
+      alt={safeName}
+      className="rounded-full object-cover"
+      style={{ width: size, height: size }}
+      progressive={false}
+      cachePolicy="persistent"
+    />
   ) : (
     <div
       className="rounded-full bg-primary text-primary-foreground flex items-center justify-center font-semibold"
@@ -35,3 +44,6 @@ export function Avatar({
     </div>
   );
 }
+
+export const Avatar = memo(AvatarComponent);
+

@@ -18,7 +18,7 @@ import {
   Users, Search, Filter, Shield, ShieldCheck, Check, X, 
   KeyRound, Mail, Trash2, Camera, Loader2, Coins, 
   Award, Wallet, ChevronLeft, ChevronRight, Ban, 
-  ShieldAlert, Settings, HelpCircle, Eye, EyeOff, Globe
+  ShieldAlert, Settings, HelpCircle, Eye, EyeOff, Globe, Gift
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";

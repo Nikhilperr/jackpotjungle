@@ -27,9 +27,25 @@ function fmt(s: number) {
 
 export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, initialActive, context, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [muted, setMuted] = useState(false);
-  const [cameraOff, setCameraOff] = useState(false);
-  const [speakerOn, setSpeakerOn] = useState(kind === "video");
+  const [muted, setMuted] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("jj_call_muted") === "true";
+    }
+    return false;
+  });
+  const [cameraOff, setCameraOff] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("jj_call_camera_off") === "true";
+    }
+    return false;
+  });
+  const [speakerOn, setSpeakerOn] = useState(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("jj_call_speaker_on");
+      if (cached !== null) return cached === "true";
+    }
+    return kind === "video";
+  });
   const [dbStatus, setDbStatus] = useState<string>(role === "caller" ? "calling" : "ringing");
   const [noAnswer, setNoAnswer] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -43,7 +59,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   const activeRef = useRef(initialActive);
   const closedRef = useRef(false);
 
-  const { localStream, remoteStream, connected, remoteMuted, sendHangup, toggleAudio, toggleVideo, switchCamera, sendMediaState } = useWebRTC({
+  const { localStream, remoteStream, connected, remoteMuted, remoteVideoActive, facingMode, sendHangup, toggleAudio, toggleVideo, switchCamera, sendMediaState } = useWebRTC({
     callId, role, kind, meId, context,
     onRemoteHangup: () => endCall("remote"),
     onRinging: () => setDbStatus("ringing"),
@@ -62,6 +78,32 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
       }
     };
   }, []);
+
+  // Cache state changes to localStorage
+  useEffect(() => {
+    localStorage.setItem("jj_call_muted", String(muted));
+  }, [muted]);
+  useEffect(() => {
+    localStorage.setItem("jj_call_camera_off", String(cameraOff));
+  }, [cameraOff]);
+  useEffect(() => {
+    localStorage.setItem("jj_call_speaker_on", String(speakerOn));
+  }, [speakerOn]);
+
+  // Apply mute/cameraOff track states to the localStream when it becomes active
+  useEffect(() => {
+    if (localStream) {
+      localStream.getAudioTracks().forEach((t) => (t.enabled = !muted));
+      localStream.getVideoTracks().forEach((t) => (t.enabled = !cameraOff));
+    }
+  }, [localStream, muted, cameraOff]);
+
+  // Broadcast media states upon connecting/active
+  useEffect(() => {
+    if (connected && active) {
+      sendMediaState({ muted, videoActive: !cameraOff });
+    }
+  }, [connected, active, muted, cameraOff, sendMediaState]);
 
   // Listen to native picture-in-picture mode updates
   useEffect(() => {
@@ -204,7 +246,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
   const hasRemoteVideo = isVideo && active && remoteStream && remoteStream.getVideoTracks().length > 0;
 
   return (
-    <div ref={containerRef} className="fixed inset-0 z-[100] bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white flex flex-col animate-in fade-in duration-200">
+    <div ref={containerRef} className="fixed inset-0 z-[100] bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white flex flex-col animate-in fade-in duration-200 safe-pt safe-pb safe-pl safe-pr">
       {/* Remote video / avatar */}
       <div className="absolute inset-0">
         {/* Remote video element - always in DOM so ref is stable */}
@@ -213,12 +255,12 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
           autoPlay 
           playsInline 
           className={`w-full h-full object-cover transition-opacity duration-200 ${
-            hasRemoteVideo && !noAnswer ? "opacity-100" : "opacity-0 pointer-events-none"
+            hasRemoteVideo && remoteVideoActive && !noAnswer ? "opacity-100" : "opacity-0 pointer-events-none"
           }`} 
         />
         
         {/* Avatar/Calling Overlay - shown when there is no remote video */}
-        {(!hasRemoteVideo || noAnswer) && (
+        {(!hasRemoteVideo || !remoteVideoActive || noAnswer) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-gradient-to-br from-slate-900 via-slate-950 to-black">
             <div className="relative">
               {!noAnswer && (
@@ -234,7 +276,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
                 {noAnswer ? (
                   <span className="text-red-500 font-bold text-lg animate-pulse">No Answer</span>
                 ) : active ? (
-                  connected ? fmt(seconds) : "Connecting…"
+                  !remoteVideoActive && hasRemoteVideo ? `${peerName}'s camera is off` : (connected ? fmt(seconds) : "Connecting…")
                 ) : role === "caller" ? (
                   dbStatus === "ringing" ? "Ringing…" : "Calling…"
                 ) : (
@@ -273,7 +315,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
           autoPlay 
           playsInline 
           muted 
-          style={{ transform: "scaleX(-1)" }}
+          style={{ transform: facingMode === "user" ? "scaleX(-1)" : "none" }}
           className={`w-full h-full object-cover transition-opacity duration-150 ${cameraOff ? "opacity-0" : "opacity-100"}`} 
         />
         {cameraOff && (
@@ -294,7 +336,7 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
 
       {/* Bottom controls - hidden in Picture-in-Picture mode */}
       {!pipMode && (
-        <div className="relative z-10 mt-auto pb-10 px-6 flex items-center justify-center gap-4">
+        <div className="relative z-10 mt-auto px-6 flex items-center justify-center gap-4" style={{ paddingBottom: "max(2.5rem, env(safe-area-inset-bottom, 0px))" }}>
           {noAnswer ? (
             <button
               onClick={() => endCall("local")}

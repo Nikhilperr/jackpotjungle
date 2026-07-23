@@ -12,18 +12,8 @@ export function getSharedInitialSession(): Promise<Session | null> {
   if (!_sharedSessionPromise) {
     _sharedSessionPromise = supabase.auth
       .getSession()
-      .then(({ data }) => {
-        if (!data.session) {
-          // If no session found, clear cached promise so subsequent lookups re-query
-          clearSharedSessionCache();
-        }
-        return data.session ?? null;
-      })
-      .catch(() => {
-        // If lookup failed, immediately clear cached promise
-        clearSharedSessionCache();
-        return null;
-      });
+      .then(({ data }) => data.session ?? null)
+      .catch(() => null);
   }
   return _sharedSessionPromise;
 }
@@ -33,17 +23,27 @@ export function clearSharedSessionCache() {
   _sharedSessionPromise = null;
 }
 
-// Invalidate cached initial session immediately on state changes
+/** Keep route guards warm with the latest session from auth events. */
+export function setSharedSessionCache(session: Session | null) {
+  _sharedSessionPromise = Promise.resolve(session);
+}
+
+// Keep the shared cache in sync with auth events.
+// Clearing on TOKEN_REFRESHED forced every beforeLoad to re-fetch getSession(),
+// which flashed the full-screen pending spinner (loading ↔ chats loop).
 if (typeof window !== "undefined") {
   supabase.auth.onAuthStateChange((event, session) => {
-    if (
-      event === "SIGNED_OUT" ||
-      event === "TOKEN_REFRESHED" ||
-      event === "USER_UPDATED" ||
-      event === "USER_DELETED" ||
-      !session
-    ) {
+    if (event === "SIGNED_OUT" || event === "USER_DELETED") {
       clearSharedSessionCache();
+      return;
+    }
+    if (
+      event === "TOKEN_REFRESHED" ||
+      event === "SIGNED_IN" ||
+      event === "USER_UPDATED" ||
+      event === "INITIAL_SESSION"
+    ) {
+      if (session) setSharedSessionCache(session);
     }
   });
 }

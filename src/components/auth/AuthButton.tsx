@@ -1,5 +1,4 @@
 import { ButtonHTMLAttributes } from "react";
-import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
 interface AuthButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -29,14 +28,14 @@ export function AuthButton({
     }
   };
 
+  const { type = "button", ...rest } = props;
+
   return (
-    <motion.button
-      whileTap={{ scale: disabled || busy ? 1 : 0.98 }}
-      whileHover={{ scale: disabled || busy ? 1 : 1.01 }}
-      transition={{ duration: 0.2 }}
+    <button
+      type={type}
       disabled={disabled || busy}
-      className={`relative h-12 w-full flex items-center justify-center rounded-2xl text-sm font-semibold select-none transition-colors focus:outline-none focus:ring-2 focus:ring-primary/45 disabled:opacity-50 disabled:cursor-not-allowed ${getStyles()} ${className}`}
-      {...props}
+      className={`relative h-12 w-full flex items-center justify-center rounded-2xl text-sm font-semibold select-none transition-colors focus:outline-none focus:ring-2 focus:ring-primary/45 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] ${getStyles()} ${className}`}
+      {...rest}
     >
       {busy ? (
         <span className="flex items-center gap-2">
@@ -46,6 +45,6 @@ export function AuthButton({
       ) : (
         children
       )}
-    </motion.button>
+    </button>
   );
 }

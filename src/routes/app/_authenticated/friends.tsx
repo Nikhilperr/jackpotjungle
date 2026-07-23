@@ -122,14 +122,120 @@ function FriendsPage() {
       load(data.user.id);
     });
 
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Set up real-time subscriptions when meId becomes available
+  useEffect(() => {
+    if (!meId) return;
+    let mounted = true;
+
     const rand = Math.random().toString(36).slice(2, 9);
+    
+    async function fetchAndAppendRequest(reqId: string, senderId: string, receiverId: string, status: string) {
+      try {
+        const isOutgoing = senderId === meId;
+        const targetId = isOutgoing ? receiverId : senderId;
+        
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id, username, avatar_url, vip_status")
+          .eq("id", targetId)
+          .maybeSingle();
+        
+        if (!prof || !mounted) return;
+        
+        setRequests((prev) => {
+          if (prev.some((r) => r.id === reqId)) return prev;
+          const newReq: RequestRow = {
+            id: reqId,
+            sender_id: senderId,
+            receiver_id: receiverId,
+            status,
+            direction: isOutgoing ? "out" : "in",
+            profile: prof as Profile
+          };
+          const next = [...prev, newReq];
+          writeCache(REQUESTS_CACHE_KEY, next);
+          return next;
+        });
+      } catch (e) {
+        console.error("Error appending request:", e);
+      }
+    }
+
+    async function fetchAndAppendFriend(friendId: string) {
+      try {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id, username, avatar_url, vip_status")
+          .eq("id", friendId)
+          .maybeSingle();
+        
+        if (!prof || !mounted) return;
+        
+        setFriends((prev) => {
+          if (prev.some((f) => f.id === friendId)) return prev;
+          const next = [...prev, prof as Profile];
+          writeCache(FRIENDS_CACHE_KEY, next);
+          return next;
+        });
+      } catch (e) {
+        console.error("Error appending friend:", e);
+      }
+    }
+
     const channel = supabase
       .channel(`friends-page-${rand}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests" }, () => {
-        supabase.auth.getUser().then(({ data }) => { if (data.user && mounted) load(data.user.id); });
+      .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests" }, (payload) => {
+        if (!mounted) return;
+        const newRow = payload.new as any;
+        const oldRow = payload.old as any;
+        
+        if (payload.eventType === "INSERT" && newRow) {
+          if (newRow.sender_id === meId || newRow.receiver_id === meId) {
+            fetchAndAppendRequest(newRow.id, newRow.sender_id, newRow.receiver_id, newRow.status);
+          }
+        } else if (payload.eventType === "DELETE" && oldRow) {
+          setRequests((prev) => {
+            const next = prev.filter((r) => r.id !== oldRow.id);
+            writeCache(REQUESTS_CACHE_KEY, next);
+            return next;
+          });
+        } else if (payload.eventType === "UPDATE" && newRow) {
+          if (newRow.status !== "pending") {
+            setRequests((prev) => {
+              const next = prev.filter((r) => r.id !== newRow.id);
+              writeCache(REQUESTS_CACHE_KEY, next);
+              return next;
+            });
+          } else {
+            setRequests((prev) => {
+              const next = prev.map((r) => r.id === newRow.id ? { ...r, status: newRow.status } : r);
+              writeCache(REQUESTS_CACHE_KEY, next);
+              return next;
+            });
+          }
+        }
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => {
-        supabase.auth.getUser().then(({ data }) => { if (data.user && mounted) load(data.user.id); });
+      .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, (payload) => {
+        if (!mounted) return;
+        const newRow = payload.new as any;
+        const oldRow = payload.old as any;
+        
+        if (payload.eventType === "INSERT" && newRow) {
+          const friendId = newRow.user_a === meId ? newRow.user_b : newRow.user_a;
+          fetchAndAppendFriend(friendId);
+        } else if (payload.eventType === "DELETE" && oldRow) {
+          const friendId = oldRow.user_a === meId ? oldRow.user_b : oldRow.user_a;
+          setFriends((prev) => {
+            const next = prev.filter((f) => f.id !== friendId);
+            writeCache(FRIENDS_CACHE_KEY, next);
+            return next;
+          });
+        }
       })
       .subscribe();
 
@@ -137,7 +243,7 @@ function FriendsPage() {
       mounted = false;
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [meId]);
 
   // Debounced live search for database users
   useEffect(() => {

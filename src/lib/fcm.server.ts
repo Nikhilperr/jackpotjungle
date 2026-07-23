@@ -120,11 +120,17 @@ async function getAccessToken(sa: any): Promise<string> {
   return cachedToken;
 }
 
+export type PushOptions = {
+  /** Absolute HTTPS image URL (avatar / logo / photo) for BigPicture-style notifications. */
+  imageUrl?: string | null;
+};
+
 export async function sendPushNotification(
   tokens: string[],
   title: string,
   body: string,
-  data?: Record<string, string>
+  data?: Record<string, string>,
+  options?: PushOptions,
 ): Promise<void> {
   const sa = loadServiceAccount();
   if (!sa) {
@@ -134,7 +140,10 @@ export async function sendPushNotification(
 
   if (tokens.length === 0) return;
 
-  console.log(`[FCM] Preparing to send push to ${tokens.length} tokens. Title: "${title}"`);
+  const imageUrl =
+    options?.imageUrl && /^https?:\/\//i.test(options.imageUrl) ? options.imageUrl : undefined;
+
+  console.log(`[FCM] Preparing to send push to ${tokens.length} tokens. Title: "${title}"${imageUrl ? " (with image)" : ""}`);
 
   let accessToken: string;
   try {
@@ -164,24 +173,36 @@ export async function sendPushNotification(
       // Always populate title and body inside the data block for custom receiver access
       payload.message.data.title = title;
       payload.message.data.body = body;
+      if (imageUrl) payload.message.data.image = imageUrl;
 
       if (!isCall) {
         // Standard notification payload for chats, etc.
         payload.message.notification = {
           title,
           body,
+          ...(imageUrl ? { image: imageUrl } : {}),
         };
         payload.message.android.notification = {
           sound: "default",
           click_action: "FCM_PLUGIN_ACTIVITY",
+          channel_id: data?.type === "call" ? "calls_v2" : "chat_messages",
+          ...(imageUrl ? { image: imageUrl } : {}),
         };
         payload.message.apns = {
           payload: {
             aps: {
               sound: "default",
               badge: 1,
+              mutableContent: true,
             },
           },
+          ...(imageUrl
+            ? {
+                fcm_options: {
+                  image: imageUrl,
+                },
+              }
+            : {}),
         };
       } else {
         // Call payload: data-only for Android to wake up background service.

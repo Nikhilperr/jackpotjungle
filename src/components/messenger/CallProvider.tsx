@@ -4,6 +4,7 @@ import { CallScreen } from "./CallScreen";
 import { IncomingCallModal } from "./IncomingCallModal";
 import type { CallKind } from "./useWebRTC";
 import { stopRingtone } from "./ringtone";
+import { runAfterFirstPaint } from "@/lib/native/defer";
 
 type CallRow = {
   id: string;
@@ -49,8 +50,25 @@ export const useCalls = () => {
 };
 
 export function CallProvider({ children }: { children: ReactNode }) {
-  const [meId, setMeId] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Seed from local cache so first paint is not blocked on getUser/roles.
+  const [meId, setMeId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return localStorage.getItem("jj_me_id");
+    } catch {
+      return null;
+    }
+  });
+  const [isAdmin, setIsAdmin] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const role = localStorage.getItem("jj_user_role");
+      return role === "admin" || role === "super_admin";
+    } catch {
+      return false;
+    }
+  });
+  const [shellReady, setShellReady] = useState(false);
   const [active, setActive] = useState<ActiveCall | null>(null);
   const [incoming, setIncoming] = useState<Incoming | null>(() => {
     if (typeof window === "undefined") return null;
@@ -96,7 +114,23 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { activeRef.current = active; }, [active]);
+  useEffect(() => {
+    meIdRef.current = meId;
+  }, [meId]);
+
+  useEffect(() => {
+    const cancel = runAfterFirstPaint(() => setShellReady(true), 800);
+    return cancel;
+  }, []);
+
+  useEffect(() => { 
+    activeRef.current = active; 
+    if (active) {
+      localStorage.setItem("jj_active_call", JSON.stringify(active));
+    } else {
+      localStorage.removeItem("jj_active_call");
+    }
+  }, [active]);
   useEffect(() => { incomingRef.current = incoming; }, [incoming]);
 
   const clearCallUrlParams = useCallback(() => {
@@ -162,13 +196,32 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!shellReady) return;
     supabase.auth.getUser().then(async ({ data }) => {
       const uid = data.user?.id ?? null;
       setMeId(uid);
       meIdRef.current = uid;
       if (uid) {
+        try {
+          localStorage.setItem("jj_me_id", uid);
+        } catch { /* ignore */ }
+        const cached = localStorage.getItem("jj_user_role");
+        if (cached === "admin" || cached === "super_admin") {
+          setIsAdmin(true);
+        }
         const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", uid);
-        setIsAdmin(!!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin"));
+        const admin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
+        setIsAdmin(admin);
+        try {
+          localStorage.setItem(
+            "jj_user_role",
+            roles?.some((r: any) => r.role === "super_admin")
+              ? "super_admin"
+              : admin
+                ? "admin"
+                : "user",
+          );
+        } catch { /* ignore */ }
       } else {
         setIsAdmin(false);
       }
@@ -185,7 +238,30 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
     });
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [shellReady]);
+
+  // Restore active call from localStorage on boot if still ringing/active in the DB
+  useEffect(() => {
+    if (!meId) return;
+    const cached = localStorage.getItem("jj_active_call");
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached) as ActiveCall;
+        supabase.from("calls").select("status").eq("id", parsed.callId).maybeSingle().then(({ data }) => {
+          if (data && (data.status === "active" || data.status === "ringing")) {
+            console.log("[CallProvider] Restoring active call on boot for user:", meId, parsed);
+            setActive(parsed);
+          } else {
+            console.log("[CallProvider] Cached call is no longer valid:", data?.status);
+            localStorage.removeItem("jj_active_call");
+          }
+        });
+      } catch (e) {
+        console.error("[CallProvider] Failed to parse cached call:", e);
+        localStorage.removeItem("jj_active_call");
+      }
+    }
+  }, [meId]);
 
   // Verify if the call parsed from URL params on boot is still ringing in the database.
   // If it is already answered (active) or ended/missed, we clear it so other devices don't ring.
@@ -214,7 +290,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   // Listen for incoming calls (rows where callee_id = me, status = ringing)
   useEffect(() => {
-    if (!meId) return;
+    if (!meId || !shellReady) return;
     const ch = supabase
       .channel(`calls-inbox-${meId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "calls", filter: `callee_id=eq.${meId}` }, async (payload) => {
@@ -259,10 +335,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [meId, showIncomingCall]);
+    }, [meId, shellReady, showIncomingCall]);
 
   useEffect(() => {
-    if (!meId) return;
+    if (!meId || !shellReady) return;
     let alive = true;
     const poll = async () => {
       if (!alive || activeRef.current || incomingRef.current) return;
@@ -279,11 +355,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
     poll();
     const id = setInterval(poll, 2500);
     return () => { alive = false; clearInterval(id); };
-  }, [meId, showIncomingCall]);
+  }, [meId, shellReady, showIncomingCall]);
 
   // Admin-only: listen for page-broadcast calls (callee_id IS NULL until claimed)
   useEffect(() => {
-    if (!meId || !isAdmin) return;
+    if (!meId || !isAdmin || !shellReady) return;
     const ch = supabase
       .channel(`page-broadcast-inbox-${meId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "calls", filter: `context=eq.page_broadcast` }, (payload) => {
@@ -338,7 +414,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       clearInterval(pid);
       supabase.removeChannel(ch);
     };
-  }, [meId, isAdmin, showIncomingCall]);
+  }, [meId, isAdmin, shellReady, showIncomingCall]);
 
   const startCall = useCallback<Ctx["startCall"]>(async ({ calleeId, kind, peer, context = "friend", pageConversationId = null }) => {
     if (!meIdRef.current) return;

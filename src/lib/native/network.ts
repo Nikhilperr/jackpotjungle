@@ -33,10 +33,8 @@ function handleNetworkChange(connected: boolean, router: any) {
         duration: 3000,
         position: "top-center"
       });
-      // Invalidate query client queries or refresh router context
-      if (router) {
-        router.invalidate();
-      }
+      // Do not router.invalidate() here — on flaky mobile networks that
+      // re-runs authenticated beforeLoad and flashes loading ↔ chats.
     }
   } else {
     if (offlineToastId === null) {

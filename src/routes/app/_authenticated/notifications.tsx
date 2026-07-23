@@ -35,8 +35,23 @@ type NotificationItem = {
 
 function NotificationsPage() {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem("jj_cached_notifications");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return !localStorage.getItem("jj_cached_notifications");
+    } catch {
+      return true;
+    }
+  });
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -54,10 +69,46 @@ function NotificationsPage() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setNotifications((data as any[]) || []);
+      const freshList = (data as any[]) || [];
+
+      setNotifications((prev) => {
+        const prevMap = new Map(prev.map((n) => [n.id, n]));
+        let hasChanged = false;
+
+        const merged = freshList.map((newNotif) => {
+          const oldNotif = prevMap.get(newNotif.id);
+          if (!oldNotif) {
+            hasChanged = true;
+            return newNotif;
+          }
+
+          const changed =
+            oldNotif.title !== newNotif.title ||
+            oldNotif.content !== newNotif.content ||
+            oldNotif.created_at !== newNotif.created_at;
+
+          if (changed) {
+            hasChanged = true;
+            return { ...oldNotif, ...newNotif };
+          }
+          return oldNotif;
+        });
+
+        if (prev.length !== freshList.length) {
+          hasChanged = true;
+        }
+
+        if (!hasChanged) return prev;
+
+        try {
+          localStorage.setItem("jj_cached_notifications", JSON.stringify(merged));
+        } catch {}
+
+        return merged;
+      });
 
       // Automatically mark fetched notifications as seen/read via server function
-      if (data && data.some((n: any) => !n.seen)) {
+      if (freshList.some((n: any) => !n.seen)) {
         await markSeenFn();
         window.dispatchEvent(new CustomEvent("unread-notifications-updated"));
       }
@@ -70,6 +121,61 @@ function NotificationsPage() {
 
   useEffect(() => {
     fetchNotifications();
+
+    if (!user) return;
+    const channel = supabase
+      .channel(`realtime-notifications-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        async (payload) => {
+          const fresh = payload.new as any;
+          const old = payload.old as any;
+
+          if (payload.eventType === "INSERT" && fresh) {
+            setNotifications((prev) => {
+              if (prev.some((n) => n.id === fresh.id)) return prev;
+              const next = [fresh, ...prev];
+              try {
+                localStorage.setItem("jj_cached_notifications", JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+            if (!fresh.seen) {
+              await markSeenFn();
+              window.dispatchEvent(new CustomEvent("unread-notifications-updated"));
+            }
+          } else if (payload.eventType === "UPDATE" && fresh) {
+            setNotifications((prev) => {
+              const next = prev.map((n) => (n.id === fresh.id ? fresh : n));
+              try {
+                localStorage.setItem("jj_cached_notifications", JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+            window.dispatchEvent(new CustomEvent("unread-notifications-updated"));
+          } else if (payload.eventType === "DELETE" && old) {
+            setNotifications((prev) => {
+              const next = prev.filter((n) => n.id !== old.id);
+              try {
+                localStorage.setItem("jj_cached_notifications", JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+            window.dispatchEvent(new CustomEvent("unread-notifications-updated"));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const handleDelete = async (id: string) => {
@@ -78,7 +184,13 @@ function NotificationsPage() {
       const res = await deleteFn({ data: { id } });
       if (!res.success) throw new Error(res.error || "Failed to delete notification.");
       
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      setNotifications((prev) => {
+        const next = prev.filter((n) => n.id !== id);
+        try {
+          localStorage.setItem("jj_cached_notifications", JSON.stringify(next));
+        } catch {}
+        return next;
+      });
       toast.success("Notification deleted.");
       window.dispatchEvent(new CustomEvent("unread-notifications-updated"));
     } catch (err: any) {
@@ -97,6 +209,9 @@ function NotificationsPage() {
       if (!res.success) throw new Error(res.error || "Failed to clear notifications.");
       
       setNotifications([]);
+      try {
+        localStorage.removeItem("jj_cached_notifications");
+      } catch {}
       toast.success("All notifications cleared.");
       window.dispatchEvent(new CustomEvent("unread-notifications-updated"));
     } catch (err: any) {

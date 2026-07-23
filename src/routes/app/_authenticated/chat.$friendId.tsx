@@ -1,16 +1,18 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createFileRoute, useParams, Link, useNavigate } from "@tanstack/react-router";
 import { toCDNUrl } from "@/config";
+import { CachedImage } from "@/components/messenger/CachedImage";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, ArrowLeft, ImageIcon, Smile, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download, MessageCircle, Edit, Shield, ShieldCheck, User } from "lucide-react";
+import { ArrowLeft, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download, MessageCircle, Edit, Shield, ShieldCheck, User } from "lucide-react";
 import { Avatar } from "@/components/messenger/Avatar";
-import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
+import { MessengerComposer } from "@/components/messenger/MessengerComposer";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { CallMessage } from "@/components/messenger/CallMessage";
 import { useCalls } from "@/components/messenger/CallProvider";
 import { uploadAndSign } from "@/lib/chat-media";
+import { NetworkManager, generateUUID } from "@/lib/network-manager";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -451,6 +453,45 @@ export function GroupAddMembersModal({
   );
 }
 
+const FastChatInput = React.forwardRef<HTMLInputElement, {
+  draft: string;
+  onDraftChange: (v: string, sel?: number) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  className?: string;
+  onHasContentChange?: (hasContent: boolean) => void;
+}>(({ draft, onDraftChange, onKeyDown, placeholder, className, onHasContentChange }, ref) => {
+  const [val, setVal] = useState(draft);
+  const draftRef = useRef(draft);
+
+  useEffect(() => {
+    if (draft !== draftRef.current) {
+      draftRef.current = draft;
+      setVal(draft);
+      if (onHasContentChange) onHasContentChange(!!draft.trim());
+    }
+  }, [draft, onHasContentChange]);
+
+  return (
+    <Input
+      ref={ref}
+      value={val}
+      onChange={(e) => {
+        const next = e.target.value;
+        const sel = e.target.selectionStart || 0;
+        setVal(next);
+        draftRef.current = next;
+        if (onHasContentChange) onHasContentChange(!!next.trim());
+        onDraftChange(next, sel);
+      }}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
+      className={className}
+    />
+  );
+});
+FastChatInput.displayName = "FastChatInput";
+
 export const Route = createFileRoute("/app/_authenticated/chat/$friendId")({
   component: ChatView,
 });
@@ -774,12 +815,38 @@ function ChatView() {
     setHasOlderMessages(false);
   }
 
+  const getOfflineQueuedForCurrent = useCallback(() => {
+    const queue = NetworkManager.getMessageQueue();
+    return queue.filter(m => {
+      if (m.is_page) return false;
+      if (isGroup) {
+        return m.group_id === groupId;
+      } else {
+        return m.receiver_id === friendId;
+      }
+    }).map(m => ({
+      id: m.id,
+      sender_id: m.sender_id,
+      receiver_id: m.receiver_id,
+      group_id: m.group_id,
+      content: m.content,
+      image_url: m.image_url,
+      audio_url: m.audio_url,
+      created_at: m.created_at,
+      seen: false,
+      delivered: false,
+      queued: !m.failed,
+      failed: !!m.failed
+    }));
+  }, [isGroup, groupId, friendId]);
+
   const load = useCallback(async () => {
     if (!meId) return;
     isInitialLoadRef.current = true;
 
     if (isGroup) {
-      let cachedGroupMsgs = getCachedGroupMessages(groupId);
+      const cachedDetails = getCachedGroupDetails(groupId || "");
+      let cachedGroupMsgs = getCachedGroupMessages(groupId || "");
       if (cachedGroupMsgs) {
         const sample = cachedGroupMsgs[0];
         if (sample && sample.group_id !== groupId) {
@@ -856,7 +923,8 @@ function ChatView() {
           setHasOlderMessages(hasMore);
         }
 
-        setMessages(finalMsgs);
+        const queued = getOfflineQueuedForCurrent();
+        setMessages([...finalMsgs, ...queued]);
         setCachedGroupMessages(groupId, finalMsgs);
         setCalls([]); // Group call logs placeholder
 
@@ -991,12 +1059,22 @@ function ChatView() {
 
     try {
       if (lastCachedMsg) {
-        const [{ data: prof }, { data: deltaMsgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
+        // Catch-up: re-fetch recent cached rows for edits/seen/delivered (no updated_at column).
+        const catchUpIds = (cachedMsgs || [])
+          .slice(-40)
+          .map((m) => m.id)
+          .filter((id) => id && !String(id).startsWith("temp-"));
+        const [{ data: prof }, { data: deltaMsgs }, { data: catchUpRows }, { data: spamRow }, { data: callRows }] =
+          await Promise.all([
           supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at, vip_status").eq("id", friendId).maybeSingle(),
           supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
             .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
             .gt("created_at", lastCachedMsg.created_at)
-            .order("created_at", { ascending: false }),
+            .order("created_at", { ascending: false })
+            .limit(200),
+          catchUpIds.length
+            ? supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)").in("id", catchUpIds)
+            : Promise.resolve({ data: [] as any[] }),
           supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
           supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
             .or(`and(caller_id.eq.${meId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${meId})`)
@@ -1010,16 +1088,28 @@ function ChatView() {
         if (profile && spamRow) profile.online = false;
         if (profile) { setFriend(profile); setCachedProfile(friendId, profile); }
 
+        const byId = new Map((cachedMsgs || []).map((m) => [m.id, m]));
+        // Drop catch-up ids that disappeared from the server (deleted while offline).
+        const stillOnServer = new Set((catchUpRows ?? []).map((m: any) => m.id));
+        for (const id of catchUpIds) {
+          if (!stillOnServer.has(id)) byId.delete(id);
+        }
+        for (const row of (catchUpRows ?? []) as Message[]) {
+          byId.set(row.id, { ...(byId.get(row.id) as Message | undefined), ...row });
+        }
         const delta = (deltaMsgs ?? []) as Message[];
-        const combined = [...(cachedMsgs || [])];
         delta.reverse().forEach((m) => {
-          if (!combined.some((x) => x.id === m.id)) {
-            combined.push(m);
-          }
+          byId.set(m.id, m);
         });
+        const combined = Array.from(byId.values()).sort((a, b) =>
+          (a.created_at || "").localeCompare(b.created_at || ""),
+        );
 
-        setMessages(combined);
+        const queued = getOfflineQueuedForCurrent();
+        setMessages([...combined, ...queued]);
         setCachedMessages(meId, friendId, combined);
+        // Warm open: assume older history may still exist.
+        setHasOlderMessages(true);
         setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
       } else {
         const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
@@ -1044,11 +1134,15 @@ function ChatView() {
         const hasMore = rawMsgs.length > PAGE;
         const pageMsgs = rawMsgs.slice(0, PAGE).reverse();
         setHasOlderMessages(hasMore);
-        setMessages(pageMsgs);
+        const queued = getOfflineQueuedForCurrent();
+        setMessages([...pageMsgs, ...queued]);
         setCachedMessages(meId, friendId, pageMsgs);
         setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
       }
 
+      // Opening a thread: mark delivered for anything still undelivered, then seen.
+      await supabase.from("messages").update({ delivered: true } as any)
+        .eq("sender_id", friendId).eq("receiver_id", meId).eq("delivered", false);
       await supabase.from("messages").update({ seen: true, delivered: true } as any)
         .eq("sender_id", friendId).eq("receiver_id", meId).eq("seen", false);
     } catch (err) {
@@ -1059,8 +1153,18 @@ function ChatView() {
   useEffect(() => {
     isMountedRef.current = true;
     load();
-    return () => { isMountedRef.current = false; };
+    const onForeground = () => {
+      if (isMountedRef.current) void load();
+    };
+    window.addEventListener("jj-app-foreground", onForeground);
+    return () => {
+      isMountedRef.current = false;
+      window.removeEventListener("jj-app-foreground", onForeground);
+    };
   }, [load]);
+
+  // friendId changes already recreate `load` — do not call load() again here
+  // (that caused a double network hydrate on every conversation open).
 
   useEffect(() => {
     if (!isGroup && meId && friendId && messages.length > 0) {
@@ -1127,7 +1231,6 @@ function ChatView() {
   const activeFriendIdRef = useRef(friendId);
   useEffect(() => {
     activeFriendIdRef.current = friendId;
-    load();
   }, [friendId]);
 
   useEffect(() => {
@@ -1213,7 +1316,12 @@ function ChatView() {
           };
 
           setMessages((prev) => {
-            if (prev.some((x) => x.id === m.id)) return prev;
+            const exactIdx = prev.findIndex((x) => x.id === m.id);
+            if (exactIdx >= 0) {
+              const copy = prev.slice();
+              copy[exactIdx] = { ...copy[exactIdx], ...mappedMsg, queued: false, failed: false, delivered: true };
+              return copy;
+            }
             const idx = prev.findIndex((x) =>
               x.id && typeof x.id === "string" && x.id.startsWith("temp-") &&
               x.sender_id === m.sender_id &&
@@ -1223,20 +1331,29 @@ function ChatView() {
             );
             if (idx >= 0) {
               const copy = prev.slice();
-              copy[idx] = mappedMsg;
+              copy[idx] = { ...copy[idx], ...mappedMsg, queued: false, failed: false, delivered: true };
               return copy;
             }
             return [...prev, mappedMsg];
           });
           
+          // Delivered = reached device; seen = thread is open/focused.
           if (m.group_id) {
             if (m.sender_id !== meId) {
-              supabase.from("messages").update({ seen: true } as any).eq("id", m.id).then();
+              const focused = document.visibilityState === "visible";
+              supabase
+                .from("messages")
+                .update((focused ? { seen: true, delivered: true } : { delivered: true }) as any)
+                .eq("id", m.id)
+                .then();
             }
-          } else {
-            if (m.receiver_id === meId) {
-              supabase.from("messages").update({ seen: true, delivered: true } as any).eq("id", m.id).then();
-            }
+          } else if (m.receiver_id === meId) {
+            const focused = document.visibilityState === "visible";
+            supabase
+              .from("messages")
+              .update((focused ? { seen: true, delivered: true } : { delivered: true }) as any)
+              .eq("id", m.id)
+              .then();
           }
         } else {
           if (!m.group_id) {
@@ -1266,40 +1383,114 @@ function ChatView() {
           }
         }
       })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, (payload) => {
+        const m = payload.old as any;
+        if (!m?.id) return;
+        const involves = involvesGroupMsg(m);
+        if (involves) {
+          setMessages((prev) => prev.filter((x) => x.id !== m.id));
+        } else if (!m.group_id && meId) {
+          const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
+          if (otherFid) {
+            const cached = getCachedMessages(meId, otherFid);
+            if (cached) {
+              setCachedMessages(meId, otherFid, cached.filter((x) => x.id !== m.id));
+            }
+          }
+        }
+      })
       .subscribe();
 
     const groupMemberChannel = supabase
       .channel(`active-group-members-${rand}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "group_members", filter: isGroup ? `group_id=eq.${groupId}` : undefined }, () => {
-        load();
+      .on("postgres_changes", { event: "*", schema: "public", table: "group_members", filter: isGroup ? `group_id=eq.${groupId}` : undefined }, async (payload) => {
+        if (!isMountedRef.current || !isGroup) return;
+        const newRow = payload.new as any;
+        const oldRow = payload.old as any;
+
+        if (payload.eventType === "DELETE" && oldRow) {
+          setGroupMembers((prev) => prev.filter((m) => m.profiles?.id !== oldRow.user_id));
+        } else if (payload.eventType === "INSERT" && newRow) {
+          try {
+            const { data: prof } = await supabase
+              .from("profiles")
+              .select("id, username, first_name, last_name, avatar_url, online, last_seen, vip_status")
+              .eq("id", newRow.user_id)
+              .maybeSingle();
+            
+            if (prof && isMountedRef.current) {
+              setGroupMembers((prev) => {
+                if (prev.some((m) => m.profiles?.id === prof.id)) return prev;
+                return [...prev, { role: newRow.role, joined_at: newRow.joined_at, profiles: prof }];
+              });
+            }
+          } catch (e) {
+            console.error("Error fetching group member profile on insert:", e);
+          }
+        } else if (payload.eventType === "UPDATE" && newRow) {
+          setGroupMembers((prev) =>
+            prev.map((m) =>
+              m.profiles?.id === newRow.user_id ? { ...m, role: newRow.role } : m
+            )
+          );
+        }
       })
       .subscribe();
 
     const groupChannel = supabase
       .channel(`active-groups-${rand}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "groups", filter: isGroup ? `id=eq.${groupId}` : undefined }, () => {
-        load();
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "groups", filter: isGroup ? `id=eq.${groupId}` : undefined }, (payload) => {
+        if (!isMountedRef.current || !isGroup) return;
+        const newRow = payload.new as any;
+        if (newRow) {
+          setGroup(newRow);
+          setEditingGroupName(newRow.name);
+          setEditingGroupAvatar(newRow.avatar_url || "");
+          setCachedGroupDetails(groupId, newRow);
+        }
       })
       .subscribe();
 
+    const profileChannel = supabase
+      .channel(`chat-active-profile-${rand}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: isGroup ? undefined : `id=eq.${friendId}` }, (payload) => {
+        if (!isMountedRef.current || isGroup) return;
+        const p = payload.new as any;
+        if (p) {
+          setFriend((prev) => {
+            if (!prev) return p;
+            const changed = prev.online !== p.online || prev.avatar_url !== p.avatar_url || prev.vip_status !== p.vip_status || prev.username !== p.username || prev.last_seen !== p.last_seen;
+            return changed ? { ...prev, ...p } : prev;
+          });
+        }
+      })
+      .subscribe();
+
+    // Stable channel name so both peers share the same realtime topic (Messenger-style).
+    const typingTopic = isGroup && groupId
+      ? `typing-group-${groupId}`
+      : `typing-dm-${[meId, friendId].sort().join("-")}`;
     const typingChannel = supabase
-      .channel(`typing-active-friend-global-${rand}`, { config: { broadcast: { self: false } } })
+      .channel(typingTopic, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "typing" }, (payload) => {
         const data = payload.payload as { from: string; to: string; fromUsername?: string };
-        if (data && data.to === activeFriendIdRef.current && data.from !== meId) {
-          if (isGroup) {
-            setTypingUsers((prev) => {
-              const next = new Set(prev);
-              next.add(data.fromUsername || "Someone");
-              return next;
-            });
-            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-            typingTimeoutRef.current = setTimeout(() => setTypingUsers(new Set()), 2500);
-          } else {
-            setFriendTyping(true);
-            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-            typingTimeoutRef.current = setTimeout(() => setFriendTyping(false), 2500);
-          }
+        if (!data || data.from === meId) return;
+        const targetsMe = isGroup
+          ? data.to === groupId || data.to === `group-${groupId}`
+          : data.to === meId;
+        if (!targetsMe) return;
+        if (isGroup) {
+          setTypingUsers((prev) => {
+            const next = new Set(prev);
+            next.add(data.fromUsername || "Someone");
+            return next;
+          });
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => setTypingUsers(new Set()), 2500);
+        } else {
+          setFriendTyping(true);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => setFriendTyping(false), 2500);
         }
       })
       .subscribe();
@@ -1331,6 +1522,7 @@ function ChatView() {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(groupMemberChannel);
       supabase.removeChannel(groupChannel);
+      supabase.removeChannel(profileChannel);
       supabase.removeChannel(typingChannel);
       supabase.removeChannel(callsChannel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -1378,6 +1570,44 @@ function ChatView() {
     }
   }, [friendId, friend]);
 
+  useEffect(() => {
+    const handleQueueChange = () => {
+      const queued = getOfflineQueuedForCurrent();
+      setMessages((prev) => {
+        const withoutQueued = prev.filter((m) => !queued.some((q) => q.id === m.id));
+        return [...withoutQueued, ...queued];
+      });
+    };
+
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { id, finalImageUrl, finalAudioUrl } = customEvent.detail;
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === id
+            ? {
+                ...msg,
+                queued: false,
+                failed: false,
+                delivered: true,
+                image_url: finalImageUrl || msg.image_url,
+                audio_url: finalAudioUrl || msg.audio_url
+              }
+            : msg
+        )
+      );
+    };
+
+    window.addEventListener("jj-queue-updated", handleQueueChange);
+    window.addEventListener("jj-queue-processed", handleQueueChange);
+    window.addEventListener("jj-message-synchronized", handleSync);
+    return () => {
+      window.removeEventListener("jj-queue-updated", handleQueueChange);
+      window.removeEventListener("jj-queue-processed", handleQueueChange);
+      window.removeEventListener("jj-message-synchronized", handleSync);
+    };
+  }, [getOfflineQueuedForCurrent]);
+
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [confirmPinTarget, setConfirmPinTarget] = useState<string | null>(null);
@@ -1390,7 +1620,7 @@ function ChatView() {
     if (!el) return;
     const isNear = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
     isNearBottomRef.current = isNear;
-    if (isNear) {
+    if (isNear && showScrollToBottom) {
       setShowScrollToBottom(false);
     }
   };
@@ -1408,12 +1638,10 @@ function ChatView() {
   const [showDetail, setShowDetail] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
+  // One-time mobile check — avoid resize listener (keyboard triggers it on Android)
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    setIsMobile(window.innerWidth < 768);
   }, []);
 
   const [forwardTargetMsg, setForwardTargetMsg] = useState<Message | null>(null);
@@ -2111,28 +2339,38 @@ function ChatView() {
     setAddMembersOpen(true);
   }
 
+  const debouncedDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   function onDraftChange(v: string, selectionStart?: number) {
-    handleDraftChange(v);
-    if (isGroup && selectionStart !== undefined) {
-      handleMentionCheck(v, selectionStart);
-    }
+    setDraft(friendId, v);
+    if (debouncedDraftTimerRef.current) clearTimeout(debouncedDraftTimerRef.current);
+    debouncedDraftTimerRef.current = setTimeout(() => {
+      handleDraftChange(v);
+      if (isGroup && selectionStart !== undefined && v.includes("@")) {
+        handleMentionCheck(v, selectionStart);
+      } else if (mentionSearch !== null) {
+        setMentionSearch(null);
+      }
+    }, 120);
+
     const now = Date.now();
-    if (typingChannelRef.current && meId && now - lastTypingSentRef.current > 1500) {
+    if (typingChannelRef.current && meId && now - lastTypingSentRef.current > 2500) {
       lastTypingSentRef.current = now;
       typingChannelRef.current.send({
         type: "broadcast",
         event: "typing",
         payload: {
           from: meId,
-          to: friendId,
+          // Peer listens for to === their user id (DM) or group id (group).
+          to: isGroup ? groupId : friendId,
           fromUsername: myUsername
         }
       });
     }
   }
 
-  function addOptimistic(partial: Partial<Message>): string {
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  function addOptimistic(partial: Partial<Message>, customId?: string): string {
+    const tempId = customId || `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimistic: Message = {
       id: tempId,
       sender_id: meId!,
@@ -2340,10 +2578,10 @@ function ChatView() {
     }
   }, [meId]);
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    if (!draft.trim() || !meId) return;
-    const content = draft.trim();
+  async function send(e?: React.FormEvent, overrideContent?: string) {
+    e?.preventDefault();
+    const content = (overrideContent ?? draft).trim();
+    if (!content || !meId) return;
     setDraftState("");
     clearDraft(friendId);
     setShowEmoji(false);
@@ -2379,7 +2617,8 @@ function ChatView() {
     const finalContent = replyPrefix + content;
     setReplyingTo(null);
 
-    const tempId = addOptimistic({ content });
+    const clientUuid = generateUUID();
+    const tempId = addOptimistic({ content }, clientUuid);
     window.dispatchEvent(
       new CustomEvent("jj-message-sent", {
         detail: {
@@ -2393,7 +2632,22 @@ function ChatView() {
       })
     );
 
-    const insertObj: any = { sender_id: meId, content: finalContent };
+    if (!NetworkManager.isOnline()) {
+      await NetworkManager.queueMessage({
+        id: clientUuid,
+        sender_id: meId,
+        receiver_id: isGroup ? null : friendId,
+        group_id: isGroup ? groupId : null,
+        content: finalContent,
+        image_url: null,
+        audio_url: null,
+        is_page: false,
+        reply_to: replyingTo
+      });
+      return;
+    }
+
+    const insertObj: any = { id: clientUuid, sender_id: meId, content: finalContent };
     if (isGroup) {
       insertObj.group_id = groupId;
     } else {
@@ -2406,6 +2660,20 @@ function ChatView() {
       .select("*, sender:sender_id(id, username, first_name, last_name, avatar_url)")
       .single();
     if (error) {
+      if (error.code === "23505") {
+        return;
+      }
+      await NetworkManager.queueMessage({
+        id: clientUuid,
+        sender_id: meId,
+        receiver_id: isGroup ? null : friendId,
+        group_id: isGroup ? groupId : null,
+        content: finalContent,
+        image_url: null,
+        audio_url: null,
+        is_page: false,
+        reply_to: replyingTo
+      });
       setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       console.error(error);
       return;
@@ -2437,7 +2705,8 @@ function ChatView() {
     if (file.size > 8 * 1024 * 1024) { alert("Max 8 MB"); return; }
     setUploading(true);
     const localPreview = URL.createObjectURL(file);
-    const tempId = addOptimistic({ image_url: localPreview });
+    const clientUuid = generateUUID();
+    const tempId = addOptimistic({ image_url: localPreview }, clientUuid);
     window.dispatchEvent(
       new CustomEvent("jj-message-sent", {
         detail: {
@@ -2450,9 +2719,27 @@ function ChatView() {
         }
       })
     );
+
+    if (!NetworkManager.isOnline()) {
+      await NetworkManager.queueMessage({
+        id: clientUuid,
+        sender_id: meId,
+        receiver_id: isGroup ? null : friendId,
+        group_id: isGroup ? groupId : null,
+        content: null,
+        image_url: localPreview,
+        audio_url: null,
+        is_page: false,
+        fileExt: ext,
+        fileMime: fileMime
+      }, file);
+      setUploading(false);
+      return;
+    }
+
     try {
       const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
-      const insertObj: any = { sender_id: meId, content: null, image_url: url };
+      const insertObj: any = { id: clientUuid, sender_id: meId, content: null, image_url: url };
       if (isGroup) insertObj.group_id = groupId;
       else insertObj.receiver_id = friendId;
 
@@ -2465,6 +2752,18 @@ function ChatView() {
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, image_url: url } : x)));
     } catch (err) {
       console.error(err);
+      await NetworkManager.queueMessage({
+        id: clientUuid,
+        sender_id: meId,
+        receiver_id: isGroup ? null : friendId,
+        group_id: isGroup ? groupId : null,
+        content: null,
+        image_url: localPreview,
+        audio_url: null,
+        is_page: false,
+        fileExt: ext,
+        fileMime: fileMime
+      }, file);
       setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
     }
     setUploading(false);
@@ -2474,7 +2773,8 @@ function ChatView() {
     if (!meId) return;
     setRecUploading(true);
     const localPreview = URL.createObjectURL(blob);
-    const tempId = addOptimistic({ audio_url: localPreview });
+    const clientUuid = generateUUID();
+    const tempId = addOptimistic({ audio_url: localPreview }, clientUuid);
     window.dispatchEvent(
       new CustomEvent("jj-message-sent", {
         detail: {
@@ -2487,9 +2787,27 @@ function ChatView() {
         }
       })
     );
+
+    if (!NetworkManager.isOnline()) {
+      await NetworkManager.queueMessage({
+        id: clientUuid,
+        sender_id: meId,
+        receiver_id: isGroup ? null : friendId,
+        group_id: isGroup ? groupId : null,
+        content: null,
+        image_url: null,
+        audio_url: localPreview,
+        is_page: false,
+        fileExt: ext,
+        fileMime: mime
+      }, blob);
+      setRecUploading(false);
+      return;
+    }
+
     try {
       const url = await uploadAndSign("chat-audio", meId, blob, ext, mime);
-      const insertObj: any = { sender_id: meId, content: null, audio_url: url };
+      const insertObj: any = { id: clientUuid, sender_id: meId, content: null, audio_url: url };
       if (isGroup) insertObj.group_id = groupId;
       else insertObj.receiver_id = friendId;
 
@@ -2502,6 +2820,18 @@ function ChatView() {
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, audio_url: url } : x)));
     } catch (err) {
       console.error(err);
+      await NetworkManager.queueMessage({
+        id: clientUuid,
+        sender_id: meId,
+        receiver_id: isGroup ? null : friendId,
+        group_id: isGroup ? groupId : null,
+        content: null,
+        image_url: null,
+        audio_url: localPreview,
+        is_page: false,
+        fileExt: ext,
+        fileMime: mime
+      }, blob);
       setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
     }
     setRecUploading(false);
@@ -2539,18 +2869,20 @@ function ChatView() {
 
   // Show skeleton UI while loading — feels instant like Messenger
   if (isGroup ? !group : !friend) return (
-    <div className="h-full flex-1 flex flex-col min-h-0 bg-background">
-      {/* Skeleton Header */}
-      <header className="px-3 py-3 border-b border-border flex items-center gap-3 bg-card min-h-[65px]">
-        <div className="h-9 w-9 rounded-full bg-secondary animate-pulse" />
-        <div className="h-10 w-10 rounded-full bg-secondary animate-pulse" />
+    <div className="h-full max-h-full flex-1 flex flex-col min-h-0 bg-background overflow-hidden">
+      {/* Skeleton Header — same layout as real Messenger header (name + call slots) */}
+      <header className="sticky top-0 z-30 px-3 py-3 border-b border-border flex items-center gap-3 bg-card min-h-[65px] shrink-0">
+        <div className="h-9 w-9 rounded-full bg-secondary animate-pulse shrink-0" />
+        <div className="h-10 w-10 rounded-full bg-secondary animate-pulse shrink-0" />
         <div className="flex-1 min-w-0 space-y-1.5">
           <div className="h-3.5 w-28 rounded bg-secondary animate-pulse" />
           <div className="h-2.5 w-16 rounded bg-secondary/60 animate-pulse" />
         </div>
+        <div className="h-9 w-9 rounded-full bg-secondary/80 animate-pulse shrink-0" />
+        <div className="h-9 w-9 rounded-full bg-secondary/80 animate-pulse shrink-0" />
       </header>
       {/* Skeleton Messages */}
-      <div className="flex-1 overflow-hidden px-4 py-6 space-y-4">
+      <div className="flex-1 overflow-hidden px-4 py-6 space-y-4 min-h-0">
         {[...Array(6)].map((_, i) => (
           <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
             <div className={`h-9 rounded-2xl bg-secondary animate-pulse ${i % 3 === 0 ? 'w-40' : i % 3 === 1 ? 'w-56' : 'w-32'}`} style={{ animationDelay: `${i * 80}ms` }} />
@@ -2558,7 +2890,7 @@ function ChatView() {
         ))}
       </div>
       {/* Skeleton Input Bar */}
-      <div className="p-3 border-t border-border flex items-center gap-2 bg-card">
+      <div className="p-3 border-t border-border flex items-center gap-2 bg-card shrink-0">
         <div className="h-10 w-10 rounded-full bg-secondary animate-pulse" />
         <div className="h-10 w-10 rounded-full bg-secondary animate-pulse" />
         <div className="flex-1 h-10 rounded-full bg-secondary animate-pulse" />
@@ -2568,10 +2900,10 @@ function ChatView() {
   );
 
   return (
-    <div className="h-full flex-1 flex min-h-0 relative w-full overflow-hidden">
+    <div className="h-full max-h-full flex-1 flex min-h-0 relative w-full overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 bg-background w-full overflow-hidden">
         {selectionMode ? (
-        <header className="px-3 md:px-5 py-3 border-b border-border flex items-center justify-between bg-card min-h-[65px] shrink-0">
+        <header className="sticky top-0 z-30 px-3 md:px-5 py-3 border-b border-border flex items-center justify-between bg-card min-h-[65px] shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -2586,8 +2918,8 @@ function ChatView() {
           <div className="w-12" /> {/* Spacer */}
         </header>
       ) : (
-        <header className="px-3 md:px-5 py-3 border-b border-border flex items-center gap-3 bg-card shrink-0">
-          <Link to="/app/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
+        <header className="sticky top-0 z-30 px-3 md:px-5 py-3 border-b border-border flex items-center gap-2 bg-card min-h-[65px] shrink-0">
+          <Link to="/app/chat" className="md:hidden h-10 w-10 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary shrink-0 touch-target">
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <button
@@ -2651,25 +2983,28 @@ function ChatView() {
               </p>
             </div>
           </button>
+          {/* Messenger default header actions: voice + video always on the right */}
           {!friendId.startsWith("system-") && !isGroup && (
-            <>
+            <div className="flex items-center gap-0.5 shrink-0">
               <button
                 type="button"
                 onClick={() => friend && startCall({ calleeId: friend.id, kind: "voice", peer: { name: friendDisplayName, avatar: friend.avatar_url }, context: "friend" })}
-                className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
+                className="h-10 w-10 rounded-full flex items-center justify-center text-primary hover:bg-secondary active:bg-secondary/80 touch-target"
                 aria-label="Voice call"
+                title="Voice call"
               >
                 <Phone className="h-5 w-5" />
               </button>
               <button
                 type="button"
                 onClick={() => friend && startCall({ calleeId: friend.id, kind: "video", peer: { name: friendDisplayName, avatar: friend.avatar_url }, context: "friend" })}
-                className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary"
+                className="h-10 w-10 rounded-full flex items-center justify-center text-primary hover:bg-secondary active:bg-secondary/80 touch-target"
                 aria-label="Video call"
+                title="Video call"
               >
                 <Video className="h-5 w-5" />
               </button>
-            </>
+            </div>
           )}
         </header>
       )}
@@ -2729,7 +3064,7 @@ function ChatView() {
         </div>
       )}
 
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto smooth-scroll px-4 py-6 space-y-2 relative">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain smooth-scroll px-4 py-6 space-y-2 relative">
         {/* Floating scroll bottom arrow */}
         {showScrollToBottom && (
           <button
@@ -2985,25 +3320,41 @@ function ChatView() {
           </button>
         </div>
       ) : (
-        <form
-          onSubmit={send}
-          className="relative px-4 py-3 border-t border-border flex items-center gap-2 bg-card shrink-0"
-          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        <MessengerComposer
+          value={draft}
+          onChange={(v, cursor) => onDraftChange(v, cursor)}
+          onSubmit={(e) => void send(e)}
+          onFileChange={(e) => void onPickImage(e)}
+          onVoice={onVoice}
+          onThumbsUp={() => void send(undefined, "👍")}
+          placeholder="Aa"
+          sending={sending}
+          uploading={uploading}
+          recUploading={recUploading}
+          hideMedia={friendId === "system-user-ai-chat"}
+          showEmojiButton={friendId !== "system-user-ai-chat"}
+          emojiActive={showEmoji}
+          onToggleEmoji={() => setShowEmoji((v) => !v)}
+          fileRef={fileRef}
+          inputRef={inputRef}
+          onKeyDown={(e) => {
+            if (mentionSearch !== null && filteredMembers.length > 0) {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setMentionIdx((prev) => (prev + 1) % filteredMembers.length);
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setMentionIdx((prev) => (prev - 1 + filteredMembers.length) % filteredMembers.length);
+              } else if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                insertMention(filteredMembers[mentionIdx].username);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setMentionSearch(null);
+              }
+            }
+          }}
         >
-          {friendId !== "system-user-ai-chat" && (
-            <>
-              <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-                className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 transition-colors" aria-label="Send image">
-                {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
-              </button>
-              <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
-              <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
-              <button type="button" onClick={() => setShowEmoji((v) => !v)}
-                className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-secondary transition-colors ${showEmoji ? "text-primary" : "text-muted-foreground"}`} aria-label="Emoji">
-                <Smile className="h-5 w-5" />
-              </button>
-            </>
-          )}
           {mentionSearch !== null && filteredMembers.length > 0 && (
             <div className="absolute left-3 right-3 bottom-full mb-2 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden z-30 max-h-48 overflow-y-auto backdrop-blur-md bg-opacity-95">
               <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-secondary/50 flex items-center gap-1 border-b border-border">
@@ -3028,31 +3379,7 @@ function ChatView() {
               ))}
             </div>
           )}
-          <Input ref={inputRef} value={draft} 
-            onChange={(e) => onDraftChange(e.target.value, e.target.selectionStart || 0)} 
-            onKeyDown={(e) => {
-              if (mentionSearch !== null && filteredMembers.length > 0) {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setMentionIdx((prev) => (prev + 1) % filteredMembers.length);
-                } else if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setMentionIdx((prev) => (prev - 1 + filteredMembers.length) % filteredMembers.length);
-                } else if (e.key === "Enter" || e.key === "Tab") {
-                  e.preventDefault();
-                  insertMention(filteredMembers[mentionIdx].username);
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  setMentionSearch(null);
-                }
-              }
-            }}
-            placeholder="Aa"
-            className="flex-1 min-w-0 h-10 rounded-full bg-secondary border-transparent focus-visible:ring-1 focus-visible:ring-primary/30" />
-          <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="h-10 w-10 rounded-full shrink-0 flex items-center justify-center send-btn-active bg-primary text-primary-foreground hover:bg-primary/95 transition-all">
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
+        </MessengerComposer>
       )}
 
       {preview && (
@@ -4182,8 +4509,14 @@ const MessageItem = React.memo(function MessageItem({
             }}
           >
             {m.image_url ? (
-              <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block">
-                <img src={toCDNUrl(m.image_url)} alt="" className="block max-h-80 w-auto object-cover" />
+              <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block min-h-[150px] bg-secondary/35 flex items-center justify-center">
+                <CachedImage
+                  src={toCDNUrl(m.image_url)}
+                  alt=""
+                  className="block max-h-80 w-[200px] object-cover rounded-2xl"
+                  style={{ width: "200px", height: "auto", maxHeight: "320px" }}
+                  cachePolicy="volatile"
+                />
               </button>
             ) : m.audio_url ? (
               <div className="block">
@@ -4236,14 +4569,25 @@ const MessageItem = React.memo(function MessageItem({
           </div>
         )}
 
-        {mine && (isLastMine || m.failed) && (
+        {mine && (isLastMine || m.failed || (m as any).queued) && (
           <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
             {m.failed ? (
-              <span className="inline-flex items-center gap-1 text-destructive">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toast.promise(NetworkManager.retryMessage(m.id), {
+                    loading: "Retrying message...",
+                    success: "Message sent!",
+                    error: "Failed to retry message."
+                  });
+                }}
+                className="inline-flex items-center gap-1 text-destructive hover:underline cursor-pointer font-bold"
+              >
                 <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />
-                Not delivered
-              </span>
-            ) : (m.id && typeof m.id === "string" && m.id.startsWith("temp-")) ? (
+                Not delivered. Tap to retry
+              </button>
+            ) : (m.id && typeof m.id === "string" && (m.id.startsWith("temp-") || (m as any).queued)) ? (
               <span className="inline-flex items-center gap-1">
                 <span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />
                 Sending…

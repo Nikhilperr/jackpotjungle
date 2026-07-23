@@ -26,7 +26,7 @@ export function IncomingCallModal({ peerName, peerAvatar, kind, status, onAccept
   }, [isNoAnswer]);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-gradient-to-b from-slate-900 to-black text-white flex flex-col items-center justify-between p-8 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] bg-gradient-to-b from-slate-900 to-black text-white flex flex-col items-center justify-between p-8 animate-in fade-in duration-200 safe-pt safe-pb safe-pl safe-pr">
       <div className="pt-8 text-center">
         <p className="text-sm text-white/70 uppercase tracking-wider">
           {isNoAnswer ? "Call ended" : `Incoming ${kind === "video" ? "video" : "voice"} call`}
@@ -51,7 +51,7 @@ export function IncomingCallModal({ peerName, peerAvatar, kind, status, onAccept
         </p>
       </div>
 
-      <div className="w-full max-w-sm flex items-center justify-around pb-8">
+      <div className="w-full max-w-sm flex items-center justify-around" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom, 0px))" }}>
         {isNoAnswer ? (
           <button
             onClick={onDecline}

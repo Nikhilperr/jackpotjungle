@@ -1,12 +1,15 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toCDNUrl } from "@/config";
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { CachedImage } from "@/components/messenger/CachedImage";
+import React, { useEffect, useRef, useState, useMemo, useCallback, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatSystemMessage, isSystemMessage } from "@/lib/chat-helpers";
 import { useRole, type AppRole } from "@/hooks/useRole";
 import { useAuth } from "@/hooks/useAuth";
 import { Capacitor } from "@capacitor/core";
 import { useNativePush } from "@/hooks/useNativePush";
+import { registerBackAction } from "@/lib/native/navigation";
+import { NativeSideDrawer } from "@/components/messenger/NativeSideDrawer";
 import { useQueryClient } from "@tanstack/react-query";
 import { setVerifiedStatus } from "@/lib/auth-wait";
 import { Input } from "@/components/ui/input";
@@ -74,7 +77,7 @@ import {
 import { VipRewardSettingsView } from "@/components/admin/VipRewardSettingsView";
 import VipAnalyticsDashboardView from "@/components/admin/VipAnalyticsDashboardView";
 import { AIWorkspace } from "@/components/admin/AIWorkspace";
-import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
+import { MessengerComposer } from "@/components/messenger/MessengerComposer";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
@@ -89,6 +92,12 @@ import { toast } from "sonner";
 import { unsendPageMessagesServer, unsendMessagesServer } from "@/lib/messages.functions";
 import { PullToRefresh } from "@/components/messenger/PullToRefresh";
 import { getCachedPageMessages, setCachedPageMessages, invalidatePageMessageCache } from "@/lib/chat-cache";
+import {
+  attachPageMessagesLive,
+  fetchRecentPageMessagesGlobal,
+  mergeIncomingPageMessage,
+  type LivePageMsg,
+} from "@/lib/live-page-messages";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -125,11 +134,55 @@ import { UsersManagementView } from "@/components/admin/UsersManagement";
 import { MonitorChatsView } from "@/components/admin/MonitorChatsView";
 import { MonthlyProfitView } from "@/components/admin/MonthlyProfit";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
-import { CreateGroupModal } from "./chat";
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
-import { GroupDetailPanel, GroupAddMembersModal, GroupShareModal } from "./chat.$friendId";
 import { useServerFn } from "@tanstack/react-start";
 import { getSupportLinks, updateSupportLinksAdmin } from "@/lib/admin-super.functions";
+import { ChatListSkeleton } from "@/components/messenger/ChatListSkeleton";
+import { signalShellReady } from "@/lib/shell-ready";
+
+// Lazy-load chat UI modules so admin route does not pull chat.$friendId into the
+// critical user-path parse graph when autoCodeSplitting is on.
+const CreateGroupModalInner = lazy(() =>
+  import("./chat").then((m) => ({ default: m.CreateGroupModal })),
+);
+const GroupDetailPanelInner = lazy(() =>
+  import("./chat.$friendId").then((m) => ({ default: m.GroupDetailPanel })),
+);
+const GroupAddMembersModalInner = lazy(() =>
+  import("./chat.$friendId").then((m) => ({ default: m.GroupAddMembersModal })),
+);
+const GroupShareModalInner = lazy(() =>
+  import("./chat.$friendId").then((m) => ({ default: m.GroupShareModal })),
+);
+
+function CreateGroupModal(props: React.ComponentProps<typeof CreateGroupModalInner>) {
+  return (
+    <Suspense fallback={null}>
+      <CreateGroupModalInner {...props} />
+    </Suspense>
+  );
+}
+function GroupDetailPanel(props: React.ComponentProps<typeof GroupDetailPanelInner>) {
+  return (
+    <Suspense fallback={null}>
+      <GroupDetailPanelInner {...props} />
+    </Suspense>
+  );
+}
+function GroupAddMembersModal(props: React.ComponentProps<typeof GroupAddMembersModalInner>) {
+  return (
+    <Suspense fallback={null}>
+      <GroupAddMembersModalInner {...props} />
+    </Suspense>
+  );
+}
+function GroupShareModal(props: React.ComponentProps<typeof GroupShareModalInner>) {
+  return (
+    <Suspense fallback={null}>
+      <GroupShareModalInner {...props} />
+    </Suspense>
+  );
+}
 
 type Tab =
   | "inbox"
@@ -307,6 +360,22 @@ function AdminPage() {
   }
   const [confirmOut, setConfirmOut] = useState(false);
 
+  useEffect(() => {
+    if (!navOpen) return;
+    return registerBackAction(() => {
+      setNavOpen(false);
+      return true;
+    }, 100);
+  }, [navOpen]);
+
+  useEffect(() => {
+    if (!confirmOut) return;
+    return registerBackAction(() => {
+      setConfirmOut(false);
+      return true;
+    }, 110);
+  }, [confirmOut]);
+
   useNativePush();
 
   useEffect(() => {
@@ -319,9 +388,13 @@ function AdminPage() {
 
   useEffect(() => {
     if (!loading) {
-      if (!isAdmin) {
+      // Prefer cached role so a slow/empty roles fetch cannot bounce admin ↔ chat.
+      const cachedRole =
+        typeof window !== "undefined" ? localStorage.getItem("jj_user_role") : null;
+      const cachedIsAdmin = cachedRole === "admin" || cachedRole === "super_admin";
+      if (!isAdmin && !cachedIsAdmin) {
         navigate({ to: "/app/chat", replace: true });
-      } else if (!isSuperAdmin) {
+      } else if (!isSuperAdmin && !(cachedRole === "super_admin")) {
         const superAdminOnlyTabs = ["rules", "updates", "admins", "super", "vip_settings", "monthly_profit", "vip_dashboard", "support_settings"];
         const isRestrictedTab = superAdminOnlyTabs.includes(tab) || !hasPerm(tab);
         if (isRestrictedTab) {
@@ -350,75 +423,22 @@ function AdminPage() {
   }, [isSuperAdmin]);
 
   async function signOut() {
-    console.log("[SignOut] Initiated.");
-    if (typeof window !== "undefined") {
-      console.log("[SignOut] Clearing local storage keys and cookies.");
-      localStorage.removeItem("profile_complete");
-      localStorage.removeItem("jj_temp_auth_verification");
-      setVerifiedStatus(false);
-    }
-    
-    // Get session to check if Google login before signing out
-    const sessionRes = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
-    const session = sessionRes?.data?.session;
-    const isGoogleLogin = session?.user?.app_metadata?.provider === "google";
-
-    // Update database presence in the background so it never hangs sign out
-    if (session?.user?.id) {
-      supabase
-        .from("profiles")
-        .update({ online: false, last_seen: new Date().toISOString() })
-        .eq("id", session.user.id)
-        .then(() => console.log("[SignOut] User presence set to offline."))
-        .catch((e) => console.error("Failed to update presence:", e));
-    }
-
-    await qc.cancelQueries();
-    qc.clear();
-
-    if (Capacitor.isNativePlatform() && isGoogleLogin) {
-      try {
-        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
-        await GoogleAuth.signOut();
-      } catch (e) {
-        console.error("Google native sign out failed:", e);
-      }
-    }
-
-    try {
-      console.log("[SignOut] Calling Supabase auth.signOut().");
-      await supabase.auth.signOut();
-      console.log("[SignOut] Supabase auth.signOut() completed.");
-    } catch (e) {
-      console.error("Supabase signOut failed:", e);
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
-    const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
-    const isProdDomain = hostname.endsWith("playjackpotjungle.com");
-    console.log("[SignOut] Hostname:", hostname, "isProdDomain:", isProdDomain);
-    if (Capacitor.isNativePlatform()) {
-      console.log("[SignOut] Native platform - hard redirect on same origin.");
-      window.location.href = window.location.origin + "/app/auth";
-      return;
-    }
-
-    if (isProdDomain) {
-      console.log("[SignOut] Redirecting window location to chat domain auth.");
-      window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
-    } else {
-      console.log("[SignOut] Navigating local router to auth.");
-      navigate({ to: "/app/auth", search: { logout: "true" }, replace: true });
-    }
+    const { performSignOut } = await import("@/lib/sign-out");
+    await performSignOut(qc, (opts) => navigate(opts));
   }
 
+  useEffect(() => {
+    if (!loading && isAdmin && user) {
+      signalShellReady();
+    }
+  }, [loading, isAdmin, user]);
+
   if (loading || !isAdmin || !user) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
+    // Signing out: keep a solid screen while router moves to /app/auth (not blank).
+    if (typeof window !== "undefined" && sessionStorage.getItem("jj_signing_out") === "1") {
+      return <div className="h-full w-full bg-background" aria-hidden="true" />;
+    }
+    return null;
   }
 
   function selectTab(t: string) {
@@ -427,7 +447,7 @@ function AdminPage() {
   }
 
   const SideNav = (
-    <aside className="w-60 md:w-56 h-full border-r border-border bg-card flex flex-col">
+    <aside data-jj-drawer-panel className="w-60 h-full border-r border-border bg-card flex flex-col">
       <div className="px-4 py-5 flex items-center gap-2 border-b border-border">
         <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
           <Shield className="h-5 w-5 text-primary-foreground" />
@@ -492,16 +512,12 @@ function AdminPage() {
   );
 
   return (
-    <div className="flex h-full flex-1 bg-background text-foreground overflow-hidden">
-      {/* Side nav drawer for both desktop and mobile */}
-      {navOpen && (
-        <div className="fixed inset-0 z-50 flex animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setNavOpen(false)} />
-          <div className="relative z-10 animate-in slide-in-from-left duration-200">{SideNav}</div>
-        </div>
-      )}
+    <div className="flex h-full max-h-full flex-1 bg-background text-foreground overflow-hidden native-safe-shell">
+      <NativeSideDrawer open={navOpen} onClose={() => setNavOpen(false)} width={240}>
+        {SideNav}
+      </NativeSideDrawer>
 
-      <main className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden relative min-h-0">
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "inbox" ? "" : "hidden"}`}>
           <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} onUserClick={handleNavigateToUserChat} />
         </div>
@@ -654,12 +670,22 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
     if (typeof window === "undefined") return [];
     try {
       const stored = localStorage.getItem("jj_cached_admin_conversations");
-      return stored ? JSON.parse(stored) : [];
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
   });
-  const [loadingConvs, setLoadingConvs] = useState(true);
+  const [loadingConvs, setLoadingConvs] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const stored = localStorage.getItem("jj_cached_admin_conversations");
+      const parsed = stored ? JSON.parse(stored) : [];
+      return !(Array.isArray(parsed) && parsed.length > 0);
+    } catch {
+      return true;
+    }
+  });
   const [search, setSearch] = useState("");
   const searchParams = Route.useSearch();
 
@@ -685,6 +711,10 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
   }, []);
 
   const activeId = searchParams.c || null;
+  const activeIdLiveRef = useRef<string | null>(activeId);
+  useEffect(() => {
+    activeIdLiveRef.current = activeId;
+  }, [activeId]);
   const setActiveId = (id: string | null) => {
     navigate({
       search: (old: any) => ({
@@ -760,7 +790,10 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
     setShareProfileOpen(true);
   };
 
-  const [myUsername, setMyUsername] = useState("Admin");
+    // Instant open from push: bootstrap ConvRow before full inbox list loads.
+  const [deepLinkConv, setDeepLinkConv] = useState<ConvRow | null>(null);
+
+const [myUsername, setMyUsername] = useState("Admin");
   const [isDesktop, setIsDesktop] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -783,9 +816,53 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
   }, [meId]);
 
   useEffect(() => {
-    setMessages([]);
+    // Keep cached messages when switching via push deep-link — Conversation hydrates itself.
     setSelectedMemberProfile(null);
   }, [activeId]);
+
+  useEffect(() => {
+    if (!activeId || activeId.startsWith("group-")) {
+      setDeepLinkConv(null);
+      return;
+    }
+    if (convs.some((c) => c.conversationId === activeId)) {
+      setDeepLinkConv(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data: conv } = await supabase
+        .from("page_conversations")
+        .select("id, user_id, is_spam")
+        .eq("id", activeId)
+        .maybeSingle();
+      if (!conv || cancelled) return;
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("id, username, avatar_url, online, last_seen, vip_status")
+        .eq("id", conv.user_id)
+        .maybeSingle();
+      if (cancelled) return;
+      setDeepLinkConv({
+        conversationId: conv.id,
+        userId: conv.user_id,
+        username: prof?.username || "User",
+        avatar_url: prof?.avatar_url ?? null,
+        online: !!prof?.online,
+        last_seen: prof?.last_seen || new Date().toISOString(),
+        lastMessage: null,
+        lastAt: null,
+        unread: 0,
+        credit: 0,
+        wallet: 0,
+        isSpam: !!(conv as any).is_spam,
+        vip_status: (prof as any)?.vip_status ?? null,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, convs]);
 
   useEffect(() => {
     if (!activeId || !activeId.startsWith("group-")) {
@@ -1194,6 +1271,58 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
   useEffect(() => {
     load();
     let mounted = true;
+
+    const previewFromPageMsg = (m: LivePageMsg) => {
+      let preview = m.content;
+      if (preview?.startsWith("[system:reaction:")) preview = "Reacted to a message";
+      else if (preview?.startsWith("[system:pin:")) preview = "Pinned a message";
+      else if (preview?.startsWith("[system:unpin:")) preview = "Unpinned a message";
+      else if (preview?.startsWith("[system:unsent]")) preview = "Unsent a message";
+      else if (preview?.startsWith("[system:forwarded] ")) preview = preview.slice("[system:forwarded] ".length);
+      else if (preview?.startsWith("[system:forwarded]")) {
+        preview = preview.slice("[system:forwarded]".length).trim() || (m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message");
+      } else if (preview === "[system:forwarded]") {
+        preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message";
+      } else if (preview?.startsWith("[reply:")) {
+        const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+        if (match) preview = match[1];
+      } else if (!preview) {
+        preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Message";
+      }
+      if (preview && isSystemMessage(preview)) preview = formatSystemMessage(preview);
+      return preview;
+    };
+
+    /** Update inbox row preview; bump unread only when tip is strictly newer. */
+    const applyListInsert = (m: LivePageMsg) => {
+      if (!mounted || !m?.conversation_id) return;
+      const preview = previewFromPageMsg(m);
+      setConvs((prev) => {
+        const idx = prev.findIndex((c) => c.conversationId === m.conversation_id);
+        if (idx === -1) {
+          void load();
+          return prev;
+        }
+        const old = prev[idx];
+        if (old.lastAt && m.created_at && old.lastAt > m.created_at) return prev;
+        if (old.lastAt === m.created_at && old.lastMessage === preview) return prev;
+
+        const isNewer = !old.lastAt || old.lastAt < m.created_at;
+        const updated = { ...old, lastMessage: preview, lastAt: isNewer ? m.created_at : old.lastAt };
+        if (
+          isNewer &&
+          !m.from_page &&
+          !m.seen &&
+          m.conversation_id !== activeIdLiveRef.current
+        ) {
+          updated.unread = (old.unread || 0) + 1;
+        }
+        const copy = [...prev];
+        copy[idx] = updated;
+        return copy.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+      });
+    };
+
     const rand = Math.random().toString(36).slice(2, 9);
     const ch = supabase
       .channel(`admin-page-inbox-${rand}`)
@@ -1203,51 +1332,10 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
           load();
           return;
         }
-        const m = payload.new as any;
+        const m = payload.new as LivePageMsg;
         if (!m) return;
         if (payload.eventType === "INSERT") {
-          setConvs((prev) => {
-            const idx = prev.findIndex((c) => c.conversationId === m.conversation_id);
-            if (idx === -1) {
-              load();
-              return prev;
-            }
-            let preview = m.content;
-            if (preview?.startsWith("[system:reaction:")) {
-              preview = "Reacted to a message";
-            } else if (preview?.startsWith("[system:pin:")) {
-              preview = "Pinned a message";
-            } else if (preview?.startsWith("[system:unpin:")) {
-              preview = "Unpinned a message";
-            } else if (preview?.startsWith("[system:unsent]")) {
-              preview = "Unsent a message";
-            } else if (preview?.startsWith("[system:forwarded] ")) {
-              preview = preview.slice("[system:forwarded] ".length);
-            } else if (preview?.startsWith("[system:forwarded]")) {
-              preview = preview.slice("[system:forwarded]".length).trim() || (m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message");
-            } else if (preview === "[system:forwarded]") {
-              preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message";
-            } else if (preview?.startsWith("[reply:")) {
-              const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
-              if (match) preview = match[1];
-            } else if (!preview) {
-              preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Message";
-            }
-
-            if (preview && isSystemMessage(preview)) {
-              preview = formatSystemMessage(preview);
-            }
-
-            const copy = [...prev];
-            const updated = { ...copy[idx] };
-            updated.lastMessage = preview;
-            updated.lastAt = m.created_at;
-            if (!m.from_page && !m.seen) {
-              updated.unread += 1;
-            }
-            copy[idx] = updated;
-            return copy.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
-          });
+          applyListInsert(m);
         } else if (payload.eventType === "UPDATE") {
           if (!m.from_page && m.seen) {
             setConvs((prev) =>
@@ -1281,8 +1369,23 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
         if (mounted) load();
       })
       .subscribe();
+
+    // Soft list catch-up: realtime can drop on mobile; poll recent tips every 2.5s.
+    const softCatchUp = async () => {
+      if (!mounted) return;
+      const rows = await fetchRecentPageMessagesGlobal(40);
+      for (const m of [...rows].reverse()) applyListInsert(m);
+    };
+    const softTimer = setInterval(() => { void softCatchUp(); }, 2500);
+    const onResume = () => { void softCatchUp(); void load(); };
+    window.addEventListener("jj-app-foreground", onResume);
+    window.addEventListener("jj-network-restored", onResume);
+
     return () => {
       mounted = false;
+      clearInterval(softTimer);
+      window.removeEventListener("jj-app-foreground", onResume);
+      window.removeEventListener("jj-network-restored", onResume);
       supabase.removeChannel(ch);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1325,7 +1428,11 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
     return (b.lastAt ?? "").localeCompare(a.lastAt ?? "");
   });
   const spamCount = convs.filter((u) => u.isSpam).length;
-  const active = (convs.find((u) => u.conversationId === activeId) || groupRows.find((u) => u.conversationId === activeId)) ?? null;
+  const active =
+    (convs.find((u) => u.conversationId === activeId) ||
+      groupRows.find((u) => u.conversationId === activeId) ||
+      (deepLinkConv?.conversationId === activeId ? deepLinkConv : null)) ??
+    null;
 
   async function setConvSpam(conv: ConvRow, next: boolean) {
     const { error } = await supabase
@@ -1341,19 +1448,21 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
   const onlineUsers = convs.filter((u) => u.online && !u.isSpam);
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 bg-background">
       {/* List — hidden on mobile when a conversation is open */}
-      <div className={`${active ? "hidden sm:flex" : "flex"} w-full sm:w-80 border-r border-border bg-card flex-col min-h-0`}>
-        <div className="p-4 border-b border-border">
+      <div className={`${active ? "hidden sm:flex" : "flex"} w-full sm:w-80 border-r border-border bg-background flex-col min-h-0 h-full`}>
+        <div className="px-3 pt-3 pb-3 sm:p-4 border-b border-border">
           <div className="flex items-center gap-2 mb-3 sm:mb-1">
             <button
+              type="button"
               onClick={onOpenNav}
-              className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary shrink-0"
+              className="touch-target rounded-xl flex items-center justify-center active:bg-secondary shrink-0"
+              aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <div className="flex-1">
-              <h2 className="text-lg font-bold leading-tight">Jackpot Jungle</h2>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-bold leading-tight truncate">Jackpot Jungle</h2>
               <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Page Inbox</p>
             </div>
           </div>
@@ -1437,10 +1546,7 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
             </button>
           )}
           {loadingConvs && (viewGroups ? groupRows.length === 0 : convs.length === 0) ? (
-            <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span>Loading chats…</span>
-            </div>
+            <ChatListSkeleton rows={9} />
           ) : sorted.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">{viewGroups ? "No groups yet." : viewSpam ? "No spam conversations." : "No conversations."}</p>
           ) : sorted.map((u) => (
@@ -2363,10 +2469,7 @@ function TeamChatView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNa
           )}
 
           {loadingConvs && (viewGroups ? groupRows.length === 0 : convs.length === 0) ? (
-            <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span>Loading chats…</span>
-            </div>
+            <ChatListSkeleton rows={9} />
           ) : sorted.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">{viewGroups ? "No groups yet." : "No staff members found."}</p>
           ) : sorted.map((u) => (
@@ -3979,6 +4082,10 @@ function Conversation({
   }
 
   const activeIdRef = useRef(conv.conversationId);
+  const threadMessagesRef = useRef(messages);
+  useEffect(() => {
+    threadMessagesRef.current = messages;
+  }, [messages]);
   useEffect(() => {
     activeIdRef.current = conv.conversationId;
     if (!isGroup && !isTeamChat) {
@@ -4083,75 +4190,67 @@ function Conversation({
       return () => { supabase.removeChannel(teamChannel); };
     }
 
-    const msgChannel = supabase
-      .channel(`admin-active-page-chat-global-${rand}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "page_messages" }, (payload) => {
-        const m = payload.new as PageMsg;
-        const currentConvId = activeIdRef.current;
-
-        if (m.conversation_id === currentConvId) {
-          setMessages((prev) => {
-            if (prev.some((x) => x.id === m.id)) return prev;
-            const idx = prev.findIndex((x) =>
-              typeof x.id === "string" && x.id.startsWith("temp-") &&
-              x.from_page === m.from_page &&
-              (x.content ?? null) === (m.content ?? null) &&
-              (x.image_url ?? null) === (m.image_url ?? null) &&
-              (x.audio_url ?? null) === (m.audio_url ?? null)
-            );
-            if (idx >= 0) { const copy = prev.slice(); copy[idx] = m; return copy; }
-            const next = [...prev, m];
-            setCachedPageMessages(`admin-page-${currentConvId}`, next);
-            return next;
-          });
-          if (!m.from_page) {
-            supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
-          }
-        } else {
-          // Update other page conversations' cache in memory
-          const cacheKey = `admin-page-${m.conversation_id}`;
-          const cached = getCachedPageMessages(cacheKey);
-          if (cached && !cached.some(x => x.id === m.id)) {
-            setCachedPageMessages(cacheKey, [...cached, m]);
+    const disposeLive = attachPageMessagesLive({
+      conversationId: conv.conversationId,
+      channelPrefix: "admin-active-page",
+      getLatestCreatedAt: () => {
+        const list = threadMessagesRef.current as PageMsg[];
+        for (let i = list.length - 1; i >= 0; i--) {
+          const id = list[i]?.id;
+          if (id && typeof id === "string" && !id.startsWith("temp-")) {
+            return list[i].created_at;
           }
         }
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "page_messages" }, (payload) => {
-        const m = payload.new as PageMsg;
-        const currentConvId = activeIdRef.current;
-
-        if (m.conversation_id === currentConvId) {
-          setMessages((prev) => {
-            const next = prev.map((x) => (x.id === m.id ? m : x));
-            setCachedPageMessages(`admin-page-${currentConvId}`, next);
-            return next;
-          });
-        } else {
+        return null;
+      },
+      onInsert: (m) => {
+        if (m.conversation_id && m.conversation_id !== activeIdRef.current) {
+          const cacheKey = `admin-page-${m.conversation_id}`;
+          const cached = getCachedPageMessages(cacheKey);
+          if (cached && !cached.some((x) => x.id === m.id)) {
+            setCachedPageMessages(cacheKey, [...cached, m as PageMsg]);
+          }
+          return;
+        }
+        setMessages((prev) => {
+          const next = mergeIncomingPageMessage(prev, m as PageMsg);
+          if (next !== prev) {
+            setCachedPageMessages(`admin-page-${activeIdRef.current}`, next);
+          }
+          return next;
+        });
+        onLastMessageUpdate?.(m.content, m.image_url, m.audio_url, m.created_at);
+        if (!m.from_page) {
+          void supabase.from("page_messages").update({ seen: true }).eq("id", m.id);
+        }
+      },
+      onUpdate: (m) => {
+        if (m.conversation_id && m.conversation_id !== activeIdRef.current) {
           const cacheKey = `admin-page-${m.conversation_id}`;
           const cached = getCachedPageMessages(cacheKey);
           if (cached) {
-            setCachedPageMessages(cacheKey, cached.map(x => x.id === m.id ? m : x));
+            setCachedPageMessages(cacheKey, cached.map((x) => (x.id === m.id ? (m as PageMsg) : x)));
           }
+          return;
         }
-      })
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "page_messages" }, (payload) => {
-        const m = payload.old as PageMsg;
-        const currentConvId = activeIdRef.current;
+        setMessages((prev) => {
+          const next = prev.map((x) => (x.id === m.id ? { ...x, ...m } : x));
+          setCachedPageMessages(`admin-page-${activeIdRef.current}`, next);
+          return next;
+        });
+      },
+      onDelete: (id) => {
+        setMessages((prev) => {
+          const next = prev.filter((x) => x.id !== id);
+          setCachedPageMessages(`admin-page-${activeIdRef.current}`, next);
+          return next;
+        });
+      },
+      pollMs: 2000,
+    });
 
-        if (m.conversation_id === currentConvId) {
-          setMessages((prev) => {
-            const next = prev.filter((x) => x.id !== m.id);
-            setCachedPageMessages(`admin-page-${currentConvId}`, next);
-            return next;
-          });
-        } else {
-          const cacheKey = `admin-page-${m.conversation_id}`;
-          const cached = getCachedPageMessages(cacheKey);
-          if (cached) {
-            setCachedPageMessages(cacheKey, cached.filter(x => x.id !== m.id));
-          }
-        }
-      })
+    const callsChannel = supabase
+      .channel(`admin-active-page-calls-${rand}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, (payload) => {
         const row = (payload.new ?? payload.old) as CallRow;
         if (!row || row.status === "ringing" || row.status === "active") return;
@@ -4165,9 +4264,12 @@ function Conversation({
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(msgChannel); };
+    return () => {
+      disposeLive();
+      supabase.removeChannel(callsChannel);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conv.conversationId]);
+  }, [conv.conversationId, meId]);
 
   const lastMsgCountRef = useRef(0);
   const lastConvIdRef = useRef<string | null>(null);
@@ -4608,10 +4710,10 @@ function Conversation({
     return tempId;
   }
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    if (!text.trim()) return;
-    const content = text.trim();
+  async function send(e?: React.FormEvent, overrideContent?: string) {
+    e?.preventDefault();
+    const content = (overrideContent ?? text).trim();
+    if (!content) return;
     setText("");
 
     if (editingMessageId) {
@@ -4842,9 +4944,9 @@ function Conversation({
   }
 
   return (
-    <>
+    <div className="h-full max-h-full flex flex-col min-h-0 overflow-hidden bg-background">
       {selectionMode ? (
-        <div className="px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center justify-between min-h-[61px] shrink-0">
+        <div className="z-30 px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center justify-between min-h-[61px] shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -4859,8 +4961,8 @@ function Conversation({
           <div className="w-12" /> {/* Spacer */}
         </div>
       ) : (
-        <div className="px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center gap-3 shrink-0">
-          <button onClick={onBack} className="sm:hidden h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1" aria-label="Back">
+        <div className="z-30 px-3 sm:px-5 py-3 border-b border-border bg-card flex items-center gap-2 min-h-[65px] shrink-0">
+          <button onClick={onBack} className="sm:hidden h-10 w-10 rounded-full flex items-center justify-center hover:bg-secondary -ml-1 shrink-0 touch-target" aria-label="Back">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <button
@@ -4923,13 +5025,13 @@ function Conversation({
               </p>
             </div>
           </button>
-          {!isGroup && !isTeamChat && <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline">Replying as page</span>}
+          {!isGroup && !isTeamChat && <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary hidden md:inline shrink-0">Replying as page</span>}
           {!isGroup && (
-            <>
+            <div className="flex items-center gap-0.5 shrink-0">
               <button
                 type="button"
                 onClick={() => startCall({ calleeId: conv.userId, kind: "voice", peer: { name: conv.username, avatar: conv.avatar_url }, context: isTeamChat ? "friend" : "page", ...(isTeamChat ? {} : { pageConversationId: conv.conversationId }) })}
-                className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
+                className="h-10 w-10 rounded-full flex items-center justify-center text-primary hover:bg-primary/10 active:bg-primary/15 touch-target"
                 aria-label="Voice call"
                 title="Voice call"
               >
@@ -4938,13 +5040,13 @@ function Conversation({
               <button
                 type="button"
                 onClick={() => startCall({ calleeId: conv.userId, kind: "video", peer: { name: conv.username, avatar: conv.avatar_url }, context: isTeamChat ? "friend" : "page", ...(isTeamChat ? {} : { pageConversationId: conv.conversationId }) })}
-                className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-primary/10"
+                className="h-10 w-10 rounded-full flex items-center justify-center text-primary hover:bg-primary/10 active:bg-primary/15 touch-target"
                 aria-label="Video call"
                 title="Video call"
               >
                 <Video className="h-5 w-5" />
               </button>
-            </>
+            </div>
           )}
         </div>
       )}
@@ -5002,7 +5104,7 @@ function Conversation({
         </div>
       )}
 
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto smooth-scroll px-5 py-4 space-y-2 relative">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain smooth-scroll px-5 py-4 space-y-2 relative">
         {/* Floating scroll bottom indicator */}
         {showScrollToBottom && (
           <button
@@ -5137,10 +5239,115 @@ function Conversation({
           </button>
         </div>
       ) : (
-        <form
-          onSubmit={send}
-          className="relative px-4 py-3 border-t border-border bg-card flex items-center gap-2 shrink-0"
-          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        <MessengerComposer
+          value={text}
+          onChange={(val, cursor) => {
+            setText(val);
+            setSuggestIdx(0);
+            if (isGroup) handleMentionCheck(val, cursor);
+          }}
+          onSubmit={(e) => void send(e)}
+          onFileChange={(e) => void onPickImage(e)}
+          onVoice={onVoice}
+          onThumbsUp={() => void send(undefined, "👍")}
+          placeholder="Aa"
+          uploading={uploading}
+          recUploading={recUploading}
+          showEmojiButton
+          fileRef={fileRef}
+          inputRef={inputRef}
+          autoFocus
+          expandedExtras={
+            !isTeamChat && conv.userId ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary transition-colors"
+                    aria-label="Wallet menu"
+                  >
+                    <Plus className="h-5 w-5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48 bg-card border-border">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      loadWalletDetails(conv.userId);
+                      setWalletPopupOpen(true);
+                    }}
+                    className="cursor-pointer gap-2 py-2 font-semibold"
+                  >
+                    <Wallet className="h-4 w-4 text-green-500" />
+                    <span>Wallet</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      loadWalletHistory("all", conv.userId);
+                      setWalletHistoryPopupOpen(true);
+                    }}
+                    className="cursor-pointer gap-2 py-2 font-semibold"
+                  >
+                    <History className="h-4 w-4 text-amber-500" />
+                    <span>Wallet History</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setCashAmount("");
+                      setCashNotes("");
+                      setCashInPopupOpen(true);
+                    }}
+                    className="cursor-pointer gap-2 py-2 font-semibold text-emerald-600 dark:text-emerald-400"
+                  >
+                    <PlusCircle className="h-4 w-4 text-emerald-500" />
+                    <span>Cash In</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setCashAmount("");
+                      setCashNotes("");
+                      setCashOutPopupOpen(true);
+                    }}
+                    className="cursor-pointer gap-2 py-2 font-semibold text-red-600 dark:text-red-400"
+                  >
+                    <MinusCircle className="h-4 w-4 text-red-500" />
+                    <span>Cash Out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null
+          }
+          onKeyDown={(e) => {
+            if (mentionSearch !== null && filteredMembers.length > 0) {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setMentionIdx((i) => (i + 1) % filteredMembers.length);
+                return;
+              }
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setMentionIdx((i) => (i - 1 + filteredMembers.length) % filteredMembers.length);
+                return;
+              }
+              if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                insertMention(filteredMembers[mentionIdx].username);
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setMentionSearch(null);
+                return;
+              }
+            }
+            if (suggestions.length === 0) return;
+            const activeSuggestionText = parseQuickReplyContent(suggestions[suggestIdx].content).text;
+            if (e.key === "Tab" || (e.key === "Enter" && suggestions.length > 0 && text.length < activeSuggestionText.length)) {
+              e.preventDefault();
+              applyReply(suggestions[suggestIdx]);
+            } else if (e.key === "ArrowDown") { e.preventDefault(); setSuggestIdx((i) => (i + 1) % suggestions.length); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setSuggestIdx((i) => (i - 1 + suggestions.length) % suggestions.length); }
+            else if (e.key === "Escape") { setSuggestIdx(0); }
+          }}
         >
           {suggestions.length > 0 && (
             <div className="absolute left-3 right-3 bottom-full mb-2 bg-popover border border-border rounded-xl shadow-lg overflow-hidden z-20">
@@ -5172,69 +5379,6 @@ function Conversation({
               })}
             </div>
           )}
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 transition-colors" aria-label="Send image">
-            {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
-          <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
-          {!isTeamChat && conv.userId && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary transition-colors"
-                  aria-label="Wallet menu"
-                >
-                  <Plus className="h-5 w-5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48 bg-card border-border">
-                <DropdownMenuItem
-                  onClick={() => {
-                    loadWalletDetails(conv.userId);
-                    setWalletPopupOpen(true);
-                  }}
-                  className="cursor-pointer gap-2 py-2 font-semibold"
-                >
-                  <Wallet className="h-4 w-4 text-green-500" />
-                  <span>Wallet</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    loadWalletHistory("all", conv.userId);
-                    setWalletHistoryPopupOpen(true);
-                  }}
-                  className="cursor-pointer gap-2 py-2 font-semibold"
-                >
-                  <History className="h-4 w-4 text-amber-500" />
-                  <span>Wallet History</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setCashAmount("");
-                    setCashNotes("");
-                    setCashInPopupOpen(true);
-                  }}
-                  className="cursor-pointer gap-2 py-2 font-semibold text-emerald-600 dark:text-emerald-400"
-                >
-                  <PlusCircle className="h-4 w-4 text-emerald-500" />
-                  <span>Cash In</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setCashAmount("");
-                    setCashNotes("");
-                    setCashOutPopupOpen(true);
-                  }}
-                  className="cursor-pointer gap-2 py-2 font-semibold text-red-600 dark:text-red-400"
-                >
-                  <MinusCircle className="h-4 w-4 text-red-500" />
-                  <span>Cash Out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
           {mentionSearch !== null && filteredMembers.length > 0 && (
             <div className="absolute left-3 right-3 bottom-full mb-2 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden z-30 max-h-48 overflow-y-auto backdrop-blur-md bg-opacity-95">
               <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-secondary/50 flex items-center gap-1 border-b border-border">
@@ -5259,57 +5403,7 @@ function Conversation({
               ))}
             </div>
           )}
-          <Input
-            ref={inputRef}
-            autoFocus
-            placeholder="Reply as Jackpot Jungle…"
-            value={text}
-            onChange={(e) => {
-              const val = e.target.value;
-              setText(val);
-              setSuggestIdx(0);
-              if (isGroup) {
-                handleMentionCheck(val, e.target.selectionStart || 0);
-              }
-            }}
-            onKeyDown={(e) => {
-              console.log("onKeyDown event key:", e.key, "mentionSearch:", mentionSearch, "filteredMembers count:", filteredMembers.length);
-              if (mentionSearch !== null && filteredMembers.length > 0) {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setMentionIdx((i) => (i + 1) % filteredMembers.length);
-                  return;
-                }
-                if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setMentionIdx((i) => (i - 1 + filteredMembers.length) % filteredMembers.length);
-                  return;
-                }
-                if (e.key === "Enter" || e.key === "Tab") {
-                  e.preventDefault();
-                  insertMention(filteredMembers[mentionIdx].username);
-                  return;
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setMentionSearch(null);
-                  return;
-                }
-              }
-              if (suggestions.length === 0) return;
-              const activeSuggestionText = parseQuickReplyContent(suggestions[suggestIdx].content).text;
-              if (e.key === "Tab" || (e.key === "Enter" && suggestions.length > 0 && text.length < activeSuggestionText.length)) {
-                e.preventDefault();
-                applyReply(suggestions[suggestIdx]);
-              } else if (e.key === "ArrowDown") { e.preventDefault(); setSuggestIdx((i) => (i + 1) % suggestions.length); }
-              else if (e.key === "ArrowUp") { e.preventDefault(); setSuggestIdx((i) => (i - 1 + suggestions.length) % suggestions.length); }
-              else if (e.key === "Escape") { setSuggestIdx(0); }
-            }}
-            className="flex-1 min-w-0 rounded-full bg-secondary border-transparent h-11 focus-visible:ring-1 focus-visible:ring-primary/30" />
-          <Button type="submit" size="icon" disabled={!text.trim()} className="rounded-full h-11 w-11 shrink-0 flex items-center justify-center send-btn-active bg-primary text-primary-foreground hover:bg-primary/95 transition-all">
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
+        </MessengerComposer>
       )}
       {preview && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
@@ -6382,7 +6476,7 @@ function Conversation({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }
 
@@ -7173,8 +7267,14 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
             }}
           >
             {m.image_url ? (
-              <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none">
-                <img src={toCDNUrl(m.image_url)} alt="" className="block max-h-72 w-auto object-cover" />
+              <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none min-h-[150px] bg-secondary/35 flex items-center justify-center">
+                <CachedImage
+                  src={toCDNUrl(m.image_url)}
+                  alt=""
+                  className="block max-h-72 w-[200px] object-cover rounded-2xl"
+                  style={{ width: "200px", height: "auto", maxHeight: "288px" }}
+                  cachePolicy="volatile"
+                />
               </button>
             ) : m.audio_url ? (
               <div className="block"><VoiceMessage src={toCDNUrl(m.audio_url)} mine={mine} /></div>

@@ -10,7 +10,13 @@ export const Route = createFileRoute("/app/_authenticated")({
     if (!session?.user) {
       if (typeof window !== "undefined") {
         setVerifiedStatus(false);
-        sessionStorage.setItem("jj_invite_redirect", window.location.href);
+        // Only preserve invite deep-links — never /app/chat etc., or a brief
+        // session miss creates an auth ↔ chat bounce loop.
+        const href = window.location.href;
+        const path = window.location.pathname;
+        if (path.includes("/invite/") || path.includes("/u/")) {
+          sessionStorage.setItem("jj_invite_redirect", href);
+        }
       }
       throw redirect({ to: "/app/auth" });
     }
@@ -60,13 +66,18 @@ export const Route = createFileRoute("/app/_authenticated")({
     }
 
     if (isProfileComplete && isOnOnboarding) {
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", session.user.id);
-      const userRole = roles?.[0]?.role || "user";
-      if (typeof window !== "undefined") {
-        localStorage.setItem("jj_user_role", userRole);
+      // Prefer cached role so leaving onboarding never blocks on network.
+      let userRole =
+        typeof window !== "undefined" ? localStorage.getItem("jj_user_role") || "user" : "user";
+      if (userRole === "user") {
+        const { data: roles } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", session.user.id);
+        userRole = roles?.[0]?.role || "user";
+        if (typeof window !== "undefined") {
+          localStorage.setItem("jj_user_role", userRole);
+        }
       }
       const isAdmin = userRole === "admin" || userRole === "super_admin";
       const savedRedirect = typeof window !== "undefined" ? sessionStorage.getItem("jj_invite_redirect") : null;
@@ -74,7 +85,9 @@ export const Route = createFileRoute("/app/_authenticated")({
         sessionStorage.removeItem("jj_invite_redirect");
         try {
           const urlObj = new URL(savedRedirect);
-          throw redirect({ to: urlObj.pathname + urlObj.search });
+          if (urlObj.pathname.includes("/invite/") || urlObj.pathname.includes("/u/")) {
+            throw redirect({ to: urlObj.pathname + urlObj.search });
+          }
         } catch (e) {
           if (e && typeof e === "object" && "to" in e) {
             throw e;
@@ -89,7 +102,9 @@ export const Route = createFileRoute("/app/_authenticated")({
       sessionStorage.removeItem("jj_invite_redirect");
       try {
         const urlObj = new URL(savedRedirect);
-        throw redirect({ to: urlObj.pathname + urlObj.search });
+        if (urlObj.pathname.includes("/invite/") || urlObj.pathname.includes("/u/")) {
+          throw redirect({ to: urlObj.pathname + urlObj.search });
+        }
       } catch (e) {
         if (e && typeof e === "object" && "to" in e) {
           throw e;

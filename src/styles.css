@@ -182,36 +182,119 @@
 
 @layer base {
   * { border-color: var(--color-border); }
-  html, body {
-    overflow-x: hidden !important;
-    max-width: 100vw !important;
-    width: 100% !important;
-    height: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    position: fixed !important;
-    inset: 0 !important;
+  html {
+    max-width: 100vw;
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
   }
   body {
-    background-color: var(--color-background);
+    max-width: 100vw;
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+    /* Match native splash until theme tokens apply — no pure-black flash */
+    background-color: #121212;
     color: var(--color-foreground);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    overflow-y: hidden !important;
+    overflow: hidden;
+  }
+  #root {
+    height: 100%;
+    min-height: 100%;
+    background-color: #121212;
+  }
+
+  /* Native: height from --jj-app-height (full screen normally; shrinks only while typing). */
+  html.native-android,
+  html.native-android body,
+  html.native-android #root {
+    height: var(--jj-app-height, 100%) !important;
+    max-height: var(--jj-app-height, 100%) !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+  html.native-android #root {
+    position: relative;
+    top: 0 !important;
+    /* Match app chrome so a brief resize never flashes a black void */
+    background-color: var(--color-background, #121212);
+  }
+  /* Keyboard open: drop bottom safe-area pad so the composer isn't pushed under the IME */
+  html.native-android.jj-keyboard-open .native-safe-shell {
+    padding-bottom: 0 !important;
+  }
+  input, textarea, [contenteditable="true"] {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+  }
+  /* ─── Android WebView input hygiene ─────────────────────────────────────
+     Scoped rules only. A prior universal `* { transition: none !important }`
+     fought Framer Motion / React style updates and pegged CrRendererMain at
+     ~100% CPU on MIUI (blank HTML in the same shell was idle). */
+  @media (max-width: 1024px) {
+    input, textarea, [contenteditable="true"] {
+      -webkit-tap-highlight-color: transparent;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
   }
 }
 
-/* Safe Area Padding Utilities for Android Edge-to-Edge */
+/* Safe Area Padding — env() + native --jj-sat/--jj-sab from MainActivity.
+   Native bridge sets --jj-sat when the WebView would otherwise draw under the
+   status bar (MIUI forced edge-to-edge). Never use Capacitor SystemBars CSS. */
+
 .safe-pt {
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: max(env(safe-area-inset-top, 0px), var(--jj-sat, 0px));
 }
 .safe-pb {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--jj-sab, 0px));
 }
 .safe-pl {
   padding-left: env(safe-area-inset-left, 0px);
 }
 .safe-pr {
   padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Full-height shells that must clear the status bar on native */
+.native-safe-shell {
+  padding-top: max(env(safe-area-inset-top, 0px), var(--jj-sat, 0px));
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--jj-sab, 0px));
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Touch-first: Material ~48dp targets + gate hover polish to real pointers */
+.touch-target {
+  min-width: 2.75rem; /* 44px */
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (pointer: coarse) {
+  button,
+  a,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hover-scale:hover {
+    transform: scale(1.05);
+  }
+}
+
+/* Keep list scroll smooth on Android WebView */
+.overscroll-contain {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Custom scrollbar styling for Webkit browsers (Chrome, Safari, Edge) */
@@ -257,6 +340,24 @@
   -webkit-backdrop-filter: blur(14px) !important;
   border: 1px solid rgba(255, 255, 255, 0.3) !important;
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.04) !important;
+}
+
+/* Side drawers must stay opaque — MIUI WebView blur is weak, so 40% glass
+   lets the chat list bleed through and looks broken. */
+.glass [data-jj-drawer-shell],
+.glass [data-jj-drawer-panel],
+.glass [data-jj-drawer-panel].bg-card,
+.glass [data-jj-drawer-shell].bg-card {
+  background: rgb(252, 252, 253) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 8px 0 28px rgba(15, 23, 42, 0.12) !important;
+}
+.glass [data-jj-drawer-panel] .bg-secondary,
+.glass [data-jj-drawer-panel] button {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .glass .bg-secondary,

@@ -5,6 +5,7 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
+import { localDbGetMessages, localDbSetMessages, localDbDeleteMessages } from "@/lib/local-db";
 
 export type CachedProfile = {
   id: string;
@@ -94,12 +95,20 @@ export function getCachedMessages(meId: string, friendId: string): CachedMessage
         const messages = JSON.parse(stored);
         if (Array.isArray(messages)) {
           messageCache.set(key, { messages, loadedAt: Date.now() });
+          // Upgrade localStorage → durable IDB in the background.
+          void localDbSetMessages(key, messages);
           return messages;
         } else {
           localStorage.removeItem(`jj_msgs_${key}`);
         }
       }
     } catch {}
+    // Async hydrate from durable store for next open (non-blocking).
+    void localDbGetMessages<CachedMessage>(key).then((msgs) => {
+      if (msgs && !messageCache.has(key)) {
+        messageCache.set(key, { messages: msgs, loadedAt: Date.now() });
+      }
+    });
   }
   return null;
 }
@@ -107,21 +116,13 @@ export function getCachedMessages(meId: string, friendId: string): CachedMessage
 export function setCachedMessages(meId: string, friendId: string, messages: CachedMessage[]) {
   const key = msgKey(meId, friendId);
   messageCache.set(key, { messages, loadedAt: Date.now() });
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem(`jj_msgs_${key}`, JSON.stringify(messages));
-    } catch {}
-  }
+  void localDbSetMessages(key, messages);
 }
 
 export function invalidateMessageCache(meId: string, friendId: string) {
   const key = msgKey(meId, friendId);
   messageCache.delete(key);
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.removeItem(`jj_msgs_${key}`);
-    } catch {}
-  }
+  void localDbDeleteMessages(key);
 }
 
 // ─── Page Message cache ───────────────────────────────────────────────────────
@@ -170,6 +171,16 @@ export function invalidatePageMessageCache(conversationId: string) {
  * so by the time the user navigates, data is already in the cache.
  */
 export function prefetchConversation(meId: string, friendId: string) {
+  // Groups / system / page threads use different queries — skip DM prefetch.
+  if (
+    !friendId ||
+    friendId.startsWith("group-") ||
+    friendId.startsWith("system-") ||
+    friendId.startsWith("page-")
+  ) {
+    return;
+  }
+
   // Profile
   const profileKey = `profile-${friendId}`;
   if (!profileCache.has(friendId) && !inflight.has(profileKey)) {
@@ -225,16 +236,24 @@ export function getDraft(conversationId: string): string {
   }
 }
 
+const draftTimers = new Map<string, any>();
+
 /** Persist the current draft for a conversation. */
 export function setDraft(conversationId: string, text: string) {
   if (typeof window === "undefined") return;
-  try {
-    if (text) {
-      localStorage.setItem(`jj_draft_${conversationId}`, text);
-    } else {
-      localStorage.removeItem(`jj_draft_${conversationId}`);
-    }
-  } catch {}
+  if (draftTimers.has(conversationId)) {
+    clearTimeout(draftTimers.get(conversationId));
+  }
+  draftTimers.set(conversationId, setTimeout(() => {
+    try {
+      if (text) {
+        localStorage.setItem(`jj_draft_${conversationId}`, text);
+      } else {
+        localStorage.removeItem(`jj_draft_${conversationId}`);
+      }
+    } catch {}
+    draftTimers.delete(conversationId);
+  }, 400));
 }
 
 /** Remove the draft after a message is successfully sent. */

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getVerifiedStatus, setVerifiedStatus } from "@/lib/auth-wait";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,7 +14,7 @@ import { AuthButton } from "@/components/auth/AuthButton";
 import { PasswordStrength } from "@/components/auth/PasswordStrength";
 import { Capacitor } from "@capacitor/core";
 import { registerBackAction } from "@/lib/native";
-
+import { signalShellReady } from "@/lib/shell-ready";
 import { z } from "zod";
 
 const searchSchema = z.object({
@@ -42,6 +42,7 @@ const GoogleIcon = () => (
 
 function AuthPage() {
   const { user, loading } = useAuth();
+
   const { isAdmin, loading: roleLoading } = useRole();
   const navigate = useNavigate();
   const { mode: urlMode, logout } = Route.useSearch();
@@ -73,18 +74,22 @@ function AuthPage() {
     if (isLogoutRequest) {
       async function clearAll() {
         try {
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: "local" });
         } catch {}
         try {
-          // Clear all keys except AI chat history keys so histories are persisted across sessions
+          // Clear auth/session keys only — keep theme & AI history.
+          const keep = (k: string) =>
+            k.startsWith("jj_ai_") ||
+            k === "theme" ||
+            k === "jj_theme_default_v2";
           for (let i = localStorage.length - 1; i >= 0; i--) {
             const key = localStorage.key(i);
-            if (key && !key.startsWith("jj_ai_")) {
-              localStorage.removeItem(key);
-            }
+            if (key && !keep(key)) localStorage.removeItem(key);
           }
           setVerifiedStatus(false);
+          sessionStorage.removeItem("jj_signing_out");
         } catch {}
+        setMode("welcome");
         navigate({ search: (old: any) => ({ ...old, logout: undefined }), replace: true });
       }
       clearAll();
@@ -126,23 +131,27 @@ function AuthPage() {
 
       console.log("[AuthRedirect] Proceeding to redirect standard timer...");
       const timer = setTimeout(async () => {
+        const { resolveHomeRoute } = await import("@/lib/resolve-home-route");
+        const home = await resolveHomeRoute(user.id);
+        const adminHome = home === "/app/admin";
+
         const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
         const isProdDomain = hostname.endsWith("playjackpotjungle.com");
         const isChatOrPrimary = hostname.startsWith("chat.") || hostname === "playjackpotjungle.com" || hostname === "www.playjackpotjungle.com";
 
-        console.log("[AuthRedirect] Timer fired. hostname:", hostname, "isProdDomain:", isProdDomain, "isAdmin:", isAdmin);
+        console.log("[AuthRedirect] Timer fired. hostname:", hostname, "isProdDomain:", isProdDomain, "home:", home);
 
         if (isProdDomain && !Capacitor.isNativePlatform()) {
           const sessionRes = await supabase.auth.getSession();
           const session = sessionRes.data.session;
           const hashParams = session ? `#access_token=${session.access_token}&refresh_token=${session.refresh_token}` : "";
 
-          if (isAdmin && isChatOrPrimary) {
+          if (adminHome && isChatOrPrimary) {
             console.log("[AuthRedirect] Redirecting admin subdomain:", `https://admin.playjackpotjungle.com/app/admin${hashParams}`);
             window.location.href = `https://admin.playjackpotjungle.com/app/admin${window.location.search}${hashParams}`;
             return;
           }
-          if (!isAdmin && hostname.startsWith("admin.")) {
+          if (!adminHome && hostname.startsWith("admin.")) {
             console.log("[AuthRedirect] Redirecting non-admin away from admin subdomain to chat:", `https://chat.playjackpotjungle.com/app/chat${hashParams}`);
             window.location.href = `https://chat.playjackpotjungle.com/app/chat${window.location.search}${hashParams}`;
             return;
@@ -151,14 +160,26 @@ function AuthPage() {
 
         const savedRedirect = typeof window !== "undefined" ? sessionStorage.getItem("jj_invite_redirect") : null;
         if (savedRedirect) {
-          console.log("[AuthRedirect] Redirecting to savedRedirect:", savedRedirect);
           sessionStorage.removeItem("jj_invite_redirect");
-          window.location.href = savedRedirect;
-          return;
+          try {
+            const urlObj = new URL(savedRedirect);
+            if (urlObj.pathname.includes("/invite/") || urlObj.pathname.includes("/u/")) {
+              console.log("[AuthRedirect] Redirecting to savedRedirect:", savedRedirect);
+              // Native-first: stay in the SPA router; avoid full document reloads.
+              if (Capacitor.isNativePlatform()) {
+                navigate({ to: urlObj.pathname + urlObj.search, replace: true });
+              } else {
+                window.location.href = savedRedirect;
+              }
+              return;
+            }
+          } catch {
+            // ignore invalid saved redirect
+          }
         }
 
-        console.log("[AuthRedirect] Standard redirect navigate to:", isAdmin ? "/app/admin" : "/app/chat");
-        navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
+        console.log("[AuthRedirect] Standard redirect navigate to:", home);
+        navigate({ to: home, replace: true });
       }, 100);
       return () => clearTimeout(timer);
     } else {
@@ -187,7 +208,11 @@ function AuthPage() {
           // If already initialized, it might throw, which is fine to ignore
           console.log("GoogleAuth initialized or already active:", e);
         }
-        const userResult = await GoogleAuth.signIn();
+        
+        const signInPromise = GoogleAuth.signIn();
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("GoogleAuth Native Bridge Timeout: The plugin did not respond.")), 15000));
+        
+        const userResult = await Promise.race([signInPromise, timeoutPromise]) as any;
         const idToken = userResult.authentication.idToken;
         if (!idToken) throw new Error("Google Sign-In did not return an ID token.");
 
@@ -221,75 +246,60 @@ function AuthPage() {
     }
   }
 
-  if (loading || roleLoading) {
-    return (
-      <AuthLayout>
-        <AuthCard>
-          <div className="flex flex-col items-center justify-center py-12 gap-4">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-              className="h-10 w-10 border-4 border-primary/20 border-t-primary rounded-full"
-            />
-            <p className="text-sm font-semibold text-muted-foreground animate-pulse">Checking session...</p>
-          </div>
-        </AuthCard>
-      </AuthLayout>
-    );
+  useEffect(() => {
+    if (!loading && !roleLoading) {
+      signalShellReady();
+    }
+  }, [loading, roleLoading]);
+
+  // During logout, never paint a blank screen — show the login chrome immediately.
+  if ((loading || roleLoading) && !isLogoutRequest) {
+    return null;
   }
-
-
 
   return (
     <AuthLayout mode={mode} setMode={setMode}>
-      <AnimatePresence mode="wait">
-        {mode === "welcome" && (
-          <AuthCard key="welcome">
-            <div className="text-center space-y-4 py-2 select-none">
-              <p className="text-xs text-muted-foreground/75 leading-relaxed mx-auto max-w-[280px]">
-                Connect instantly with friends, admins, and support teams. Explore our fast, modern messenger experience.
-              </p>
+      {mode === "welcome" && (
+        <AuthCard key="welcome">
+          <div className="text-center space-y-4 py-2 select-none">
+            <p className="text-xs text-muted-foreground/75 leading-relaxed mx-auto max-w-[280px]">
+              Connect instantly with friends, admins, and support teams. Explore our fast, modern messenger experience.
+            </p>
 
-              <div className="pt-2">
-                <button
-                  onClick={() => setMode("login")}
-                  className="w-full py-4 bg-primary text-primary-foreground hover:bg-primary/95 active:scale-[0.98] font-bold rounded-2xl text-sm transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_25px_rgba(var(--primary-rgb),0.55)] flex items-center justify-center gap-2 group cursor-pointer"
-                >
-                  <span>Get Started</span>
-                  <motion.span
-                    animate={{ x: [0, 4, 0] }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                  >
-                    →
-                  </motion.span>
-                </button>
-              </div>
+            <div className="pt-2">
+              <button
+                onClick={() => setMode("login")}
+                className="w-full py-4 bg-primary text-primary-foreground hover:bg-primary/95 active:scale-[0.98] font-bold rounded-2xl text-sm transition-all shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_25px_rgba(var(--primary-rgb),0.55)] flex items-center justify-center gap-2 group cursor-pointer"
+              >
+                <span>Get Started</span>
+                <span>→</span>
+              </button>
             </div>
-          </AuthCard>
-        )}
+          </div>
+        </AuthCard>
+      )}
 
-        {mode === "login" && (
-          <AuthCard key="login">
-            <LoginForm 
-              onSwitch={() => setMode("signup")} 
-              onBack={() => setMode("welcome")} 
-              signInWithGoogle={signInWithGoogle}
-              googleBusy={googleBusy}
-            />
-          </AuthCard>
-        )}
+      {mode === "login" && (
+        <AuthCard key="login">
+          <LoginForm 
+            onSwitch={() => setMode("signup")} 
+            onBack={() => setMode("welcome")} 
+            signInWithGoogle={signInWithGoogle}
+            googleBusy={googleBusy}
+          />
+        </AuthCard>
+      )}
 
-        {mode === "signup" && (
-          <AuthCard key="signup">
-            <SignUpForm 
-              onSwitch={() => setMode("login")} 
-              onBack={() => setMode("welcome")} 
-              signInWithGoogle={signInWithGoogle}
-              googleBusy={googleBusy}
-            />
-          </AuthCard>
-        )}
-      </AnimatePresence>
+      {mode === "signup" && (
+        <AuthCard key="signup">
+          <SignUpForm 
+            onSwitch={() => setMode("login")} 
+            onBack={() => setMode("welcome")} 
+            signInWithGoogle={signInWithGoogle}
+            googleBusy={googleBusy}
+          />
+        </AuthCard>
+      )}
     </AuthLayout>
   );
 }
@@ -307,8 +317,8 @@ function LoginForm({
 }) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
+  const identifierRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
   const [rememberMe, setRememberMe] = useState(true);
   const [busy, setBusy] = useState(false);
   const [mfaBusy, setMfaBusy] = useState(false);
@@ -327,7 +337,9 @@ function LoginForm({
       if (saved) {
         const data = JSON.parse(saved);
         if (data.verificationRequired) {
-          setIdentifier(data.identifier || "");
+          if (identifierRef.current && data.identifier) {
+            identifierRef.current.value = data.identifier;
+          }
           setVerificationRequired(true);
           setVerificationMethod(data.verificationMethod || null);
           setHas2FaFactor(!!data.has2FaFactor);
@@ -346,7 +358,7 @@ function LoginForm({
         localStorage.setItem(
           "jj_temp_auth_verification",
           JSON.stringify({
-            identifier,
+            identifier: identifierRef.current?.value || "",
             verificationRequired,
             verificationMethod,
             has2FaFactor,
@@ -359,7 +371,7 @@ function LoginForm({
     } catch (e) {
       console.warn("Failed to save temporary auth verification state:", e);
     }
-  }, [identifier, verificationRequired, verificationMethod, has2FaFactor, emailOtpSent]);
+  }, [verificationRequired, verificationMethod, has2FaFactor, emailOtpSent]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -443,7 +455,9 @@ function LoginForm({
     e.preventDefault();
     setBusy(true);
     try {
-      let email = identifier.trim();
+      const currentIdentifier = identifierRef.current?.value || "";
+      const currentPassword = passwordRef.current?.value || "";
+      let email = currentIdentifier.trim();
       if (!email.includes("@")) {
         const { lookupEmailByUsername } = await import("@/lib/auth-lookup.functions");
         const res = await lookupEmailByUsername({ data: { username: email } });
@@ -456,7 +470,7 @@ function LoginForm({
         setVerifiedStatus(false);
       }
 
-      const { data: signed, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data: signed, error } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
       if (error) throw error;
 
       const { data: factors, error: listErr } = await supabase.auth.mfa.listFactors();
@@ -484,7 +498,7 @@ function LoginForm({
     e.preventDefault();
     setMfaBusy(true);
     try {
-      const email = user?.email || identifier.trim();
+      const email = user?.email || identifierRef.current?.value.trim() || "";
 
       const { error } = await supabase.auth.verifyOtp({
         email,
@@ -521,13 +535,13 @@ function LoginForm({
         localStorage.removeItem("jj_temp_auth_verification");
       } catch {}
       
-      // Redirect
+      // Redirect — admin → admin inbox, user → user chats
       const sessionRes = await supabase.auth.getSession();
       const session = sessionRes.data.session;
       if (session?.user) {
-        const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id);
-        const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
-        navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
+        const { resolveHomeRoute } = await import("@/lib/resolve-home-route");
+        const home = await resolveHomeRoute(session.user.id);
+        navigate({ to: home, replace: true });
       }
     } catch (err: any) {
       toast.error(err.message || "Invalid email verification code.");
@@ -563,7 +577,7 @@ function LoginForm({
       }
 
       // Send recent login notification email!
-      const email = user?.email || identifier.trim();
+      const email = user?.email || identifierRef.current?.value.trim() || "";
       try {
         const { notifyRecentLogin } = await import("@/lib/email-notification.functions");
         await notifyRecentLogin({ email });
@@ -587,13 +601,13 @@ function LoginForm({
         localStorage.removeItem("jj_temp_auth_verification");
       } catch {}
       
-      // Redirect
+      // Redirect — admin → admin inbox, user → user chats
       const sessionRes = await supabase.auth.getSession();
       const session = sessionRes.data.session;
       if (session?.user) {
-        const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id);
-        const isAdmin = !!roles?.some((r: any) => r.role === "admin" || r.role === "super_admin");
-        navigate({ to: isAdmin ? "/app/admin" : "/app/chat", replace: true });
+        const { resolveHomeRoute } = await import("@/lib/resolve-home-route");
+        const home = await resolveHomeRoute(session.user.id);
+        navigate({ to: home, replace: true });
       }
     } catch (err: any) {
       toast.error(err.message ?? "Verification failed.");
@@ -792,24 +806,23 @@ function LoginForm({
         </button>
       </div>
 
+
       <div className="space-y-3">
         <AuthInput
           label="Username or Email"
           placeholder="Enter username or email"
-          value={identifier}
-          onChange={(e) => setIdentifier(e.target.value)}
+          ref={identifierRef}
           required
-          autoComplete="username"
+          autoComplete="off"
           icon={<User className="h-4 w-4" />}
         />
         <AuthInput
           label="Password"
           type="password"
           placeholder="••••••••"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          ref={passwordRef}
           required
-          autoComplete="current-password"
+          autoComplete="off"
           icon={<Lock className="h-4 w-4" />}
         />
       </div>
@@ -868,10 +881,10 @@ function SignUpForm({
   googleBusy: boolean;
 }) {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
   const [terms, setTerms] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -879,6 +892,10 @@ function SignUpForm({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const username = usernameRef.current?.value || "";
+    const email = emailRef.current?.value || "";
+    const password = passwordRef.current?.value || "";
+    const confirm = confirmRef.current?.value || "";
     if (password !== confirm) { toast.error("Passwords do not match."); return; }
     if (username.length < 3) { toast.error("Username must be at least 3 characters."); return; }
     if (!terms) { toast.error("Please accept the terms & conditions."); return; }
@@ -916,8 +933,7 @@ function SignUpForm({
         <AuthInput
           label="Username"
           placeholder="Choose a username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          ref={usernameRef}
           required
           minLength={3}
           icon={<User className="h-4 w-4" />}
@@ -927,10 +943,9 @@ function SignUpForm({
           label="Email Address"
           type="email"
           placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          ref={emailRef}
           required
-          autoComplete="email"
+          autoComplete="off"
           icon={<Mail className="h-4 w-4" />}
           disabled={googleBusy}
         />
@@ -938,11 +953,10 @@ function SignUpForm({
           label="Password"
           type="password"
           placeholder="••••••••"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          ref={passwordRef}
           required
           minLength={6}
-          autoComplete="new-password"
+          autoComplete="off"
           icon={<Lock className="h-4 w-4" />}
           disabled={googleBusy}
         />
@@ -950,17 +964,16 @@ function SignUpForm({
           label="Confirm Password"
           type="password"
           placeholder="••••••••"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
+          ref={confirmRef}
           required
           minLength={6}
-          autoComplete="new-password"
+          autoComplete="off"
           icon={<Lock className="h-4 w-4" />}
           disabled={googleBusy}
         />
       </div>
 
-      <PasswordStrength value={password} />
+
 
       <div className="flex items-start gap-2 px-1 text-xs">
         <button

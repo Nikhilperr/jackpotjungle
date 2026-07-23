@@ -22,13 +22,18 @@ export function toCDNUrl(publicUrl: string | null | undefined): string {
   
   let url = publicUrl;
 
-  const supabaseUrl = "https://db.chancerealm.casino";
-  const storagePrefix = `${supabaseUrl}/storage/v1/object/public`;
-  
-  if (url.startsWith(storagePrefix)) {
-    // e.g. https://db.chancerealm.casino/storage/v1/object/public/avatars/abc.png
-    // becomes https://cdn.playjackpotjungle.com/avatars/abc.png
-    url = url.replace(storagePrefix, SERVICES_CONFIG.CDN);
+  const storagePrefixes = [
+    "https://db.chancerealm.casino/storage/v1/object/public",
+    `${SERVICES_CONFIG.API}/storage/v1/object/public`,
+  ];
+
+  for (const storagePrefix of storagePrefixes) {
+    if (url.startsWith(storagePrefix)) {
+      // e.g. .../storage/v1/object/public/avatars/abc.png
+      // becomes https://cdn.playjackpotjungle.com/avatars/abc.png
+      url = url.replace(storagePrefix, SERVICES_CONFIG.CDN);
+      break;
+    }
   }
 
   // Failsafe: Clean up any double-bucket paths that were previously saved in the database

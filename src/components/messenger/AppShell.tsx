@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState, useRouter, useLocation } from "@tanstack/react-router";
-import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award, Trophy, Gift, Phone, MoreHorizontal, Coins, Crown, Target, Bell, Settings, HelpCircle, Ban, Share2, Star, Info, ChevronRight, Activity } from "lucide-react";
+import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award, Trophy, Gift, Phone, MoreHorizontal, Coins, Crown, Target, Bell, Settings, HelpCircle, Ban, Share2, Star, Info, ChevronRight, Activity, Loader2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,53 +12,80 @@ import { useServerFn } from "@tanstack/react-start";
 import { verifyDeposit } from "@/lib/deposit.functions";
 import { toast } from "sonner";
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 import { Capacitor } from "@capacitor/core";
+import { runAfterFirstPaint } from "@/lib/native/defer";
+import { NetworkManager, type NetworkStatus } from "@/lib/network-manager";
+import { registerBackAction } from "@/lib/native/navigation";
+import { NativeSideDrawer } from "@/components/messenger/NativeSideDrawer";
 
 const DrawerCtx = createContext<{ open: () => void }>({ open: () => {} });
 export const useAppDrawer = () => useContext(DrawerCtx);
 
 function OnlineStatusBanner() {
-  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [status, setStatus] = useState<NetworkStatus>(() => {
+    return typeof window !== "undefined" ? NetworkManager.getStatus() : "online";
+  });
   const [showConnected, setShowConnected] = useState(false);
 
   useEffect(() => {
-    function handleOnline() {
-      setIsOnline(true);
-      setShowConnected(true);
-      const timer = setTimeout(() => {
+    let lastStatus = typeof window !== "undefined" ? NetworkManager.getStatus() : "online";
+    const unsubscribe = NetworkManager.subscribe((newStatus) => {
+      setStatus(newStatus);
+      if (
+        newStatus === "online" &&
+        (lastStatus === "offline" || lastStatus === "poor" || lastStatus === "reconnecting")
+      ) {
+        setShowConnected(true);
+        const timer = setTimeout(() => {
+          setShowConnected(false);
+        }, 3000);
+        return () => clearTimeout(timer);
+      }
+      if (newStatus !== "online") {
         setShowConnected(false);
-      }, 2500);
-      return () => clearTimeout(timer);
-    }
-    function handleOffline() {
-      setIsOnline(false);
-      setShowConnected(false);
-    }
+      }
+      lastStatus = newStatus;
+    });
 
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
     return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
+      unsubscribe();
     };
   }, []);
 
-  if (!isOnline) {
+  if (status === "offline") {
     return (
-      <div className="bg-amber-600 dark:bg-amber-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0">
+      <div className="bg-amber-600 dark:bg-amber-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0 select-none">
         <WifiOff className="h-3.5 w-3.5" />
-        <span>No internet connection</span>
+        <span>No internet connection · Actions will be queued</span>
+      </div>
+    );
+  }
+
+  if (status === "poor") {
+    return (
+      <div className="bg-orange-600 dark:bg-orange-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0 select-none">
+        <Activity className="h-3.5 w-3.5 animate-pulse" />
+        <span>Slow/unstable connection detected · Retrying...</span>
+      </div>
+    );
+  }
+
+  if (status === "reconnecting") {
+    return (
+      <div className="bg-blue-600 dark:bg-blue-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0 select-none">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <span>Reconnecting to Jackpot Jungle...</span>
       </div>
     );
   }
 
   if (showConnected) {
     return (
-      <div className="bg-emerald-600 dark:bg-emerald-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top exit-to-top duration-300 shadow-sm shrink-0">
+      <div className="bg-emerald-600 dark:bg-emerald-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top exit-to-top duration-300 shadow-sm shrink-0 select-none">
         <Wifi className="h-3.5 w-3.5" />
-        <span>Connection restored</span>
+        <span>Connection restored! Syncing offline queues...</span>
       </div>
     );
   }
@@ -78,17 +105,56 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [unreadChatsCount, setUnreadChatsCount] = useState(0);
-  const [spamCount, setSpamCount] = useState(0);
+  const closeDrawer = useCallback(() => setOpen(false), []);
+  const closeMore = useCallback(() => setMoreOpen(false), []);
+
+  // Android back closes overlays before navigating (Messenger-style).
+  useEffect(() => {
+    if (!moreOpen) return;
+    return registerBackAction(() => {
+      setMoreOpen(false);
+      return true;
+    }, 90);
+  }, [moreOpen]);
+
+  useEffect(() => {
+    if (!confirmOut) return;
+    return registerBackAction(() => {
+      setConfirmOut(false);
+      return true;
+    }, 110);
+  }, [confirmOut]);
+  const [unreadCount, setUnreadCount] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    try {
+      return Number(localStorage.getItem("jj_cached_counts_notif") || 0);
+    } catch {
+      return 0;
+    }
+  });
+  const [unreadChatsCount, setUnreadChatsCount] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    try {
+      return Number(localStorage.getItem("jj_cached_counts_chats") || 0);
+    } catch {
+      return 0;
+    }
+  });
+  const [spamCount, setSpamCount] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    try {
+      return Number(localStorage.getItem("jj_cached_counts_spam") || 0);
+    } catch {
+      return 0;
+    }
+  });
 
   useEffect(() => {
     let mounted = true;
+    let channel: any = null;
     
-    const fetchCounts = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id || !mounted) return;
-      const myId = session.user.id;
+    const fetchCounts = async (myId: string) => {
+      if (!mounted) return;
 
       // Unread notifications
       const { count: notifCount } = await supabase
@@ -96,7 +162,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         .select("id", { count: "exact", head: true })
         .eq("user_id", myId)
         .eq("seen", false);
-      if (notifCount !== null && mounted) setUnreadCount(notifCount);
+      if (notifCount !== null && mounted) {
+        setUnreadCount(notifCount);
+        try {
+          localStorage.setItem("jj_cached_counts_notif", String(notifCount));
+        } catch {}
+      }
 
       // Unread chats
       const { count: chatCount } = await supabase
@@ -104,31 +175,118 @@ export function AppShell({ children }: { children: ReactNode }) {
         .select("id", { count: "exact", head: true })
         .eq("receiver_id", myId)
         .eq("seen", false);
-      if (chatCount !== null && mounted) setUnreadChatsCount(chatCount);
+      if (chatCount !== null && mounted) {
+        setUnreadChatsCount(chatCount);
+        try {
+          localStorage.setItem("jj_cached_counts_chats", String(chatCount));
+        } catch {}
+      }
 
       // Spam count
       const { count: sCount } = await supabase
         .from("spam_list")
         .select("id", { count: "exact", head: true })
         .eq("user_id", myId);
-      if (sCount !== null && mounted) setSpamCount(sCount);
+      if (sCount !== null && mounted) {
+        setSpamCount(sCount);
+        try {
+          localStorage.setItem("jj_cached_counts_spam", String(sCount));
+        } catch {}
+      }
     };
 
-    fetchCounts();
-    const interval = setInterval(fetchCounts, 10000);
+    let userId = "";
+
+    const setup = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id || !mounted) return;
+      userId = session.user.id;
+      
+      await fetchCounts(userId);
+
+      const rand = Math.random().toString(36).slice(2, 9);
+      channel = supabase
+        .channel(`badging-realtime-${rand}`)
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "messages" },
+          (payload) => {
+            const m = payload.new as any;
+            if (m && m.receiver_id === userId && !m.seen) {
+              setUnreadChatsCount((prev) => {
+                const next = prev + 1;
+                try { localStorage.setItem("jj_cached_counts_chats", String(next)); } catch {}
+                return next;
+              });
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "messages" },
+          (payload) => {
+            const m = payload.new as any;
+            if (m && m.receiver_id === userId) {
+              fetchCounts(userId);
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "user_notifications" },
+          (payload) => {
+            const fresh = payload.new as any;
+            const old = payload.old as any;
+            if (payload.eventType === "INSERT" && fresh && fresh.user_id === userId && !fresh.seen) {
+              setUnreadCount((prev) => {
+                const next = prev + 1;
+                try { localStorage.setItem("jj_cached_counts_notif", String(next)); } catch {}
+                return next;
+              });
+            } else if (payload.eventType === "UPDATE" && fresh && fresh.user_id === userId) {
+              fetchCounts(userId);
+            } else if (payload.eventType === "DELETE" && old) {
+              fetchCounts(userId);
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "spam_list" },
+          () => {
+            fetchCounts(userId);
+          }
+        )
+        .subscribe();
+    };
+
+    setup();
+    const interval = setInterval(() => {
+      if (userId) fetchCounts(userId);
+    }, 30000); // 30 seconds fallback polling
 
     const handleUpdate = () => {
-      fetchCounts();
+      if (userId) fetchCounts(userId);
+    };
+
+    const handleFocus = () => {
+      if (document.visibilityState === "visible") {
+        console.log("[AppShell] App returned to foreground, syncing offline queues...");
+        NetworkManager.processQueues();
+      }
     };
 
     window.addEventListener("unread-notifications-updated", handleUpdate);
     window.addEventListener("jj-message-sent", handleUpdate);
+    document.addEventListener("visibilitychange", handleFocus);
 
     return () => {
       mounted = false;
       clearInterval(interval);
+      if (channel) supabase.removeChannel(channel);
       window.removeEventListener("unread-notifications-updated", handleUpdate);
       window.removeEventListener("jj-message-sent", handleUpdate);
+      document.removeEventListener("visibilitychange", handleFocus);
     };
   }, []);
 
@@ -138,91 +296,37 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const verifyFn = useServerFn(verifyDeposit);
 
-  // Background polling for crypto deposits
+  // Background polling for crypto deposits — deferred so it never contends with first paint.
   useEffect(() => {
     let mounted = true;
-    const interval = setInterval(async () => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const cancel = runAfterFirstPaint(() => {
       if (!mounted) return;
-      try {
-        const res = await verifyFn({ data: {} });
-        if (res.success && res.credited && res.credited > 0) {
-          toast.success(`You just received $${res.credited.toFixed(2)} in your wallet! 💰`);
-          window.dispatchEvent(new CustomEvent("wallet-updated", { detail: { credited: res.credited } }));
+      interval = setInterval(async () => {
+        if (!mounted) return;
+        try {
+          const res = await verifyFn({ data: {} });
+          if (res.success && res.credited && res.credited > 0) {
+            toast.success(`You just received $${res.credited.toFixed(2)} in your wallet!`);
+            window.dispatchEvent(new CustomEvent("wallet-updated", { detail: { credited: res.credited } }));
+          }
+        } catch (e) {
+          console.warn("[Background Poll] failed:", e);
         }
-      } catch (e) {
-        console.warn("[Background Poll] failed:", e);
-      }
-    }, 30000); // 30 seconds
+      }, 30000);
+    }, 2500);
 
     return () => {
       mounted = false;
-      clearInterval(interval);
+      cancel();
+      if (interval) clearInterval(interval);
     };
   }, [verifyFn]);
 
 
   async function signOut() {
-    console.log("[SignOut] Initiated.");
-    if (typeof window !== "undefined") {
-      console.log("[SignOut] Clearing local storage keys and cookies.");
-      localStorage.removeItem("profile_complete");
-      localStorage.removeItem("jj_temp_auth_verification");
-      setVerifiedStatus(false);
-    }
-    
-    // Get session to check if Google login before signing out
-    const sessionRes = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
-    const session = sessionRes?.data?.session;
-    const isGoogleLogin = session?.user?.app_metadata?.provider === "google";
-
-    // Update database presence in the background so it never hangs sign out
-    if (session?.user?.id) {
-      supabase
-        .from("profiles")
-        .update({ online: false, last_seen: new Date().toISOString() })
-        .eq("id", session.user.id)
-        .then(() => console.log("[SignOut] User presence set to offline."))
-        .catch((e) => console.error("Failed to update presence:", e));
-    }
-
-    await qc.cancelQueries();
-    qc.clear();
-
-    if (Capacitor.isNativePlatform() && isGoogleLogin) {
-      try {
-        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
-        await GoogleAuth.signOut();
-      } catch (e) {
-        console.error("Google native sign out failed:", e);
-      }
-    }
-
-    try {
-      console.log("[SignOut] Calling Supabase auth.signOut().");
-      await supabase.auth.signOut();
-      console.log("[SignOut] Supabase auth.signOut() completed.");
-    } catch (e) {
-      console.error("Supabase signOut failed:", e);
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
-    const hostname = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
-    const isProdDomain = hostname.endsWith("playjackpotjungle.com");
-    console.log("[SignOut] Hostname:", hostname, "isProdDomain:", isProdDomain);
-    if (Capacitor.isNativePlatform()) {
-      console.log("[SignOut] Native platform - hard redirect on same origin.");
-      window.location.href = window.location.origin + "/app/auth";
-      return;
-    }
-
-    if (isProdDomain) {
-      console.log("[SignOut] Redirecting window location to chat domain auth.");
-      window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
-    } else {
-      console.log("[SignOut] Navigating local router to auth.");
-      navigate({ to: "/app/auth", search: { logout: "true" }, replace: true });
-    }
+    const { performSignOut } = await import("@/lib/sign-out");
+    await performSignOut(qc, (opts) => navigate(opts));
   }
 
   const navItems = [
@@ -246,30 +350,31 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const Drawer = (
-    <aside className="w-72 h-full bg-card border-r border-border flex flex-col">
-      <div className="px-4 py-5 flex items-center gap-3 border-b border-border">
+    <aside data-jj-drawer-panel className="w-72 h-full bg-card border-r border-border flex flex-col">
+      <div className="px-4 py-4 flex items-center gap-3 border-b border-border min-h-14">
         <img src="/icons/icon-192.webp" alt="Logo" className="h-10 w-10 rounded-xl mb-0 shadow-sm object-cover" />
-        <div className="flex-1">
-          <p className="font-bold">Jackpot Jungle</p>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold truncate">Jackpot Jungle</p>
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Messenger</p>
         </div>
         <button
-          onClick={() => setOpen(false)}
-          className="h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-secondary transition-colors"
+          onClick={closeDrawer}
+          className="touch-target rounded-lg flex items-center justify-center text-muted-foreground active:bg-secondary transition-colors"
+          aria-label="Close menu"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
-      <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto overscroll-contain">
         {allNavItems.map((n) => {
           const active = pathname.startsWith(n.to);
           return (
             <Link
               key={n.to}
               to={n.to}
-              onClick={() => setOpen(false)}
-              className={`w-full h-11 rounded-lg flex items-center gap-3 px-3 text-sm font-medium transition-colors ${
-                active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+              onClick={closeDrawer}
+              className={`w-full min-h-12 rounded-xl flex items-center gap-3 px-3 text-sm font-medium transition-colors active:scale-[0.99] ${
+                active ? "bg-primary/10 text-primary" : "text-muted-foreground active:bg-secondary active:text-foreground"
               }`}
             >
               <n.icon className="h-5 w-5 shrink-0" />
@@ -292,8 +397,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
         <button
-          onClick={() => setConfirmOut(true)}
-          className="flex-1 h-11 rounded-lg flex items-center gap-3 px-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => {
+            closeDrawer();
+            setConfirmOut(true);
+          }}
+          className="flex-1 min-h-12 rounded-xl flex items-center gap-3 px-3 text-sm font-medium text-muted-foreground active:bg-destructive/10 active:text-destructive"
         >
           <LogOut className="h-5 w-5 shrink-0" />
           <span>Sign out</span>
@@ -302,34 +410,38 @@ export function AppShell({ children }: { children: ReactNode }) {
     </aside>
   );
 
+  const isNative = Capacitor.isNativePlatform();
+
   return (
     <DrawerCtx.Provider value={{ open: () => setOpen(true) }}>
-      <div className="flex h-[100dvh] bg-background">
-        {/* Sliding overlay drawer menu for desktop and mobile */}
-        {open && (
-          <div className="fixed inset-0 z-50 flex animate-in fade-in duration-200">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setOpen(false)} />
-            <div className="relative z-10 animate-in slide-in-from-left duration-250 ease-out h-full">
-              {Drawer}
-            </div>
-          </div>
-        )}
+      {/* Height from visualViewport/--jj-app-height on native — header stays pinned with keyboard */}
+      <div className="flex h-full max-h-full bg-background native-safe-shell overflow-hidden">
+        <NativeSideDrawer open={open} onClose={closeDrawer}>
+          {Drawer}
+        </NativeSideDrawer>
 
-        <main className={`flex-1 min-w-0 min-h-0 flex flex-col safe-pt safe-pb safe-pl safe-pr ${showBottomBar ? "pb-16 md:pb-0" : "pb-0"}`}>
+        {/* Shell already clears status/nav via native-safe-shell; bottom nav adds its own height. */}
+        <main
+          className={`flex-1 min-w-0 min-h-0 flex flex-col ${
+            showBottomBar ? "pb-16 md:pb-0" : ""
+          }`}
+        >
           <OnlineStatusBanner />
           {children}
         </main>
 
-        {/* Bottom navigation bar for mobile layout only (hidden when a specific chat is open) */}
+        {/* Bottom navigation — solid on native (no blur jank), 48dp-friendly targets */}
         {showBottomBar && (
-          <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/85 backdrop-blur-md border-t border-border/80 h-16 flex items-center justify-around px-4 py-2 safe-pb">
+          <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-border/80 min-h-16 flex items-stretch justify-around px-1 pt-1 ${
+            isNative ? "bg-background" : "bg-background/90 backdrop-blur-md"
+          }`} style={{ paddingBottom: "max(0px, var(--jj-sab, 0px))" }}>
             <Link
               to="/app/chat"
               search={{ tab: "all" }}
-              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-all duration-200 active:scale-95 hover:scale-105 ${
+              className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-colors duration-150 active:opacity-80 min-h-12 ${
                 pathname === "/app/chat" && (searchTab === "all" || (!searchTab || searchTab === "spam"))
                   ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground"
               }`}
             >
               <MessageCircle className="h-5 w-5" />
@@ -339,10 +451,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link
               to="/app/chat"
               search={{ tab: "calls" }}
-              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-all duration-200 active:scale-95 hover:scale-105 ${
+              className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-colors duration-150 active:opacity-80 min-h-12 ${
                 pathname === "/app/chat" && searchTab === "calls"
                   ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground"
               }`}
             >
               <Phone className="h-5 w-5" />
@@ -352,10 +464,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link
               to="/app/chat"
               search={{ tab: "groups" }}
-              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-all duration-200 active:scale-95 hover:scale-105 ${
+              className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-colors duration-150 active:opacity-80 min-h-12 ${
                 pathname === "/app/chat" && searchTab === "groups"
                   ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground"
               }`}
             >
               <Users className="h-5 w-5" />
@@ -363,8 +475,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
 
             <button
+              type="button"
               onClick={() => setMoreOpen(true)}
-              className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold text-muted-foreground hover:text-foreground focus:outline-none transition-all duration-200 active:scale-95 hover:scale-105"
+              className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-bold text-muted-foreground focus:outline-none transition-colors duration-150 active:opacity-80 min-h-12"
             >
               <MoreHorizontal className="h-5 w-5" />
               <span>More</span>
@@ -372,27 +485,25 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
         )}
 
-        {/* Custom slide-up More Bottom Sheet overlay for responsive/mobile view */}
+        {/* More bottom sheet — solid dim on native, 48dp close */}
         {moreOpen && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center animate-in fade-in duration-200">
-            {/* Backdrop overlay */}
-            <div 
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" 
-              onClick={() => setMoreOpen(false)} 
+          <div className="fixed inset-0 z-50 flex items-end justify-center animate-in fade-in duration-150">
+            <div
+              className={`absolute inset-0 ${isNative ? "bg-black/55" : "bg-black/60 backdrop-blur-sm"}`}
+              onClick={closeMore}
             />
-            {/* Slide-up panel container */}
-            <div className="relative z-10 w-full max-h-[85vh] bg-card border-t border-border rounded-t-[32px] overflow-hidden flex flex-col animate-in slide-in-from-bottom duration-300 ease-out shadow-2xl safe-pb">
-              {/* Handlebar decoration */}
+            <div className="relative z-10 w-full max-h-[min(85dvh,85vh)] bg-card border-t border-border rounded-t-[28px] overflow-hidden flex flex-col animate-in slide-in-from-bottom duration-200 ease-out shadow-2xl safe-pb">
               <div className="w-12 h-1.5 bg-muted rounded-full mx-auto my-3 shrink-0" />
               
-              {/* Title & Close */}
               <div className="px-5 pb-3 flex items-center justify-between border-b border-border/60 shrink-0">
                 <span className="font-extrabold text-base text-foreground font-sans">More Actions</span>
-                <button 
-                  onClick={() => setMoreOpen(false)}
-                  className="h-8 w-8 rounded-full bg-secondary hover:bg-secondary/80 flex items-center justify-center text-muted-foreground transition-all"
+                <button
+                  type="button"
+                  onClick={closeMore}
+                  className="touch-target rounded-full bg-secondary active:bg-secondary/80 flex items-center justify-center text-muted-foreground"
+                  aria-label="Close"
                 >
-                  <X className="h-4.5 w-4.5" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
@@ -412,8 +523,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                       <Link
                         key={idx}
                         to={item.to}
-                        onClick={() => setMoreOpen(false)}
-                        className="w-full h-12 rounded-xl flex items-center gap-3 px-3 hover:bg-secondary transition-colors text-left font-sans"
+                        onClick={closeMore}
+                        className="w-full min-h-12 rounded-xl flex items-center gap-3 px-3 active:bg-secondary transition-colors text-left font-sans"
                       >
                         <div className="h-8.5 w-8.5 rounded-full bg-secondary flex items-center justify-center text-muted-foreground/80 shrink-0">
                           <Icon className="h-4.5 w-4.5" />
@@ -432,10 +543,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                       <button
                         key={idx}
                         onClick={() => {
-                          setMoreOpen(false);
+                          closeMore();
                           item.onClick?.();
                         }}
-                        className="w-full h-12 rounded-xl flex items-center gap-3 px-3 hover:bg-secondary transition-colors text-left font-sans"
+                        className="w-full min-h-12 rounded-xl flex items-center gap-3 px-3 active:bg-secondary transition-colors text-left font-sans"
                       >
                         <div className="h-8.5 w-8.5 rounded-full bg-secondary flex items-center justify-center text-muted-foreground/80 shrink-0">
                           <Icon className="h-4.5 w-4.5" />
@@ -461,8 +572,9 @@ export function HamburgerButton() {
   const { open } = useAppDrawer();
   return (
     <button
+      type="button"
       onClick={open}
-      className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-secondary -ml-1 transition-colors"
+      className="touch-target rounded-xl flex items-center justify-center active:bg-secondary -ml-1 transition-colors"
       aria-label="Open menu"
     >
       <Menu className="h-5 w-5" />

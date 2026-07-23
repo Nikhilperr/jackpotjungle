@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark field + real PNG logo. Do NOT use @mipmap/ic_launcher_round here —
+     on API 26+ that resolves to an adaptive-icon XML, which <bitmap> cannot inflate
+     (Resources$NotFoundException → instant crash on launch). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splashBackground" />
+    <item
+        android:width="96dp"
+        android:height="96dp"
+        android:gravity="center">
+        <bitmap
+            android:gravity="fill"
+            android:src="@mipmap/ic_launcher_foreground" />
+    </item>
+</layer-list>

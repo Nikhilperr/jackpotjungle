@@ -1,12 +1,22 @@
 import { supabase } from "@/integrations/supabase/client";
 
-async function compressImage(file: Blob, maxDimension = 1600, quality = 0.75): Promise<Blob> {
+async function compressImage(
+  file: Blob,
+  sizeThreshold: number,
+  maxDimension = 1600,
+  quality = 0.75
+): Promise<Blob> {
   if (
     typeof window === "undefined" || 
     typeof document === "undefined" || 
     !file.type.startsWith("image/") || 
     file.type === "image/gif"
   ) {
+    return file;
+  }
+
+  // Skip if size is under threshold
+  if (file.size <= sizeThreshold) {
     return file;
   }
 
@@ -19,6 +29,13 @@ async function compressImage(file: Blob, maxDimension = 1600, quality = 0.75): P
       let width = img.width;
       let height = img.height;
 
+      // Skip compression/resizing if source dimensions are already under target limits
+      if (width <= maxDimension && height <= maxDimension) {
+        resolve(file);
+        return;
+      }
+
+      // Calculate downscaled dimensions (never upscale)
       if (width > maxDimension || height > maxDimension) {
         if (width > height) {
           height = Math.round((height * maxDimension) / width);
@@ -57,6 +74,8 @@ async function compressImage(file: Blob, maxDimension = 1600, quality = 0.75): P
   });
 }
 
+import { NetworkManager } from "./network-manager";
+
 export async function uploadAndSign(
   bucket: "avatars" | "chat-images" | "chat-audio",
   userId: string,
@@ -64,16 +83,25 @@ export async function uploadAndSign(
   ext: string,
   contentType?: string,
 ): Promise<string> {
+  if (!NetworkManager.isOnline()) {
+    throw new Error("Network is offline. Queueing file for later upload.");
+  }
   let finalFile = file;
   let finalExt = ext;
   let finalContentType = contentType ?? file.type;
 
   // Compress static images
   if (bucket !== "chat-audio" && file.type.startsWith("image/") && file.type !== "image/gif") {
+    const sizeThreshold = bucket === "avatars" ? 100 * 1024 : 300 * 1024;
+    const maxDimension = bucket === "avatars" ? 400 : 1200;
+    const quality = bucket === "avatars" ? 0.8 : 0.75;
+
     try {
-      finalFile = await compressImage(file);
-      finalExt = "jpeg";
-      finalContentType = "image/jpeg";
+      finalFile = await compressImage(file, sizeThreshold, maxDimension, quality);
+      if (finalFile !== file) {
+        finalExt = "jpeg";
+        finalContentType = "image/jpeg";
+      }
     } catch (e) {
       console.warn("Client-side image compression failed, uploading original:", e);
     }

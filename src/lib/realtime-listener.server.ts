@@ -1,5 +1,35 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { SERVICES_CONFIG, toCDNUrl } from "@/config";
 import { sendPushNotification } from "./fcm.server";
+
+/** Messenger-style notification body for page inbox messages. */
+function pageInboxPreviewBody(
+  content: string | null | undefined,
+  imageUrl: string | null | undefined,
+  audioUrl: string | null | undefined,
+): string {
+  let text = (content ?? "").trim();
+  if (text.startsWith("[reply:")) {
+    const match = text.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+    if (match) text = (match[1] ?? "").trim();
+  }
+  if (text.startsWith("[system:forwarded]")) {
+    text = text.replace(/^\[system:forwarded\]\s*/, "").trim();
+  }
+  if (text) return text.length > 140 ? `${text.slice(0, 137)}…` : text;
+  if (imageUrl) return "Photo";
+  if (audioUrl) return "Voice message";
+  return "Sent a message";
+}
+
+/** Absolute HTTPS URL for FCM notification images (logo / avatar / photo). */
+function absolutePushImageUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  const resolved = toCDNUrl(url) || url;
+  if (/^https?:\/\//i.test(resolved)) return resolved;
+  if (resolved.startsWith("/")) return `${SERVICES_CONFIG.CHAT}${resolved}`;
+  return undefined;
+}
 
 function getFormattedDateTimeInTimezone(date: Date, timeZone: string) {
   try {
@@ -589,10 +619,17 @@ export async function initRealtimeListeners() {
           console.log(`[Realtime Listener] New page message insert detected. ID: ${pm.id}`);
 
           try {
-            const bodyText = pm.content || (pm.image_url ? "📷 Sent a photo" : "🎤 Sent a voice message");
+            // Skip internal system rows (reactions/pins/etc.) — not Messenger-style chat pings.
+            if (pm.content?.startsWith("[system:")) {
+              return;
+            }
+
+            const bodyText = pageInboxPreviewBody(pm.content, pm.image_url, pm.audio_url);
+            const photoPreviewUrl = absolutePushImageUrl(pm.image_url);
+            const appLogoUrl = `${SERVICES_CONFIG.CHAT}/icons/icon-256.webp`;
 
             if (pm.from_page) {
-              // Admin replying to user -> Send to the user of the conversation
+              // Admin → user: "Jackpot Jungle sent you a message" + text/Photo + app logo
               const { data: conv } = await supabaseAdmin
                 .from("page_conversations")
                 .select("user_id")
@@ -605,13 +642,11 @@ export async function initRealtimeListeners() {
                 return;
               }
 
-              // Exclude sender (if the admin somehow is the conversation user)
               if (userId === pm.sender_id) {
                 console.log("[Realtime Listener] Admin is conversation user. Skipping notification.");
                 return;
               }
 
-              // Check if user has notifications enabled
               const { data: receiverProfile } = await supabaseAdmin
                 .from("profiles")
                 .select("notif_enabled" as any)
@@ -624,7 +659,6 @@ export async function initRealtimeListeners() {
                 return;
               }
 
-              // Fetch user push tokens
               const { data: tokensRows } = await supabaseAdmin
                 .from("push_tokens" as any)
                 .select("token")
@@ -637,12 +671,19 @@ export async function initRealtimeListeners() {
                 return;
               }
 
-              await sendPushNotification(tokens, "Jackpot Jungle Support", bodyText, {
-                type: "page_chat",
-                routePath: "/app/chat/page",
-              });
+              await sendPushNotification(
+                tokens,
+                "Jackpot Jungle sent you a message",
+                bodyText,
+                {
+                  type: "page_chat",
+                  conversation_id: pm.conversation_id,
+                  routePath: "/app/chat/page",
+                },
+                { imageUrl: photoPreviewUrl || appLogoUrl },
+              );
             } else {
-              // User sending to Page -> Send to all Admins & Super Admins (EXCLUDING the sender themselves)
+              // User → admins: "{username}" + avatar + text/Photo; tap opens that conversation
               const { data: adminRows } = await supabaseAdmin
                 .from("user_roles" as any)
                 .select("user_id")
@@ -650,27 +691,43 @@ export async function initRealtimeListeners() {
 
               const adminUserIds = (adminRows ?? [])
                 .map((r: any) => r.user_id)
-                .filter((id: string) => id !== pm.sender_id); // EXCLUDE SENDER
+                .filter((id: string) => id !== pm.sender_id);
 
               if (adminUserIds.length === 0) {
                 console.log("[Realtime Listener] No other admin users found. Skipping support message push.");
                 return;
               }
 
-              // Fetch sender username
               const { data: senderProfile } = await supabaseAdmin
                 .from("profiles")
-                .select("username")
+                .select("username, first_name, last_name, avatar_url")
                 .eq("id", pm.sender_id)
                 .maybeSingle();
 
-              const senderName = senderProfile?.username || "Guest";
+              const senderName = senderProfile
+                ? (senderProfile.first_name && senderProfile.last_name
+                    ? `${senderProfile.first_name} ${senderProfile.last_name}`
+                    : senderProfile.username)
+                : "Guest";
 
-              // Fetch admin push tokens
+              const avatarUrl = absolutePushImageUrl(senderProfile?.avatar_url);
+
+              // Prefer admins who still have notifications enabled (default true).
+              const { data: adminProfiles } = await supabaseAdmin
+                .from("profiles")
+                .select("id, notif_enabled")
+                .in("id", adminUserIds);
+
+              const enabledAdminIds = (adminProfiles ?? [])
+                .filter((p: any) => (p.notif_enabled ?? true) !== false)
+                .map((p: any) => p.id);
+
+              const targetAdminIds = enabledAdminIds.length > 0 ? enabledAdminIds : adminUserIds;
+
               const { data: tokensRows } = await supabaseAdmin
                 .from("push_tokens" as any)
                 .select("token")
-                .in("user_id", adminUserIds);
+                .in("user_id", targetAdminIds);
 
               const tokens = (tokensRows ?? []).map((r: any) => r.token);
 
@@ -679,10 +736,18 @@ export async function initRealtimeListeners() {
                 return;
               }
 
-              await sendPushNotification(tokens, `Support from ${senderName}`, bodyText, {
-                type: "admin_support",
-                routePath: `/app/admin`,
-              });
+              await sendPushNotification(
+                tokens,
+                senderName,
+                bodyText,
+                {
+                  type: "admin_support",
+                  conversation_id: pm.conversation_id,
+                  sender_id: pm.sender_id,
+                  routePath: `/app/admin?tab=inbox&c=${pm.conversation_id}`,
+                },
+                { imageUrl: photoPreviewUrl || avatarUrl || appLogoUrl },
+              );
             }
           } catch (err) {
             console.error("[Realtime Listener] Error processing page message push:", err);

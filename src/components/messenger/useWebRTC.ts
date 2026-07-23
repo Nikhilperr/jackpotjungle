@@ -33,6 +33,8 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connected, setConnected] = useState(false);
   const [remoteMuted, setRemoteMuted] = useState(false);
+  const [remoteVideoActive, setRemoteVideoActive] = useState(true);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [error, setError] = useState<string | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -40,7 +42,6 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const haveRemoteDescRef = useRef(false);
   const calleeReadyRef = useRef(false);
-  const facingModeRef = useRef<"user" | "environment">("user");
 
   // teardown
   const stopAll = useCallback(() => {
@@ -70,6 +71,14 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
       } else {
         ev.streams[0]?.getTracks().forEach((t) => remote.addTrack(t));
         setRemoteStream(new MediaStream(remote.getTracks()));
+      }
+
+      const remoteVideoTrack = ev.track.kind === "video" ? ev.track : ev.streams[0]?.getVideoTracks()[0];
+      if (remoteVideoTrack) {
+        setRemoteVideoActive(remoteVideoTrack.enabled && !remoteVideoTrack.muted);
+        remoteVideoTrack.onmute = () => setRemoteVideoActive(false);
+        remoteVideoTrack.onunmute = () => setRemoteVideoActive(true);
+        remoteVideoTrack.onended = () => setRemoteVideoActive(false);
       }
     };
     pc.onconnectionstatechange = () => {
@@ -150,9 +159,10 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
         try { await pc.addIceCandidate(p.candidate); } catch (e) { console.warn("ICE add failed", e); }
       })
       .on("broadcast", { event: "media-state" }, (msg) => {
-        const p = msg.payload as { from: string; muted?: boolean };
+        const p = msg.payload as { from: string; muted?: boolean; videoActive?: boolean };
         if (p.from === meId) return;
         if (typeof p.muted === "boolean") setRemoteMuted(p.muted);
+        if (typeof p.videoActive === "boolean") setRemoteVideoActive(p.videoActive);
       })
       .on("broadcast", { event: "ringing" }, (msg) => {
         if (role !== "caller") return;
@@ -211,22 +221,24 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
     channelRef.current?.send({ type: "broadcast", event: "hangup", payload: { from: meId } });
   }, [meId]);
 
-  const toggleAudio = useCallback((on: boolean) => {
-    localStream?.getAudioTracks().forEach((t) => (t.enabled = on));
-  }, [localStream]);
-
-  const sendMediaState = useCallback((state: { muted?: boolean }) => {
+  const sendMediaState = useCallback((state: { muted?: boolean; videoActive?: boolean }) => {
     channelRef.current?.send({ type: "broadcast", event: "media-state", payload: { from: meId, ...state } });
   }, [meId]);
 
+  const toggleAudio = useCallback((on: boolean) => {
+    localStream?.getAudioTracks().forEach((t) => (t.enabled = on));
+    sendMediaState({ muted: !on });
+  }, [localStream, sendMediaState]);
+
   const toggleVideo = useCallback((on: boolean) => {
     localStream?.getVideoTracks().forEach((t) => (t.enabled = on));
-  }, [localStream]);
+    sendMediaState({ videoActive: on });
+  }, [localStream, sendMediaState]);
 
   const switchCamera = useCallback(async () => {
     if (!localStream || !pcRef.current) return;
     const cur = localStream.getVideoTracks()[0];
-    const next = facingModeRef.current === "user" ? "environment" : "user";
+    const next = facingMode === "user" ? "environment" : "user";
     try {
       const newStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -240,7 +252,7 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
         localStream.removeTrack(cur);
         localStream.addTrack(newTrack);
         setLocalStream(new MediaStream(localStream.getTracks()));
-        facingModeRef.current = next;
+        setFacingMode(next);
         console.log("[WebRTC] Successfully switched camera to:", next);
       }
     } catch (e) {
@@ -258,14 +270,14 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
           localStream.removeTrack(cur);
           localStream.addTrack(newTrack);
           setLocalStream(new MediaStream(localStream.getTracks()));
-          facingModeRef.current = next;
+          setFacingMode(next);
           console.log("[WebRTC] Successfully switched camera (fallback) to:", next);
         }
       } catch (err) {
         console.error("switchCamera fallback failed", err);
       }
     }
-  }, [localStream]);
+  }, [localStream, facingMode]);
 
-  return { localStream, remoteStream, connected, remoteMuted, error, sendHangup, toggleAudio, toggleVideo, switchCamera, sendMediaState, stopAll };
+  return { localStream, remoteStream, connected, remoteMuted, remoteVideoActive, facingMode, error, sendHangup, toggleAudio, toggleVideo, switchCamera, sendMediaState, stopAll };
 }

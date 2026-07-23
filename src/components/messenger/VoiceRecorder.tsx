@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 type Props = {
   disabled?: boolean;
   uploading?: boolean;
+  /** Hide the idle mic button (e.g. Messenger collapsed toolbar) while keeping the recording overlay. */
+  hideIdle?: boolean;
   onRecorded: (blob: Blob, mime: string, ext: string) => void | Promise<void>;
 };
 
@@ -24,7 +26,7 @@ function pickMime(): { mime: string; ext: string } {
 const BAR_COUNT = 28;
 const CANCEL_THRESHOLD = 80; // px upward swipe to cancel
 
-export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
+export function VoiceRecorder({ disabled, uploading, hideIdle, onRecorded }: Props) {
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [levels, setLevels] = useState<number[]>(() => Array(BAR_COUNT).fill(0.12));
@@ -181,15 +183,17 @@ export function VoiceRecorder({ disabled, uploading, onRecorded }: Props) {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={handleMicClick}
-        disabled={disabled || uploading}
-        className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50"
-        aria-label="Record voice message"
-      >
-        {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
-      </button>
+      {!hideIdle && (
+        <button
+          type="button"
+          onClick={handleMicClick}
+          disabled={disabled || uploading}
+          className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50"
+          aria-label="Record voice message"
+        >
+          {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
+        </button>
+      )}
     </>
   );
 }

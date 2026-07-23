@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toCDNUrl } from "@/config";
+import { CachedImage } from "@/components/messenger/CachedImage";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Sparkles, ArrowLeft, ImageIcon, Loader2, X, Phone, Video, Pin, Reply, Info, Bell, Search, ChevronUp, ChevronDown, Trash2, Forward, Copy, MoreHorizontal, Edit } from "lucide-react";
+import { Sparkles, ArrowLeft, Loader2, X, Phone, Video, Pin, Reply, Info, Bell, Search, ChevronUp, ChevronDown, Trash2, Forward, Copy, MoreHorizontal, Edit } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
-import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
+import { MessengerComposer } from "@/components/messenger/MessengerComposer";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { CallMessage } from "@/components/messenger/CallMessage";
 import { useCalls } from "@/components/messenger/CallProvider";
@@ -16,6 +17,8 @@ import { toast } from "sonner";
 import { unsendPageMessagesServer } from "@/lib/messages.functions";
 import { Avatar } from "@/components/messenger/Avatar";
 import { getCachedPageMessages, setCachedPageMessages } from "@/lib/chat-cache";
+import { NetworkManager, generateUUID } from "@/lib/network-manager";
+import { attachPageMessagesLive, mergeIncomingPageMessage } from "@/lib/live-page-messages";
 
 type CallRow = {
   id: string;
@@ -41,6 +44,7 @@ type Msg = {
   seen: boolean;
   created_at: string;
   failed?: boolean;
+  queued?: boolean;
 };
 
 function PageChatView() {
@@ -84,12 +88,10 @@ function PageChatView() {
   const [showDetail, setShowDetail] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
+  // One-time mobile check — avoid resize listener (keyboard triggers it on Android)
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    setIsMobile(window.innerWidth < 768);
   }, []);
 
   const [forwardTargetMsg, setForwardTargetMsg] = useState<Msg | null>(null);
@@ -541,38 +543,43 @@ function PageChatView() {
     }
   }, [messages, convId]);
 
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   useEffect(() => {
     if (!convId) return;
-    const rand = Math.random().toString(36).slice(2, 9);
-    const ch = supabase
-      .channel(`user-page-${convId}-${rand}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "page_messages", filter: `conversation_id=eq.${convId}` }, (payload) => {
-        const m = payload.new as Msg;
-        setMessages((prev) => {
-          if (prev.some((x) => x.id === m.id)) return prev;
-          const idx = prev.findIndex((x) =>
-            x.id.startsWith("temp-") &&
-            x.from_page === m.from_page &&
-            (x.content ?? null) === (m.content ?? null) &&
-            (x.image_url ?? null) === (m.image_url ?? null) &&
-            (x.audio_url ?? null) === (m.audio_url ?? null)
-          );
-          if (idx >= 0) { const copy = prev.slice(); copy[idx] = m; return copy; }
-          return [...prev, m];
-        });
-        if (m.from_page) supabase.from("page_messages").update({ seen: true }).eq("id", m.id).then();
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${convId}` }, (payload) => {
-        const m = payload.new as Msg;
-        setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
-      })
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "page_messages", filter: `conversation_id=eq.${convId}` }, (payload) => {
-        const oldId = (payload.old as { id?: string })?.id;
-        if (!oldId) return;
-        setMessages((prev) => prev.filter((x) => x.id !== oldId));
-      })
-      .subscribe();
 
+    const disposeLive = attachPageMessagesLive({
+      conversationId: convId,
+      channelPrefix: "user-page",
+      getLatestCreatedAt: () => {
+        const list = messagesRef.current;
+        for (let i = list.length - 1; i >= 0; i--) {
+          const id = list[i]?.id;
+          if (id && typeof id === "string" && !id.startsWith("temp-")) {
+            return list[i].created_at;
+          }
+        }
+        return null;
+      },
+      onInsert: (m) => {
+        setMessages((prev) => mergeIncomingPageMessage(prev, m as Msg));
+        if (m.from_page) {
+          void supabase.from("page_messages").update({ seen: true }).eq("id", m.id);
+        }
+      },
+      onUpdate: (m) => {
+        setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, ...m } : x)));
+      },
+      onDelete: (id) => {
+        setMessages((prev) => prev.filter((x) => x.id !== id));
+      },
+      pollMs: 2000,
+    });
+
+    const rand = Math.random().toString(36).slice(2, 9);
     const callsCh = supabase
       .channel(`user-page-calls-${convId}-${rand}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `page_conversation_id=eq.${convId}` }, (payload) => {
@@ -586,7 +593,10 @@ function PageChatView() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(ch); supabase.removeChannel(callsCh); };
+    return () => {
+      disposeLive();
+      supabase.removeChannel(callsCh);
+    };
   }, [convId]);
 
   useEffect(() => {
@@ -605,10 +615,7 @@ function PageChatView() {
     }
   }, [messages, calls]);
 
-  useEffect(() => {
-    // Focus support text input on page mount
-    setTimeout(() => inputRef.current?.focus(), 100);
-  }, []);
+
 
   useEffect(() => {
     if (replyingTo) {
@@ -630,13 +637,72 @@ function PageChatView() {
     if (!el) return;
     const isNear = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
     isNearBottomRef.current = isNear;
-    if (isNear) {
+    if (isNear && showScrollToBottom) {
       setShowScrollToBottom(false);
     }
   };
 
-  function addOptimistic(partial: Partial<Msg>): string {
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const getOfflineQueuedForCurrent = useCallback(() => {
+    if (!convId) return [];
+    return NetworkManager.getMessageQueue()
+      .filter((q) => q.is_page && q.conversation_id === convId)
+      .map((q) => ({
+        id: q.id,
+        sender_id: q.sender_id,
+        from_page: false,
+        content: q.content,
+        image_url: q.image_url,
+        audio_url: q.audio_url,
+        seen: false,
+        created_at: q.created_at,
+        failed: q.failed ?? false,
+        queued: true,
+      }));
+  }, [convId]);
+
+  useEffect(() => {
+    const handleQueueChange = () => {
+      const queued = getOfflineQueuedForCurrent();
+      setMessages((prev) => {
+        const withoutQueued = prev.filter((m) => !queued.some((q) => q.id === m.id));
+        return [...withoutQueued, ...queued];
+      });
+    };
+
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { id, finalImageUrl, finalAudioUrl } = customEvent.detail;
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === id
+            ? {
+                ...msg,
+                queued: false,
+                failed: false,
+                image_url: finalImageUrl || msg.image_url,
+                audio_url: finalAudioUrl || msg.audio_url
+              }
+            : msg
+        )
+      );
+    };
+
+    window.addEventListener("jj-queue-updated", handleQueueChange);
+    window.addEventListener("jj-queue-processed", handleQueueChange);
+    window.addEventListener("jj-message-synchronized", handleSync);
+    
+    // Initial run to capture any queued offline messages when component mounts
+    handleQueueChange();
+
+    return () => {
+      window.removeEventListener("jj-queue-updated", handleQueueChange);
+      window.removeEventListener("jj-queue-processed", handleQueueChange);
+      window.removeEventListener("jj-message-synchronized", handleSync);
+    };
+  }, [getOfflineQueuedForCurrent]);
+
+  function addOptimistic(partial: Partial<Msg>, customId?: string): string {
+    const tempId = customId || `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimistic: Msg = {
       id: tempId,
       sender_id: meId!,
@@ -652,10 +718,10 @@ function PageChatView() {
     return tempId;
   }
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    if (!draft.trim() || !meId || !convId) return;
-    const content = draft.trim();
+  async function send(e?: React.FormEvent, overrideContent?: string) {
+    e?.preventDefault();
+    const content = (overrideContent ?? draft).trim();
+    if (!content || !meId || !convId) return;
     setDraft("");
 
     if (editingMessageId) {
@@ -682,18 +748,73 @@ function PageChatView() {
       ? `[reply:${replyingTo.id}:${replyingTo.from_page ? "Jackpot Jungle" : "You"}:${replyingTo.content ? replyingTo.content.slice(0, 30) : replyingTo.image_url ? "Image 📷" : replyingTo.audio_url ? "Voice message 🎙️" : "Message"}] ${content}`
       : content;
     setReplyingTo(null);
-    const tempId = addOptimistic({ content: finalContent });
+
+    const clientUuid = generateUUID();
+    const tempId = addOptimistic({ content: finalContent }, clientUuid);
+
+    if (!NetworkManager.isOnline()) {
+      await NetworkManager.queueMessage({
+        id: clientUuid,
+        sender_id: meId,
+        receiver_id: null,
+        group_id: null,
+        content: finalContent,
+        image_url: null,
+        audio_url: null,
+        is_page: true,
+        conversation_id: convId,
+        reply_to: replyingTo
+      });
+      return;
+    }
+
     const { data, error } = await supabase
       .from("page_messages")
-      .insert({ conversation_id: convId, sender_id: meId, from_page: false, content: finalContent })
+      .insert({
+        id: clientUuid,
+        conversation_id: convId,
+        sender_id: meId,
+        from_page: false,
+        content: finalContent
+      })
       .select()
       .single();
+
     if (error) {
+      if (error.code === "23505") {
+        return;
+      }
+      await NetworkManager.queueMessage({
+        id: clientUuid,
+        sender_id: meId,
+        receiver_id: null,
+        group_id: null,
+        content: finalContent,
+        image_url: null,
+        audio_url: null,
+        is_page: true,
+        conversation_id: convId,
+        reply_to: replyingTo
+      });
       setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
       console.error(error);
       return;
     }
-    if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as Msg) : x)));
+    if (data) {
+      setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as Msg) : x)));
+      window.dispatchEvent(
+        new CustomEvent("jj-message-sent", {
+          detail: {
+            isPage: true,
+            conversationId: convId,
+            content: finalContent,
+            image_url: null,
+            audio_url: null,
+            created_at: data.created_at ?? new Date().toISOString(),
+          },
+        }),
+      );
+    }
   }
 
   async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -718,19 +839,55 @@ function PageChatView() {
     if (file.size > 8 * 1024 * 1024) { alert("Max 8 MB"); return; }
     setUploading(true);
     const localPreview = URL.createObjectURL(file);
-    const tempId = addOptimistic({ image_url: localPreview });
+    const clientUuid = generateUUID();
+    const tempId = addOptimistic({ image_url: localPreview }, clientUuid);
+
+    if (!NetworkManager.isOnline()) {
+      await NetworkManager.queueMessage({
+        id: clientUuid,
+        sender_id: meId,
+        receiver_id: null,
+        group_id: null,
+        content: null,
+        image_url: localPreview,
+        audio_url: null,
+        is_page: true,
+        conversation_id: convId,
+        fileExt: ext,
+        fileMime: fileMime
+      }, file);
+      setUploading(false);
+      return;
+    }
+
     try {
       const url = await uploadAndSign("chat-images", meId, file, ext, file.type);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("page_messages")
-        .insert({ conversation_id: convId, sender_id: meId, from_page: false, content: null, image_url: url } as any)
+        .insert({ id: clientUuid, conversation_id: convId, sender_id: meId, from_page: false, content: null, image_url: url } as any)
         .select()
         .single();
+      if (error) throw error;
       if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as Msg) : x)));
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, image_url: url } : x)));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
+      if (err?.code !== "23505") {
+        await NetworkManager.queueMessage({
+          id: clientUuid,
+          sender_id: meId,
+          receiver_id: null,
+          group_id: null,
+          content: null,
+          image_url: localPreview,
+          audio_url: null,
+          is_page: true,
+          conversation_id: convId,
+          fileExt: ext,
+          fileMime: fileMime
+        }, file);
+        setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true, image_url: localPreview } : x)));
+      }
     }
     setUploading(false);
   }
@@ -739,19 +896,55 @@ function PageChatView() {
     if (!meId || !convId) return;
     setRecUploading(true);
     const localPreview = URL.createObjectURL(blob);
-    const tempId = addOptimistic({ audio_url: localPreview });
+    const clientUuid = generateUUID();
+    const tempId = addOptimistic({ audio_url: localPreview }, clientUuid);
+
+    if (!NetworkManager.isOnline()) {
+      await NetworkManager.queueMessage({
+        id: clientUuid,
+        sender_id: meId,
+        receiver_id: null,
+        group_id: null,
+        content: null,
+        image_url: null,
+        audio_url: localPreview,
+        is_page: true,
+        conversation_id: convId,
+        fileExt: ext,
+        fileMime: mime
+      }, blob);
+      setRecUploading(false);
+      return;
+    }
+
     try {
       const url = await uploadAndSign("chat-audio", meId, blob, ext, mime);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("page_messages")
-        .insert({ conversation_id: convId, sender_id: meId, from_page: false, content: null, audio_url: url } as any)
+        .insert({ id: clientUuid, conversation_id: convId, sender_id: meId, from_page: false, content: null, audio_url: url } as any)
         .select()
         .single();
+      if (error) throw error;
       if (data) setMessages((prev) => prev.map((x) => (x.id === tempId ? (data as Msg) : x)));
       else setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, audio_url: url } : x)));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true } : x)));
+      if (err?.code !== "23505") {
+        await NetworkManager.queueMessage({
+          id: clientUuid,
+          sender_id: meId,
+          receiver_id: null,
+          group_id: null,
+          content: null,
+          image_url: null,
+          audio_url: localPreview,
+          is_page: true,
+          conversation_id: convId,
+          fileExt: ext,
+          fileMime: mime
+        }, blob);
+        setMessages((prev) => prev.map((x) => (x.id === tempId ? { ...x, failed: true, audio_url: localPreview } : x)));
+      }
     }
     setRecUploading(false);
   }
@@ -760,7 +953,7 @@ function PageChatView() {
     <div className="h-full flex-1 flex min-h-0 relative w-full overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 bg-background w-full overflow-hidden">
         {selectionMode ? (
-          <header className="px-3 md:px-5 py-3 border-b border-border flex items-center justify-between bg-card min-h-[65px]">
+          <header className="sticky top-0 z-30 px-3 md:px-5 py-3 border-b border-border flex items-center justify-between bg-card min-h-[65px] shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -775,8 +968,8 @@ function PageChatView() {
             <div className="w-12" /> {/* Spacer */}
           </header>
         ) : (
-          <header className="px-3 md:px-5 py-3 border-b border-border flex items-center gap-3 bg-card">
-            <Link to="/app/chat" className="md:hidden h-9 w-9 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary">
+          <header className="sticky top-0 z-30 px-3 md:px-5 py-3 border-b border-border flex items-center gap-2 bg-card min-h-[65px] shrink-0">
+            <Link to="/app/chat" className="md:hidden h-10 w-10 -ml-1 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary shrink-0 touch-target">
               <ArrowLeft className="h-5 w-5" />
             </Link>
             <button
@@ -794,22 +987,26 @@ function PageChatView() {
                 <p className="text-xs text-muted-foreground truncate">Official page · We usually reply within minutes</p>
               </div>
             </button>
-            <button
-              type="button"
-              onClick={() => startCall({ calleeId: null, kind: "voice", peer: { name: "Jackpot Jungle", avatar: null }, context: "page_broadcast", pageConversationId: convId })}
-              className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
-              aria-label="Voice call"
-            >
-              <Phone className="h-5 w-5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => startCall({ calleeId: null, kind: "video", peer: { name: "Jackpot Jungle", avatar: null }, context: "page_broadcast", pageConversationId: convId })}
-              className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-40"
-              aria-label="Video call"
-            >
-              <Video className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-0.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => startCall({ calleeId: null, kind: "voice", peer: { name: "Jackpot Jungle", avatar: null }, context: "page_broadcast", pageConversationId: convId })}
+                className="h-10 w-10 rounded-full flex items-center justify-center text-primary hover:bg-secondary active:bg-secondary/80 touch-target"
+                aria-label="Voice call"
+                title="Voice call"
+              >
+                <Phone className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => startCall({ calleeId: null, kind: "video", peer: { name: "Jackpot Jungle", avatar: null }, context: "page_broadcast", pageConversationId: convId })}
+                className="h-10 w-10 rounded-full flex items-center justify-center text-primary hover:bg-secondary active:bg-secondary/80 touch-target"
+                aria-label="Video call"
+                title="Video call"
+              >
+                <Video className="h-5 w-5" />
+              </button>
+            </div>
           </header>
         )}
 
@@ -960,23 +1157,22 @@ function PageChatView() {
             </button>
           </div>
         ) : (
-          <form
-            onSubmit={send}
-            className="relative px-4 py-3 border-t border-border flex items-center gap-2 bg-card shrink-0"
-            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
-          >
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-              className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 transition-colors" aria-label="Send image">
-              {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
-            </button>
-            <input ref={fileRef} type="file" accept="image/*" onChange={onPickImage} className="hidden" />
-            <VoiceRecorder onRecorded={onVoice} uploading={recUploading} />
-            <Input ref={inputRef} autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message Jackpot Jungle"
-              className="flex-1 min-w-0 h-10 rounded-full bg-secondary border-transparent focus-visible:ring-1 focus-visible:ring-primary/30" />
-            <Button type="submit" size="icon" disabled={!draft.trim() || sending} className="h-10 w-10 rounded-full shrink-0 flex items-center justify-center send-btn-active bg-primary text-primary-foreground hover:bg-primary/95 transition-all">
-              <Send className="h-4 w-4" />
-            </Button>
-          </form>
+          <MessengerComposer
+            value={draft}
+            onChange={(v) => setDraft(v)}
+            onSubmit={(e) => void send(e)}
+            onFileChange={(e) => void onPickImage(e)}
+            onVoice={onVoice}
+            onThumbsUp={() => void send(undefined, "👍")}
+            placeholder="Aa"
+            sending={sending}
+            uploading={uploading}
+            recUploading={recUploading}
+            showEmojiButton
+            fileRef={fileRef}
+            inputRef={inputRef}
+            autoFocus
+          />
         )}
       </div>
 
@@ -1812,8 +2008,14 @@ const PageMessageItem = React.memo(function PageMessageItem({
             }}
           >
             {m.image_url ? (
-              <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none">
-                <img src={toCDNUrl(m.image_url)} alt="" className="block max-h-80 w-auto object-cover" />
+              <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none min-h-[150px] bg-secondary/35 flex items-center justify-center">
+                <CachedImage
+                  src={toCDNUrl(m.image_url)}
+                  alt=""
+                  className="block max-h-80 w-[200px] object-cover rounded-2xl"
+                  style={{ width: "200px", height: "auto", maxHeight: "320px" }}
+                  cachePolicy="volatile"
+                />
               </button>
             ) : m.audio_url ? (
               <div className="block">
@@ -1888,12 +2090,29 @@ const PageMessageItem = React.memo(function PageMessageItem({
           </div>
         )}
 
-        {mine && (isLastMine || m.failed) && (
+        {mine && (isLastMine || m.failed || (m as any).queued) && (
           <div className="flex items-center justify-end gap-1.5 pr-2 pt-1 min-h-5 text-[11px] font-medium leading-none text-message-status">
             {m.failed ? (
-              <span className="inline-flex items-center gap-1 text-destructive"><span className="h-2 w-2 rounded-full bg-destructive shrink-0" />Not delivered</span>
-            ) : m.id.startsWith("temp-") ? (
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />Sending…</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toast.promise(NetworkManager.retryMessage(m.id), {
+                    loading: "Retrying message...",
+                    success: "Message sent!",
+                    error: "Failed to retry message."
+                  });
+                }}
+                className="inline-flex items-center gap-1 text-destructive hover:underline cursor-pointer font-bold"
+              >
+                <span className="h-2 w-2 rounded-full bg-destructive shrink-0" />
+                Not delivered. Tap to retry
+              </button>
+            ) : (m.id && typeof m.id === "string" && (m.id.startsWith("temp-") || (m as any).queued)) ? (
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-message-status/60 animate-pulse shrink-0" />
+                Sending…
+              </span>
             ) : m.seen ? (
               <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />Seen</span>
             ) : (

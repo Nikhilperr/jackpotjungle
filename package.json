@@ -7,14 +7,18 @@
     "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "build:client": "vite build --config vite.config.client.ts",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
     "db:migrate": "npx tsx src/scripts/run_migrations.ts",
     "cap:add:android": "cap add android",
-    "cap:sync": "vite build && cap sync android",
+    "cap:sync": "npm run build:client && cap sync android",
+    "cap:sync:client": "npm run build:client && cap sync android",
+    "cap:sync:ssr": "vite build && cap sync android",
     "cap:open:android": "cap open android",
-    "cap:run:android": "vite build && cap sync android && cap run android"
+    "cap:run:android": "npm run build:client && cap sync android && cap run android",
+    "cap:run:client": "npm run build:client && cap sync android && cap run android"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
@@ -22,6 +26,7 @@
     "@capacitor/cli": "^8.4.0",
     "@capacitor/core": "^8.4.0",
     "@capacitor/push-notifications": "^8.1.1",
+    "@capacitor/splash-screen": "^8.0.1",
     "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",

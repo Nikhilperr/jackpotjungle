@@ -2,16 +2,26 @@ import { useEffect, useState } from "react";
 import { Moon, Sun, Sparkles, Zap, Layers } from "lucide-react";
 
 function getInitialTheme(): "dark" | "light" | "jackpot" | "amoled" | "glass" {
-  if (typeof window === "undefined") return "jackpot";
+  if (typeof window === "undefined") return "amoled";
+  // One-time migrate product default jackpot → amoled black
+  try {
+    if (localStorage.getItem("jj_theme_default_v2") !== "1") {
+      const prev = localStorage.getItem("theme");
+      if (!prev || prev === "jackpot") localStorage.setItem("theme", "amoled");
+      localStorage.setItem("jj_theme_default_v2", "1");
+    }
+  } catch {
+    /* ignore */
+  }
   const stored = localStorage.getItem("theme");
   if (stored === "dark" || stored === "light" || stored === "jackpot" || stored === "amoled" || stored === "glass") {
     return stored;
   }
-  return "jackpot";
+  return "amoled";
 }
 
 export function ThemeToggle({ className = "" }: { className?: string }) {
-  const [theme, setTheme] = useState<"dark" | "light" | "jackpot" | "amoled" | "glass">("jackpot");
+  const [theme, setTheme] = useState<"dark" | "light" | "jackpot" | "amoled" | "glass">("amoled");
 
   useEffect(() => {
     const t = getInitialTheme();

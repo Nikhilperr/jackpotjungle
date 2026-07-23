@@ -90,6 +90,13 @@ function WalletPage() {
         if (!mounted || !data) return;
         const profileData = data as unknown as Profile;
         setProfile(profileData);
+        try {
+          const cachedStr = localStorage.getItem("jj_cached_my_profile");
+          const cached = cachedStr ? JSON.parse(cachedStr) : {};
+          localStorage.setItem("jj_cached_my_profile", JSON.stringify({ ...cached, ...profileData }));
+        } catch (e) {
+          console.error("Failed to write my profile cache in wallet:", e);
+        }
       });
 
     // Realtime listener for balance adjustments from admin panel
@@ -105,7 +112,15 @@ function WalletPage() {
         },
         (payload) => {
           if (payload.new && mounted) {
-            setProfile((prev) => prev ? { ...prev, ...(payload.new as Profile) } : null);
+            const updated = payload.new as Profile;
+            setProfile((prev) => prev ? { ...prev, ...updated } : null);
+            try {
+              const cachedStr = localStorage.getItem("jj_cached_my_profile");
+              const cached = cachedStr ? JSON.parse(cachedStr) : {};
+              localStorage.setItem("jj_cached_my_profile", JSON.stringify({ ...cached, ...updated }));
+            } catch (e) {
+              console.error("Failed to write my profile cache in wallet realtime:", e);
+            }
           }
         }
       )
