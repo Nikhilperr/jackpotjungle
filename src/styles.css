@@ -195,8 +195,8 @@
     min-height: 100%;
     margin: 0;
     padding: 0;
-    /* Match native splash until theme tokens apply — no pure-black flash */
-    background-color: #121212;
+    /* Match shell/theme — never leave a hard-coded black strip under the keyboard */
+    background-color: var(--jj-shell-bg, var(--color-background, #121212));
     color: var(--color-foreground);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     overflow: hidden;
@@ -204,7 +204,7 @@
   #root {
     height: 100%;
     min-height: 100%;
-    background-color: #121212;
+    background-color: var(--jj-shell-bg, var(--color-background, #121212));
   }
 
   /* Native: height from --jj-app-height (full screen normally; shrinks only while typing). */
@@ -215,12 +215,11 @@
     max-height: var(--jj-app-height, 100%) !important;
     min-height: 0 !important;
     overflow: hidden !important;
+    background-color: var(--color-background, var(--jj-shell-bg, #121212)) !important;
   }
   html.native-android #root {
     position: relative;
     top: 0 !important;
-    /* Match app chrome so a brief resize never flashes a black void */
-    background-color: var(--color-background, #121212);
   }
   /* Keyboard open: drop bottom safe-area pad so the composer isn't pushed under the IME */
   html.native-android.jj-keyboard-open .native-safe-shell {

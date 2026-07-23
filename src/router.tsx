@@ -2,9 +2,15 @@ import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 
-/** Dark underlay only — never a second logo/loading flash after native splash. */
+/** Theme-matched underlay — never a second logo/loading flash after native splash. */
 function DefaultPending() {
-  return <div className="min-h-[100dvh] w-full bg-[#121212]" aria-hidden="true" />;
+  return (
+    <div
+      className="h-full w-full bg-background"
+      style={{ minHeight: "var(--jj-app-height, 100%)" }}
+      aria-hidden="true"
+    />
+  );
 }
 
 export const getRouter = () => {

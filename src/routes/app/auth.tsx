@@ -248,14 +248,13 @@ function AuthPage() {
   }
 
   useEffect(() => {
-    if (!loading && !roleLoading) {
-      signalShellReady();
-    }
-  }, [loading, roleLoading]);
+    // Hide native splash as soon as auth chrome can paint — don't wait on role fetch.
+    signalShellReady();
+  }, []);
 
-  // During logout, never paint a blank screen — show the login chrome immediately.
+  // Never return null (black WebView flash). Paint auth shell while session/role resolve.
   if ((loading || roleLoading) && !isLogoutRequest) {
-    return null;
+    return <AuthLayout mode={mode} setMode={setMode} />;
   }
 
   return (
@@ -331,48 +330,42 @@ function LoginForm({
   const [otpCode, setOtpCode] = useState("");
   const [resendCountdown, setResendCountdown] = useState(0);
 
-  // Load state on mount
+  // Cold start / app kill: never restore OTP/2FA UI — always start from login.
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("jj_temp_auth_verification");
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (data.verificationRequired) {
-          if (identifierRef.current && data.identifier) {
-            identifierRef.current.value = data.identifier;
-          }
-          setVerificationRequired(true);
-          setVerificationMethod(data.verificationMethod || null);
-          setHas2FaFactor(!!data.has2FaFactor);
-          setEmailOtpSent(!!data.emailOtpSent);
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to load temporary auth verification state:", e);
-    }
-  }, []);
+      localStorage.removeItem("jj_temp_auth_verification");
+    } catch {}
 
-  // Save state on change
-  useEffect(() => {
-    try {
-      if (verificationRequired) {
-        localStorage.setItem(
-          "jj_temp_auth_verification",
-          JSON.stringify({
-            identifier: identifierRef.current?.value || "",
-            verificationRequired,
-            verificationMethod,
-            has2FaFactor,
-            emailOtpSent,
-          })
-        );
-      } else {
-        localStorage.removeItem("jj_temp_auth_verification");
-      }
-    } catch (e) {
-      console.warn("Failed to save temporary auth verification state:", e);
-    }
-  }, [verificationRequired, verificationMethod, has2FaFactor, emailOtpSent]);
+    let cancelled = false;
+    (async () => {
+      try {
+        if (getVerifiedStatus()) return;
+
+        const sessionRes = await supabase.auth.getSession();
+        const session = sessionRes.data.session;
+        if (!session?.user || cancelled) return;
+
+        const isGoogleLogin =
+          session.user.app_metadata?.provider === "google" &&
+          localStorage.getItem("jj_google_session") !== "false";
+        if (isGoogleLogin) return;
+
+        // Mid-login session left after kill — clear it so user sees Sign In, not OTP.
+        await supabase.auth.signOut({ scope: "local" });
+        if (cancelled) return;
+        setVerificationRequired(false);
+        setVerificationMethod(null);
+        setHas2FaFactor(false);
+        setEmailOtpSent(false);
+        setOtpCode("");
+        setVerifiedStatus(false);
+      } catch {}
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -396,41 +389,6 @@ function LoginForm({
     }, 1000);
     return () => clearInterval(interval);
   }, [resendCountdown]);
-
-  useEffect(() => {
-    const checkAalOnMount = async () => {
-      try {
-        const sessionRes = await supabase.auth.getSession();
-        const session = sessionRes.data.session;
-        if (!session?.user) return;
-
-        const isGoogleLogin = session.user.app_metadata?.provider === "google" &&
-                              typeof window !== "undefined" &&
-                              localStorage.getItem("jj_google_session") !== "false";
-        if (isGoogleLogin) return;
-
-        const isVerified = getVerifiedStatus();
-        if (isVerified) return;
-
-        // Force secondary verification
-        setVerificationRequired(true);
-        
-        const { data: factors, error: listErr } = await supabase.auth.mfa.listFactors();
-        const has2fa = !listErr && factors?.totp?.some(f => f.status === "verified");
-        setHas2FaFactor(has2fa);
-
-        if (has2fa) {
-          setVerificationMethod(null);
-        } else {
-          setVerificationMethod("email");
-          if (session.user.email) {
-            await sendEmailOtp(session.user.email);
-          }
-        }
-      } catch {}
-    };
-    checkAalOnMount();
-  }, []);
 
   async function sendEmailOtp(email: string) {
     const target = (email || "").trim();
@@ -517,26 +475,9 @@ function LoginForm({
         throw new Error("Enter the 6-digit code from your email.");
       }
 
-      // Codes from admin.generateLink(magiclink) verify as type "magiclink" (fallback: email).
-      const token = otpCode.trim();
-      let verifyErr = (
-        await supabase.auth.verifyOtp({
-          email,
-          token,
-          type: "magiclink",
-        })
-      ).error;
-
-      if (verifyErr) {
-        verifyErr = (
-          await supabase.auth.verifyOtp({
-            email,
-            token,
-            type: "email",
-          })
-        ).error;
-      }
-      if (verifyErr) throw verifyErr;
+      // App-level OTP (password session already exists) — verify against VPS store.
+      const { verifyLoginEmailOtp } = await import("@/lib/auth-otp.functions");
+      await verifyLoginEmailOtp({ data: { email, code: otpCode.trim() } });
 
       if (typeof window !== "undefined") {
         setVerifiedStatus(true);

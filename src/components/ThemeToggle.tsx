@@ -36,6 +36,8 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
     root.classList.toggle("jackpot", t === "jackpot");
     root.classList.toggle("amoled", t === "amoled");
     root.classList.toggle("glass", t === "glass");
+    const shellBg = t === "light" || t === "jackpot" || t === "glass" ? "#ffffff" : "#121212";
+    root.style.setProperty("--jj-shell-bg", shellBg);
   }
 
   function toggle() {

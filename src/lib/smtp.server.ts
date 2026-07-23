@@ -86,15 +86,21 @@ export async function sendSmtpMail(opts: {
     port: cfg.port,
     secure: cfg.port === 465,
     auth: { user: cfg.user, pass: cfg.pass },
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 12000,
   });
 
-  const info = await transporter.sendMail({
-    from: `"${opts.fromName || "Jackpot Jungle"}" <${cfg.from}>`,
-    to: opts.to,
-    subject: opts.subject,
-    text: opts.text,
-    html: opts.html,
-  });
-
-  return { messageId: String(info.messageId || "") };
+  try {
+    const info = await transporter.sendMail({
+      from: `"${opts.fromName || "Jackpot Jungle"}" <${cfg.from}>`,
+      to: opts.to,
+      subject: opts.subject,
+      text: opts.text,
+      html: opts.html,
+    });
+    return { messageId: String(info.messageId || "") };
+  } finally {
+    transporter.close();
+  }
 }

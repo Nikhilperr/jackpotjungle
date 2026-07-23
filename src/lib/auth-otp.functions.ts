@@ -1,10 +1,35 @@
 import { createServerFn } from "@tanstack/react-start";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { createHash, randomInt } from "node:crypto";
 import { sendSmtpMail } from "@/lib/smtp.server";
 
+type OtpEntry = { hash: string; exp: number };
+const otpStore: Map<string, OtpEntry> =
+  ((globalThis as any).__jjLoginOtpStore as Map<string, OtpEntry>) ||
+  (((globalThis as any).__jjLoginOtpStore = new Map()), (globalThis as any).__jjLoginOtpStore);
+
+function hashCode(email: string, code: string) {
+  return createHash("sha256").update(`${email}:${code}`).digest("hex");
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out. Try again.`)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 /**
- * Send a 6-digit login verification code using Admin generateLink + app SMTP.
- * Bypasses broken/empty GoTrue /auth/v1/otp responses on self-hosted Auth.
+ * App-level login email OTP (after password session).
+ * Fast path: no GoTrue /otp and no DB lookup — SMTP only, with hard timeout.
  */
 export const sendLoginEmailOtp = createServerFn({ method: "POST" })
   .validator((d: { email: string }) => d)
@@ -14,63 +39,60 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
       throw new Error("A valid email address is required.");
     }
 
-    // Fast existence check via profiles (avoids paging auth.users).
-    const { data: profile } = await supabaseAdmin
-      .from("profiles")
-      .select("id, email")
-      .ilike("email", email)
-      .maybeSingle();
-
-    if (!profile?.id) {
-      throw new Error("No account found for that email.");
-    }
-
-    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
-      email,
+    const code = String(randomInt(100000, 999999));
+    otpStore.set(email, {
+      hash: hashCode(email, code),
+      exp: Date.now() + 10 * 60 * 1000,
     });
 
-    if (linkErr) {
-      console.error("[AuthOTP] generateLink failed:", linkErr);
-      throw new Error(linkErr.message || "Could not generate verification code.");
-    }
-
-    const emailOtp =
-      (linkData as any)?.properties?.email_otp ||
-      (linkData as any)?.email_otp ||
-      "";
-
-    if (!emailOtp || String(emailOtp).length < 6) {
-      console.error("[AuthOTP] generateLink returned no email_otp:", linkData);
-      throw new Error("Auth did not return an email code. Check GoTrue mailer settings.");
-    }
-
-    const code = String(emailOtp).slice(0, 8);
-
-    await sendSmtpMail({
-      to: email,
-      fromName: "Jackpot Jungle",
-      subject: `${code} is your Jackpot Jungle verification code`,
-      text:
-        `Your Jackpot Jungle verification code is: ${code}\n\n` +
-        `This code expires in a few minutes. If you did not try to sign in, you can ignore this email.`,
-      html: `
-        <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-          <h2 style="margin: 0 0 12px; color: #111;">Verify your sign-in</h2>
-          <p style="color: #444; font-size: 14px; line-height: 1.5;">
-            Use this code to finish signing in to Jackpot Jungle Messenger:
-          </p>
-          <div style="font-size: 32px; letter-spacing: 0.35em; font-weight: 800; text-align: center;
-                      background: #f4f4f5; border-radius: 12px; padding: 16px 12px; margin: 20px 0; color: #111;">
-            ${code}
+    await withTimeout(
+      sendSmtpMail({
+        to: email,
+        fromName: "Jackpot Jungle",
+        subject: `${code} is your Jackpot Jungle verification code`,
+        text:
+          `Your Jackpot Jungle verification code is: ${code}\n\n` +
+          `This code expires in 10 minutes. If you did not try to sign in, ignore this email.`,
+        html: `
+          <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+            <h2 style="margin: 0 0 12px; color: #111;">Verify your sign-in</h2>
+            <p style="color: #444; font-size: 14px; line-height: 1.5;">
+              Use this code to finish signing in to Jackpot Jungle Messenger:
+            </p>
+            <div style="font-size: 32px; letter-spacing: 0.35em; font-weight: 800; text-align: center;
+                        background: #f4f4f5; border-radius: 12px; padding: 16px 12px; margin: 20px 0; color: #111;">
+              ${code}
+            </div>
+            <p style="color: #888; font-size: 12px;">Expires in 10 minutes.</p>
           </div>
-          <p style="color: #888; font-size: 12px;">
-            This code expires shortly. If you did not request it, you can ignore this email.
-          </p>
-        </div>
-      `,
-    });
+        `,
+      }),
+      12000,
+      "Sending email",
+    );
 
-    console.log(`[AuthOTP] Sent login OTP email to ${email}`);
+    console.log(`[AuthOTP] Sent login OTP to ${email}`);
     return { sent: true };
+  });
+
+export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
+  .validator((d: { email: string; code: string }) => d)
+  .handler(async ({ data }) => {
+    const email = data.email?.trim().toLowerCase();
+    const code = data.code?.trim();
+    if (!email || !code || code.length < 6) {
+      throw new Error("Enter the 6-digit code from your email.");
+    }
+
+    const entry = otpStore.get(email);
+    if (!entry || entry.exp < Date.now()) {
+      otpStore.delete(email);
+      throw new Error("Code expired. Tap Resend code for a new one.");
+    }
+    if (entry.hash !== hashCode(email, code)) {
+      throw new Error("Invalid verification code.");
+    }
+
+    otpStore.delete(email);
+    return { ok: true };
   });

@@ -7,9 +7,10 @@
     <style>
       /* Match native splash so handoff is seamless — no second logo layer.
          Never min-height: 100dvh on native — that keeps the shell taller than the
-         keyboard-visible area and hides the composer under the IME. */
-      html, body { margin: 0; height: 100%; background: #121212; overflow: hidden; }
-      #root { height: 100%; min-height: 0; background: #121212; }
+         keyboard-visible area and hides the composer under the IME.
+         Background tracks theme via --jj-shell-bg (set in early script). */
+      html, body { margin: 0; height: 100%; background: var(--jj-shell-bg, #121212); overflow: hidden; }
+      #root { height: 100%; min-height: 0; background: var(--jj-shell-bg, #121212); }
     </style>
     <script>
       try {
@@ -21,6 +22,9 @@
         }
         const t = localStorage.getItem("theme") || "amoled";
         document.documentElement.classList.add(t);
+        // Paint shell in the same tone as the theme so keyboard resize never flashes black.
+        var shellBg = (t === "light" || t === "jackpot" || t === "glass") ? "#ffffff" : "#121212";
+        document.documentElement.style.setProperty("--jj-shell-bg", shellBg);
       } catch (e) {}
       try {
         var cap = window.Capacitor;
