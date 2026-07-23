@@ -399,9 +399,12 @@ function LoginForm({
 
     setMfaBusy(true);
     try {
-      // Self-hosted GoTrue /auth/v1/otp returns empty 422 — send via VPS SMTP + admin generateLink.
-      const { sendLoginEmailOtp } = await import("@/lib/auth-otp.functions");
-      await sendLoginEmailOtp({ data: { email: target } });
+      // Same path as browser: Supabase Auth on the VPS (api.*) uses GoTrue SMTP from .env.
+      const { error } = await supabase.auth.signInWithOtp({
+        email: target,
+        options: { shouldCreateUser: false },
+      });
+      if (error) throw error;
       setEmailOtpSent(true);
       setResendCountdown(60);
       toast.success("Verification code sent to your email!");
@@ -411,7 +414,7 @@ function LoginForm({
       toast.error(
         formatAuthError(
           err,
-          "Couldn't send the verification code. The mail server may be blocked — add RESEND_API_KEY on the VPS, then try Resend.",
+          "Couldn't send the verification code. Try Resend in a moment.",
         ),
       );
     } finally {
@@ -475,9 +478,26 @@ function LoginForm({
         throw new Error("Enter the 6-digit code from your email.");
       }
 
-      // App-level OTP (password session already exists) — verify against VPS store.
-      const { verifyLoginEmailOtp } = await import("@/lib/auth-otp.functions");
-      await verifyLoginEmailOtp({ data: { email, code: otpCode.trim() } });
+      // Same as browser: verify the code Auth emailed via VPS GoTrue SMTP.
+      const token = otpCode.trim();
+      let verifyErr = (
+        await supabase.auth.verifyOtp({
+          email,
+          token,
+          type: "email",
+        })
+      ).error;
+
+      if (verifyErr) {
+        verifyErr = (
+          await supabase.auth.verifyOtp({
+            email,
+            token,
+            type: "magiclink",
+          })
+        ).error;
+      }
+      if (verifyErr) throw verifyErr;
 
       if (typeof window !== "undefined") {
         setVerifiedStatus(true);
