@@ -441,13 +441,9 @@ function LoginForm({
 
     setMfaBusy(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: target,
-        options: {
-          shouldCreateUser: false,
-        },
-      });
-      if (error) throw error;
+      // Self-hosted GoTrue /auth/v1/otp returns empty 422 — send via VPS SMTP + admin generateLink.
+      const { sendLoginEmailOtp } = await import("@/lib/auth-otp.functions");
+      await sendLoginEmailOtp({ data: { email: target } });
       setEmailOtpSent(true);
       setResendCountdown(60);
       toast.success("Verification code sent to your email!");
@@ -457,7 +453,7 @@ function LoginForm({
       toast.error(
         formatAuthError(
           err,
-          "Couldn't send the verification code. Confirm email OTP/SMTP is enabled, then try Resend.",
+          "Couldn't send the verification code. Check server SMTP settings, then try Resend.",
         ),
       );
     } finally {
@@ -521,12 +517,26 @@ function LoginForm({
         throw new Error("Enter the 6-digit code from your email.");
       }
 
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token: otpCode.trim(),
-        type: "email"
-      });
-      if (error) throw error;
+      // Codes from admin.generateLink(magiclink) verify as type "magiclink" (fallback: email).
+      const token = otpCode.trim();
+      let verifyErr = (
+        await supabase.auth.verifyOtp({
+          email,
+          token,
+          type: "magiclink",
+        })
+      ).error;
+
+      if (verifyErr) {
+        verifyErr = (
+          await supabase.auth.verifyOtp({
+            email,
+            token,
+            type: "email",
+          })
+        ).error;
+      }
+      if (verifyErr) throw verifyErr;
 
       if (typeof window !== "undefined") {
         setVerifiedStatus(true);
