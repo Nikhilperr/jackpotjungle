@@ -240,7 +240,8 @@ function AuthPage() {
       if (err.message?.includes("cancel") || err.message?.includes("12501")) {
         return;
       }
-      toast.error(err.message ?? "Google authentication failed.");
+      const { formatAuthError } = await import("@/lib/auth-error");
+      toast.error(formatAuthError(err, "Google authentication failed."));
     } finally {
       setGoogleBusy(false);
     }
@@ -432,20 +433,33 @@ function LoginForm({
   }, []);
 
   async function sendEmailOtp(email: string) {
+    const target = (email || "").trim();
+    if (!target || !target.includes("@")) {
+      toast.error("No email address found for this account. Add an email or use authenticator 2FA.");
+      return;
+    }
+
     setMfaBusy(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({
-        email,
+        email: target,
         options: {
-          shouldCreateUser: false
-        }
+          shouldCreateUser: false,
+        },
       });
       if (error) throw error;
       setEmailOtpSent(true);
       setResendCountdown(60);
       toast.success("Verification code sent to your email!");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to send email verification code");
+    } catch (err: unknown) {
+      console.error("[Auth] sendEmailOtp failed:", err);
+      const { formatAuthError } = await import("@/lib/auth-error");
+      toast.error(
+        formatAuthError(
+          err,
+          "Couldn't send the verification code. Confirm email OTP/SMTP is enabled, then try Resend.",
+        ),
+      );
     } finally {
       setMfaBusy(false);
     }
@@ -484,11 +498,12 @@ function LoginForm({
         setVerificationMethod("email");
         await sendEmailOtp(email);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (typeof window !== "undefined") {
         setVerifiedStatus(false);
       }
-      toast.error(err.message ?? "Login failed.");
+      const { formatAuthError } = await import("@/lib/auth-error");
+      toast.error(formatAuthError(err, "Login failed."));
     } finally {
       setBusy(false);
     }
@@ -498,11 +513,17 @@ function LoginForm({
     e.preventDefault();
     setMfaBusy(true);
     try {
-      const email = user?.email || identifierRef.current?.value.trim() || "";
+      const email = (user?.email || identifierRef.current?.value || identifier || "").trim();
+      if (!email || !email.includes("@")) {
+        throw new Error("Missing account email. Go back and sign in again.");
+      }
+      if (otpCode.trim().length !== 6) {
+        throw new Error("Enter the 6-digit code from your email.");
+      }
 
       const { error } = await supabase.auth.verifyOtp({
         email,
-        token: otpCode,
+        token: otpCode.trim(),
         type: "email"
       });
       if (error) throw error;
@@ -543,8 +564,10 @@ function LoginForm({
         const home = await resolveHomeRoute(session.user.id);
         navigate({ to: home, replace: true });
       }
-    } catch (err: any) {
-      toast.error(err.message || "Invalid email verification code.");
+    } catch (err: unknown) {
+      console.error("[Auth] verifyEmailOtp failed:", err);
+      const { formatAuthError } = await import("@/lib/auth-error");
+      toast.error(formatAuthError(err, "Invalid or expired email verification code."));
     } finally {
       setMfaBusy(false);
     }
@@ -610,7 +633,8 @@ function LoginForm({
         navigate({ to: home, replace: true });
       }
     } catch (err: any) {
-      toast.error(err.message ?? "Verification failed.");
+      const { formatAuthError } = await import("@/lib/auth-error");
+      toast.error(formatAuthError(err, "Verification failed."));
     } finally {
       setMfaBusy(false);
     }
@@ -740,7 +764,7 @@ function LoginForm({
               disabled={resendCountdown > 0}
               onClick={async () => {
                 if (resendCountdown > 0) return;
-                const email = user?.email || identifier.trim();
+                const email = (user?.email || identifierRef.current?.value || identifier || "").trim();
                 await sendEmailOtp(email);
               }}
               className="text-xs font-semibold text-primary disabled:text-muted-foreground hover:underline disabled:no-underline text-center w-full block transition-all"
@@ -914,7 +938,8 @@ function SignUpForm({
       }
       navigate({ to: "/app/verify-otp", search: { email, mode: "signup" } });
     } catch (err: any) {
-      toast.error(err.message ?? "Sign up failed.");
+      const { formatAuthError } = await import("@/lib/auth-error");
+      toast.error(formatAuthError(err, "Sign up failed."));
     } finally {
       setBusy(false);
     }

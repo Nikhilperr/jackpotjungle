@@ -93,9 +93,10 @@ function VerifyOtpPage() {
           navigate({ to: "/app/" });
         }
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setHasError(true);
-      toast.error(err.message ?? "Invalid or expired code.");
+      const { formatAuthError } = await import("@/lib/auth-error");
+      toast.error(formatAuthError(err, "Invalid or expired code."));
     } finally {
       setBusy(false);
     }
@@ -121,8 +122,9 @@ function VerifyOtpPage() {
       setCode(""); // Invalidate previous code input
       setExpiryTime(300); // Reset 5-minute expiration timer
       setResendCooldown(60); // Reset 1-minute resend cooldown
-    } catch (err: any) {
-      toast.error(err.message ?? "Could not resend code.");
+    } catch (err: unknown) {
+      const { formatAuthError } = await import("@/lib/auth-error");
+      toast.error(formatAuthError(err, "Could not resend code."));
     } finally {
       setResending(false);
     }
