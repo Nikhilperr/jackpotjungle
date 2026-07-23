@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import { loadSmtpConfig, sendSmtpMail } from "@/lib/smtp.server";
 
 export type SendMailInput = {
@@ -7,6 +9,36 @@ export type SendMailInput = {
   html: string;
   fromName?: string;
 };
+
+function readKeyFromEnvFiles(keys: string[]): string {
+  const cwd = process.cwd();
+  const possiblePaths = [
+    path.join(cwd, ".env"),
+    path.join(cwd, "supabase", "docker", ".env"),
+    "/home/deploy/app/.env",
+    "/home/deploy/app/supabase/docker/.env",
+    "/home/deploy/supabase/docker/.env",
+    "/home/deploy/.env",
+  ];
+  for (const p of possiblePaths) {
+    try {
+      if (!fs.existsSync(p)) continue;
+      const content = fs.readFileSync(p, "utf8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+        const [k, ...vParts] = trimmed.split("=");
+        const key = k.trim();
+        if (!keys.includes(key)) continue;
+        const val = vParts.join("=").trim().replace(/(^["']|["']$)/g, "");
+        if (val) return val;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return "";
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -26,11 +58,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 /** Resend HTTP API — works when DigitalOcean blocks outbound SMTP (25/465/587). */
 async function sendViaResend(opts: SendMailInput): Promise<{ id: string }> {
-  const apiKey = process.env.RESEND_API_KEY || "";
+  const apiKey = process.env.RESEND_API_KEY || readKeyFromEnvFiles(["RESEND_API_KEY"]);
   if (!apiKey) throw new Error("RESEND_API_KEY not set");
 
   const fromEmail =
     process.env.RESEND_FROM ||
+    readKeyFromEnvFiles(["RESEND_FROM"]) ||
     process.env.SMTP_FROM ||
     "Jackpot Jungle <onboarding@resend.dev>";
 
@@ -64,11 +97,18 @@ async function sendViaResend(opts: SendMailInput): Promise<{ id: string }> {
 
 /** Brevo (Sendinblue) HTTPS API — same idea as Resend. */
 async function sendViaBrevo(opts: SendMailInput): Promise<{ id: string }> {
-  const apiKey = process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY || "";
+  const apiKey =
+    process.env.BREVO_API_KEY ||
+    process.env.SENDINBLUE_API_KEY ||
+    readKeyFromEnvFiles(["BREVO_API_KEY", "SENDINBLUE_API_KEY"]);
   if (!apiKey) throw new Error("BREVO_API_KEY not set");
 
   const cfg = loadSmtpConfig();
-  const senderEmail = process.env.BREVO_FROM || cfg.from || cfg.user;
+  const senderEmail =
+    process.env.BREVO_FROM ||
+    readKeyFromEnvFiles(["BREVO_FROM"]) ||
+    cfg.from ||
+    cfg.user;
   if (!senderEmail) throw new Error("BREVO_FROM not set");
 
   const res = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -101,7 +141,8 @@ async function sendViaBrevo(opts: SendMailInput): Promise<{ id: string }> {
 export async function sendTransactionalMail(opts: SendMailInput): Promise<{ via: string }> {
   const errors: string[] = [];
 
-  if (process.env.RESEND_API_KEY) {
+  const hasResend = !!(process.env.RESEND_API_KEY || readKeyFromEnvFiles(["RESEND_API_KEY"]));
+  if (hasResend) {
     try {
       await withTimeout(sendViaResend(opts), 12000, "Resend");
       return { via: "resend" };
@@ -111,7 +152,12 @@ export async function sendTransactionalMail(opts: SendMailInput): Promise<{ via:
     }
   }
 
-  if (process.env.BREVO_API_KEY || process.env.SENDINBLUE_API_KEY) {
+  const hasBrevo = !!(
+    process.env.BREVO_API_KEY ||
+    process.env.SENDINBLUE_API_KEY ||
+    readKeyFromEnvFiles(["BREVO_API_KEY", "SENDINBLUE_API_KEY"])
+  );
+  if (hasBrevo) {
     try {
       await withTimeout(sendViaBrevo(opts), 12000, "Brevo");
       return { via: "brevo" };
