@@ -211,6 +211,118 @@ public class MainActivity extends BridgeActivity {
         notificationManager.createNotificationChannel(channel);
     }
 
+    /** Default phone notification sound (new id — Android won't update sound on existing channels). */
+    private void ensureChatNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager == null) return;
+
+        // Remove silent/legacy channel so FCM doesn't keep targeting a muted id from old installs.
+        try {
+            notificationManager.deleteNotificationChannel("chat_messages");
+        } catch (Exception ignored) {}
+
+        if (notificationManager.getNotificationChannel("chat_messages_v2") != null) return;
+
+        NotificationChannel channel = new NotificationChannel(
+            "chat_messages_v2",
+            "Messages",
+            NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.setDescription("Chat and support message alerts");
+        channel.enableLights(true);
+        channel.enableVibration(true);
+        channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+        channel.setShowBadge(true);
+
+        Uri notifUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .build();
+        channel.setSound(notifUri, audioAttributes);
+        notificationManager.createNotificationChannel(channel);
+    }
+
+    /** Strip absolute/broken hosts so we only ever deep-link inside the Capacitor app. */
+    private String normalizeAppPath(String raw) {
+        if (raw == null) return null;
+        String path = raw.trim();
+        if (path.isEmpty()) return null;
+        try {
+            if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("capacitor://")) {
+                java.net.URI uri = new java.net.URI(path);
+                String p = uri.getRawPath();
+                if (p == null || p.isEmpty()) p = "/";
+                if (uri.getRawQuery() != null) p += "?" + uri.getRawQuery();
+                if (uri.getRawFragment() != null) p += "#" + uri.getRawFragment();
+                path = p;
+            }
+        } catch (Exception ignored) {}
+        if (!path.startsWith("/")) path = "/" + path;
+        // Guard against accidental "null/..." string concat bugs.
+        if (path.startsWith("/null/") || path.equals("/null")) {
+            path = path.replaceFirst("^/null", "");
+            if (path.isEmpty()) path = "/";
+        }
+        return path;
+    }
+
+    private void dispatchAppRoute(final String appPath, final int attempt) {
+        if (appPath == null || appPath.isEmpty()) return;
+        if (getBridge() == null || getBridge().getWebView() == null) {
+            if (attempt < 40) {
+                getWindow().getDecorView().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        dispatchAppRoute(appPath, attempt + 1);
+                    }
+                }, 50);
+            }
+            return;
+        }
+
+        final String escaped = appPath
+            .replace("\\", "\\\\")
+            .replace("'", "\\'")
+            .replace("\n", "")
+            .replace("\r", "");
+
+        // Persist immediately so JS can open the chat even if the bridge callback races.
+        String stashJs =
+            "try{localStorage.setItem('jj_pending_push_route','" + escaped + "');}catch(e){}"
+            + "if(window.onNativeRouteReceived){window.onNativeRouteReceived('" + escaped + "');'called';}"
+            + "else{'not_called';}";
+
+        getBridge().getWebView().post(new Runnable() {
+            @Override
+            public void run() {
+                getBridge().getWebView().evaluateJavascript(stashJs, new android.webkit.ValueCallback<String>() {
+                    @Override
+                    public void onReceiveValue(String value) {
+                        boolean ok = value != null && value.contains("called");
+                        if (ok) {
+                            Log.d("MainActivity", "Deep link delivered via onNativeRouteReceived: " + appPath);
+                            return;
+                        }
+                        // Never loadUrl("http://null/...") — that shows ERR_CLEARTEXT_NOT_PERMITTED.
+                        // Keep retrying until the SPA router callback is ready.
+                        if (attempt < 60) {
+                            getBridge().getWebView().postDelayed(new Runnable() {
+                                @Override
+                                public void run() {
+                                    dispatchAppRoute(appPath, attempt + 1);
+                                }
+                            }, 50);
+                        } else {
+                            Log.e("MainActivity", "Deep link timed out waiting for JS router: " + appPath);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
     private void attachAndroidBridge() {
         if (getBridge() == null || getBridge().getWebView() == null) return;
 
@@ -430,6 +542,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GoogleAuth.class);
         setupLockscreenFlags();
         ensureCallsNotificationChannel();
+        ensureChatNotificationChannel();
         attachAndroidBridge();
         // After bridge exists — pad/fit system bars so header never covers clock/battery.
         getWindow().getDecorView().post(new Runnable() {
@@ -443,40 +556,24 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void handleIncomingIntent(Intent intent) {
-        if (intent == null || (!intent.hasExtra("routePath") && !intent.hasExtra("url"))) return;
-        String path = intent.hasExtra("routePath") ? intent.getStringExtra("routePath") : intent.getStringExtra("url");
-        if (path == null || path.isEmpty()) return;
-        if (getBridge() == null || getBridge().getWebView() == null) return;
+        if (intent == null) return;
 
-        final String finalPath = path;
-        getBridge().getWebView().post(new Runnable() {
-            @Override
-            public void run() {
-                String escapedPath = finalPath.replace("'", "\\'");
-                String js = "if (window.onNativeRouteReceived) { window.onNativeRouteReceived('" + escapedPath + "'); 'called'; } else { 'not_called'; }";
-                getBridge().getWebView().evaluateJavascript(js, new android.webkit.ValueCallback<String>() {
-                    @Override
-                    public void onReceiveValue(String value) {
-                        if (value != null && !value.contains("not_called")) return;
-                        String serverUrl = getBridge().getServerUrl();
-                        String finalUrl;
-                        if (finalPath.startsWith("http://") || finalPath.startsWith("https://")) {
-                            finalUrl = finalPath;
-                        } else {
-                            try {
-                                java.net.URI uri = new java.net.URI(serverUrl);
-                                String origin = uri.getScheme() + "://" + uri.getHost();
-                                if (uri.getPort() != -1) origin += ":" + uri.getPort();
-                                finalUrl = origin + (finalPath.startsWith("/") ? finalPath : "/" + finalPath);
-                            } catch (Exception e) {
-                                finalUrl = serverUrl + finalPath;
-                            }
-                        }
-                        getBridge().getWebView().loadUrl(finalUrl);
-                    }
-                });
-            }
-        });
+        String path = null;
+        if (intent.hasExtra("routePath")) path = intent.getStringExtra("routePath");
+        if ((path == null || path.isEmpty()) && intent.hasExtra("url")) path = intent.getStringExtra("url");
+
+        // FCM / Capacitor also put data keys in the launch extras bundle.
+        Bundle extras = intent.getExtras();
+        if ((path == null || path.isEmpty()) && extras != null) {
+            if (extras.containsKey("routePath")) path = String.valueOf(extras.get("routePath"));
+            else if (extras.containsKey("url")) path = String.valueOf(extras.get("url"));
+        }
+
+        path = normalizeAppPath(path);
+        if (path == null || path.isEmpty() || path.equals("/")) return;
+
+        Log.d("MainActivity", "Handling notification/deep-link route: " + path);
+        dispatchAppRoute(path, 0);
     }
 
     @Override

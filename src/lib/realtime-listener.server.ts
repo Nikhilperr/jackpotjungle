@@ -560,24 +560,23 @@ export async function initRealtimeListeners() {
                 return;
               }
 
-              // Check if recipient has notifications enabled
-              const { data: receiverProfile } = await supabaseAdmin
-                .from("profiles")
-                .select("notif_enabled" as any)
-                .eq("id", m.receiver_id)
-                .maybeSingle();
+              const [{ data: receiverProfile }, { data: tokensRows }] = await Promise.all([
+                supabaseAdmin
+                  .from("profiles")
+                  .select("notif_enabled" as any)
+                  .eq("id", m.receiver_id)
+                  .maybeSingle(),
+                supabaseAdmin
+                  .from("push_tokens" as any)
+                  .select("token")
+                  .eq("user_id", m.receiver_id),
+              ]);
 
               const enabled = (receiverProfile as any)?.notif_enabled ?? true;
               if (!enabled) {
                 console.log(`[Realtime Listener] Recipient ${m.receiver_id} has disabled notifications. Skipping.`);
                 return;
               }
-
-              // Fetch recipient push tokens
-              const { data: tokensRows } = await supabaseAdmin
-                .from("push_tokens" as any)
-                .select("token")
-                .eq("user_id", m.receiver_id);
 
               const tokens = (tokensRows ?? []).map((r: any) => r.token);
 
@@ -588,7 +587,7 @@ export async function initRealtimeListeners() {
 
               const senderName = senderProfile?.username || "New message";
 
-              await sendPushNotification(tokens, senderName, bodyText, {
+              void sendPushNotification(tokens, senderName, bodyText, {
                 type: "chat",
                 sender_id: m.sender_id,
                 routePath: `/app/chat/${m.sender_id}`,
@@ -647,22 +646,24 @@ export async function initRealtimeListeners() {
                 return;
               }
 
-              const { data: receiverProfile } = await supabaseAdmin
-                .from("profiles")
-                .select("notif_enabled" as any)
-                .eq("id", userId)
-                .maybeSingle();
+              // Parallel: notif preference + tokens (was sequential → slow pushes).
+              const [{ data: receiverProfile }, { data: tokensRows }] = await Promise.all([
+                supabaseAdmin
+                  .from("profiles")
+                  .select("notif_enabled" as any)
+                  .eq("id", userId)
+                  .maybeSingle(),
+                supabaseAdmin
+                  .from("push_tokens" as any)
+                  .select("token")
+                  .eq("user_id", userId),
+              ]);
 
               const enabled = (receiverProfile as any)?.notif_enabled ?? true;
               if (!enabled) {
                 console.log(`[Realtime Listener] Page conversation user ${userId} has disabled notifications. Skipping.`);
                 return;
               }
-
-              const { data: tokensRows } = await supabaseAdmin
-                .from("push_tokens" as any)
-                .select("token")
-                .eq("user_id", userId);
 
               const tokens = (tokensRows ?? []).map((r: any) => r.token);
 
@@ -671,7 +672,8 @@ export async function initRealtimeListeners() {
                 return;
               }
 
-              await sendPushNotification(
+              // Fire-and-forget FCM so the listener can process the next event immediately.
+              void sendPushNotification(
                 tokens,
                 "Jackpot Jungle sent you a message",
                 bodyText,
@@ -684,10 +686,17 @@ export async function initRealtimeListeners() {
               );
             } else {
               // User → admins: "{username}" + avatar + text/Photo; tap opens that conversation
-              const { data: adminRows } = await supabaseAdmin
-                .from("user_roles" as any)
-                .select("user_id")
-                .in("role", ["admin", "super_admin"]);
+              const [{ data: adminRows }, { data: senderProfile }] = await Promise.all([
+                supabaseAdmin
+                  .from("user_roles" as any)
+                  .select("user_id")
+                  .in("role", ["admin", "super_admin"]),
+                supabaseAdmin
+                  .from("profiles")
+                  .select("username, first_name, last_name, avatar_url")
+                  .eq("id", pm.sender_id)
+                  .maybeSingle(),
+              ]);
 
               const adminUserIds = (adminRows ?? [])
                 .map((r: any) => r.user_id)
@@ -698,12 +707,6 @@ export async function initRealtimeListeners() {
                 return;
               }
 
-              const { data: senderProfile } = await supabaseAdmin
-                .from("profiles")
-                .select("username, first_name, last_name, avatar_url")
-                .eq("id", pm.sender_id)
-                .maybeSingle();
-
               const senderName = senderProfile
                 ? (senderProfile.first_name && senderProfile.last_name
                     ? `${senderProfile.first_name} ${senderProfile.last_name}`
@@ -712,31 +715,34 @@ export async function initRealtimeListeners() {
 
               const avatarUrl = absolutePushImageUrl(senderProfile?.avatar_url);
 
-              // Prefer admins who still have notifications enabled (default true).
-              const { data: adminProfiles } = await supabaseAdmin
-                .from("profiles")
-                .select("id, notif_enabled")
-                .in("id", adminUserIds);
+              // Parallel: admin notif prefs + tokens
+              const [{ data: adminProfiles }, { data: tokensRows }] = await Promise.all([
+                supabaseAdmin
+                  .from("profiles")
+                  .select("id, notif_enabled")
+                  .in("id", adminUserIds),
+                supabaseAdmin
+                  .from("push_tokens" as any)
+                  .select("token, user_id")
+                  .in("user_id", adminUserIds),
+              ]);
 
-              const enabledAdminIds = (adminProfiles ?? [])
-                .filter((p: any) => (p.notif_enabled ?? true) !== false)
-                .map((p: any) => p.id);
+              const enabledAdminIds = new Set(
+                (adminProfiles ?? [])
+                  .filter((p: any) => (p.notif_enabled ?? true) !== false)
+                  .map((p: any) => p.id),
+              );
 
-              const targetAdminIds = enabledAdminIds.length > 0 ? enabledAdminIds : adminUserIds;
-
-              const { data: tokensRows } = await supabaseAdmin
-                .from("push_tokens" as any)
-                .select("token")
-                .in("user_id", targetAdminIds);
-
-              const tokens = (tokensRows ?? []).map((r: any) => r.token);
+              const tokens = (tokensRows ?? [])
+                .filter((r: any) => enabledAdminIds.size === 0 || enabledAdminIds.has(r.user_id))
+                .map((r: any) => r.token);
 
               if (tokens.length === 0) {
                 console.log("[Realtime Listener] No push tokens found for admin users.");
                 return;
               }
 
-              await sendPushNotification(
+              void sendPushNotification(
                 tokens,
                 senderName,
                 bodyText,

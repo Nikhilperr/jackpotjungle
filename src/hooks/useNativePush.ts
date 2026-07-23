@@ -151,15 +151,21 @@ export function useNativePush() {
                   vibration: true,
                 });
                 // High-visibility channel for chat / page inbox (Messenger-like heads-up).
+                // New channel id required — Android ignores sound changes on existing channels.
                 await PushNotifications.createChannel({
-                  id: "chat_messages",
+                  id: "chat_messages_v2",
                   name: "Messages",
                   description: "Chat and support message alerts",
-                  importance: 4,
+                  importance: 5,
                   visibility: 1,
                   sound: "default",
                   vibration: true,
                 });
+                try {
+                  await PushNotifications.deleteChannel({ id: "chat_messages" });
+                } catch {
+                  /* ignore */
+                }
                 console.log("[Push Debug] Created notification channels");
               } catch (channelErr) {
                 console.error("[Push Debug] Failed to create channels:", channelErr);

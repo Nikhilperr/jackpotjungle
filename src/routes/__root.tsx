@@ -279,25 +279,44 @@ function RootComponent() {
   }, [router]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      (window as any).onNativeRouteReceived = (path: string) => {
-        console.log("[__root.tsx] Received native route dispatch:", path);
-        let cleanPath = path;
-        try {
-          if (path.includes("://")) {
-            const urlObj = new URL(path);
-            cleanPath = urlObj.pathname + urlObj.search + urlObj.hash;
-          }
-        } catch (e) {
-          console.error("[__root.tsx] Failed to parse path URL:", e);
+    if (typeof window === "undefined") return;
+
+    const openPushPath = (path: string) => {
+      console.log("[__root.tsx] Received native route dispatch:", path);
+      let cleanPath = path;
+      try {
+        if (path.includes("://") || path.startsWith("//")) {
+          const urlObj = new URL(path, "https://jj.local");
+          cleanPath = urlObj.pathname + urlObj.search + urlObj.hash;
         }
-        router.history.push(cleanPath);
-      };
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).onNativeRouteReceived;
+      } catch (e) {
+        console.error("[__root.tsx] Failed to parse path URL:", e);
       }
+      if (!cleanPath.startsWith("/")) cleanPath = `/${cleanPath}`;
+      try {
+        localStorage.removeItem("jj_pending_push_route");
+      } catch {
+        /* ignore */
+      }
+      // Prefer history.push for instant in-app navigation (no WebView reload).
+      router.history.push(cleanPath);
+    };
+
+    (window as any).onNativeRouteReceived = openPushPath;
+
+    // Cold-start: MainActivity stashes the route before JS is ready.
+    try {
+      const pending = localStorage.getItem("jj_pending_push_route");
+      if (pending) {
+        // Slight delay so auth/route tree can settle, still feels instant.
+        requestAnimationFrame(() => openPushPath(pending));
+      }
+    } catch {
+      /* ignore */
+    }
+
+    return () => {
+      delete (window as any).onNativeRouteReceived;
     };
   }, [router]);
 

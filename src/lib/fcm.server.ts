@@ -184,8 +184,12 @@ export async function sendPushNotification(
         };
         payload.message.android.notification = {
           sound: "default",
+          default_sound: true,
+          default_vibrate_timings: true,
+          notification_priority: "PRIORITY_HIGH",
           click_action: "FCM_PLUGIN_ACTIVITY",
-          channel_id: data?.type === "call" ? "calls_v2" : "chat_messages",
+          // chat_messages_v2 is created in MainActivity with the phone's default notification sound.
+          channel_id: data?.type === "call" ? "calls_ringtone_v3" : "chat_messages_v2",
           ...(imageUrl ? { image: imageUrl } : {}),
         };
         payload.message.apns = {
