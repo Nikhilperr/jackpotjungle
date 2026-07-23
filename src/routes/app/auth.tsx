@@ -457,36 +457,13 @@ function LoginForm({
     setMfaBusy(true);
     try {
       // GoTrue /auth/v1/otp returns 504 here. VPS serverFn: generateLink + SMTP from .env.
-      // Prefer delivering via this device's FCM token (SMTP is blocked on the VPS host).
-      let fcmToken: string | undefined;
-      try {
-        if (Capacitor.isNativePlatform()) {
-          const { PushNotifications } = await import("@capacitor/push-notifications");
-          const perm = await PushNotifications.checkPermissions();
-          if (perm.receive === "granted") {
-            fcmToken = await new Promise<string | undefined>((resolve) => {
-              let done = false;
-              const finish = (v?: string) => {
-                if (done) return;
-                done = true;
-                resolve(v);
-              };
-              void PushNotifications.addListener("registration", (t: any) => finish(t?.value));
-              void PushNotifications.register();
-              window.setTimeout(() => finish(undefined), 4000);
-            });
-          }
-        }
-      } catch {
-        /* optional */
-      }
-
+      // Requires the password session Bearer token (server checks email ownership).
       const { sendLoginEmailOtp } = await import("@/lib/auth-otp.functions");
-      const result = await sendLoginEmailOtp({ data: { email: target, fcmToken } });
+      const result = await sendLoginEmailOtp({ data: { email: target } });
       setEmailOtpSent(true);
       setResendCountdown(60);
       if ((result as any)?.push && !(result as any)?.email) {
-        toast.success("Verification code sent as a push notification — check your notifications.");
+        toast.success("Verification code sent to your registered devices — check notifications.");
       } else if ((result as any)?.push) {
         toast.success("Verification code sent (email + notification).");
       } else {

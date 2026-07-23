@@ -1,10 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { createHash } from "node:crypto";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendPushNotification } from "@/lib/fcm.server";
 import { sendSmtpMail } from "@/lib/smtp.server";
 
-/** Public VPS host — used when domain routing/nginx misbehaves. */
+/** Public VPS host (Kong / nginx). */
 export const VPS_IP = "157.245.93.210";
 
 function anonKey() {
@@ -28,7 +29,6 @@ function authBases(): string[] {
     `http://127.0.0.1:8000`,
     `http://127.0.0.1:9999`,
     "http://kong:8000",
-    "http://supabase-auth:9999",
     process.env.SUPABASE_URL,
     process.env.VITE_SUPABASE_URL,
   ]
@@ -77,98 +77,80 @@ async function fetchAuth(
   }
 }
 
-async function generateEmailOtp(email: string): Promise<{ code: string; userId?: string }> {
-  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-  });
-  if (error) {
-    throw new Error(error.message || "Could not generate verification code on the VPS.");
+async function assertSessionOwnsEmail(userId: string, email: string) {
+  const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+  if (error || !data?.user) throw new Error("Unauthorized.");
+  const sessionEmail = (data.user.email || "").trim().toLowerCase();
+  if (!sessionEmail || sessionEmail !== email) {
+    throw new Error("Unauthorized: email does not match the signed-in account.");
   }
-  const code = String((data as any)?.properties?.email_otp || (data as any)?.email_otp || "");
-  const userId = String((data as any)?.user?.id || (data as any)?.id || "");
-  if (code.length < 6) {
-    throw new Error("Auth did not return an email code.");
-  }
-  return { code: code.slice(0, 8), userId: userId || undefined };
+  return data.user;
 }
 
-async function storeOtpMeta(userId: string | undefined, email: string, code: string) {
-  if (!userId) return;
-  try {
-    const { data: wrapped } = await supabaseAdmin.auth.admin.getUserById(userId);
-    const prev = wrapped?.user?.user_metadata || {};
-    await supabaseAdmin.auth.admin.updateUserById(userId, {
+/**
+ * Send login OTP — ONLY after password sign-in (Bearer session required).
+ * Push goes only to push_tokens already registered for that user_id.
+ * Never accepts a client-supplied FCM token (that would let anyone steal OTPs).
+ */
+export const sendLoginEmailOtp = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { email: string }) => d)
+  .handler(async ({ data, context }) => {
+    const email = data.email?.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      throw new Error("A valid email address is required.");
+    }
+
+    const user = await assertSessionOwnsEmail(context.userId, email);
+
+    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+    });
+    if (linkErr) {
+      throw new Error(linkErr.message || "Could not generate verification code.");
+    }
+
+    const code = String(
+      (linkData as any)?.properties?.email_otp || (linkData as any)?.email_otp || "",
+    ).slice(0, 8);
+    if (code.length < 6) {
+      throw new Error("Auth did not return an email code.");
+    }
+
+    const prev = user.user_metadata || {};
+    await supabaseAdmin.auth.admin.updateUserById(context.userId, {
       user_metadata: {
         ...prev,
         jj_login_otp_hash: hashCode(email, code),
         jj_login_otp_exp: Date.now() + 10 * 60 * 1000,
       },
     });
-  } catch (e) {
-    console.warn("[AuthOTP] store meta failed:", e);
-  }
-}
-
-async function sendCodeViaPush(
-  userId: string | undefined,
-  code: string,
-  extraToken?: string,
-): Promise<boolean> {
-  try {
-    const tokens = new Set<string>();
-    if (extraToken?.trim()) tokens.add(extraToken.trim());
-
-    if (userId) {
-      const { data: rows } = await supabaseAdmin
-        .from("push_tokens" as any)
-        .select("token")
-        .eq("user_id", userId);
-      for (const r of rows || []) {
-        if ((r as any)?.token) tokens.add((r as any).token);
-      }
-    }
-
-    const list = [...tokens];
-    if (!list.length) return false;
-    await sendPushNotification(
-      list,
-      "Verification code",
-      `Your Jackpot Jungle code is ${code}`,
-      { type: "login_otp", code },
-    );
-    console.log(`[AuthOTP] Sent code via FCM to ${list.length} device(s)`);
-    return true;
-  } catch (e) {
-    console.warn("[AuthOTP] FCM send failed:", e);
-    return false;
-  }
-}
-
-/**
- * Login OTP for Capacitor/web:
- * - generateLink (works on VPS)
- * - deliver via FCM push (HTTPS — works when SMTP is blocked)
- * - best-effort email via Auth on VPS IP / SMTP
- */
-export const sendLoginEmailOtp = createServerFn({ method: "POST" })
-  .validator((d: { email: string; fcmToken?: string }) => d)
-  .handler(async ({ data }) => {
-    const email = data.email?.trim().toLowerCase();
-    if (!email || !email.includes("@")) {
-      throw new Error("A valid email address is required.");
-    }
-
-    const { code, userId } = await generateEmailOtp(email);
-    await storeOtpMeta(userId, email, code);
 
     const channels: string[] = [];
 
-    if (await sendCodeViaPush(userId, code, data.fcmToken)) {
-      channels.push("push");
+    // Push ONLY to devices already bound to this user in the DB
+    try {
+      const { data: rows } = await supabaseAdmin
+        .from("push_tokens" as any)
+        .select("token")
+        .eq("user_id", context.userId);
+      const tokens = (rows || []).map((r: any) => r.token).filter(Boolean);
+      if (tokens.length) {
+        await sendPushNotification(
+          tokens,
+          "Verification code",
+          `Your Jackpot Jungle code is ${code}`,
+          { type: "login_otp" }, // never put the code in data payload for other apps to scrape casually — body is enough for the owner
+        );
+        channels.push("push");
+      }
+    } catch (e) {
+      console.warn("[AuthOTP] FCM send failed:", e);
     }
 
-    for (const base of authBases().slice(0, 4)) {
+    // Best-effort email (may 504 / connection timeout on this VPS)
+    for (const base of authBases().slice(0, 3)) {
       try {
         const { res } = await fetchAuth(
           base,
@@ -197,31 +179,49 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
         });
         channels.push("email");
       } catch (e: any) {
-        console.warn("[AuthOTP] SMTP fallback failed:", e?.message || e);
+        console.warn("[AuthOTP] SMTP failed:", e?.message || e);
       }
     }
 
     if (!channels.length) {
       throw new Error(
-        "Could not deliver the code. Enable notifications in the app (push), or fix SMTP on the VPS Auth container.",
+        "Could not deliver the code. Fix VPS Auth SMTP, or sign in once on a device with notifications already enabled for this account.",
       );
     }
 
-    console.log(`[AuthOTP] Delivered to ${email} via ${channels.join(",")}`);
+    console.log(`[AuthOTP] user=${context.userId} via=${channels.join(",")}`);
     return { sent: true, via: channels, push: channels.includes("push"), email: channels.includes("email") };
   });
 
+/**
+ * Verify login OTP — requires the same password session; does not open account takeover.
+ */
 export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .validator((d: { email: string; code: string }) => d)
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const email = data.email?.trim().toLowerCase();
     const code = data.code?.trim();
     if (!email || !code || code.length < 6) {
       throw new Error("Enter the 6-digit code.");
     }
 
-    // GoTrue verify via public/API bases (including VPS IP Kong)
-    for (const base of authBases()) {
+    await assertSessionOwnsEmail(context.userId, email);
+
+    const { data: wrapped } = await supabaseAdmin.auth.admin.getUserById(context.userId);
+    const meta = wrapped?.user?.user_metadata || {};
+    const exp = Number(meta.jj_login_otp_exp || 0);
+    const hash = meta.jj_login_otp_hash;
+
+    if (hash && exp > Date.now() && hash === hashCode(email, code)) {
+      await supabaseAdmin.auth.admin.updateUserById(context.userId, {
+        user_metadata: { ...meta, jj_login_otp_hash: null, jj_login_otp_exp: null },
+      });
+      return { ok: true, via: "meta" };
+    }
+
+    // Also accept GoTrue email/magiclink codes for this same account
+    for (const base of authBases().slice(0, 3)) {
       for (const type of ["email", "magiclink"] as const) {
         try {
           const { res } = await fetchAuth(
@@ -231,36 +231,15 @@ export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
             false,
             8000,
           );
-          if (res.ok) return { ok: true, via: type };
+          if (res.ok) {
+            await supabaseAdmin.auth.admin.updateUserById(context.userId, {
+              user_metadata: { ...meta, jj_login_otp_hash: null, jj_login_otp_exp: null },
+            });
+            return { ok: true, via: type };
+          }
         } catch {
           /* next */
         }
-      }
-    }
-
-    // Metadata fallback (code we stored + pushed)
-    let userId: string | undefined;
-    try {
-      const { data: profile } = await supabaseAdmin
-        .from("profiles")
-        .select("id")
-        .ilike("email", email)
-        .maybeSingle();
-      userId = profile?.id;
-    } catch {
-      /* ignore */
-    }
-
-    if (userId) {
-      const { data: wrapped } = await supabaseAdmin.auth.admin.getUserById(userId);
-      const meta = wrapped?.user?.user_metadata || {};
-      const exp = Number(meta.jj_login_otp_exp || 0);
-      const hash = meta.jj_login_otp_hash;
-      if (hash && exp > Date.now() && hash === hashCode(email, code)) {
-        await supabaseAdmin.auth.admin.updateUserById(userId, {
-          user_metadata: { ...meta, jj_login_otp_hash: null, jj_login_otp_exp: null },
-        });
-        return { ok: true, via: "meta" };
       }
     }
 
