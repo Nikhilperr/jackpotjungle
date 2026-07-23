@@ -394,7 +394,8 @@ export function UsersManagementView({ meId }: { meId: string }) {
   const handleExportEmails = async () => {
     setDownloadingEmails(true);
     try {
-      const { list } = await getEmailsFn();
+      const result = await getEmailsFn();
+      const list = Array.isArray((result as any)?.list) ? (result as any).list : [];
       
       const filtered = list.filter((item: any) => {
         if (downloadType === "admins") return item.role === "admin" || item.role === "super_admin";

@@ -557,9 +557,11 @@ function AdminPage() {
             </ScrollWrap>
           </div>
         )}
-        <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "monitor" ? "" : "hidden"}`}>
-          <MonitorChatsView meId={user.id} onOpenNav={() => setNavOpen(true)} />
-        </div>
+        {tab === "monitor" && (
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            <MonitorChatsView meId={user.id} onOpenNav={() => setNavOpen(true)} />
+          </div>
+        )}
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "push_notifications" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Push Notification">
             <PushNotificationsAdminView />

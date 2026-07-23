@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
+    <title>Jackpot Jungle Messenger</title>
+    <style>
+      /* Match native splash so handoff is seamless — no second logo layer.
+         Never min-height: 100dvh on native — that keeps the shell taller than the
+         keyboard-visible area and hides the composer under the IME. */
+      html, body { margin: 0; height: 100%; background: #121212; overflow: hidden; }
+      #root { height: 100%; min-height: 0; background: #121212; }
+    </style>
+    <script>
+      try {
+        // Product default is AMOLED black (was jackpot orange).
+        if (localStorage.getItem("jj_theme_default_v2") !== "1") {
+          const prev = localStorage.getItem("theme");
+          if (!prev || prev === "jackpot") localStorage.setItem("theme", "amoled");
+          localStorage.setItem("jj_theme_default_v2", "1");
+        }
+        const t = localStorage.getItem("theme") || "amoled";
+        document.documentElement.classList.add(t);
+      } catch (e) {}
+      try {
+        var cap = window.Capacitor;
+        if (cap && typeof cap.isNativePlatform === "function" && cap.isNativePlatform()) {
+          document.documentElement.style.setProperty("--jj-sat", "28px");
+          document.documentElement.classList.add("native-android");
+          // Seed height immediately so first paint matches the visible window.
+          var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+          if (h) document.documentElement.style.setProperty("--jj-app-height", Math.round(h) + "px");
+        }
+      } catch (e) {}
+    </script>
+    <script>
+      window.onerror = function(msg, url, line, col, error) {
+        console.error("Global Error:", msg, url, line, col, error);
+        return false;
+      };
+      window.addEventListener('unhandledrejection', function(event) {
+        console.warn("Unhandled Promise Rejection:", event.reason);
+      });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/entry-client-only.tsx"></script>
+  </body>
+</html>

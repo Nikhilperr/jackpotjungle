@@ -47,9 +47,11 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
   const loadConvs = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const { list } = await getConvsFn();
+      const result = await getConvsFn();
+      const list = Array.isArray((result as any)?.list) ? (result as any).list : [];
       setConvs(list);
     } catch (err: any) {
+      setConvs([]);
       toast.error(err.message || "Failed to load monitor conversations.");
     } finally {
       if (!silent) setLoading(false);
@@ -66,7 +68,8 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
         payload.userA = conv.userA.id;
         payload.userB = conv.userB.id;
       }
-      const { messages: list } = await getMsgsFn({ data: payload });
+      const result = await getMsgsFn({ data: payload });
+      const list = Array.isArray((result as any)?.messages) ? (result as any).messages : [];
       setMessages(list);
       
       // Scroll to bottom on load
@@ -74,6 +77,7 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
     } catch (err: any) {
+      setMessages([]);
       toast.error(err.message || "Failed to load chat messages.");
     } finally {
       if (!silent) setLoadingMessages(false);
@@ -110,7 +114,7 @@ export function MonitorChatsView({ meId, onOpenNav }: { meId: string; onOpenNav:
   };
 
   // Filter conversations list
-  const filteredConvs = convs.filter(c => {
+  const filteredConvs = (convs ?? []).filter(c => {
     if (filterType === "direct" && c.type !== "direct") return false;
     if (filterType === "group" && c.type !== "group") return false;
     
