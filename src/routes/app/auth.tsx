@@ -456,26 +456,19 @@ function LoginForm({
 
     setMfaBusy(true);
     try {
-      // GoTrue /auth/v1/otp returns 504 here. VPS serverFn: generateLink + SMTP from .env.
-      // Requires the password session Bearer token (server checks email ownership).
+      // Email OTP only (Authenticator is a separate choice). Requires password session.
       const { sendLoginEmailOtp } = await import("@/lib/auth-otp.functions");
-      const result = await sendLoginEmailOtp({ data: { email: target } });
+      await sendLoginEmailOtp({ data: { email: target } });
       setEmailOtpSent(true);
       setResendCountdown(60);
-      if ((result as any)?.push && !(result as any)?.email) {
-        toast.success("Verification code sent to your registered devices — check notifications.");
-      } else if ((result as any)?.push) {
-        toast.success("Verification code sent (email + notification).");
-      } else {
-        toast.success("Verification code sent to your email!");
-      }
+      toast.success("Verification code sent to your email!");
     } catch (err: unknown) {
       console.error("[Auth] sendEmailOtp failed:", err);
       const { formatAuthError } = await import("@/lib/auth-error");
       toast.error(
         formatAuthError(
           err,
-          "Couldn't send the verification code. Rebuild the VPS (git pull && npm run build && pm2 restart all), then tap Resend.",
+          "Couldn't send the verification email. Check VPS SMTP settings, then tap Resend.",
         ),
       );
     } finally {
@@ -513,6 +506,8 @@ function LoginForm({
       setHas2FaFactor(has2fa);
 
       // Show OTP/2FA UI immediately — send mail in background (don't block on SMTP).
+      // 2FA enrolled → choose Authenticator OR email code only.
+      // No 2FA → email verification code only (no other channels).
       setVerificationRequired(true);
       if (has2fa) {
         setVerificationMethod(null);
@@ -543,22 +538,8 @@ function LoginForm({
         throw new Error("Enter the 6-digit code from your email.");
       }
 
-      const token = otpCode.trim();
-      // Prefer VPS verify helper (GoTrue + stored hash from push delivery).
-      try {
-        const { verifyLoginEmailOtp } = await import("@/lib/auth-otp.functions");
-        await verifyLoginEmailOtp({ data: { email, code: token } });
-      } catch {
-        let verifyErr = (
-          await supabase.auth.verifyOtp({ email, token, type: "email" })
-        ).error;
-        if (verifyErr) {
-          verifyErr = (
-            await supabase.auth.verifyOtp({ email, token, type: "magiclink" })
-          ).error;
-        }
-        if (verifyErr) throw verifyErr;
-      }
+      const { verifyLoginEmailOtp } = await import("@/lib/auth-otp.functions");
+      await verifyLoginEmailOtp({ data: { email, code: otpCode.trim() } });
 
       if (typeof window !== "undefined") {
         setVerifiedStatus(true);

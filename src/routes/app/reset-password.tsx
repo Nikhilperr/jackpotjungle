@@ -45,6 +45,14 @@ function ResetPage() {
         }
         throw error;
       }
+
+      // Forgot-password recovery: disable Authenticator 2FA so they can sign in and re-enroll.
+      try {
+        const { disableMfaAfterPasswordReset } = await import("@/lib/auth-otp.functions");
+        await disableMfaAfterPasswordReset();
+      } catch (e) {
+        console.warn("[ResetPassword] Could not disable MFA factors:", e);
+      }
       
       try {
         await supabase.auth.signOut();
@@ -85,6 +93,13 @@ function ResetPage() {
       // Session is now upgraded to AAL2. Complete the password update:
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw updateError;
+
+      try {
+        const { disableMfaAfterPasswordReset } = await import("@/lib/auth-otp.functions");
+        await disableMfaAfterPasswordReset();
+      } catch (e) {
+        console.warn("[ResetPassword] Could not disable MFA factors:", e);
+      }
 
       try {
         await supabase.auth.signOut();

@@ -11,14 +11,13 @@ export type SmtpConfig = {
 
 function readEnvFiles(): Record<string, string> {
   const out: Record<string, string> = {};
-  const cwd = process.cwd();
+  // Prefer Auth/docker .env first — that is what the website mailer uses.
   const possiblePaths = [
-    // Prefer GoTrue/docker env (what the browser Auth mailer uses)
     "/home/deploy/app/supabase/docker/.env",
     "/home/deploy/supabase/docker/.env",
-    path.join(cwd, "supabase", "docker", ".env"),
-    path.join(cwd, "..", "supabase", "docker", ".env"),
-    path.join(cwd, ".env"),
+    path.join(process.cwd(), "supabase", "docker", ".env"),
+    path.join(process.cwd(), "..", "supabase", "docker", ".env"),
+    path.join(process.cwd(), ".env"),
     "/home/deploy/app/.env",
     "/home/deploy/.env",
   ];
@@ -33,7 +32,6 @@ function readEnvFiles(): Record<string, string> {
         const [k, ...vParts] = trimmed.split("=");
         const key = k.trim();
         const val = vParts.join("=").trim().replace(/(^["']|["']$)/g, "");
-        // First file wins for each key (docker paths listed first).
         if (key && out[key] === undefined) out[key] = val;
       }
     } catch {
@@ -51,7 +49,7 @@ function pick(fileEnv: Record<string, string>, ...keys: string[]) {
   return "";
 }
 
-/** Prefer GOTRUE_SMTP_* (Docker Auth) over app SMTP_*. */
+/** Load SMTP — GOTRUE_SMTP_* from docker .env preferred (browser Auth mailer). */
 export function loadSmtpConfig(): SmtpConfig {
   const fileEnv = readEnvFiles();
   const host = pick(fileEnv, "GOTRUE_SMTP_HOST", "SMTP_HOST") || "smtp.gmail.com";
@@ -65,7 +63,7 @@ export function loadSmtpConfig(): SmtpConfig {
   );
   const pass = pick(fileEnv, "GOTRUE_SMTP_PASS", "GOTRUE_SMTP_PASSWORD", "SMTP_PASS");
   const from =
-    pick(fileEnv, "GOTRUE_SMTP_ADMIN_EMAIL", "SMTP_FROM", "SMTP_SENDER", "GOTRUE_SMTP_SENDER_NAME") ||
+    pick(fileEnv, "GOTRUE_SMTP_ADMIN_EMAIL", "SMTP_FROM", "SMTP_SENDER") ||
     user ||
     "noreply@playjackpotjungle.com";
 
@@ -81,30 +79,37 @@ export async function sendSmtpMail(opts: {
 }): Promise<{ messageId: string }> {
   const cfg = loadSmtpConfig();
   if (!cfg.user || !cfg.pass) {
-    throw new Error("SMTP is not configured on the server (missing SMTP_USER / SMTP_PASS).");
+    throw new Error("SMTP is not configured (set GOTRUE_SMTP_USER / GOTRUE_SMTP_PASS on the VPS).");
   }
 
-  // Docker service hostnames only resolve inside compose — rewrite common ones for the host.
+  // Docker-only hostnames are not reachable from the Nitro host process.
   let host = cfg.host;
-  if (host === "smtp" || host === "mail" || host === "postfix" || host === "inbucket") {
+  if (["smtp", "mail", "postfix", "inbucket", "mailhog"].includes(host.toLowerCase())) {
     host = "127.0.0.1";
   }
 
   const nodemailer = (await import("nodemailer")).default;
-  const ports = [...new Set([cfg.port, 465, 587, 2525])];
-  let lastErr: unknown;
+  const attempts = [
+    { port: cfg.port, secure: cfg.port === 465 },
+    { port: 465, secure: true },
+    { port: 587, secure: false },
+    { port: 2525, secure: false },
+  ];
+  // de-dupe ports
+  const seen = new Set<number>();
+  const list = attempts.filter((a) => (seen.has(a.port) ? false : (seen.add(a.port), true)));
 
-  for (const port of ports) {
-    const secure = port === 465;
+  let lastErr: unknown;
+  for (const a of list) {
     const transporter = nodemailer.createTransport({
       host,
-      port,
-      secure,
+      port: a.port,
+      secure: a.secure,
       auth: { user: cfg.user, pass: cfg.pass },
       family: 4,
-      connectionTimeout: 5000,
-      greetingTimeout: 5000,
-      socketTimeout: 10000,
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 12000,
       tls: { rejectUnauthorized: false },
     });
     try {
@@ -115,10 +120,11 @@ export async function sendSmtpMail(opts: {
         text: opts.text,
         html: opts.html,
       });
+      console.log(`[SMTP] Sent via ${host}:${a.port} id=${info.messageId}`);
       return { messageId: String(info.messageId || "") };
     } catch (e) {
       lastErr = e;
-      console.warn(`[SMTP] ${host}:${port} failed:`, (e as Error)?.message || e);
+      console.warn(`[SMTP] ${host}:${a.port} failed:`, (e as Error)?.message || e);
     } finally {
       transporter.close();
     }

@@ -54,6 +54,12 @@ export const resetUserPassword = createServerFn({ method: "POST" })
       password: data.newPassword,
     });
     if (error) throw new Error(error.message);
+    try {
+      const { disableAllMfaFactorsForUser } = await import("@/lib/auth-otp.functions");
+      await disableAllMfaFactorsForUser(data.userId);
+    } catch (e) {
+      console.warn("[Admin] disable MFA after password reset failed:", e);
+    }
     return { ok: true };
   });
 
