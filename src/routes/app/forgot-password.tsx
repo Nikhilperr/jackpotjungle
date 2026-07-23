@@ -1,6 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Mail, CheckCircle2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -25,9 +24,10 @@ function ForgotPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
-      if (error) throw error;
-      
+      // Same VPS SMTP path as login email OTP (GoTrue /otp and resetPasswordForEmail 504 when SMTP is blocked).
+      const { sendPasswordResetEmailOtp } = await import("@/lib/auth-otp.functions");
+      await sendPasswordResetEmailOtp({ data: { email: email.trim().toLowerCase() } });
+
       setShowSuccess(true);
       setTimeout(() => {
         navigate({ to: "/app/verify-otp", search: { email, mode: "recovery" } });

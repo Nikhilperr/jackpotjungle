@@ -112,8 +112,8 @@ function VerifyOtpPage() {
     setHasError(false);
     try {
       if (mode === "recovery") {
-        const { error } = await supabase.auth.resetPasswordForEmail(email);
-        if (error) throw error;
+        const { sendPasswordResetEmailOtp } = await import("@/lib/auth-otp.functions");
+        await sendPasswordResetEmailOtp({ data: { email } });
       } else {
         const { error } = await supabase.auth.resend({ type: "signup", email });
         if (error) throw error;

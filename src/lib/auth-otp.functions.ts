@@ -146,6 +146,71 @@ export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/**
+ * Forgot-password email OTP.
+ * Uses Auth generateLink(recovery) + VPS SMTP (same as login OTP).
+ * Does not use GoTrue /otp (that path 504s when SMTP is blocked).
+ */
+export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
+  .validator((d: { email: string }) => d)
+  .handler(async ({ data }) => {
+    const email = data.email?.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      throw new Error("A valid email address is required.");
+    }
+
+    // Always return a generic success shape to avoid account enumeration.
+    // Only attempt send when Auth can generate a recovery code for this address.
+    try {
+      const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+        type: "recovery",
+        email,
+      });
+      if (linkErr) {
+        console.warn("[AuthOTP] recovery generateLink:", linkErr.message);
+        return { sent: true, via: "email" };
+      }
+
+      const code = String(
+        (linkData as any)?.properties?.email_otp || (linkData as any)?.email_otp || "",
+      ).slice(0, 8);
+      if (code.length < 6) {
+        console.warn("[AuthOTP] recovery link missing email_otp");
+        return { sent: true, via: "email" };
+      }
+
+      await sendSmtpMail({
+        to: email,
+        fromName: "Jackpot Jungle",
+        subject: `${code} is your Jackpot Jungle password reset code`,
+        text:
+          `Your Jackpot Jungle password reset code is: ${code}\n\n` +
+          `This code expires in 10 minutes. If you did not request a reset, ignore this email.`,
+        html: `
+          <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+            <h2 style="margin: 0 0 12px; color: #111;">Reset your password</h2>
+            <p style="color: #444; font-size: 14px; line-height: 1.5;">
+              Use this code to reset your Jackpot Jungle Messenger password:
+            </p>
+            <div style="font-size: 32px; letter-spacing: 0.35em; font-weight: 800; text-align: center;
+                        background: #f4f4f5; border-radius: 12px; padding: 16px 12px; margin: 20px 0; color: #111;">
+              ${code}
+            </div>
+            <p style="color: #888; font-size: 12px;">Expires in 10 minutes.</p>
+          </div>
+        `,
+      });
+      console.log(`[AuthOTP] Recovery email OTP sent to ${email}`);
+    } catch (e: any) {
+      console.error("[AuthOTP] Recovery SMTP send failed:", e?.message || e);
+      throw new Error(
+        "Could not send the verification email. Fix SMTP on the VPS (see GOTRUE_SMTP_* / SMTP_*), then try again.",
+      );
+    }
+
+    return { sent: true, via: "email" };
+  });
+
 /** After forgot-password reset: drop Authenticator 2FA so the user can sign in and re-enroll. */
 export const disableMfaAfterPasswordReset = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
