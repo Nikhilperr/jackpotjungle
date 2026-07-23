@@ -11,15 +11,24 @@ export { runAfterFirstPaint } from "./defer";
 let isInitialized = false;
 
 async function hideNativeSplash() {
+  // Never use a statically analyzable import of @capacitor/splash-screen here —
+  // Vite SSR/`npm run build` on the VPS must succeed without bundling native plugins.
   try {
-    const { SplashScreen } = await import("@capacitor/splash-screen");
-    await SplashScreen.hide({ fadeOutDuration: 100 });
+    const pluginName = "SplashScreen";
+    const cap = (window as any).Capacitor;
+    const nativePlugin = cap?.Plugins?.[pluginName];
+    if (nativePlugin?.hide) {
+      await nativePlugin.hide({ fadeOutDuration: 100 });
+      return;
+    }
   } catch {
-    const SplashScreen = getSafePlugin("SplashScreen", {
-      hide: () => Promise.resolve(),
-    });
-    await SplashScreen.hide().catch(() => {});
+    /* fall through */
   }
+
+  const SplashScreen = getSafePlugin("SplashScreen", {
+    hide: () => Promise.resolve(),
+  });
+  await SplashScreen.hide({ fadeOutDuration: 100 }).catch(() => {});
 }
 
 export function initializeNativeBridge(router: any) {
