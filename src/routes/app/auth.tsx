@@ -252,8 +252,15 @@ function AuthPage() {
     signalShellReady();
   }, []);
 
-  // Never return null (black WebView flash). Paint auth shell while session/role resolve.
-  if ((loading || roleLoading) && !isLogoutRequest) {
+  // Keep LoginForm mounted during roleLoading — unmounting it wiped 2FA/OTP state
+  // (logo flash → cold-start effect signed out → bounced back to Sign In).
+  const showInitialShell =
+    (loading || roleLoading) &&
+    !isLogoutRequest &&
+    mode === "welcome" &&
+    !user;
+
+  if (showInitialShell) {
     return <AuthLayout mode={mode} setMode={setMode} />;
   }
 
@@ -330,7 +337,8 @@ function LoginForm({
   const [otpCode, setOtpCode] = useState("");
   const [resendCountdown, setResendCountdown] = useState(0);
 
-  // Cold start / app kill: never restore OTP/2FA UI — always start from login.
+  // App kill clears sessionStorage → start from login.
+  // sessionStorage survives LoginForm remounts so we don't wipe an in-progress 2FA/OTP.
   useEffect(() => {
     try {
       localStorage.removeItem("jj_temp_auth_verification");
@@ -341,6 +349,35 @@ function LoginForm({
       try {
         if (getVerifiedStatus()) return;
 
+        let verifying = false;
+        try {
+          verifying = sessionStorage.getItem("jj_auth_verifying") === "1";
+        } catch {}
+
+        if (verifying) {
+          // Restore mid-login verification UI after a remount (not after app kill).
+          try {
+            const raw = sessionStorage.getItem("jj_auth_verify_state");
+            if (raw) {
+              const data = JSON.parse(raw);
+              setVerificationRequired(true);
+              setVerificationMethod(data.verificationMethod ?? "email");
+              setHas2FaFactor(!!data.has2FaFactor);
+              setEmailOtpSent(!!data.emailOtpSent);
+              if (identifierRef.current && data.identifier) {
+                identifierRef.current.value = data.identifier;
+              }
+            } else {
+              setVerificationRequired(true);
+              setVerificationMethod("email");
+            }
+          } catch {
+            setVerificationRequired(true);
+            setVerificationMethod("email");
+          }
+          return;
+        }
+
         const sessionRes = await supabase.auth.getSession();
         const session = sessionRes.data.session;
         if (!session?.user || cancelled) return;
@@ -350,7 +387,7 @@ function LoginForm({
           localStorage.getItem("jj_google_session") !== "false";
         if (isGoogleLogin) return;
 
-        // Mid-login session left after kill — clear it so user sees Sign In, not OTP.
+        // Stale password session after full app kill — clear it.
         await supabase.auth.signOut({ scope: "local" });
         if (cancelled) return;
         setVerificationRequired(false);
@@ -366,6 +403,26 @@ function LoginForm({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    try {
+      if (verificationRequired) {
+        sessionStorage.setItem("jj_auth_verifying", "1");
+        sessionStorage.setItem(
+          "jj_auth_verify_state",
+          JSON.stringify({
+            identifier: identifierRef.current?.value || "",
+            verificationMethod,
+            has2FaFactor,
+            emailOtpSent,
+          }),
+        );
+      } else {
+        sessionStorage.removeItem("jj_auth_verifying");
+        sessionStorage.removeItem("jj_auth_verify_state");
+      }
+    } catch {}
+  }, [verificationRequired, verificationMethod, has2FaFactor, emailOtpSent]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -439,6 +496,9 @@ function LoginForm({
       if (typeof window !== "undefined") {
         localStorage.setItem("jj_google_session", "false");
         setVerifiedStatus(false);
+        try {
+          sessionStorage.setItem("jj_auth_verifying", "1");
+        } catch {}
       }
 
       const { data: signed, error } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
@@ -525,6 +585,8 @@ function LoginForm({
       toast.success("Welcome back!");
       try {
         localStorage.removeItem("jj_temp_auth_verification");
+        sessionStorage.removeItem("jj_auth_verifying");
+        sessionStorage.removeItem("jj_auth_verify_state");
       } catch {}
       
       // Redirect — admin → admin inbox, user → user chats
@@ -593,6 +655,8 @@ function LoginForm({
       toast.success("Verified. Welcome back!");
       try {
         localStorage.removeItem("jj_temp_auth_verification");
+        sessionStorage.removeItem("jj_auth_verifying");
+        sessionStorage.removeItem("jj_auth_verify_state");
       } catch {}
       
       // Redirect — admin → admin inbox, user → user chats

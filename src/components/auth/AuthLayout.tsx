@@ -22,7 +22,13 @@ export function AuthLayout({ children, mode = "login", setMode, hideHeader = fal
       className="auth-layout relative flex flex-col w-full h-full min-h-0 bg-background overflow-y-auto overflow-x-hidden safe-pt safe-pb safe-pl safe-pr overscroll-contain"
       style={{ WebkitOverflowScrolling: "touch" }}
     >
-      <div className="absolute top-3 right-3 z-20">
+      {/* Absolute children ignore parent padding — offset below status bar / battery icons */}
+      <div
+        className="absolute right-3 z-20"
+        style={{
+          top: "max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.35rem), calc(var(--jj-sat, 0px) + 0.35rem))",
+        }}
+      >
         <ThemeToggle className="shadow-sm border border-border/30 touch-target" />
       </div>
 
