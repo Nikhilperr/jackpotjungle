@@ -456,12 +456,9 @@ function LoginForm({
 
     setMfaBusy(true);
     try {
-      // Same path as browser: Supabase Auth on the VPS (api.*) uses GoTrue SMTP from .env.
-      const { error } = await supabase.auth.signInWithOtp({
-        email: target,
-        options: { shouldCreateUser: false },
-      });
-      if (error) throw error;
+      // GoTrue /auth/v1/otp returns 504 here. VPS serverFn: generateLink + SMTP from .env.
+      const { sendLoginEmailOtp } = await import("@/lib/auth-otp.functions");
+      await sendLoginEmailOtp({ data: { email: target } });
       setEmailOtpSent(true);
       setResendCountdown(60);
       toast.success("Verification code sent to your email!");
@@ -471,7 +468,7 @@ function LoginForm({
       toast.error(
         formatAuthError(
           err,
-          "Couldn't send the verification code. Try Resend in a moment.",
+          "Couldn't send the verification code. Pull/rebuild the VPS app, then tap Resend.",
         ),
       );
     } finally {
@@ -508,12 +505,13 @@ function LoginForm({
       const has2fa = !listErr && factors?.totp?.some(f => f.status === "verified");
       setHas2FaFactor(has2fa);
 
+      // Show OTP/2FA UI immediately — send mail in background (don't block on SMTP).
       setVerificationRequired(true);
       if (has2fa) {
         setVerificationMethod(null);
       } else {
         setVerificationMethod("email");
-        await sendEmailOtp(email);
+        void sendEmailOtp(email);
       }
     } catch (err: unknown) {
       if (typeof window !== "undefined") {
@@ -538,13 +536,13 @@ function LoginForm({
         throw new Error("Enter the 6-digit code from your email.");
       }
 
-      // Same as browser: verify the code Auth emailed via VPS GoTrue SMTP.
+      // Codes come from admin.generateLink(magiclink) emailed by VPS SMTP.
       const token = otpCode.trim();
       let verifyErr = (
         await supabase.auth.verifyOtp({
           email,
           token,
-          type: "email",
+          type: "magiclink",
         })
       ).error;
 
@@ -553,7 +551,7 @@ function LoginForm({
           await supabase.auth.verifyOtp({
             email,
             token,
-            type: "magiclink",
+            type: "email",
           })
         ).error;
       }
