@@ -44,11 +44,19 @@ export const notifyRecentLogin = createServerFn({ method: "POST" })
             const val = vParts.join("=").trim().replace(/(^["']|["']$)/g, "");
             const keyUpper = k.trim().toUpperCase();
             
-            if (keyUpper === "SMTP_HOST") smtpConfig.host = val;
-            else if (keyUpper === "SMTP_PORT") smtpConfig.port = val;
-            else if (keyUpper === "SMTP_USER" || keyUpper === "SMTP_ADMIN_EMAIL") smtpConfig.user = val;
-            else if (keyUpper === "SMTP_PASS") smtpConfig.pass = val;
-            else if (keyUpper === "SMTP_SENDER" || keyUpper === "SMTP_SENDER_NAME" || keyUpper === "SMTP_FROM") smtpConfig.from = val;
+            if (keyUpper === "SMTP_HOST" || keyUpper === "GOTRUE_SMTP_HOST") smtpConfig.host = val;
+            else if (keyUpper === "SMTP_PORT" || keyUpper === "GOTRUE_SMTP_PORT") smtpConfig.port = val;
+            else if (keyUpper === "SMTP_USER" || keyUpper === "GOTRUE_SMTP_USER") smtpConfig.user = val;
+            else if (keyUpper === "SMTP_PASS" || keyUpper === "GOTRUE_SMTP_PASS" || keyUpper === "GOTRUE_SMTP_PASSWORD") smtpConfig.pass = val;
+            // From must be an email — SMTP_ADMIN_EMAIL, never SMTP_SENDER_NAME.
+            else if (
+              keyUpper === "SMTP_ADMIN_EMAIL" ||
+              keyUpper === "GOTRUE_SMTP_ADMIN_EMAIL" ||
+              keyUpper === "SMTP_FROM" ||
+              keyUpper === "SMTP_SENDER"
+            ) {
+              smtpConfig.from = val;
+            }
           }
         }
       } catch (e: any) {
