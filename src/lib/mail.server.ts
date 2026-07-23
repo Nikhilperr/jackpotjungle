@@ -8,16 +8,89 @@ export type MailPayload = {
   fromName?: string;
 };
 
-/** Brevo SMTP relay on port 2525 — usually open on DigitalOcean (465/587 are blocked). */
+type HostingerMailbox = { resourceId?: string; resource_id?: string; address?: string };
+
+/**
+ * Hostinger Mail REST API (HTTPS :443) — NOT blocked by DigitalOcean.
+ * Uses the same noreply@ mailbox; SMTP 465/587 from the droplet will never work on DO.
+ *
+ * Docs: POST https://api.mail.hostinger.com/api/v1/mailboxes/{id}/send
+ * Token: hPanel → Emails → Agentic Mail → API → Create token
+ */
+async function sendViaHostingerMailApi(
+  opts: MailPayload & { fromEmail: string; fromName: string },
+): Promise<{ via: string } | null> {
+  const token =
+    process.env.HOSTINGER_MAIL_TOKEN?.trim() ||
+    process.env.HOSTINGER_API_TOKEN?.trim() ||
+    "";
+  if (!token) return null;
+
+  let mailboxId =
+    process.env.HOSTINGER_MAILBOX_ID?.trim() ||
+    process.env.HOSTINGER_MAILBOX_RESOURCE_ID?.trim() ||
+    "";
+
+  // Resolve mailbox resource id from /me when only the address is known.
+  if (!mailboxId) {
+    const meRes = await fetch("https://api.mail.hostinger.com/api/v1/me", {
+      headers: { Authorization: `Bearer ${token}`, accept: "application/json" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!meRes.ok) {
+      console.warn(`[Mail] Hostinger /me ${meRes.status}:`, (await meRes.text()).slice(0, 200));
+      return null;
+    }
+    const me = (await meRes.json()) as any;
+    const boxes: HostingerMailbox[] =
+      me?.data?.mailboxes || me?.mailboxes || me?.data || [];
+    const list = Array.isArray(boxes) ? boxes : [];
+    const want = opts.fromEmail.toLowerCase();
+    const hit =
+      list.find((b) => (b.address || "").toLowerCase() === want) ||
+      list.find((b) => (b.address || "").toLowerCase().includes("noreply")) ||
+      list[0];
+    mailboxId = hit?.resourceId || hit?.resource_id || "";
+    if (!mailboxId) {
+      console.warn("[Mail] Hostinger /me returned no mailbox resourceId", JSON.stringify(me).slice(0, 300));
+      return null;
+    }
+    console.log(`[Mail] Hostinger mailbox ${hit?.address} → ${mailboxId}`);
+  }
+
+  const res = await fetch(
+    `https://api.mail.hostinger.com/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/send`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        to: [opts.to],
+        subject: opts.subject,
+        text: opts.text,
+        html: opts.html,
+        displayName: opts.fromName,
+      }),
+      signal: AbortSignal.timeout(25000),
+    },
+  );
+
+  if (res.ok || res.status === 204) {
+    console.log(`[Mail] Sent via Hostinger Mail API mailbox=${mailboxId}`);
+    return { via: "hostinger-api" };
+  }
+
+  console.warn(`[Mail] Hostinger send ${res.status}:`, (await res.text()).slice(0, 300));
+  return null;
+}
+
 async function sendViaBrevoSmtp2525(opts: MailPayload & { fromEmail: string; fromName: string }) {
   const user =
-    process.env.BREVO_SMTP_LOGIN?.trim() ||
-    process.env.BREVO_SMTP_USER?.trim() ||
-    "";
-  const pass =
-    process.env.BREVO_SMTP_KEY?.trim() ||
-    process.env.BREVO_SMTP_PASS?.trim() ||
-    "";
+    process.env.BREVO_SMTP_LOGIN?.trim() || process.env.BREVO_SMTP_USER?.trim() || "";
+  const pass = process.env.BREVO_SMTP_KEY?.trim() || process.env.BREVO_SMTP_PASS?.trim() || "";
   if (!user || !pass) return null;
 
   const nodemailer = (await import("nodemailer")).default;
@@ -48,21 +121,30 @@ async function sendViaBrevoSmtp2525(opts: MailPayload & { fromEmail: string; fro
 }
 
 /**
- * Send mail in an order that works on DigitalOcean:
- * 1) Brevo SMTP port 2525 (not blocked like Hostinger 465/587)
- * 2) HTTPS APIs (Brevo / Resend / webhook) on port 443
- * 3) Hostinger SMTP last (usually times out on DO)
+ * Delivery order (DigitalOcean-safe first):
+ * 1) Hostinger Mail HTTPS API (same Hostinger mailbox, port 443)
+ * 2) Brevo SMTP :2525 / Brevo+Resend HTTPS
+ * 3) Direct Hostinger SMTP (usually blocked on DO)
  */
 export async function sendTransactionalMail(opts: MailPayload): Promise<{ via: string }> {
   const cfg = loadSmtpConfig();
   const fromName = opts.fromName || cfg.fromName || "Jackpot Jungle";
   const fromEmail =
     process.env.MAIL_FROM?.trim() ||
+    process.env.HOSTINGER_MAIL_FROM?.trim() ||
     cfg.from ||
     cfg.user ||
     "noreply@playjackpotjungle.com";
 
-  // 1) Brevo SMTP :2525 — proven path when DO blocks 465/587
+  // 1) Hostinger HTTPS — preferred: uses your real Hostinger mailbox, inbox deliverability
+  try {
+    const h = await sendViaHostingerMailApi({ ...opts, fromEmail, fromName });
+    if (h) return h;
+  } catch (e: any) {
+    console.warn("[Mail] Hostinger API failed:", e?.message || e);
+  }
+
+  // 2) Brevo SMTP :2525
   try {
     const brevoSmtp = await sendViaBrevoSmtp2525({ ...opts, fromEmail, fromName });
     if (brevoSmtp) return brevoSmtp;
@@ -70,7 +152,7 @@ export async function sendTransactionalMail(opts: MailPayload): Promise<{ via: s
     console.warn("[Mail] Brevo SMTP :2525 failed:", e?.message || e);
   }
 
-  // 2) Custom HTTPS relay
+  // 3) Webhook
   const webhook = process.env.MAIL_WEBHOOK_URL?.trim();
   const webhookSecret = process.env.MAIL_WEBHOOK_SECRET?.trim();
   if (webhook) {
@@ -101,7 +183,7 @@ export async function sendTransactionalMail(opts: MailPayload): Promise<{ via: s
     }
   }
 
-  // 3) Brevo HTTPS API
+  // 4) Brevo HTTPS
   const brevoKey = process.env.BREVO_API_KEY?.trim();
   if (brevoKey) {
     try {
@@ -131,7 +213,7 @@ export async function sendTransactionalMail(opts: MailPayload): Promise<{ via: s
     }
   }
 
-  // 4) Resend HTTPS API
+  // 5) Resend HTTPS
   const resendKey = process.env.RESEND_API_KEY?.trim();
   if (resendKey) {
     try {
@@ -160,17 +242,16 @@ export async function sendTransactionalMail(opts: MailPayload): Promise<{ via: s
     }
   }
 
-  // 5) Hostinger / docker SMTP (usually blocked on DO)
+  // 6) Direct SMTP (Hostinger 465) — blocked on DO
   try {
     await sendSmtpMail(opts);
     return { via: "smtp" };
   } catch (e: any) {
-    const msg = e?.message || String(e);
-    console.error("[Mail] All send paths failed. Last SMTP error:", msg);
+    console.error("[Mail] All send paths failed:", e?.message || e);
     throw new Error(
-      "Email blocked on this VPS. Add Brevo (port 2525) to ~/app/.env: " +
-        "BREVO_SMTP_LOGIN=... BREVO_SMTP_KEY=... (from Brevo → SMTP & API). " +
-        "Also verify domain playjackpotjungle.com in Brevo so mail is not spam.",
+      "Could not send email. DigitalOcean blocks SMTP 465/587. " +
+        "Add HOSTINGER_MAIL_TOKEN to ~/app/.env (hPanel → Emails → Agentic Mail → API token). " +
+        "Optional: HOSTINGER_MAILBOX_ID if auto-detect fails.",
     );
   }
 }
