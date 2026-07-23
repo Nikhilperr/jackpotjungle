@@ -139,7 +139,7 @@ function ResetPage() {
               <div className="space-y-1.5">
                 <h3 className="font-bold text-lg text-foreground">Password Reset Complete!</h3>
                 <p className="text-xs text-muted-foreground">
-                  Your password has been updated. Redirecting you to the login page...
+                  Your password has been updated and two-factor authentication has been turned off for security. You can enable it again after you log in. Redirecting you to the login page...
                 </p>
               </div>
             </motion.div>
