@@ -468,7 +468,7 @@ function LoginForm({
       toast.error(
         formatAuthError(
           err,
-          "Couldn't send the verification code. Pull/rebuild the VPS app, then tap Resend.",
+          "Couldn't send the verification code. Rebuild the VPS (git pull && npm run build && pm2 restart all), then tap Resend.",
         ),
       );
     } finally {
@@ -536,13 +536,13 @@ function LoginForm({
         throw new Error("Enter the 6-digit code from your email.");
       }
 
-      // Codes come from admin.generateLink(magiclink) emailed by VPS SMTP.
+      // Codes from GoTrue /otp (email) or generateLink (magiclink).
       const token = otpCode.trim();
       let verifyErr = (
         await supabase.auth.verifyOtp({
           email,
           token,
-          type: "magiclink",
+          type: "email",
         })
       ).error;
 
@@ -551,7 +551,7 @@ function LoginForm({
           await supabase.auth.verifyOtp({
             email,
             token,
-            type: "email",
+            type: "magiclink",
           })
         ).error;
       }

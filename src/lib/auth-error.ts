@@ -9,6 +9,9 @@ export function formatAuthError(err: unknown, fallback: string): string {
     const t = raw.trim();
     if (!t || t === "{}" || t === "null" || t === "[object Object]") return "";
     // nginx / gateway HTML error pages
+    if (/connection timeout|etimedout|econnrefused|enotfound/i.test(t)) {
+      return "Mail server connection timed out on the VPS. Rebuild the app so OTP uses the Auth mailer, then try Resend.";
+    }
     if (/<html|<!doctype|504 Gateway|502 Bad Gateway|503 Service/i.test(t)) {
       if (/504/i.test(t)) return "Server timed out sending the email. Please try Resend in a moment.";
       if (/502|503/i.test(t)) return "Server is briefly unavailable. Please try again.";
