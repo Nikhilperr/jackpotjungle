@@ -13,25 +13,22 @@ interface AuthLayoutProps {
  * Touch-first auth shell: full-bleed on mobile (no floating website card),
  * desktop keeps the branded split panel.
  *
- * Native: fill #root (--jj-app-height), never min-h 100dvh — that fights the
- * keyboard resize and leaves a black void under the form on OnePlus/MIUI.
+ * Centered by default. When the Android keyboard opens (html.jj-keyboard-open),
+ * content top-aligns so the form stays visible without a black gap.
  */
 export function AuthLayout({ children, mode = "login", setMode, hideHeader = false }: AuthLayoutProps) {
   return (
     <div
-      className="relative flex flex-col w-full h-full min-h-0 bg-background overflow-y-auto overflow-x-hidden safe-pt safe-pb safe-pl safe-pr overscroll-contain"
+      className="auth-layout relative flex flex-col w-full h-full min-h-0 bg-background overflow-y-auto overflow-x-hidden safe-pt safe-pb safe-pl safe-pr overscroll-contain"
       style={{ WebkitOverflowScrolling: "touch" }}
     >
-      <div className="absolute top-3 right-3 z-20 safe-pt">
-        <div className="mt-[env(safe-area-inset-top,0px)]">
-          <ThemeToggle className="shadow-sm border border-border/30 touch-target" />
-        </div>
+      <div className="absolute top-3 right-3 z-20">
+        <ThemeToggle className="shadow-sm border border-border/30 touch-target" />
       </div>
 
-      {/* Top-align on small/native so keyboard never opens a black gap under a centered form */}
-      <div className="w-full flex-1 flex flex-col items-center justify-start lg:justify-center px-4 pt-6 pb-4 sm:px-6 min-h-0">
+      <div className="auth-layout-inner w-full flex-1 flex flex-col items-center justify-center px-4 py-6 sm:px-6 min-h-0">
         <div
-          className={`relative w-full z-10 flex flex-col lg:flex-row lg:bg-card lg:border lg:border-border/60 lg:rounded-[32px] lg:shadow-2xl lg:my-auto ${
+          className={`relative w-full z-10 flex flex-col lg:flex-row lg:bg-card lg:border lg:border-border/60 lg:rounded-[32px] lg:shadow-2xl ${
             hideHeader ? "max-w-md" : "max-w-lg lg:max-w-4xl"
           }`}
         >
@@ -99,7 +96,7 @@ export function AuthLayout({ children, mode = "login", setMode, hideHeader = fal
           )}
 
           <div
-            className={`w-full flex flex-col items-center justify-start py-2 sm:p-6 md:p-12 relative bg-background lg:bg-transparent ${
+            className={`w-full flex flex-col items-center justify-center py-2 sm:p-6 md:p-12 relative bg-background lg:bg-transparent ${
               hideHeader ? "lg:w-full" : "lg:w-1/2"
             }`}
           >

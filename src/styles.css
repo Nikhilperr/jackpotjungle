@@ -225,6 +225,11 @@
   html.native-android.jj-keyboard-open .native-safe-shell {
     padding-bottom: 0 !important;
   }
+  /* Auth: keep form centered; only top-align while keyboard is open */
+  html.native-android.jj-keyboard-open .auth-layout-inner {
+    justify-content: flex-start !important;
+    padding-top: 0.75rem !important;
+  }
   input, textarea, [contenteditable="true"] {
     user-select: text !important;
     -webkit-user-select: text !important;
