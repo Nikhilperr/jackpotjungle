@@ -292,7 +292,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   usePresence();
   useChatNotifications();
-  useNativePush();
+  // Soft notification ask only after home is up — never on splash/auth; never opens Settings.
+  useNativePush({ softAskNotifications: true });
 
   const verifyFn = useServerFn(verifyDeposit);
 

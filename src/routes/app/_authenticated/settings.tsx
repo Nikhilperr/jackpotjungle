@@ -8,6 +8,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { enableNativePushFromUserGesture } from "@/hooks/useNativePush";
+import { isNativeApp } from "@/lib/native/permissions";
 
 export const Route = createFileRoute("/app/_authenticated/settings")({
   ssr: false,
@@ -33,8 +35,18 @@ function SettingsPage() {
   }, [user]);
 
   const handlePushToggle = async (checked: boolean) => {
-    setPushEnabled(checked);
     if (!user) return;
+
+    // Turning ON on native: show the standard Android permission dialog (user intent).
+    if (checked && isNativeApp()) {
+      const granted = await enableNativePushFromUserGesture();
+      if (!granted) {
+        setPushEnabled(false);
+        return;
+      }
+    }
+
+    setPushEnabled(checked);
     const { error } = await supabase
       .from("profiles")
       .update({ notif_enabled: checked })

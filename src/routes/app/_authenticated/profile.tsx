@@ -151,15 +151,43 @@ function ProfilePage() {
 
   async function toggleNotif(v: boolean) {
     if (!profile) return;
+
+    // Native: request OS notification permission only when the user turns push ON.
+    if (v) {
+      try {
+        const { isNativeApp } = await import("@/lib/native/permissions");
+        if (isNativeApp()) {
+          const { enableNativePushFromUserGesture } = await import("@/hooks/useNativePush");
+          const granted = await enableNativePushFromUserGesture();
+          if (!granted) {
+            setNotifEnabled(false);
+            return;
+          }
+        } else if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+          const p = await Notification.requestPermission();
+          setPermission(p);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
     setNotifEnabled(v);
     await supabase.from("profiles").update({ notif_enabled: v } as any).eq("id", profile.id);
-    if (v && typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-      const p = await Notification.requestPermission();
-      setPermission(p);
-    }
   }
 
   async function requestPerm() {
+    try {
+      const { isNativeApp } = await import("@/lib/native/permissions");
+      if (isNativeApp()) {
+        const { enableNativePushFromUserGesture } = await import("@/hooks/useNativePush");
+        const granted = await enableNativePushFromUserGesture();
+        if (granted) toast.success("Notifications enabled.");
+        return;
+      }
+    } catch {
+      /* fall through to web */
+    }
     if (typeof window === "undefined" || !("Notification" in window)) return;
     const p = await Notification.requestPermission();
     setPermission(p);

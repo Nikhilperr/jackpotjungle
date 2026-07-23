@@ -123,7 +123,9 @@ export function VoiceRecorder({ disabled, uploading, hideIdle, onRecorded }: Pro
       startMeter(stream);
     } catch (err) {
       console.error(err);
-      alert("Microphone permission denied.");
+      // Just-in-time mic request failed — keep the app usable; user can retry later.
+      const { toastPermissionDenied } = await import("@/lib/native/permissions");
+      toastPermissionDenied("microphone");
     }
   }
 

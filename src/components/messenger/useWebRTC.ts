@@ -175,9 +175,8 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
       });
 
     (async () => {
+      const wantVideo = kind === "video";
       try {
-        const wantVideo = kind === "video";
-
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           video: wantVideo ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
@@ -206,7 +205,18 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
           }
         }
       } catch (e: any) {
-        setError(e.message ?? "Could not access camera/mic");
+        const msg = e?.name === "NotAllowedError" || /permission|denied/i.test(String(e?.message ?? ""))
+          ? (wantVideo
+              ? "Camera and microphone access is needed for this call. You can enable it later in system settings."
+              : "Microphone access is needed for this call. You can enable it later in system settings.")
+          : (e.message ?? "Could not access camera/mic");
+        setError(msg);
+        try {
+          const { toastPermissionDenied } = await import("@/lib/native/permissions");
+          toastPermissionDenied(wantVideo ? "camera" : "microphone");
+        } catch {
+          /* ignore */
+        }
       }
     })();
 
