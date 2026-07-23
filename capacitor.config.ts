@@ -17,11 +17,16 @@ const config: CapacitorConfig = {
     // in production — that forces the WebView to download UI from the VPS and breaks
     // offline/instant shell. Emergency remote-UI rollback only:
     // url: "https://chat.playjackpotjungle.com/app/auth",
-    cleartext: false,
-    allowNavigation: ["chat.playjackpotjungle.com", "admin.playjackpotjungle.com", "*.playjackpotjungle.com"],
+    cleartext: true, // allow http://157.245.93.210 fallback for serverFn
+    allowNavigation: [
+      "chat.playjackpotjungle.com",
+      "admin.playjackpotjungle.com",
+      "*.playjackpotjungle.com",
+      "157.245.93.210",
+    ],
   },
   android: {
-    allowMixedContent: false,
+    allowMixedContent: true,
   },
   plugins: {
     // Native HTTP so serverFn RPCs to the VPS are not blocked by WebView CORS

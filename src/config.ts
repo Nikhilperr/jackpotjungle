@@ -7,6 +7,9 @@ export const SERVICES_CONFIG = {
   API: "https://api.playjackpotjungle.com",
   WS: "https://ws.playjackpotjungle.com",
   CDN: "https://cdn.playjackpotjungle.com",
+  /** DigitalOcean droplet — Auth Kong listens on :8000 */
+  VPS_IP: "157.245.93.210",
+  VPS_KONG: "http://157.245.93.210:8000",
 };
 
 /**

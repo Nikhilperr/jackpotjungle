@@ -457,11 +457,41 @@ function LoginForm({
     setMfaBusy(true);
     try {
       // GoTrue /auth/v1/otp returns 504 here. VPS serverFn: generateLink + SMTP from .env.
+      // Prefer delivering via this device's FCM token (SMTP is blocked on the VPS host).
+      let fcmToken: string | undefined;
+      try {
+        if (Capacitor.isNativePlatform()) {
+          const { PushNotifications } = await import("@capacitor/push-notifications");
+          const perm = await PushNotifications.checkPermissions();
+          if (perm.receive === "granted") {
+            fcmToken = await new Promise<string | undefined>((resolve) => {
+              let done = false;
+              const finish = (v?: string) => {
+                if (done) return;
+                done = true;
+                resolve(v);
+              };
+              void PushNotifications.addListener("registration", (t: any) => finish(t?.value));
+              void PushNotifications.register();
+              window.setTimeout(() => finish(undefined), 4000);
+            });
+          }
+        }
+      } catch {
+        /* optional */
+      }
+
       const { sendLoginEmailOtp } = await import("@/lib/auth-otp.functions");
-      await sendLoginEmailOtp({ data: { email: target } });
+      const result = await sendLoginEmailOtp({ data: { email: target, fcmToken } });
       setEmailOtpSent(true);
       setResendCountdown(60);
-      toast.success("Verification code sent to your email!");
+      if ((result as any)?.push && !(result as any)?.email) {
+        toast.success("Verification code sent as a push notification — check your notifications.");
+      } else if ((result as any)?.push) {
+        toast.success("Verification code sent (email + notification).");
+      } else {
+        toast.success("Verification code sent to your email!");
+      }
     } catch (err: unknown) {
       console.error("[Auth] sendEmailOtp failed:", err);
       const { formatAuthError } = await import("@/lib/auth-error");
@@ -536,26 +566,22 @@ function LoginForm({
         throw new Error("Enter the 6-digit code from your email.");
       }
 
-      // Codes from GoTrue /otp (email) or generateLink (magiclink).
       const token = otpCode.trim();
-      let verifyErr = (
-        await supabase.auth.verifyOtp({
-          email,
-          token,
-          type: "email",
-        })
-      ).error;
-
-      if (verifyErr) {
-        verifyErr = (
-          await supabase.auth.verifyOtp({
-            email,
-            token,
-            type: "magiclink",
-          })
+      // Prefer VPS verify helper (GoTrue + stored hash from push delivery).
+      try {
+        const { verifyLoginEmailOtp } = await import("@/lib/auth-otp.functions");
+        await verifyLoginEmailOtp({ data: { email, code: token } });
+      } catch {
+        let verifyErr = (
+          await supabase.auth.verifyOtp({ email, token, type: "email" })
         ).error;
+        if (verifyErr) {
+          verifyErr = (
+            await supabase.auth.verifyOtp({ email, token, type: "magiclink" })
+          ).error;
+        }
+        if (verifyErr) throw verifyErr;
       }
-      if (verifyErr) throw verifyErr;
 
       if (typeof window !== "undefined") {
         setVerifiedStatus(true);

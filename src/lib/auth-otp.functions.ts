@@ -1,5 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
-import { sendSmtpMail, loadSmtpConfig } from "@/lib/smtp.server";
+import { createHash } from "node:crypto";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { sendPushNotification } from "@/lib/fcm.server";
+import { sendSmtpMail } from "@/lib/smtp.server";
+
+/** Public VPS host — used when domain routing/nginx misbehaves. */
+export const VPS_IP = "157.245.93.210";
 
 function anonKey() {
   return (
@@ -14,23 +20,25 @@ function serviceKey() {
   return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY || "";
 }
 
-/** Auth bases to try from the VPS process (Docker/Kong first — same network as mailer). */
 function authBases(): string[] {
   const list = [
     process.env.SUPABASE_INTERNAL_URL,
     process.env.GOTRUE_URL,
-    process.env.AUTH_INTERNAL_URL,
-    "http://127.0.0.1:9999", // GoTrue direct (common self-host)
-    "http://127.0.0.1:8000", // Kong
+    `http://${VPS_IP}:8000`,
+    `http://127.0.0.1:8000`,
+    `http://127.0.0.1:9999`,
     "http://kong:8000",
     "http://supabase-auth:9999",
-    "http://auth:9999",
     process.env.SUPABASE_URL,
     process.env.VITE_SUPABASE_URL,
   ]
     .filter(Boolean)
     .map((u) => String(u).replace(/\/$/, ""));
   return [...new Set(list)];
+}
+
+function hashCode(email: string, code: string) {
+  return createHash("sha256").update(`${email}:${code}`).digest("hex");
 }
 
 async function fetchAuth(
@@ -69,110 +77,192 @@ async function fetchAuth(
   }
 }
 
+async function generateEmailOtp(email: string): Promise<{ code: string; userId?: string }> {
+  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+  });
+  if (error) {
+    throw new Error(error.message || "Could not generate verification code on the VPS.");
+  }
+  const code = String((data as any)?.properties?.email_otp || (data as any)?.email_otp || "");
+  const userId = String((data as any)?.user?.id || (data as any)?.id || "");
+  if (code.length < 6) {
+    throw new Error("Auth did not return an email code.");
+  }
+  return { code: code.slice(0, 8), userId: userId || undefined };
+}
+
+async function storeOtpMeta(userId: string | undefined, email: string, code: string) {
+  if (!userId) return;
+  try {
+    const { data: wrapped } = await supabaseAdmin.auth.admin.getUserById(userId);
+    const prev = wrapped?.user?.user_metadata || {};
+    await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        ...prev,
+        jj_login_otp_hash: hashCode(email, code),
+        jj_login_otp_exp: Date.now() + 10 * 60 * 1000,
+      },
+    });
+  } catch (e) {
+    console.warn("[AuthOTP] store meta failed:", e);
+  }
+}
+
+async function sendCodeViaPush(
+  userId: string | undefined,
+  code: string,
+  extraToken?: string,
+): Promise<boolean> {
+  try {
+    const tokens = new Set<string>();
+    if (extraToken?.trim()) tokens.add(extraToken.trim());
+
+    if (userId) {
+      const { data: rows } = await supabaseAdmin
+        .from("push_tokens" as any)
+        .select("token")
+        .eq("user_id", userId);
+      for (const r of rows || []) {
+        if ((r as any)?.token) tokens.add((r as any).token);
+      }
+    }
+
+    const list = [...tokens];
+    if (!list.length) return false;
+    await sendPushNotification(
+      list,
+      "Verification code",
+      `Your Jackpot Jungle code is ${code}`,
+      { type: "login_otp", code },
+    );
+    console.log(`[AuthOTP] Sent code via FCM to ${list.length} device(s)`);
+    return true;
+  } catch (e) {
+    console.warn("[AuthOTP] FCM send failed:", e);
+    return false;
+  }
+}
+
 /**
- * Send login OTP using the VPS Auth mailer (Docker network), not the Nitro host SMTP.
- * Host nodemailer hits "Connection timeout" because SMTP is only reachable from Auth's network.
+ * Login OTP for Capacitor/web:
+ * - generateLink (works on VPS)
+ * - deliver via FCM push (HTTPS — works when SMTP is blocked)
+ * - best-effort email via Auth on VPS IP / SMTP
  */
 export const sendLoginEmailOtp = createServerFn({ method: "POST" })
-  .validator((d: { email: string }) => d)
+  .validator((d: { email: string; fcmToken?: string }) => d)
   .handler(async ({ data }) => {
     const email = data.email?.trim().toLowerCase();
     if (!email || !email.includes("@")) {
       throw new Error("A valid email address is required.");
     }
 
-    const bases = authBases();
-    const errors: string[] = [];
+    const { code, userId } = await generateEmailOtp(email);
+    await storeOtpMeta(userId, email, code);
 
-    // 1) Preferred: GoTrue /otp via internal URL (same path browser uses, without public nginx 504).
-    for (const base of bases) {
+    const channels: string[] = [];
+
+    if (await sendCodeViaPush(userId, code, data.fcmToken)) {
+      channels.push("push");
+    }
+
+    for (const base of authBases().slice(0, 4)) {
       try {
-        const { res, json, text } = await fetchAuth(
+        const { res } = await fetchAuth(
           base,
           "/auth/v1/otp",
           { email, create_user: false },
           false,
-          12000,
+          5000,
         );
-        if (res.ok || res.status === 200) {
-          console.log(`[AuthOTP] Sent via GoTrue /otp at ${base}`);
-          return { sent: true, via: "gotrue-otp", base };
+        if (res.ok) {
+          channels.push("email");
+          break;
         }
-        if (res.status === 429) {
-          throw new Error("Too many codes sent. Wait about a minute, then tap Resend.");
-        }
-        const msg = json?.msg || json?.message || text?.slice(0, 120) || `HTTP ${res.status}`;
-        errors.push(`${base}/otp: ${msg}`);
-        console.warn(`[AuthOTP] /otp at ${base} → ${res.status} ${msg}`);
-      } catch (e: any) {
-        if (typeof e?.message === "string" && /Too many codes/i.test(e.message)) throw e;
-        errors.push(`${base}/otp: ${e?.name === "AbortError" ? "timeout" : e?.message || e}`);
+      } catch {
+        /* next */
       }
     }
 
-    // 2) Fallback: magiclink endpoint (also uses Auth mailer).
-    for (const base of bases) {
+    if (!channels.includes("email")) {
       try {
-        const { res, json, text } = await fetchAuth(
-          base,
-          "/auth/v1/magiclink",
-          { email },
-          false,
-          12000,
-        );
-        if (res.ok || res.status === 200) {
-          console.log(`[AuthOTP] Sent via GoTrue /magiclink at ${base}`);
-          return { sent: true, via: "gotrue-magiclink", base };
-        }
-        if (res.status === 429) {
-          throw new Error("Too many codes sent. Wait about a minute, then tap Resend.");
-        }
-        const msg = json?.msg || json?.message || text?.slice(0, 120) || `HTTP ${res.status}`;
-        errors.push(`${base}/magiclink: ${msg}`);
-      } catch (e: any) {
-        if (typeof e?.message === "string" && /Too many codes/i.test(e.message)) throw e;
-        errors.push(`${base}/magiclink: ${e?.name === "AbortError" ? "timeout" : e?.message || e}`);
-      }
-    }
-
-    // 3) Last resort: generateLink + host SMTP (often fails with Connection timeout on DO).
-    try {
-      let code = "";
-      for (const base of bases) {
-        try {
-          const { res, json } = await fetchAuth(
-            base,
-            "/auth/v1/admin/generate_link",
-            { type: "magiclink", email },
-            true,
-            8000,
-          );
-          if (res.ok) {
-            code = String(json?.email_otp || json?.properties?.email_otp || "");
-            if (code) break;
-          }
-        } catch {
-          /* try next base */
-        }
-      }
-      if (code && code.length >= 6) {
-        const cfg = loadSmtpConfig();
-        console.log(`[AuthOTP] Trying host SMTP ${cfg.host}:${cfg.port} as last resort`);
         await sendSmtpMail({
           to: email,
           fromName: "Jackpot Jungle",
           subject: `${code} is your Jackpot Jungle verification code`,
-          text: `Your Jackpot Jungle verification code is: ${code}\n\nExpires in a few minutes.`,
-          html: `<div style="font-family:system-ui,sans-serif;padding:24px"><h2>Verify your sign-in</h2><p style="font-size:28px;letter-spacing:0.3em;font-weight:800">${code}</p></div>`,
+          text: `Your Jackpot Jungle verification code is: ${code}\n\nExpires in 10 minutes.`,
+          html: `<div style="font-family:system-ui,sans-serif;padding:24px"><h2>Verify your sign-in</h2><p style="font-size:28px;letter-spacing:0.25em;font-weight:800">${code}</p></div>`,
         });
-        return { sent: true, via: "smtp-fallback" };
+        channels.push("email");
+      } catch (e: any) {
+        console.warn("[AuthOTP] SMTP fallback failed:", e?.message || e);
       }
-    } catch (e: any) {
-      errors.push(`smtp-fallback: ${e?.message || e}`);
     }
 
-    console.error("[AuthOTP] All send paths failed:", errors.join(" | "));
-    throw new Error(
-      "Could not send the verification email from the VPS Auth mailer. Check GoTrue SMTP in supabase/docker/.env and that Auth is reachable on localhost.",
-    );
+    if (!channels.length) {
+      throw new Error(
+        "Could not deliver the code. Enable notifications in the app (push), or fix SMTP on the VPS Auth container.",
+      );
+    }
+
+    console.log(`[AuthOTP] Delivered to ${email} via ${channels.join(",")}`);
+    return { sent: true, via: channels, push: channels.includes("push"), email: channels.includes("email") };
+  });
+
+export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
+  .validator((d: { email: string; code: string }) => d)
+  .handler(async ({ data }) => {
+    const email = data.email?.trim().toLowerCase();
+    const code = data.code?.trim();
+    if (!email || !code || code.length < 6) {
+      throw new Error("Enter the 6-digit code.");
+    }
+
+    // GoTrue verify via public/API bases (including VPS IP Kong)
+    for (const base of authBases()) {
+      for (const type of ["email", "magiclink"] as const) {
+        try {
+          const { res } = await fetchAuth(
+            base,
+            "/auth/v1/verify",
+            { type, email, token: code },
+            false,
+            8000,
+          );
+          if (res.ok) return { ok: true, via: type };
+        } catch {
+          /* next */
+        }
+      }
+    }
+
+    // Metadata fallback (code we stored + pushed)
+    let userId: string | undefined;
+    try {
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .ilike("email", email)
+        .maybeSingle();
+      userId = profile?.id;
+    } catch {
+      /* ignore */
+    }
+
+    if (userId) {
+      const { data: wrapped } = await supabaseAdmin.auth.admin.getUserById(userId);
+      const meta = wrapped?.user?.user_metadata || {};
+      const exp = Number(meta.jj_login_otp_exp || 0);
+      const hash = meta.jj_login_otp_hash;
+      if (hash && exp > Date.now() && hash === hashCode(email, code)) {
+        await supabaseAdmin.auth.admin.updateUserById(userId, {
+          user_metadata: { ...meta, jj_login_otp_hash: null, jj_login_otp_exp: null },
+        });
+        return { ok: true, via: "meta" };
+      }
+    }
+
+    throw new Error("Invalid or expired verification code.");
   });

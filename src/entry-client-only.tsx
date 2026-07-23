@@ -10,6 +10,7 @@ import "./styles.css";
 initViewportHeightLock();
 
 const VPS_ORIGIN = "https://chat.playjackpotjungle.com";
+const VPS_IP_ORIGIN = "http://157.245.93.210";
 
 (window as any).__TSS_START_OPTIONS__ = {
   functionMiddleware: [attachSupabaseAuth],
@@ -61,7 +62,19 @@ if (typeof window !== "undefined") {
           /* keep */
         }
       }
-      return originalFetch(remoteUrl, init);
+      return originalFetch(remoteUrl, init).catch((err) => {
+        // Domain DNS/TLS issues → retry serverFn on the VPS IP (cleartext :80 nginx).
+        try {
+          const u = new URL(remoteUrl);
+          if (u.hostname.endsWith("playjackpotjungle.com")) {
+            const ipUrl = VPS_IP_ORIGIN + u.pathname + u.search;
+            return originalFetch(ipUrl, init);
+          }
+        } catch {
+          /* ignore */
+        }
+        throw err;
+      });
     }
     return originalFetch(input, init);
   };
