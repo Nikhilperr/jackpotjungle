@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { createHash } from "node:crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { goTrueSendEmailOtp, goTrueSendRecoveryOtp } from "@/lib/gotrue-mail.server";
 import { sendSmtpMail } from "@/lib/smtp.server";
 
 function hashCode(email: string, code: string) {
@@ -42,10 +43,38 @@ export async function disableAllMfaFactorsForUser(userId: string): Promise<numbe
   return removed;
 }
 
+async function sendCodeEmail(opts: {
+  email: string;
+  code: string;
+  kind: "login" | "recovery";
+}) {
+  const isLogin = opts.kind === "login";
+  await sendSmtpMail({
+    to: opts.email,
+    fromName: "Jackpot Jungle",
+    subject: isLogin
+      ? `${opts.code} is your Jackpot Jungle verification code`
+      : `${opts.code} is your Jackpot Jungle password reset code`,
+    text: isLogin
+      ? `Your Jackpot Jungle verification code is: ${opts.code}\n\nThis code expires in 10 minutes.`
+      : `Your Jackpot Jungle password reset code is: ${opts.code}\n\nThis code expires in 10 minutes.`,
+    html: `
+      <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+        <h2 style="margin: 0 0 12px; color: #111;">${isLogin ? "Verify your sign-in" : "Reset your password"}</h2>
+        <div style="font-size: 32px; letter-spacing: 0.35em; font-weight: 800; text-align: center;
+                    background: #f4f4f5; border-radius: 12px; padding: 16px 12px; margin: 20px 0; color: #111;">
+          ${opts.code}
+        </div>
+        <p style="color: #888; font-size: 12px;">Expires in 10 minutes.</p>
+      </div>
+    `,
+  });
+}
+
 /**
- * Login email OTP (second step after password).
- * Secure: requires Bearer session; email must match that user.
- * Delivery: VPS SMTP only (same .env / GOTRUE_SMTP_* as Auth) — no push / no other channels.
+ * Login email OTP after password.
+ * 1) Ask GoTrue (browser mailer) via localhost Kong — avoids DigitalOcean host SMTP block
+ * 2) Fallback: generateLink + SMTP (host, then Auth-container network)
  */
 export const sendLoginEmailOtp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -57,6 +86,14 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
     }
 
     const user = await assertSessionOwnsEmail(context.userId, email);
+
+    // Preferred: same Auth mailer the website uses (works even when PM2 host SMTP is blocked).
+    const go = await goTrueSendEmailOtp(email);
+    if (go.ok) {
+      console.log(`[AuthOTP] Login OTP emailed via GoTrue (${go.base}) for ${context.userId}`);
+      return { sent: true, via: "gotrue" as const };
+    }
+    console.warn("[AuthOTP] GoTrue mailer failed, falling back to generateLink+SMTP:", go.error);
 
     const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
@@ -83,40 +120,21 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
     });
 
     try {
-      await sendSmtpMail({
-        to: email,
-        fromName: "Jackpot Jungle",
-        subject: `${code} is your Jackpot Jungle verification code`,
-        text:
-          `Your Jackpot Jungle verification code is: ${code}\n\n` +
-          `This code expires in 10 minutes. If you did not try to sign in, ignore this email.`,
-        html: `
-          <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-            <h2 style="margin: 0 0 12px; color: #111;">Verify your sign-in</h2>
-            <p style="color: #444; font-size: 14px; line-height: 1.5;">
-              Use this code to finish signing in to Jackpot Jungle Messenger:
-            </p>
-            <div style="font-size: 32px; letter-spacing: 0.35em; font-weight: 800; text-align: center;
-                        background: #f4f4f5; border-radius: 12px; padding: 16px 12px; margin: 20px 0; color: #111;">
-              ${code}
-            </div>
-            <p style="color: #888; font-size: 12px;">Expires in 10 minutes.</p>
-          </div>
-        `,
-      });
+      await sendCodeEmail({ email, code, kind: "login" });
     } catch (e: any) {
       console.error("[AuthOTP] SMTP send failed:", e?.message || e);
       throw new Error(
-        "Could not send the verification email. Check GOTRUE_SMTP_* / SMTP_* in the VPS supabase/docker/.env (same settings the website Auth mailer uses), then restart Auth and the app.",
+        "Could not send the verification email. DigitalOcean may be blocking SMTP ports 465/587 — open a DO support ticket to unlock SMTP, or ensure Auth (GoTrue) mailer works on localhost:8000.",
       );
     }
 
-    console.log(`[AuthOTP] Email OTP sent to ${email} for user ${context.userId}`);
-    return { sent: true, via: "email" };
+    console.log(`[AuthOTP] Email OTP sent via SMTP fallback to ${email}`);
+    return { sent: true, via: "smtp" as const };
   });
 
 /**
- * Verify email OTP for the signed-in password session only.
+ * Verify email OTP for the signed-in password session (SMTP-fallback codes only).
+ * GoTrue-delivered codes should be verified with supabase.auth.verifyOtp on the client.
  */
 export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -146,11 +164,7 @@ export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/**
- * Forgot-password email OTP.
- * Uses Auth generateLink(recovery) + VPS SMTP (same as login OTP).
- * Does not use GoTrue /otp (that path 504s when SMTP is blocked).
- */
+/** Forgot-password: GoTrue recover first, then SMTP fallback. */
 export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
   .validator((d: { email: string }) => d)
   .handler(async ({ data }) => {
@@ -159,8 +173,13 @@ export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
       throw new Error("A valid email address is required.");
     }
 
-    // Always return a generic success shape to avoid account enumeration.
-    // Only attempt send when Auth can generate a recovery code for this address.
+    const go = await goTrueSendRecoveryOtp(email);
+    if (go.ok) {
+      console.log(`[AuthOTP] Recovery OTP emailed via GoTrue (${go.base})`);
+      return { sent: true, via: "gotrue" as const };
+    }
+    console.warn("[AuthOTP] GoTrue recover failed, SMTP fallback:", go.error);
+
     try {
       const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
         type: "recovery",
@@ -168,7 +187,7 @@ export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
       });
       if (linkErr) {
         console.warn("[AuthOTP] recovery generateLink:", linkErr.message);
-        return { sent: true, via: "email" };
+        return { sent: true, via: "email" as const };
       }
 
       const code = String(
@@ -176,39 +195,19 @@ export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
       ).slice(0, 8);
       if (code.length < 6) {
         console.warn("[AuthOTP] recovery link missing email_otp");
-        return { sent: true, via: "email" };
+        return { sent: true, via: "email" as const };
       }
 
-      await sendSmtpMail({
-        to: email,
-        fromName: "Jackpot Jungle",
-        subject: `${code} is your Jackpot Jungle password reset code`,
-        text:
-          `Your Jackpot Jungle password reset code is: ${code}\n\n` +
-          `This code expires in 10 minutes. If you did not request a reset, ignore this email.`,
-        html: `
-          <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-            <h2 style="margin: 0 0 12px; color: #111;">Reset your password</h2>
-            <p style="color: #444; font-size: 14px; line-height: 1.5;">
-              Use this code to reset your Jackpot Jungle Messenger password:
-            </p>
-            <div style="font-size: 32px; letter-spacing: 0.35em; font-weight: 800; text-align: center;
-                        background: #f4f4f5; border-radius: 12px; padding: 16px 12px; margin: 20px 0; color: #111;">
-              ${code}
-            </div>
-            <p style="color: #888; font-size: 12px;">Expires in 10 minutes.</p>
-          </div>
-        `,
-      });
-      console.log(`[AuthOTP] Recovery email OTP sent to ${email}`);
+      await sendCodeEmail({ email, code, kind: "recovery" });
+      console.log(`[AuthOTP] Recovery email OTP sent via SMTP to ${email}`);
     } catch (e: any) {
       console.error("[AuthOTP] Recovery SMTP send failed:", e?.message || e);
       throw new Error(
-        "Could not send the verification email. Fix SMTP on the VPS (see GOTRUE_SMTP_* / SMTP_*), then try again.",
+        "Could not send the verification email. Unlock SMTP on DigitalOcean or fix Auth mailer.",
       );
     }
 
-    return { sent: true, via: "email" };
+    return { sent: true, via: "smtp" as const };
   });
 
 /** After forgot-password reset: drop Authenticator 2FA so the user can sign in and re-enroll. */

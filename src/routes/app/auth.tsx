@@ -538,8 +538,26 @@ function LoginForm({
         throw new Error("Enter the 6-digit code from your email.");
       }
 
-      const { verifyLoginEmailOtp } = await import("@/lib/auth-otp.functions");
-      await verifyLoginEmailOtp({ data: { email, code: otpCode.trim() } });
+      // GoTrue-delivered codes → verifyOtp; SMTP-fallback codes → server hash verify.
+      const token = otpCode.trim();
+      let verified = false;
+      const otpRes = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: "email",
+      });
+      if (!otpRes.error) {
+        verified = true;
+      } else {
+        try {
+          const { verifyLoginEmailOtp } = await import("@/lib/auth-otp.functions");
+          await verifyLoginEmailOtp({ data: { email, code: token } });
+          verified = true;
+        } catch {
+          throw otpRes.error;
+        }
+      }
+      if (!verified) throw new Error("Invalid or expired verification code.");
 
       if (typeof window !== "undefined") {
         setVerifiedStatus(true);
