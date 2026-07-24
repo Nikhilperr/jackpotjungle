@@ -33,8 +33,11 @@ async function hideNativeSplash() {
 }
 
 export function initializeNativeBridge(router: any) {
-  if (!isNative()) return;
+  // Soft resume (tab focus / app foreground) — web + native.
+  // Self-guards so Strict Mode remounts do not double-bind listeners.
+  initLifecycleMonitoring(router);
 
+  if (!isNative()) return;
   if (isInitialized) return;
   isInitialized = true;
 
@@ -49,7 +52,6 @@ export function initializeNativeBridge(router: any) {
     initViewportHeightLock();
     initNetworkMonitoring(router);
     initBackButtonHandler(router);
-    initLifecycleMonitoring(router);
 
     // Keep Capacitor splash until chats/auth has painted — avoids black gap.
     const hideAfterPaint = () => {

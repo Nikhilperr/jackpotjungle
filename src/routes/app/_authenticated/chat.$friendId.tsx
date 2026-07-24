@@ -846,9 +846,12 @@ function ChatView() {
     }));
   }, [isGroup, groupId, friendId]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { soft?: boolean }) => {
     if (!meId) return;
-    isInitialLoadRef.current = true;
+    // Soft resume must NOT reset scroll pin / opacity — that caused black flash.
+    if (!opts?.soft) {
+      isInitialLoadRef.current = true;
+    }
 
     if (isGroup) {
       const cachedDetails = getCachedGroupDetails(groupId || "");
@@ -1140,7 +1143,7 @@ function ChatView() {
     isMountedRef.current = true;
     load();
     const onForeground = () => {
-      if (isMountedRef.current) void load();
+      if (isMountedRef.current) void load({ soft: true });
     };
     window.addEventListener("jj-app-foreground", onForeground);
     return () => {

@@ -100,9 +100,11 @@ export function useRole() {
 
     // Re-use the shared initial session Promise to avoid a duplicate getSession()
     // network/storage read during cold boot.
+    // Never flip loading→true when role is already cached — that blanked admin
+    // (Messenger black flash) while auth was still hydrating.
     getSharedInitialSession().then((session) => {
       if (mounted) {
-        load(session?.user?.id ?? null, true);
+        load(session?.user?.id ?? null, !readCachedRole());
       }
     });
 

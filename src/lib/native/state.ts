@@ -10,8 +10,12 @@ const AppStub = {
 const App = getSafePlugin("App", AppStub);
 
 const LAST_ROUTE_KEY = "chancerealm_last_route";
+let lifecycleInitialized = false;
 
 export function initLifecycleMonitoring(router: any) {
+  if (lifecycleInitialized) return;
+  lifecycleInitialized = true;
+
   // 1. Continuous route caching for session recovery (works on both Web & Native)
   router.subscribe((state: any) => {
     const path = state.location.pathname;
@@ -19,6 +23,23 @@ export function initLifecycleMonitoring(router: any) {
     if (path && !path.includes("/auth") && !path.includes("/reset-password") && path !== "/") {
       localStorage.setItem(LAST_ROUTE_KEY, path);
     }
+  });
+
+  const emitForeground = () => {
+    try {
+      window.dispatchEvent(new CustomEvent("jj-app-foreground"));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Web tab resume + bfcache: soft-sync only — never reload the document.
+  const onVisible = () => {
+    if (document.visibilityState === "visible") emitForeground();
+  };
+  document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("pageshow", (e) => {
+    if ((e as PageTransitionEvent).persisted) emitForeground();
   });
 
   if (!isNative()) return;
@@ -29,11 +50,7 @@ export function initLifecycleMonitoring(router: any) {
     if (state.isActive) {
       // Drain offline outbox, then ask open screens to catch up (inbox/thread).
       void NetworkManager.processQueues().catch(() => {});
-      try {
-        window.dispatchEvent(new CustomEvent("jj-app-foreground"));
-      } catch {
-        /* ignore */
-      }
+      emitForeground();
     } else {
       try {
         window.dispatchEvent(new CustomEvent("jj-app-background"));

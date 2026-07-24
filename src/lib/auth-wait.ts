@@ -7,6 +7,12 @@ import type { Session } from "@supabase/supabase-js";
 // WebView storage reads and JWT validation round-trips. This shared Promise
 // resolves exactly once and is reused by every caller.
 let _sharedSessionPromise: Promise<Session | null> | null = null;
+/** Sync peek for hooks — undefined until first resolve. */
+let _lastKnownSession: Session | null | undefined = undefined;
+
+export function peekLastKnownSession(): Session | null | undefined {
+  return _lastKnownSession;
+}
 
 export function getSharedInitialSession(): Promise<Session | null> {
   // OAuth / magic-link returns with tokens in the hash. Never cache a premature
@@ -43,7 +49,10 @@ export function getSharedInitialSession(): Promise<Session | null> {
                 "",
                 window.location.pathname + window.location.search,
               );
-              if (data.session) return data.session;
+              if (data.session) {
+                _lastKnownSession = data.session;
+                return data.session;
+              }
             } catch (e) {
               console.error("Failed to set session from URL hash:", e);
             }
@@ -52,8 +61,10 @@ export function getSharedInitialSession(): Promise<Session | null> {
       }
       try {
         const { data } = await supabase.auth.getSession();
+        _lastKnownSession = data.session ?? null;
         return data.session ?? null;
       } catch {
+        _lastKnownSession = null;
         return null;
       }
     })();
@@ -64,11 +75,13 @@ export function getSharedInitialSession(): Promise<Session | null> {
 /** Call on SIGNED_OUT so the next login triggers a fresh lookup. */
 export function clearSharedSessionCache() {
   _sharedSessionPromise = null;
+  _lastKnownSession = null;
 }
 
 /** Keep route guards warm with the latest session from auth events. */
 export function setSharedSessionCache(session: Session | null) {
   _sharedSessionPromise = Promise.resolve(session);
+  _lastKnownSession = session;
 }
 
 // Keep the shared cache in sync with auth events.

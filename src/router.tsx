@@ -29,7 +29,9 @@ export const getRouter = () => {
     scrollRestoration: true,
     defaultPreloadStaleTime: 15000,
     defaultPendingComponent: DefaultPending,
-    defaultPendingMs: 0,
+    // Avoid flashing a full black pending screen on brief resume / remount waits.
+    defaultPendingMs: 2000,
+    defaultPendingMinMs: 0,
   });
 
   return router;

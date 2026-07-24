@@ -266,8 +266,16 @@ type ConvRow = {
 };
 
 function AdminPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { isAdmin, isSuperAdmin, permissions, loading } = useRole();
+  // Instant resume: never wait on auth remount — local id paints the shell.
+  const meId =
+    user?.id ||
+    (typeof window !== "undefined" ? localStorage.getItem("jj_me_id") : null);
+  const cachedRole =
+    typeof window !== "undefined" ? localStorage.getItem("jj_user_role") : null;
+  const cachedAdmin =
+    cachedRole === "admin" || cachedRole === "super_admin";
   const activePermissions = useMemo(() => permissions && permissions.length > 0 ? permissions : DEFAULT_PERMISSIONS, [permissions]);
   const hasPerm = useCallback((t: string) => isSuperAdmin || activePermissions.includes(t), [isSuperAdmin, activePermissions]);
   const navigate = useNavigate();
@@ -430,17 +438,28 @@ function AdminPage() {
   }
 
   useEffect(() => {
-    if (!loading && isAdmin && user) {
+    if ((isAdmin || cachedAdmin) && meId) {
       signalShellReady();
     }
-  }, [loading, isAdmin, user]);
+  }, [isAdmin, cachedAdmin, meId]);
 
-  if (loading || !isAdmin || !user) {
-    // Signing out: keep a solid screen while router moves to /app/auth (not blank).
-    if (typeof window !== "undefined" && sessionStorage.getItem("jj_signing_out") === "1") {
-      return <div className="h-full w-full bg-background" aria-hidden="true" />;
-    }
+  if (typeof window !== "undefined" && sessionStorage.getItem("jj_signing_out") === "1") {
+    return <div className="h-full w-full bg-background" aria-hidden="true" />;
+  }
+
+  // Confirmed not admin — leave (redirect effect also navigates).
+  if (!loading && !isAdmin && !cachedAdmin) {
     return null;
+  }
+
+  // Confirmed signed out with no cached shell id.
+  if (!authLoading && !loading && !meId) {
+    return null;
+  }
+
+  // Waiting for session id with no cache — solid underlay, not React null (black).
+  if (!meId) {
+    return <div className="h-full w-full bg-background native-safe-shell" aria-hidden="true" />;
   }
 
   function selectTab(t: string) {
@@ -530,13 +549,13 @@ function AdminPage() {
 
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden relative min-h-0">
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "inbox" ? "" : "hidden"}`}>
-          <InboxView meId={user.id} onOpenNav={() => setNavOpen(true)} onUserClick={handleNavigateToUserChat} />
+          <InboxView meId={meId} onOpenNav={() => setNavOpen(true)} onUserClick={handleNavigateToUserChat} />
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "teamchat" ? "" : "hidden"}`}>
-          <TeamChatView meId={user.id} onOpenNav={() => setNavOpen(true)} onUserClick={handleNavigateToUserChat} />
+          <TeamChatView meId={meId} onOpenNav={() => setNavOpen(true)} onUserClick={handleNavigateToUserChat} />
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "quickreplies" ? "" : "hidden"}`}>
-          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Quick Replies"><QuickRepliesView meId={user.id} /></ScrollWrap>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Quick Replies"><QuickRepliesView meId={meId} /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "tags" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Tags"><TagsView /></ScrollWrap>
@@ -545,10 +564,10 @@ function AdminPage() {
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Broadcasts"><BroadcastsView /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "followups" ? "" : "hidden"}`}>
-          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Follow-ups"><FollowupsView meId={user.id} /></ScrollWrap>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Follow-ups"><FollowupsView meId={meId} /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "autoresp" ? "" : "hidden"}`}>
-          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Auto-response"><AutoResponsesView meId={user.id} /></ScrollWrap>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Auto-response"><AutoResponsesView meId={meId} /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "referrals" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Referrals"><ReferralsAdminView onUserClick={handleNavigateToUserChat} /></ScrollWrap>
@@ -558,7 +577,7 @@ function AdminPage() {
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "users" ? "" : "hidden"}`}>
           <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Users Management">
-            <UsersManagementView meId={user.id} />
+            <UsersManagementView meId={meId} />
           </ScrollWrap>
         </div>
         {isSuperAdmin && (
@@ -570,7 +589,7 @@ function AdminPage() {
         )}
         {tab === "monitor" && (
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-            <MonitorChatsView meId={user.id} onOpenNav={() => setNavOpen(true)} />
+            <MonitorChatsView meId={meId} onOpenNav={() => setNavOpen(true)} />
           </div>
         )}
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "push_notifications" ? "" : "hidden"}`}>
@@ -579,10 +598,10 @@ function AdminPage() {
           </ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "rules" ? "" : "hidden"}`}>
-          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Rules"><SystemAnnouncementsAdminView channelType="rules" meId={user.id} /></ScrollWrap>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Rules"><SystemAnnouncementsAdminView channelType="rules" meId={meId} /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "updates" ? "" : "hidden"}`}>
-          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Updates"><SystemAnnouncementsAdminView channelType="updates" meId={user.id} /></ScrollWrap>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="Updates"><SystemAnnouncementsAdminView channelType="updates" meId={meId} /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "admins" ? "" : "hidden"}`}>
           <AdminsView onOpenNav={() => setNavOpen(true)} />
@@ -612,7 +631,7 @@ function AdminPage() {
           </div>
         )}
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "profile" ? "" : "hidden"}`}>
-          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={user.id} email={user.email ?? null} /></ScrollWrap>
+          <ScrollWrap onOpenNav={() => setNavOpen(true)} title="My profile"><AdminProfileView userId={meId} email={user?.email ?? null} /></ScrollWrap>
         </div>
         <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${tab === "aichat" ? "" : "hidden"}`}>
           <AIWorkspace
@@ -1425,7 +1444,11 @@ const [myUsername, setMyUsername] = useState("Admin");
     };
     void softCatchUp();
     const softTimer = setInterval(() => { void softCatchUp(); }, 1500);
-    const onResume = () => { void softCatchUp(); void load(); };
+    const onResume = () => {
+      // Soft only — keep painted inbox; never toggle loadingConvs (black flash).
+      void softCatchUp();
+      void load();
+    };
     window.addEventListener("jj-app-foreground", onResume);
     window.addEventListener("jj-network-restored", onResume);
 

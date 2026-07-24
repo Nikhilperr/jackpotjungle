@@ -13,6 +13,42 @@ import {
 
 const LOGOUT_MSG = "You have been logged out.";
 
+/** True only for definitive auth failures — never for offline / network blips. */
+function isDefinitiveAuthFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { status?: number; code?: string; message?: string; name?: string };
+  const status = e.status;
+  if (status === 401 || status === 403) return true;
+  const code = String(e.code || "").toLowerCase();
+  if (
+    code.includes("session_not_found") ||
+    code.includes("invalid_token") ||
+    code.includes("refresh_token") ||
+    code.includes("user_not_found")
+  ) {
+    return true;
+  }
+  const msg = String(e.message || "").toLowerCase();
+  if (
+    msg.includes("invalid refresh token") ||
+    msg.includes("session from session_id claim in jwt does not exist") ||
+    msg.includes("user from sub claim in jwt does not exist")
+  ) {
+    return true;
+  }
+  // Network / timeout / Abort — keep the UI; do not kick.
+  if (
+    e.name === "AuthRetryableFetchError" ||
+    msg.includes("failed to fetch") ||
+    msg.includes("network") ||
+    msg.includes("timeout") ||
+    msg.includes("abort")
+  ) {
+    return false;
+  }
+  return false;
+}
+
 /**
  * Listen for remote "log out this device" broadcasts.
  * When another device terminates this session, sign out instantly (Messenger-style).
@@ -109,24 +145,34 @@ export function useSessionKillListener(enabled = true) {
 
     void subscribe();
 
-    // Re-check when app returns to foreground (missed broadcast while backgrounded).
+    // Soft re-check on resume — never kick on network blips (that caused black reload flashes).
+    const softAuthRecheck = async () => {
+      if (!mySessionId || signingOut.current) return;
+      try {
+        const { data: local } = await supabase.auth.getSession();
+        if (!local.session) {
+          const { data, error } = await supabase.auth.getUser();
+          if (error && isDefinitiveAuthFailure(error)) {
+            await kickNow();
+            return;
+          }
+          if (!data.user) await kickNow();
+          return;
+        }
+        const { error } = await supabase.auth.getUser();
+        if (error && isDefinitiveAuthFailure(error)) await kickNow();
+      } catch {
+        /* offline / flaky — keep chat painted */
+      }
+    };
+
     let removeAppListener: (() => void) | undefined;
     if (Capacitor.isNativePlatform()) {
       void import("@capacitor/app")
         .then(async ({ App }) => {
           const handle = await App.addListener("appStateChange", async (state) => {
-            if (!state.isActive || !mySessionId || signingOut.current) return;
-            try {
-              const { error } = await supabase.auth.getUser();
-              if (error) {
-                await kickNow();
-                return;
-              }
-              const { data: sess } = await supabase.auth.getSession();
-              if (!sess.session) await kickNow();
-            } catch {
-              await kickNow();
-            }
+            if (!state.isActive) return;
+            await softAuthRecheck();
           });
           if (!cancelled) {
             removeAppListener = () => {
@@ -139,24 +185,19 @@ export function useSessionKillListener(enabled = true) {
         .catch(() => {});
     }
 
-    // Visibility re-check on web (tab focus after being kicked).
     const onVisible = () => {
-      if (document.visibilityState !== "visible" || !mySessionId || signingOut.current) return;
-      void supabase.auth.getUser().then(({ error }) => {
-        if (error) void kickNow();
-      });
+      if (document.visibilityState !== "visible") return;
+      void softAuthRecheck();
     };
     document.addEventListener("visibilitychange", onVisible);
 
     const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.id) mySessionId = session.id;
       if (session?.user?.id) userId = session.user.id;
-      // Token refresh failed after remote session delete → friendly logout, not "invalid token".
       if (
         (event === "TOKEN_REFRESHED" && !session) ||
         (event === "SIGNED_OUT" && sessionStorage.getItem(FORCED_LOGOUT_KEY) !== "1")
       ) {
-        // Only auto-kick on unexpected sign-out if we still thought we had a session id.
         if (event === "SIGNED_OUT" && mySessionId && !signingOut.current) {
           // Manual logout elsewhere — leave alone.
         }
