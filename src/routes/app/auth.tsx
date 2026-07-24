@@ -82,9 +82,22 @@ function AuthPage() {
           toast.info(remoteMsg || "You have been logged out.", { duration: 5000 });
         }
         try {
+          sessionStorage.setItem("jj_signing_out", "1");
+          sessionStorage.setItem("jj_just_logged_out", "1");
+        } catch {}
+        try {
+          // Ensure native Google account is cleared even if we arrived via hard redirect.
+          if (Capacitor.isNativePlatform()) {
+            const { nativeGoogleSignOut } = await import("@/lib/google-auth-native");
+            await nativeGoogleSignOut();
+          }
+        } catch {}
+        try {
           await supabase.auth.signOut({ scope: "local" });
         } catch {}
         try {
+          const { clearSharedSessionCache } = await import("@/lib/auth-wait");
+          clearSharedSessionCache();
           // Clear auth/session keys only — keep theme & AI history.
           const keep = (k: string) =>
             k.startsWith("jj_ai_") ||
@@ -95,7 +108,8 @@ function AuthPage() {
             if (key && !keep(key)) localStorage.removeItem(key);
           }
           setVerifiedStatus(false);
-          sessionStorage.removeItem("jj_signing_out");
+          // Keep jj_just_logged_out until AuthRedirect sees user === null
+          // (removing jj_signing_out too early caused instant re-login on web).
         } catch {}
         setMode("welcome");
         navigate({ search: (old: any) => ({ ...old, logout: undefined }), replace: true });
@@ -113,6 +127,27 @@ function AuthPage() {
   useEffect(() => {
     if (loading || roleLoading || isLogoutRequest) {
       console.log("[AuthRedirect] Bypassing because loading:", loading, "roleLoading:", roleLoading, "isLogoutRequest:", isLogoutRequest);
+      return;
+    }
+
+    // After logout, never auto-bounce back into the app while a stale user
+    // object is still briefly present in React state.
+    let justLoggedOut = false;
+    try {
+      justLoggedOut =
+        sessionStorage.getItem("jj_just_logged_out") === "1" ||
+        sessionStorage.getItem("jj_signing_out") === "1";
+    } catch {}
+    if (justLoggedOut) {
+      if (!user) {
+        try {
+          sessionStorage.removeItem("jj_just_logged_out");
+          sessionStorage.removeItem("jj_signing_out");
+        } catch {}
+      } else {
+        console.log("[AuthRedirect] Blocking redirect — logout in progress");
+        void supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      }
       return;
     }
     
@@ -193,7 +228,7 @@ function AuthPage() {
     } else {
       console.log("[AuthRedirect] No user present.");
     }
-  }, [user, loading, isAdmin, roleLoading, navigate]);
+  }, [user, loading, isAdmin, roleLoading, navigate, isLogoutRequest]);
 
   async function signInWithGoogle() {
     if (googleBusy) return;
@@ -229,7 +264,9 @@ function AuthPage() {
           options: {
             redirectTo: window.location.origin + "/app/auth",
             queryParams: {
+              // Always show account chooser after logout / when switching users.
               prompt: "select_account",
+              access_type: "offline",
             },
           },
         });

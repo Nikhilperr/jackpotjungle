@@ -1,13 +1,20 @@
 import { Capacitor } from "@capacitor/core";
 import type { QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { setVerifiedStatus } from "@/lib/auth-wait";
+import { clearSharedSessionCache, setVerifiedStatus } from "@/lib/auth-wait";
+import { nativeGoogleSignOut } from "@/lib/google-auth-native";
 
 type NavigateFn = (opts: {
   to: "/app/auth";
   search: { logout: string };
   replace: boolean;
 }) => void | Promise<void>;
+
+function expireCookie(name: string, domain?: string) {
+  const base = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+  document.cookie = domain ? `${base}; domain=${domain}; Secure` : `${base}; Secure`;
+  document.cookie = domain ? `${base}; domain=${domain}` : base;
+}
 
 function clearAuthBrowserStorage() {
   if (typeof window === "undefined") return;
@@ -20,10 +27,10 @@ function clearAuthBrowserStorage() {
     sessionStorage.removeItem("jj_auth_verifying");
     sessionStorage.removeItem("jj_auth_verify_state");
     sessionStorage.setItem("jj_signing_out", "1");
+    sessionStorage.setItem("jj_just_logged_out", "1");
 
     const hostname = window.location.hostname.toLowerCase();
     const isProd = hostname.endsWith("playjackpotjungle.com");
-    const domain = isProd ? "; domain=.playjackpotjungle.com" : "";
 
     // Clear Supabase auth keys from localStorage + cookies (custom storage adapter).
     const keys: string[] = [];
@@ -33,10 +40,25 @@ function clearAuthBrowserStorage() {
         keys.push(k);
       }
     }
+    // Also clear common cookie names even if localStorage already empty.
+    try {
+      for (const part of document.cookie.split(";")) {
+        const name = part.split("=")[0]?.trim();
+        if (
+          name &&
+          (name.startsWith("sb-") || name.includes("auth-token") || name.startsWith("supabase."))
+        ) {
+          if (!keys.includes(name)) keys.push(name);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
     for (const k of keys) {
       localStorage.removeItem(k);
-      document.cookie = `${k}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${domain}`;
-      document.cookie = `${k}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure${domain}`;
+      expireCookie(k);
+      if (isProd) expireCookie(k, ".playjackpotjungle.com");
     }
   } catch {
     /* ignore */
@@ -50,9 +72,27 @@ function clearAuthBrowserStorage() {
  * /app/auth has no static file in the APK, so the WebView goes blank.
  */
 export async function performSignOut(qc?: QueryClient, navigate?: NavigateFn) {
-  clearAuthBrowserStorage();
+  // Mark logout early so auth page won't auto-redirect back into the app.
+  try {
+    sessionStorage.setItem("jj_signing_out", "1");
+    sessionStorage.setItem("jj_just_logged_out", "1");
+  } catch {
+    /* ignore */
+  }
 
-  // Revoke session first on web so subdomain cookies can't resurrect it.
+  // Capture uid BEFORE wiping tokens (for online:false).
+  let uid: string | undefined;
+  try {
+    const sessionRes = await supabase.auth.getSession();
+    uid = sessionRes?.data?.session?.user?.id;
+  } catch {
+    /* ignore */
+  }
+
+  // Native: drop Google SDK account so next "Continue with Google" shows picker.
+  await nativeGoogleSignOut();
+
+  // Revoke while tokens still exist (must happen BEFORE clearing storage).
   try {
     if (Capacitor.isNativePlatform()) {
       await supabase.auth.signOut({ scope: "local" });
@@ -68,6 +108,9 @@ export async function performSignOut(qc?: QueryClient, navigate?: NavigateFn) {
     }
   }
 
+  clearAuthBrowserStorage();
+  clearSharedSessionCache();
+
   if (qc) {
     try {
       await qc.cancelQueries();
@@ -77,19 +120,13 @@ export async function performSignOut(qc?: QueryClient, navigate?: NavigateFn) {
     }
   }
 
-  try {
-    const sessionRes = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
-    const uid = sessionRes?.data?.session?.user?.id;
-    if (uid) {
-      void supabase
-        .from("profiles")
-        .update({ online: false, last_seen: new Date().toISOString() })
-        .eq("id", uid)
-        .then(() => {})
-        .catch(() => {});
-    }
-  } catch {
-    /* ignore */
+  if (uid) {
+    void supabase
+      .from("profiles")
+      .update({ online: false, last_seen: new Date().toISOString() })
+      .eq("id", uid)
+      .then(() => {})
+      .catch(() => {});
   }
 
   // Web production: hard navigate so every subdomain drops the session cookie UI.
@@ -99,6 +136,9 @@ export async function performSignOut(qc?: QueryClient, navigate?: NavigateFn) {
       window.location.href = "https://chat.playjackpotjungle.com/app/auth?logout=true";
       return;
     }
+    // Local / preview web
+    window.location.href = "/app/auth?logout=true";
+    return;
   }
 
   if (navigate) {
