@@ -1,15 +1,17 @@
 import React, { useEffect, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { Camera, ChevronRight, ImageIcon, Loader2, Send, Smile, ThumbsUp, X } from "lucide-react";
 import { VoiceRecorder } from "@/components/messenger/VoiceRecorder";
+import { ChatCamera } from "@/components/messenger/ChatCamera";
+import { isChatVideoFile } from "@/lib/chat-video";
 import { cn } from "@/lib/utils";
 
-type PendingImage = { file: File; url: string };
+type PendingMedia = { file: File; url: string; kind: "image" | "video" };
 
 type Props = {
   value: string;
   onChange: (value: string, cursor: number) => void;
   onSubmit: (e: FormEvent) => void;
-  /** Called only after the user confirms Send on the preview — never on raw pick. */
+  /** Called only after the user confirms Send on the preview — never on raw pick/capture. */
   onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onVoice: (blob: Blob, mime: string, ext: string) => void | Promise<void>;
   placeholder?: string;
@@ -42,7 +44,7 @@ function makeFileChangeEvent(files: File[]): ChangeEvent<HTMLInputElement> {
 /**
  * Messenger-style composer: full tool row when idle; collapses to chevron + gallery
  * when the field is focused or has text. Tap the chevron to expand tools again.
- * Gallery pick stages images for confirm — never auto-sends.
+ * Gallery/camera stage media for confirm — never auto-sends.
  */
 export function MessengerComposer({
   value,
@@ -70,7 +72,8 @@ export function MessengerComposer({
   const [focused, setFocused] = useState(!!autoFocus);
   /** User pinned the tool row open via the chevron while the field is active. */
   const [pinnedOpen, setPinnedOpen] = useState(false);
-  const [pending, setPending] = useState<PendingImage[]>([]);
+  const [pending, setPending] = useState<PendingMedia[]>([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const hasText = value.trim().length > 0;
 
   const showFullTools = !hideMedia && (pinnedOpen || (!focused && !hasText)) && pending.length === 0;
@@ -83,10 +86,15 @@ export function MessengerComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- revoke only on unmount
   }, []);
 
-  function openPicker() {
-    // Keep tools collapsed; open the system picker immediately (no second tap).
+  function openGallery() {
+    // Keep tools collapsed; open the system gallery immediately (no second tap).
     setPinnedOpen(false);
     fileRef.current?.click();
+  }
+
+  function openCamera() {
+    setPinnedOpen(false);
+    setCameraOpen(true);
   }
 
   function collapseTools() {
@@ -100,14 +108,12 @@ export function MessengerComposer({
     });
   }
 
-  function onPickerChange(e: ChangeEvent<HTMLInputElement>) {
-    const list = Array.from(e.target.files || []);
-    e.target.value = "";
+  function stageFiles(list: File[]) {
     if (list.length === 0) return;
-
-    const next: PendingImage[] = [];
+    const next: PendingMedia[] = [];
     for (const file of list.slice(0, 8)) {
-      next.push({ file, url: URL.createObjectURL(file) });
+      const kind = isChatVideoFile(file, file.name) ? "video" : "image";
+      next.push({ file, url: URL.createObjectURL(file), kind });
     }
     setPending((prev) => {
       prev.forEach((p) => URL.revokeObjectURL(p.url));
@@ -115,10 +121,19 @@ export function MessengerComposer({
     });
   }
 
-  function confirmSendImages() {
+  function onPickerChange(e: ChangeEvent<HTMLInputElement>) {
+    const list = Array.from(e.target.files || []);
+    e.target.value = "";
+    stageFiles(list);
+  }
+
+  function onCameraCapture(file: File) {
+    stageFiles([file]);
+  }
+
+  function confirmSendMedia() {
     if (pending.length === 0 || uploading) return;
     const files = pending.map((p) => p.file);
-    // Parent upload handlers expect one file per event — fire sequentially.
     for (const file of files) {
       onFileChange(makeFileChangeEvent([file]));
     }
@@ -134,13 +149,41 @@ export function MessengerComposer({
     });
   }
 
+  const videoCount = pending.filter((p) => p.kind === "video").length;
+  const photoCount = pending.length - videoCount;
+  const pendingLabel =
+    pending.length === 0
+      ? ""
+      : videoCount > 0 && photoCount === 0
+        ? pending.length === 1
+          ? "Selected video"
+          : `${pending.length} videos selected`
+        : photoCount > 0 && videoCount === 0
+          ? pending.length === 1
+            ? "Selected photo"
+            : `${pending.length} photos selected`
+          : `${pending.length} items selected`;
+
+  const sendLabel =
+    videoCount > 0 && photoCount === 0
+      ? pending.length > 1
+        ? `Send ${pending.length} videos`
+        : "Send video"
+      : photoCount > 0 && videoCount === 0
+        ? pending.length > 1
+          ? `Send ${pending.length} photos`
+          : "Send photo"
+        : `Send ${pending.length}`;
+
   return (
     <div className="relative shrink-0 bg-background border-t border-border">
+      <ChatCamera open={cameraOpen} onClose={() => setCameraOpen(false)} onCapture={onCameraCapture} />
+
       {pending.length > 0 && (
         <div className="px-3 pt-3 pb-2 space-y-2 border-b border-border/60 bg-card/80">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              {pending.length === 1 ? "Selected photo" : `${pending.length} photos selected`}
+              {pendingLabel}
             </p>
             <button
               type="button"
@@ -153,12 +196,16 @@ export function MessengerComposer({
           <div className="flex gap-2 overflow-x-auto pb-1">
             {pending.map((p, i) => (
               <div key={p.url} className="relative shrink-0 h-24 w-24 rounded-xl overflow-hidden border border-border bg-secondary">
-                <img src={p.url} alt="" className="h-full w-full object-cover" />
+                {p.kind === "video" ? (
+                  <video src={p.url} className="h-full w-full object-cover" muted playsInline />
+                ) : (
+                  <img src={p.url} alt="" className="h-full w-full object-cover" />
+                )}
                 <button
                   type="button"
                   onClick={() => removePending(i)}
                   className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center"
-                  aria-label="Remove photo"
+                  aria-label="Remove"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -167,12 +214,12 @@ export function MessengerComposer({
           </div>
           <button
             type="button"
-            onClick={confirmSendImages}
+            onClick={confirmSendMedia}
             disabled={uploading || sending}
             className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Send {pending.length > 1 ? `${pending.length} photos` : "photo"}
+            {sendLabel}
           </button>
         </div>
       )}
@@ -212,10 +259,10 @@ export function MessengerComposer({
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={openPicker}
+                  onClick={openCamera}
                   disabled={uploading}
                   className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 transition-colors"
-                  aria-label="Take photo"
+                  aria-label="Open camera"
                 >
                   {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
                 </button>
@@ -226,7 +273,7 @@ export function MessengerComposer({
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={openPicker}
+              onClick={openGallery}
               disabled={uploading}
               className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-secondary disabled:opacity-50 transition-colors"
               aria-label="Choose photo"

@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallba
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toCDNUrl } from "@/config";
 import { CachedImage } from "@/components/messenger/CachedImage";
+import { ChatMediaBubble } from "@/components/messenger/ChatMediaBubble";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { CallMessage } from "@/components/messenger/CallMessage";
 import { useCalls } from "@/components/messenger/CallProvider";
 import { uploadAndSign, CHAT_IMAGE_ALLOWED_MIMES, CHAT_IMAGE_ALLOWED_EXTS, isAnimatedGif } from "@/lib/chat-media";
+import { isChatVideoFile } from "@/lib/chat-video";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { unsendPageMessagesServer } from "@/lib/messages.functions";
@@ -869,21 +871,25 @@ function PageChatView() {
     e.target.value = "";
     if (!file || !meId || !convId) return;
 
-    // Static image validation
     const fileMime = file.type.toLowerCase();
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    if (fileMime === "image/gif" || ext === "gif" || isAnimatedGif(file, file.name)) {
-      alert("GIF files are not supported. Please choose a static image.");
-      return;
-    }
-    const allowedMimes = CHAT_IMAGE_ALLOWED_MIMES as readonly string[];
-    const allowedExts = CHAT_IMAGE_ALLOWED_EXTS as readonly string[];
-    if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
-      alert("Unsupported format. Please choose a JPEG, PNG, WEBP, AVIF, or HEIC image.");
-      return;
-    }
+    const isVideo = isChatVideoFile(file, file.name);
 
-    if (file.size > 8 * 1024 * 1024) { alert("Max 8 MB"); return; }
+    if (!isVideo) {
+      if (fileMime === "image/gif" || ext === "gif" || isAnimatedGif(file, file.name)) {
+        alert("GIF files are not supported. Please choose a static image.");
+        return;
+      }
+      const allowedMimes = CHAT_IMAGE_ALLOWED_MIMES as readonly string[];
+      const allowedExts = CHAT_IMAGE_ALLOWED_EXTS as readonly string[];
+      if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
+        alert("Unsupported format. Please choose a JPEG, PNG, WEBP, AVIF, or HEIC image.");
+        return;
+      }
+      if (file.size > 8 * 1024 * 1024) { alert("Max 8 MB"); return; }
+    } else {
+      if (file.size > 25 * 1024 * 1024) { alert("Max 25 MB for video"); return; }
+    }
     setUploading(true);
     const localPreview = URL.createObjectURL(file);
     const clientUuid = generateUUID();
@@ -2063,15 +2069,11 @@ const PageMessageItem = React.memo(function PageMessageItem({
             }}
           >
             {m.image_url ? (
-              <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none min-h-[150px] bg-secondary/35 flex items-center justify-center">
-                <CachedImage
-                  src={toCDNUrl(m.image_url)}
-                  alt=""
-                  className="block max-h-80 w-[200px] object-cover rounded-2xl"
-                  style={{ width: "200px", height: "auto", maxHeight: "320px" }}
-                  cachePolicy="persistent"
-                />
-              </button>
+              <ChatMediaBubble
+                url={toCDNUrl(m.image_url)!}
+                onPreview={onPreviewImage}
+                className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none min-h-[150px] bg-secondary/35 flex items-center justify-center"
+              />
             ) : m.audio_url ? (
               <div className="block">
                 <VoiceMessage src={toCDNUrl(m.audio_url)} mine={mine} />

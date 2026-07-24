@@ -108,7 +108,7 @@ export function toastPermissionDenied(kind: "microphone" | "camera" | "notificat
     kind === "microphone"
       ? "Microphone access is needed for voice messages and calls. You can enable it later in system settings."
       : kind === "camera"
-        ? "Camera access is needed for video calls. You can enable it later in system settings."
+        ? "Camera access is needed for photos, videos, and calls. You can enable it later in system settings."
         : "Notifications stay off. You can turn them on anytime in Settings.";
   toast.message(copy);
 }

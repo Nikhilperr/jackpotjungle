@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toCDNUrl } from "@/config";
 import { CachedImage } from "@/components/messenger/CachedImage";
+import { ChatMediaBubble } from "@/components/messenger/ChatMediaBubble";
 import React, { useEffect, useRef, useState, useMemo, useCallback, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatSystemMessage, isSystemMessage, shouldShowDaySeparator, formatChatDaySeparator } from "@/lib/chat-helpers";
@@ -4998,21 +4999,25 @@ function Conversation({
     e.target.value = "";
     if (!file) return;
 
-    // Static image validation
     const fileMime = file.type.toLowerCase();
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    if (fileMime === "image/gif" || ext === "gif") {
-      toast.error("GIF files are not supported. Please choose a static image.");
-      return;
-    }
-    const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
-    const allowedExts = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
-    if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
-      toast.error("Unsupported format. Please choose a JPEG, PNG, WEBP, or HEIC image.");
-      return;
-    }
+    const isVideo = fileMime.startsWith("video/") || ["webm", "mp4", "mov", "m4v"].includes(ext);
 
-    if (file.size > 8 * 1024 * 1024) { toast.error("Max 8 MB"); return; }
+    if (!isVideo) {
+      if (fileMime === "image/gif" || ext === "gif") {
+        toast.error("GIF files are not supported. Please choose a static image.");
+        return;
+      }
+      const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif", "image/avif"];
+      const allowedExts = ["jpg", "jpeg", "png", "webp", "heic", "heif", "avif"];
+      if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
+        toast.error("Unsupported format. Please choose a JPEG, PNG, WEBP, or HEIC image.");
+        return;
+      }
+      if (file.size > 8 * 1024 * 1024) { toast.error("Max 8 MB"); return; }
+    } else {
+      if (file.size > 25 * 1024 * 1024) { toast.error("Max 25 MB for video"); return; }
+    }
     setUploading(true);
     const localPreview = URL.createObjectURL(file);
     const tempId = addOptimistic({ image_url: localPreview });
@@ -7428,15 +7433,11 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
             }}
           >
             {m.image_url ? (
-              <button onClick={() => onPreviewImage(toCDNUrl(m.image_url))} className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none min-h-[150px] bg-secondary/35 flex items-center justify-center">
-                <CachedImage
-                  src={toCDNUrl(m.image_url)}
-                  alt=""
-                  className="block max-h-72 w-[200px] object-cover rounded-2xl"
-                  style={{ width: "200px", height: "auto", maxHeight: "288px" }}
-                  cachePolicy="persistent"
-                />
-              </button>
+              <ChatMediaBubble
+                url={toCDNUrl(m.image_url)!}
+                onPreview={onPreviewImage}
+                className="max-w-[200px] rounded-2xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary block select-none min-h-[150px] bg-secondary/35 flex items-center justify-center"
+              />
             ) : m.audio_url ? (
               <div className="block"><VoiceMessage src={toCDNUrl(m.audio_url)} mine={mine} /></div>
             ) : isStatement ? (
