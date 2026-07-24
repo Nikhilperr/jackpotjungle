@@ -456,19 +456,28 @@ function LoginForm({
 
     setMfaBusy(true);
     try {
-      // Email OTP only (Authenticator is a separate choice). Requires password session.
       const { sendLoginEmailOtp } = await import("@/lib/auth-otp.functions");
-      await sendLoginEmailOtp({ data: { email: target } });
+      // Never leave the UI on "Processing…" — Hostinger HTTPS should finish in a few seconds.
+      const result = await Promise.race([
+        sendLoginEmailOtp({ data: { email: target } }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Email send timed out. Tap Resend.")), 35000),
+        ),
+      ]);
       setEmailOtpSent(true);
       setResendCountdown(60);
-      toast.success("Verification code sent to your email!");
+      toast.success(
+        result?.via === "hostinger-api"
+          ? "Verification code sent to your email!"
+          : "Verification code sent to your email!",
+      );
     } catch (err: unknown) {
       console.error("[Auth] sendEmailOtp failed:", err);
       const { formatAuthError } = await import("@/lib/auth-error");
       toast.error(
         formatAuthError(
           err,
-          "Couldn't send the verification email. Check VPS SMTP settings, then tap Resend.",
+          "Couldn't send the verification email. On VPS set HOSTINGER_MAIL_TOKEN, then pm2 restart all --update-env.",
         ),
       );
     } finally {

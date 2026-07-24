@@ -24,9 +24,13 @@ function ForgotPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      // Same VPS SMTP path as login email OTP (GoTrue /otp and resetPasswordForEmail 504 when SMTP is blocked).
       const { sendPasswordResetEmailOtp } = await import("@/lib/auth-otp.functions");
-      await sendPasswordResetEmailOtp({ data: { email: email.trim().toLowerCase() } });
+      await Promise.race([
+        sendPasswordResetEmailOtp({ data: { email: email.trim().toLowerCase() } }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Email send timed out. Try again.")), 35000),
+        ),
+      ]);
 
       setShowSuccess(true);
       setTimeout(() => {

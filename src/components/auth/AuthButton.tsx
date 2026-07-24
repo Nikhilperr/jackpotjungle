@@ -40,7 +40,7 @@ export function AuthButton({
       {busy ? (
         <span className="flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin text-current" />
-          <span>Processing…</span>
+          <span>Sending…</span>
         </span>
       ) : (
         children
