@@ -1476,6 +1476,12 @@ function ChatView() {
           ? data.to === groupId || data.to === `group-${groupId}`
           : data.to === meId;
         if (!targetsMe) return;
+        void import("@/lib/local-db").then(({ localDbSetTyping }) =>
+          localDbSetTyping(typingTopic, {
+            userId: data.from,
+            at: new Date().toISOString(),
+          }),
+        );
         if (isGroup) {
           setTypingUsers((prev) => {
             const next = new Set(prev);

@@ -8,11 +8,14 @@
  */
 
 const DB_NAME = "jackpot_jungle_local_db";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_KV = "kv";
 const STORE_MSGS = "messages";
 const STORE_INBOX = "inbox";
 const STORE_PROFILES = "profiles";
+const STORE_PRESENCE = "presence";
+const STORE_TYPING = "typing";
+const STORE_REACTIONS = "reactions";
 
 const ENC_PREFIX = "jjenc1:";
 const DEVICE_KEY_ID = "__jj_device_aes_key";
@@ -33,6 +36,9 @@ function openDb(): Promise<IDBDatabase | null> {
         if (!db.objectStoreNames.contains(STORE_MSGS)) db.createObjectStore(STORE_MSGS);
         if (!db.objectStoreNames.contains(STORE_INBOX)) db.createObjectStore(STORE_INBOX);
         if (!db.objectStoreNames.contains(STORE_PROFILES)) db.createObjectStore(STORE_PROFILES);
+        if (!db.objectStoreNames.contains(STORE_PRESENCE)) db.createObjectStore(STORE_PRESENCE);
+        if (!db.objectStoreNames.contains(STORE_TYPING)) db.createObjectStore(STORE_TYPING);
+        if (!db.objectStoreNames.contains(STORE_REACTIONS)) db.createObjectStore(STORE_REACTIONS);
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -345,6 +351,77 @@ export async function localDbSetProfile(userId: string, profile: unknown): Promi
   } catch {
     /* ignore */
   }
+}
+
+/** Admin page-inbox mirror (separate from user conversations). */
+export async function localDbGetAdminInbox<T>(): Promise<T[] | null> {
+  const fromIdb = await idbGet<unknown>(STORE_INBOX, "admin-conversations");
+  if (fromIdb !== undefined) {
+    const decoded = await unseal<T[]>(fromIdb);
+    if (Array.isArray(decoded)) return decoded;
+  }
+  const raw = lsGet("jj_cached_admin_conversations");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function localDbSetAdminInbox(conversations: unknown[]): Promise<void> {
+  const sealed = await seal(conversations);
+  await idbSet(STORE_INBOX, "admin-conversations", sealed);
+  try {
+    lsSet("jj_cached_admin_conversations", JSON.stringify(conversations));
+  } catch {
+    /* ignore */
+  }
+}
+
+export type LocalPresence = {
+  userId: string;
+  online: boolean;
+  last_seen: string;
+  cachedAt: string;
+};
+
+export async function localDbGetPresence(userId: string): Promise<LocalPresence | null> {
+  const v = await idbGet<LocalPresence>(STORE_PRESENCE, userId);
+  return v ?? null;
+}
+
+export async function localDbSetPresence(presence: LocalPresence): Promise<void> {
+  await idbSet(STORE_PRESENCE, presence.userId, presence);
+}
+
+export async function localDbSetTyping(
+  convKey: string,
+  payload: { userId: string; at: string },
+): Promise<void> {
+  await idbSet(STORE_TYPING, convKey, payload);
+}
+
+export async function localDbGetTyping(
+  convKey: string,
+): Promise<{ userId: string; at: string } | null> {
+  return (await idbGet<{ userId: string; at: string }>(STORE_TYPING, convKey)) ?? null;
+}
+
+export async function localDbSetReactions(
+  messageId: string,
+  reactions: unknown,
+): Promise<void> {
+  const sealed = await seal(reactions);
+  await idbSet(STORE_REACTIONS, messageId, sealed);
+}
+
+export async function localDbGetReactions<T>(messageId: string): Promise<T | null> {
+  const fromIdb = await idbGet<unknown>(STORE_REACTIONS, messageId);
+  if (fromIdb === undefined) return null;
+  const decoded = await unseal<T>(fromIdb);
+  return decoded ?? null;
 }
 
 /** Warm the IDB connection + crypto key early on native boot. */

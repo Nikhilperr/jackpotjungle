@@ -702,6 +702,23 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
   const [search, setSearch] = useState("");
   const searchParams = Route.useSearch();
 
+  // Local-first admin inbox hydrate from encrypted IDB.
+  useEffect(() => {
+    void import("@/lib/local-db").then(async ({ localDbGetAdminInbox, localDbSetAdminInbox }) => {
+      if (convs.length > 0) {
+        await localDbSetAdminInbox(convs);
+        setLoadingConvs(false);
+        return;
+      }
+      const rows = await localDbGetAdminInbox<ConvRow>();
+      if (rows?.length) {
+        setConvs(rows);
+        setLoadingConvs(false);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cold hydrate once
+  }, []);
+
   // Sync user wallet balance updates across components in real-time
   useEffect(() => {
     const handleWalletUpdate = (e: Event) => {
@@ -1268,6 +1285,9 @@ const [myUsername, setMyUsername] = useState("Admin");
       try {
         localStorage.setItem("jj_cached_admin_conversations", JSON.stringify(rows));
       } catch { }
+      void import("@/lib/local-db").then(({ localDbSetAdminInbox }) =>
+        localDbSetAdminInbox(rows),
+      );
     } finally {
       setLoadingConvs(false);
     }
@@ -1278,6 +1298,9 @@ const [myUsername, setMyUsername] = useState("Admin");
       try {
         localStorage.setItem("jj_cached_admin_conversations", JSON.stringify(convs));
       } catch {}
+      void import("@/lib/local-db").then(({ localDbSetAdminInbox }) =>
+        localDbSetAdminInbox(convs),
+      );
     }
   }, [convs]);
 

@@ -19,6 +19,8 @@ import {
   fetchInboxDeltaPatches,
   persistInboxCache,
 } from "@/lib/inbox-sync";
+import { localSearchMatches, hydrateLocalSearchIndex } from "@/lib/local-search";
+import { dmConvKey } from "@/lib/local-first-sync";
 import { NetworkManager } from "@/lib/network-manager";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getUserVipDashboardStats } from "@/lib/api/vip-reward-engine/dashboard.functions";
@@ -1137,9 +1139,26 @@ function ChatLayout() {
     if (tab === "groups") return c.friendId.startsWith("group-");
     return !spamIds.has(c.friendId);
   });
+  // Local-first: name/preview + cached message bodies (no server request).
   const filtered = visible.filter((c) =>
-    !q || c.displayName.toLowerCase().includes(q) || c.username.toLowerCase().includes(q) || c.allText.includes(q)
+    !q ||
+    c.displayName.toLowerCase().includes(q) ||
+    c.username.toLowerCase().includes(q) ||
+    c.allText.includes(q) ||
+    localSearchMatches(c.friendId, q)
   );
+
+  useEffect(() => {
+    if (!meId || !conversations.length) return;
+    void hydrateLocalSearchIndex(
+      conversations.map((c) => ({
+        peerKey: c.friendId,
+        convKey: c.friendId.startsWith("group-")
+          ? c.friendId
+          : dmConvKey(meId, c.friendId),
+      })),
+    );
+  }, [meId, conversations]);
   const spamCount = conversations.filter((c) => spamIds.has(c.friendId)).length;
 
   const onlineFriends = conversations.filter((c) => c.online && !spamIds.has(c.friendId));

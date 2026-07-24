@@ -11,8 +11,12 @@ import {
   localDbDeleteMessages,
   localDbGetProfile,
   localDbSetProfile,
+  localDbSetPresence,
+  localDbSetReactions,
 } from "@/lib/local-db";
 import { dmConvKey, pageConvKey } from "@/lib/local-first-sync";
+import { indexConversationMessages } from "@/lib/local-search";
+import { prefetchAvatar } from "@/lib/media-cache";
 
 export type CachedProfile = {
   id: string;
@@ -96,6 +100,13 @@ export async function hydrateCachedProfile(friendId: string): Promise<CachedProf
 export function setCachedProfile(friendId: string, profile: CachedProfile) {
   profileCache.set(friendId, profile);
   void localDbSetProfile(friendId, profile);
+  void localDbSetPresence({
+    userId: friendId,
+    online: !!profile.online,
+    last_seen: profile.last_seen || new Date().toISOString(),
+    cachedAt: new Date().toISOString(),
+  });
+  prefetchAvatar(profile.avatar_url);
 }
 
 // ─── Message cache ────────────────────────────────────────────────────────────
@@ -152,6 +163,13 @@ export function setCachedMessages(meId: string, friendId: string, messages: Cach
   const key = msgKey(meId, friendId);
   messageCache.set(key, { messages, loadedAt: Date.now() });
   void localDbSetMessages(key, messages);
+  indexConversationMessages(friendId, messages);
+  for (const m of messages) {
+    if (m.image_url) prefetchAvatar(m.image_url);
+    if (m.content?.startsWith("[system:reaction:")) {
+      void localDbSetReactions(m.id, { content: m.content, at: m.created_at });
+    }
+  }
 }
 
 export function invalidateMessageCache(meId: string, friendId: string) {
@@ -203,6 +221,10 @@ export async function hydrateCachedPageMessages(
 export function setCachedPageMessages(conversationId: string, messages: CachedPageMessage[]) {
   pageMessageCache.set(conversationId, { messages, loadedAt: Date.now() });
   void localDbSetMessages(pageConvKey(conversationId), messages);
+  indexConversationMessages(`page-${conversationId}`, messages);
+  for (const m of messages) {
+    if (m.image_url) prefetchAvatar(m.image_url);
+  }
   if (typeof window !== "undefined") {
     try {
       const slim = messages.length > 40 ? messages.slice(-40) : messages;
@@ -242,6 +264,10 @@ export async function hydrateCachedGroupMessages(groupId: string): Promise<any[]
 export function setCachedGroupMessagesDurable(groupId: string, messages: any[]) {
   const key = `group-${groupId}`;
   void localDbSetMessages(key, messages);
+  indexConversationMessages(`group-${groupId}`, messages);
+  for (const m of messages) {
+    if (m?.image_url) prefetchAvatar(m.image_url);
+  }
   if (typeof window !== "undefined") {
     try {
       const slim = messages.length > 40 ? messages.slice(-40) : messages;

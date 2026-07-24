@@ -129,30 +129,28 @@ class ClientNetworkManager {
       this.currentStatus = navigator.onLine ? "online" : "offline";
 
       window.addEventListener("online", () => this.handleOnlineEvent());
+      // Browser "offline" is flaky with VPN/blips — only trust if link layer is also gone.
       window.addEventListener("offline", () => {
-        this.consecutiveFailures = 3;
+        if (this.hasNetworkLink() === true) return;
         this.updateStatus("offline");
       });
 
-      // Android ConnectivityManager → instant offline when Wi‑Fi/data drops
-      // (WebView navigator.onLine often stays true with VPN).
+      // Android: Wi‑Fi / mobile data present or fully gone (not ping/DNS validation).
       window.addEventListener("jj-native-network", ((e: CustomEvent) => {
         const online = !!e.detail?.online;
         const vpn = !!e.detail?.vpn;
         if (!online) {
-          this.consecutiveFailures = 3;
           this.updateStatus("offline");
           return;
         }
-        this.consecutiveFailures = 0;
         if (this.currentStatus === "offline") {
           this.updateStatus("reconnecting");
         }
         this.updateStatus(vpn ? "vpn" : "online");
       }) as EventListener);
 
-      // Background reachability monitor (VPN latency is OK — we only care if unreachable)
-      this.pingInterval = setInterval(() => this.checkConnectionHealth(), 12000);
+      // Soft health: never flip banner to offline on ping failure while link is up.
+      this.pingInterval = setInterval(() => this.checkConnectionHealth(), 20000);
       this.checkConnectionHealth();
     }
   }
@@ -206,13 +204,13 @@ class ClientNetworkManager {
     return this.checkConnectionHealth();
   }
 
-  /** Native Network plugin lost link — show offline banner immediately. */
+  /** True offline only when Wi‑Fi/mobile data link is actually gone. */
   reportNativeOffline() {
-    this.consecutiveFailures = 3;
+    if (this.hasNetworkLink() === true) return;
     this.updateStatus("offline");
   }
 
-  /** Native Network plugin regained link — verify then restore. */
+  /** Link restored — clear offline banner. */
   reportNativeOnline() {
     void this.handleOnlineEvent();
   }
@@ -236,8 +234,11 @@ class ClientNetworkManager {
     return false;
   }
 
-  /** Android validated-internet snapshot (null = bridge unavailable). */
-  private nativeInternetAvailable(): boolean | null {
+  /**
+   * Android link-layer: Wi‑Fi / cellular present?
+   * null = bridge unavailable (web / not ready).
+   */
+  private hasNetworkLink(): boolean | null {
     try {
       const bridge = (window as any).AndroidBridge;
       if (bridge && typeof bridge.isInternetAvailable === "function") {
@@ -254,37 +255,33 @@ class ClientNetworkManager {
     if (this.healthCheckInFlight) return this.healthCheckInFlight;
 
     this.healthCheckInFlight = (async () => {
-      const nativeOnline = this.nativeInternetAvailable();
+      const link = this.hasNetworkLink();
 
-      // Trust Android first — Wi‑Fi off must show offline immediately.
-      if (nativeOnline === false) {
-        this.consecutiveFailures = 3;
+      // Phone: only offline when Wi‑Fi AND mobile data are gone.
+      if (link === false) {
         this.updateStatus("offline");
         return;
       }
 
-      if (!navigator.onLine && nativeOnline !== true) {
-        this.consecutiveFailures = 3;
-        this.updateStatus("offline");
-        return;
-      }
-
-      const reachable = await this.pingTest();
-      if (reachable) {
+      if (link === true) {
         this.consecutiveFailures = 0;
         this.updateStatus(this.detectVpnActive() ? "vpn" : "online");
+        // Optional silent ping — may reconnect realtime, never flips banner offline.
+        void this.pingTest().then((ok) => {
+          if (ok && (this.currentStatus === "online" || this.currentStatus === "vpn")) {
+            /* keep status */
+          }
+        });
         return;
       }
 
-      // Native said online but ping failed once — don't flap; wait for a second miss.
-      // If native is unavailable (web), one miss → offline faster.
-      this.consecutiveFailures += 1;
-      const need = nativeOnline === true ? 2 : 1;
-      if (this.consecutiveFailures >= need) {
+      // Web / no bridge: trust navigator.onLine only (no ping→offline).
+      if (!navigator.onLine) {
         this.updateStatus("offline");
-      } else if (this.currentStatus === "offline") {
-        this.updateStatus("reconnecting");
+        return;
       }
+      this.consecutiveFailures = 0;
+      this.updateStatus(this.detectVpnActive() ? "vpn" : "online");
     })().finally(() => {
       this.healthCheckInFlight = null;
     });
@@ -292,25 +289,20 @@ class ClientNetworkManager {
     return this.healthCheckInFlight;
   }
 
-  /** True if the backend answers at all — latency/VPN must not count as failure. */
+  /** Silent reachability probe — must not drive the offline banner. */
   private async pingTest(): Promise<boolean> {
     const url = import.meta.env.VITE_SUPABASE_URL;
-    if (!url) {
-      return navigator.onLine;
-    }
+    if (!url) return navigator.onLine;
 
     try {
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), 8000);
-
       const res = await fetch(`${url}/rest/v1/`, {
         method: "HEAD",
         signal: controller.signal,
         cache: "no-store",
       });
       clearTimeout(id);
-
-      // Any HTTP response means the internet path works (VPN/slow is fine).
       return res.status > 0;
     } catch {
       return false;

@@ -468,10 +468,13 @@ public class MainActivity extends BridgeActivity {
                 return MainActivity.this.isVpnNetworkActive();
             }
 
-            /** True when Android reports a validated internet-capable network. */
+            /**
+             * True when Wi‑Fi / mobile data / ethernet (or VPN over them) is present.
+             * Does NOT require validated reachability — avoids false offline on blips.
+             */
             @android.webkit.JavascriptInterface
             public boolean isInternetAvailable() {
-                return MainActivity.this.hasValidatedInternet();
+                return MainActivity.this.hasNetworkLink();
             }
         }, "AndroidBridge");
     }
@@ -505,30 +508,50 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * True only when Android has validated real internet.
-     * VPN/Wi‑Fi "link up" without VALIDATED must not count as online
-     * (turning Wi‑Fi off must immediately show offline).
+     * Link-layer online: Wi‑Fi or cellular (or ethernet / VPN) is up.
+     * Banner "No internet" only when these are fully gone — not on DNS/ping blips.
      */
-    private boolean hasValidatedInternet() {
+    private boolean hasNetworkLink() {
         try {
             ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
             if (cm == null) return false;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network[] networks = cm.getAllNetworks();
+                if (networks != null) {
+                    for (Network network : networks) {
+                        NetworkCapabilities caps = cm.getNetworkCapabilities(network);
+                        if (caps == null) continue;
+                        boolean transport =
+                            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                                || caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                                || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+                                || caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
+                        if (transport && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                            return true;
+                        }
+                    }
+                }
                 Network active = cm.getActiveNetwork();
-                if (active == null) return false;
-                NetworkCapabilities caps = cm.getNetworkCapabilities(active);
-                if (caps == null) return false;
-                return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                    && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                if (active != null) {
+                    NetworkCapabilities caps = cm.getNetworkCapabilities(active);
+                    if (caps != null
+                        && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        && (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                            || caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                            || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+                            || caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN))) {
+                        return true;
+                    }
+                }
             }
         } catch (Exception e) {
-            Log.e("MainActivity", "Failed to check internet", e);
+            Log.e("MainActivity", "Failed to check network link", e);
         }
         return false;
     }
 
     private void publishNetworkStatusToJs() {
-        final boolean online = hasValidatedInternet();
+        final boolean online = hasNetworkLink();
         final boolean vpn = online && isVpnNetworkActive();
         final String key = (online ? "1" : "0") + (vpn ? "v" : "");
         if (key.equals(lastPublishedNetworkKey)) return;

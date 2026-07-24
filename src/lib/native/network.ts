@@ -13,7 +13,6 @@ const Network = getSafePlugin("Network", NetworkStub);
 let offlineToastId: string | number | null = null;
 
 export async function initNetworkMonitoring(_router: any) {
-  // Drive the shared banner (user + admin) from browser online/offline always.
   if (typeof window !== "undefined") {
     const onOffline = () => NetworkManager.reportNativeOffline();
     const onOnline = () => NetworkManager.reportNativeOnline();
@@ -23,7 +22,6 @@ export async function initNetworkMonitoring(_router: any) {
 
   if (!isNative()) return;
 
-  // Capacitor Network plugin — faster than waiting for the 20s health ping.
   try {
     const status = await Network.getStatus();
     handleNetworkChange(!!status.connected);
@@ -48,8 +46,9 @@ function handleNetworkChange(connected: boolean) {
       });
     }
   } else {
+    // Capacitor may flap during blips — NetworkManager ignores if Wi‑Fi/data still up.
     NetworkManager.reportNativeOffline();
-    if (offlineToastId === null) {
+    if (!NetworkManager.isOnline() && offlineToastId === null) {
       offlineToastId = toast.error("Connection lost. Reconnecting...", {
         duration: Infinity,
         position: "top-center",

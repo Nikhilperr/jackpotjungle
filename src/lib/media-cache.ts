@@ -1,6 +1,6 @@
 const CACHE_NAME = "jj-media-cache";
-const MAX_CACHE_ITEMS = 200;
-const EVICT_TARGET_ITEMS = 180;
+const MAX_CACHE_ITEMS = 400;
+const EVICT_TARGET_ITEMS = 360;
 const METADATA_KEY = "jj_media_cache_metadata";
 
 // Memory maps to store resolved blob URLs
@@ -161,4 +161,10 @@ export function releaseCachedMedia(url: string): void {
       break;
     }
   }
+}
+
+/** Prefetch avatar / thumbnail into persistent media cache (offline reuse). */
+export function prefetchAvatar(url: string | null | undefined) {
+  if (!url || typeof window === "undefined") return;
+  void getCachedMedia(url, "persistent").catch(() => {});
 }
