@@ -241,3 +241,31 @@ export const disableMfaAfterPasswordReset = createServerFn({ method: "POST" })
     console.log(`[MFA] Disabled ${removed} factor(s) after password reset for ${context.userId}`);
     return { ok: true, removed };
   });
+
+/**
+ * Complete forgot-password: disable 2FA first (admin), then set password (admin).
+ * Avoids Supabase AAL2 / Authenticator prompt on updateUser.
+ */
+export const completePasswordReset = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: { password: string }) => d)
+  .handler(async ({ data, context }) => {
+    const password = data.password || "";
+    if (password.length < 6) {
+      throw new Error("Password must be at least 6 characters.");
+    }
+
+    const removed = await disableAllMfaFactorsForUser(context.userId);
+    console.log(
+      `[MFA] Cleared ${removed} factor(s) before password reset for ${context.userId}`,
+    );
+
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(context.userId, {
+      password,
+    });
+    if (error) {
+      throw new Error(error.message || "Could not update password.");
+    }
+
+    return { ok: true, mfaRemoved: removed };
+  });

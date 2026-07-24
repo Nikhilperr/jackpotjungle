@@ -89,6 +89,14 @@ function RecoverPage() {
             throw new Error("This reset link is missing email/code. Request a new one.");
           }
 
+          // Clear Authenticator ASAP so set-password never asks for AAL2.
+          try {
+            const { disableMfaAfterPasswordReset } = await import("@/lib/auth-otp.functions");
+            await disableMfaAfterPasswordReset();
+          } catch (e) {
+            console.warn("[Recover] MFA disable early:", e);
+          }
+
           setStatus("ok");
           setMessage("Verified! Opening password reset…");
           toast.success("Reset verified. Choose a new password.");

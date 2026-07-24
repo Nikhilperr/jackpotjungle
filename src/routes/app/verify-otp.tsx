@@ -82,6 +82,15 @@ function VerifyOtpPage() {
         type: mode === "recovery" ? "recovery" : "email",
       });
       if (error) throw error;
+
+      if (mode === "recovery") {
+        try {
+          const { disableMfaAfterPasswordReset } = await import("@/lib/auth-otp.functions");
+          await disableMfaAfterPasswordReset();
+        } catch (e) {
+          console.warn("[VerifyOtp] MFA disable early:", e);
+        }
+      }
       
       setShowSuccess(true);
       setTimeout(async () => {
