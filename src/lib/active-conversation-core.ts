@@ -4,6 +4,9 @@
 
 export const ACTIVE_CONVERSATION_STALE_MS = 5 * 60 * 1000;
 
+/** User is on the All Chats / inbox list — suppress all chat pushes (not calls). */
+export const INBOX_ACTIVE_KEY = "__inbox__";
+
 export function normalizeConversationKey(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const key = String(raw).trim();
@@ -49,12 +52,15 @@ export function shouldSkipPushForRecipient(
   } | null | undefined,
   conversationKey: string | null,
 ): boolean {
-  if (!profile || !conversationKey) return false;
+  if (!profile) return false;
   if (!profile.app_in_foreground) return false;
   if (!profile.active_conversation_key) return false;
   if (profile.active_conversation_at) {
     const age = Date.now() - new Date(profile.active_conversation_at).getTime();
     if (!Number.isFinite(age) || age > ACTIVE_CONVERSATION_STALE_MS) return false;
   }
+  // On All Chats list → suppress every chat/page/group push.
+  if (profile.active_conversation_key === INBOX_ACTIVE_KEY) return true;
+  if (!conversationKey) return false;
   return keysMatch(profile.active_conversation_key, conversationKey);
 }

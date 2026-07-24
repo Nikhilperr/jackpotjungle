@@ -66,6 +66,9 @@ public class MyFirebaseMessagingService extends MessagingService {
         String activeKey = prefs.getString("active_conversation_key", "");
         if (activeKey == null || activeKey.isEmpty()) return false;
 
+        // All Chats / inbox list — suppress every chat notification.
+        if ("__inbox__".equals(activeKey)) return true;
+
         String msgKey = conversationKeyFromData(data);
         if (msgKey == null || msgKey.isEmpty()) return false;
 

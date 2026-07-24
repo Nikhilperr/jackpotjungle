@@ -11,6 +11,7 @@ import {
   conversationKeyFromPushData,
   shouldSkipPushForRecipient,
   ACTIVE_CONVERSATION_STALE_MS,
+  INBOX_ACTIVE_KEY,
 } from "@/lib/active-conversation-core";
 
 export {
@@ -19,6 +20,7 @@ export {
   conversationKeyFromPushData,
   shouldSkipPushForRecipient,
   ACTIVE_CONVERSATION_STALE_MS,
+  INBOX_ACTIVE_KEY,
 };
 
 const LS_KEY = "jj_active_conversation_key";
@@ -96,13 +98,18 @@ export function isAppInForeground(): boolean {
 }
 
 export function shouldSuppressChatNotification(conversationKey: string | null | undefined): boolean {
-  if (!conversationKey) return false;
   if (!appInForeground) return false;
+  // All Chats list: no OS/browser banners for any chat message.
+  if (activeKey === INBOX_ACTIVE_KEY) return true;
+  if (!conversationKey) return false;
   return keysMatch(activeKey, normalizeConversationKey(conversationKey));
 }
 
+/** True only when that specific thread is open (unread still bumps on inbox list). */
 export function isViewingConversation(conversationKey: string | null | undefined): boolean {
-  return shouldSuppressChatNotification(conversationKey);
+  if (!conversationKey || !appInForeground) return false;
+  if (activeKey === INBOX_ACTIVE_KEY) return false;
+  return keysMatch(activeKey, normalizeConversationKey(conversationKey));
 }
 
 export function setMyUserId(userId: string | null) {

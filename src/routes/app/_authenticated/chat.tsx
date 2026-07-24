@@ -22,7 +22,7 @@ import {
 import { localSearchMatches, hydrateLocalSearchIndex } from "@/lib/local-search";
 import { dmConvKey } from "@/lib/local-first-sync";
 import { NetworkManager } from "@/lib/network-manager";
-import { isViewingConversation } from "@/lib/active-conversation";
+import { isViewingConversation, useTrackActiveConversation, INBOX_ACTIVE_KEY } from "@/lib/active-conversation";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getUserVipDashboardStats } from "@/lib/api/vip-reward-engine/dashboard.functions";
 import { useServerFn } from "@tanstack/react-start";
@@ -232,6 +232,8 @@ function ChatLayout() {
   const { isAdmin } = useRole();
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const hasActive = !!activeId || isPageActive;
+  // All Chats list: suppress notifications for every incoming chat (unread still updates).
+  useTrackActiveConversation(INBOX_ACTIVE_KEY, !hasActive);
   const [isMobile, setIsMobile] = useState(false);
 
   // One-time mobile check — DO NOT use window resize listener here.
