@@ -18,6 +18,11 @@ export const deleteAdminUser = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertSuperAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: targetRoles } = await supabaseAdmin
+      .from("user_roles").select("role").eq("user_id", data.userId);
+    if ((targetRoles ?? []).some((r: any) => r.role === "super_admin")) {
+      throw new Error("Super admin accounts are read-only and cannot be modified.");
+    }
     const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -27,12 +32,14 @@ export const setUserBlocked = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((d: { userId: string; blocked: boolean }) => d)
   .handler(async ({ data, context }) => {
-    // Admins or super admins can block/unblock regular users.
-    const { data: roleRows } = await context.supabase
-      .from("user_roles").select("role").eq("user_id", context.userId);
-    const isAdmin = (roleRows ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
-    if (!isAdmin) throw new Error("Admins only");
+    // Ban/suspend is a Security action — super admins only.
+    await assertSuperAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: targetRoles } = await supabaseAdmin
+      .from("user_roles").select("role").eq("user_id", data.userId);
+    if ((targetRoles ?? []).some((r: any) => r.role === "super_admin")) {
+      throw new Error("Super admin accounts are read-only and cannot be modified.");
+    }
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({ is_blocked: data.blocked })
@@ -50,6 +57,11 @@ export const resetUserPassword = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertSuperAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: targetRoles } = await supabaseAdmin
+      .from("user_roles").select("role").eq("user_id", data.userId);
+    if ((targetRoles ?? []).some((r: any) => r.role === "super_admin")) {
+      throw new Error("Super admin accounts are read-only and cannot be modified.");
+    }
     const { error } = await supabaseAdmin.auth.admin.updateUserById(data.userId, {
       password: data.newPassword,
     });
@@ -1552,14 +1564,35 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
       throw new Error("Only super admins can modify administrator accounts.");
     }
 
-    // Prepare updates
-    const updates: any = { ...data.profileUpdates };
+    // Prepare updates — regular admins may only touch profile/general fields.
+    const incoming = { ...(data.profileUpdates || {}) } as Record<string, unknown>;
+    const SUPER_ONLY_PROFILE_KEYS = [
+      "status",
+      "verified",
+      "coins",
+      "xp",
+      "wallet_balance",
+      "vip_status",
+    ] as const;
 
-    // Synced status changes
-    if (data.profileUpdates.status) {
-      if (data.profileUpdates.status === "suspended" || data.profileUpdates.status === "banned") {
+    let roleUpdate = data.roleUpdate;
+    let permissionsUpdate = data.permissionsUpdate;
+
+    if (!isCallerSuperAdmin) {
+      for (const key of SUPER_ONLY_PROFILE_KEYS) {
+        delete incoming[key];
+      }
+      roleUpdate = undefined;
+      permissionsUpdate = undefined;
+    }
+
+    const updates: any = { ...incoming };
+
+    // Synced status changes (super admin only — already stripped above for others)
+    if (typeof incoming.status === "string") {
+      if (incoming.status === "suspended" || incoming.status === "banned") {
         updates.is_blocked = true;
-      } else if (data.profileUpdates.status === "active") {
+      } else if (incoming.status === "active") {
         updates.is_blocked = false;
       }
     }
@@ -1573,19 +1606,19 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
 
     // Handle role & permissions updates (only super admins can change roles/permissions)
     if (isCallerSuperAdmin) {
-      if (data.roleUpdate && data.roleUpdate !== targetRole) {
+      if (roleUpdate && roleUpdate !== targetRole) {
         // Delete existing roles
         const { error: deleteError } = await supabaseAdmin.from("user_roles").delete().eq("user_id", data.targetUserId);
         if (deleteError) throw new Error(deleteError.message);
         
         // If not "user", insert new role record
-        if (data.roleUpdate !== "user") {
+        if (roleUpdate !== "user") {
           const insertPayload: any = {
             user_id: data.targetUserId,
-            role: data.roleUpdate
+            role: roleUpdate
           };
-          if (data.roleUpdate === "admin" && data.permissionsUpdate) {
-            insertPayload.permissions = data.permissionsUpdate;
+          if (roleUpdate === "admin" && permissionsUpdate) {
+            insertPayload.permissions = permissionsUpdate;
           }
           
           const { error: insertError } = await supabaseAdmin.from("user_roles").insert(insertPayload);
@@ -1601,11 +1634,11 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
             }
           }
         }
-      } else if (data.permissionsUpdate && (targetRole === "admin" || targetRole === "super_admin")) {
+      } else if (permissionsUpdate && (targetRole === "admin" || targetRole === "super_admin")) {
         // Update permissions for existing admin role
         const { error: updateError } = await supabaseAdmin
           .from("user_roles")
-          .update({ permissions: data.permissionsUpdate })
+          .update({ permissions: permissionsUpdate })
           .eq("user_id", data.targetUserId)
           .eq("role", targetRole);
         if (updateError) {
@@ -1633,7 +1666,7 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
         },
         new_values: {
           ...updates,
-          role: data.roleUpdate || targetRole,
+          role: roleUpdate || targetRole,
         }
       } as any
     });
@@ -1655,6 +1688,9 @@ export const changeUserPasswordAdmin = createServerFn({ method: "POST" })
     const isCallerSuperAdmin = callerRolesList.includes("super_admin");
     const isCallerAdmin = callerRolesList.includes("admin") || isCallerSuperAdmin;
     if (!isCallerAdmin) throw new Error("Admins only");
+    if (!isCallerSuperAdmin) {
+      throw new Error("Only super admins can reset passwords.");
+    }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -1668,14 +1704,9 @@ export const changeUserPasswordAdmin = createServerFn({ method: "POST" })
     const { data: targetRoles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.targetUserId);
     const targetRolesList = (targetRoles ?? []).map((r: any) => r.role);
     const isTargetSuperAdmin = targetRolesList.includes("super_admin");
-    const isTargetAdmin = targetRolesList.includes("admin") || isTargetSuperAdmin;
 
     if (isTargetSuperAdmin) {
       throw new Error("Super admin accounts are read-only and cannot be modified.");
-    }
-
-    if (isTargetAdmin && !isCallerSuperAdmin) {
-      throw new Error("Only super admins can reset passwords for other administrator accounts.");
     }
 
     // Call Supabase Admin Auth API to change password directly without OTP
@@ -1714,6 +1745,9 @@ export const changeUserEmailAdmin = createServerFn({ method: "POST" })
     const isCallerSuperAdmin = callerRolesList.includes("super_admin");
     const isCallerAdmin = callerRolesList.includes("admin") || isCallerSuperAdmin;
     if (!isCallerAdmin) throw new Error("Admins only");
+    if (!isCallerSuperAdmin) {
+      throw new Error("Only super admins can change emails.");
+    }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -1727,14 +1761,9 @@ export const changeUserEmailAdmin = createServerFn({ method: "POST" })
     const { data: targetRoles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.targetUserId);
     const targetRolesList = (targetRoles ?? []).map((r: any) => r.role);
     const isTargetSuperAdmin = targetRolesList.includes("super_admin");
-    const isTargetAdmin = targetRolesList.includes("admin") || isTargetSuperAdmin;
 
     if (isTargetSuperAdmin) {
       throw new Error("Super admin accounts are read-only and cannot be modified.");
-    }
-
-    if (isTargetAdmin && !isCallerSuperAdmin) {
-      throw new Error("Only super admins can change emails for other administrator accounts.");
     }
 
     // Call Supabase Admin Auth API to change email directly without OTP
@@ -1776,6 +1805,9 @@ export const deleteUserAccountAdmin = createServerFn({ method: "POST" })
     const isCallerSuperAdmin = callerRolesList.includes("super_admin");
     const isCallerAdmin = callerRolesList.includes("admin") || isCallerSuperAdmin;
     if (!isCallerAdmin) throw new Error("Admins only");
+    if (!isCallerSuperAdmin) {
+      throw new Error("Only super admins can delete accounts.");
+    }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -1789,14 +1821,9 @@ export const deleteUserAccountAdmin = createServerFn({ method: "POST" })
     const { data: targetRoles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.targetUserId);
     const targetRolesList = (targetRoles ?? []).map((r: any) => r.role);
     const isTargetSuperAdmin = targetRolesList.includes("super_admin");
-    const isTargetAdmin = targetRolesList.includes("admin") || isTargetSuperAdmin;
 
     if (isTargetSuperAdmin) {
       throw new Error("Super admin accounts are read-only and cannot be modified.");
-    }
-
-    if (isTargetAdmin && !isCallerSuperAdmin) {
-      throw new Error("Only super admins can delete administrator accounts.");
     }
 
     // Delete user from auth and cascade delete profile

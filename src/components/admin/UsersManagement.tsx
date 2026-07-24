@@ -197,6 +197,9 @@ export function UsersManagementView({ meId }: { meId: string }) {
     return true;
   }, [selectedUser, isSuperAdmin]);
 
+  /** Security tab: password / email / ban / delete / roles — super admins only. */
+  const canManageSecurity = isSuperAdmin && canEditSelectedUser;
+
   // Load user records
   const loadUsers = async () => {
     setLoading(true);
@@ -298,30 +301,40 @@ export function UsersManagementView({ meId }: { meId: string }) {
   // Save changes handler
   const handleSaveChanges = async () => {
     if (!selectedUser) return;
+    if (!canEditSelectedUser) {
+      toast.error("You do not have permission to edit this account.");
+      return;
+    }
     setSavingChanges(true);
     try {
+      const profileUpdates: Record<string, unknown> = {
+        username: editUsername.trim(),
+        first_name: editFirstName.trim(),
+        last_name: editLastName.trim(),
+        phone: editPhone.trim(),
+        address: editAddress.trim(),
+        bio: editBio.trim(),
+        theme: editTheme,
+        language: editLanguage,
+        avatar_url: editAvatarUrl,
+        cover_photo: editCoverPhoto,
+        referred_by: editReferredBy,
+      };
+
+      // Security / account-standing fields — super admin only
+      if (isSuperAdmin) {
+        profileUpdates.vip_status = editVipStatus;
+        profileUpdates.coins = Number(editCoins);
+        profileUpdates.xp = Number(editXp);
+        profileUpdates.wallet_balance = Number(editWalletBalance);
+        profileUpdates.verified = editVerified;
+        profileUpdates.status = editStatus;
+      }
+
       await updateFn({
         data: {
           targetUserId: selectedUser.id,
-          profileUpdates: {
-            username: editUsername.trim(),
-            first_name: editFirstName.trim(),
-            last_name: editLastName.trim(),
-            phone: editPhone.trim(),
-            address: editAddress.trim(),
-            bio: editBio.trim(),
-            vip_status: editVipStatus,
-            coins: Number(editCoins),
-            xp: Number(editXp),
-            wallet_balance: Number(editWalletBalance),
-            verified: editVerified,
-            status: editStatus,
-            theme: editTheme,
-            language: editLanguage,
-            avatar_url: editAvatarUrl,
-            cover_photo: editCoverPhoto,
-            referred_by: editReferredBy
-          },
+          profileUpdates: profileUpdates as any,
           roleUpdate: isSuperAdmin ? (editRole as any) : undefined,
           permissionsUpdate: isSuperAdmin && editRole === "admin" ? editPermissions : undefined
         }
@@ -339,6 +352,10 @@ export function UsersManagementView({ meId }: { meId: string }) {
   // Reset Password direct change
   const handleResetPassword = async () => {
     if (!selectedUser || newPassword.length < 6) return;
+    if (!canManageSecurity) {
+      toast.error("Only super admins can reset passwords.");
+      return;
+    }
     try {
       await passwordFn({
         data: {
@@ -357,6 +374,10 @@ export function UsersManagementView({ meId }: { meId: string }) {
   // Direct email updates
   const handleEmailChange = async () => {
     if (!selectedUser || !newEmail.trim()) return;
+    if (!canManageSecurity) {
+      toast.error("Only super admins can change emails.");
+      return;
+    }
     try {
       await emailFn({
         data: {
@@ -376,6 +397,10 @@ export function UsersManagementView({ meId }: { meId: string }) {
   // Delete User handler
   const handleDeleteUser = async () => {
     if (!selectedUser) return;
+    if (!canManageSecurity) {
+      toast.error("Only super admins can delete accounts.");
+      return;
+    }
     if (confirmDeleteUsername.trim().toLowerCase() !== selectedUser.username.toLowerCase()) {
       return toast.error("Confirm by entering correct username.");
     }
@@ -992,6 +1017,15 @@ export function UsersManagementView({ meId }: { meId: string }) {
 
                   {/* Security Tab */}
                   <TabsContent value="security" className="space-y-4 m-0 focus:outline-none">
+                    {!isSuperAdmin && (
+                      <div className="rounded-xl border border-border/60 bg-secondary/30 p-4 space-y-1">
+                        <p className="text-sm font-semibold text-foreground">Super admin only</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Role changes, account status, password/email resets, and deleting accounts can only be done by a super admin.
+                        </p>
+                      </div>
+                    )}
+
                     {/* Role update (Super admin only) */}
                     {isSuperAdmin && (
                       <div className="space-y-1.5 bg-secondary/30 border border-border/60 rounded-xl p-4">
@@ -1012,7 +1046,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                             }
                           }}
                           className="w-full h-10 rounded-lg border border-border bg-card px-3 text-sm"
-                          disabled={!canEditSelectedUser}
+                          disabled={!canManageSecurity}
                         >
                           <option value="user">Regular User</option>
                           <option value="admin">Administrator</option>
@@ -1031,7 +1065,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                                     <input
                                       type="checkbox"
                                       checked={checked}
-                                      disabled={!canEditSelectedUser}
+                                      disabled={!canManageSecurity}
                                       onChange={() => {
                                         setEditPermissions(prev =>
                                           checked ? prev.filter(x => x !== p.id) : [...prev, p.id]
@@ -1050,6 +1084,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                     )}
 
                     {/* Status Suspension / Block Toggles */}
+                    {isSuperAdmin && (
                     <div className="space-y-3 bg-secondary/30 border border-border/60 rounded-xl p-4">
                       <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
                         <Ban className="h-4 w-4 text-destructive" />
@@ -1062,7 +1097,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                             key={st}
                             type="button"
                             onClick={() => setEditStatus(st)}
-                            disabled={!canEditSelectedUser}
+                            disabled={!canManageSecurity}
                             className={`flex-1 h-9 rounded-lg text-xs font-semibold uppercase transition-colors ${
                               editStatus === st 
                                 ? st === "active" ? "bg-green-500 text-white" : st === "suspended" ? "bg-amber-500 text-white" : "bg-destructive text-white"
@@ -1074,8 +1109,10 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         ))}
                       </div>
                     </div>
+                    )}
 
                     {/* Quick administrative actions */}
+                    {isSuperAdmin && (
                     <div className="space-y-3 bg-secondary/30 border border-border/60 rounded-xl p-4">
                       <label className="text-xs font-bold text-muted-foreground uppercase">Security Operations</label>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1083,7 +1120,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                           type="button" 
                           variant="outline" 
                           onClick={() => setPwResetOpen(true)}
-                          disabled={!canEditSelectedUser}
+                          disabled={!canManageSecurity}
                           className="w-full justify-start h-10 gap-2 border-border"
                         >
                           <KeyRound className="h-4 w-4 text-primary shrink-0" />
@@ -1096,7 +1133,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                             setNewEmail(selectedUser.email || "");
                             setEmailChangeOpen(true);
                           }}
-                          disabled={!canEditSelectedUser}
+                          disabled={!canManageSecurity}
                           className="w-full justify-start h-10 gap-2 border-border"
                         >
                           <Mail className="h-4 w-4 text-primary shrink-0" />
@@ -1104,8 +1141,10 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         </Button>
                       </div>
                     </div>
+                    )}
 
                     {/* Danger zone */}
+                    {isSuperAdmin && (
                     <div className="border border-destructive/20 bg-destructive/5 rounded-xl p-4 space-y-3">
                       <div className="flex items-center gap-2">
                         <ShieldAlert className="h-5 w-5 text-destructive shrink-0" />
@@ -1118,16 +1157,25 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         type="button" 
                         variant="destructive"
                         onClick={() => setConfirmDeleteOpen(true)}
-                        disabled={!canEditSelectedUser}
+                        disabled={!canManageSecurity}
                         className="w-full h-9 rounded-lg"
                       >
                         Delete Player Account
                       </Button>
                     </div>
+                    )}
                   </TabsContent>
 
                   {/* Balance / VIP Tab */}
                   <TabsContent value="wallet" className="space-y-4 m-0 focus:outline-none">
+                    {!isSuperAdmin && (
+                      <div className="rounded-xl border border-border/60 bg-secondary/30 p-4 space-y-1">
+                        <p className="text-sm font-semibold text-foreground">Super admin only</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          VIP level and XP can only be changed by a super admin.
+                        </p>
+                      </div>
+                    )}
 
                     {/* XP & Level */}
                     <div className="space-y-1">
@@ -1140,7 +1188,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         value={editXp}
                         onChange={(e) => setEditXp(Number(e.target.value))}
                         className="bg-secondary/40 border-border/80 font-bold"
-                        disabled={!canEditSelectedUser}
+                        disabled={!canManageSecurity}
                       />
                     </div>
 
@@ -1154,7 +1202,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
                         value={editVipStatus}
                         onChange={(e) => setEditVipStatus(e.target.value)}
                         className="w-full h-10 rounded-lg border border-border/80 bg-secondary/40 px-3 text-sm font-semibold"
-                        disabled={!canEditSelectedUser}
+                        disabled={!canManageSecurity}
                       >
                         <option value="none">No VIP Level</option>
                         <option value="bronze">Bronze Membership</option>
