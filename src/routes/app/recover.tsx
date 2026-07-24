@@ -19,7 +19,25 @@ const searchSchema = z.object({
 export const Route = createFileRoute("/app/recover")({
   ssr: false,
   head: () => ({ meta: [{ title: "Verify reset — Jackpot Jungle Messenger" }] }),
-  validateSearch: (s) => searchSchema.parse(s),
+  validateSearch: (s: Record<string, unknown>) => {
+    const raw = s || {};
+    // TanStack / URL parsers turn ?code=123456 into a number — always stringify first.
+    const normalized = {
+      email: raw.email != null && String(raw.email).trim() !== "" ? String(raw.email).trim() : undefined,
+      code: raw.code != null && String(raw.code).trim() !== "" ? String(raw.code).trim() : undefined,
+      token: raw.token != null && String(raw.token).trim() !== "" ? String(raw.token).trim() : undefined,
+      token_hash:
+        raw.token_hash != null && String(raw.token_hash).trim() !== ""
+          ? String(raw.token_hash).trim()
+          : undefined,
+      type: raw.type != null && String(raw.type).trim() !== "" ? String(raw.type).trim() : undefined,
+    };
+    const parsed = searchSchema.safeParse(normalized);
+    if (parsed.success) return parsed.data;
+    // Never crash the recover page — show in-UI error instead of "Something went wrong".
+    console.warn("[Recover] search validate failed:", parsed.error.flatten());
+    return normalized;
+  },
   component: RecoverPage,
 });
 
