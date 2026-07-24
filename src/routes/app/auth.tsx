@@ -454,15 +454,19 @@ function LoginForm({
     return () => clearInterval(interval);
   }, [resendCountdown]);
 
-  async function sendEmailOtp(email: string) {
-    const target = (email || "").trim();
+  async function sendEmailOtp(email: string): Promise<boolean> {
+    const target = (email || "").trim().toLowerCase();
     if (!target || !target.includes("@")) {
       toast.error("No email address found for this account. Add an email or use authenticator 2FA.");
-      return;
+      return false;
     }
 
     setMfaBusy(true);
+    setEmailOtpSent(false);
     try {
+      // Ensure the just-created session token is attached before the serverFn runs.
+      await supabase.auth.getSession();
+
       const { sendLoginEmailOtp } = await import("@/lib/auth-otp.functions");
       // Never leave the UI on "Processing…" — Hostinger HTTPS should finish in a few seconds.
       const result = await Promise.race([
@@ -471,22 +475,24 @@ function LoginForm({
           setTimeout(() => reject(new Error("Email send timed out. Tap Resend.")), 35000),
         ),
       ]);
+      if (!result?.sent) {
+        throw new Error("Email provider did not confirm delivery.");
+      }
       setEmailOtpSent(true);
       setResendCountdown(60);
-      toast.success(
-        result?.via === "hostinger-api"
-          ? "Verification code sent to your email!"
-          : "Verification code sent to your email!",
-      );
+      toast.success(`Verification code sent to ${result.to || target}. Check inbox and spam.`);
+      return true;
     } catch (err: unknown) {
       console.error("[Auth] sendEmailOtp failed:", err);
+      setEmailOtpSent(false);
       const { formatAuthError } = await import("@/lib/auth-error");
       toast.error(
         formatAuthError(
           err,
-          "Couldn't send the verification email. On VPS set HOSTINGER_MAIL_TOKEN, then pm2 restart all --update-env.",
+          "Couldn't send the verification email. Tap Resend, or check spam. Server needs HOSTINGER_MAIL_TOKEN.",
         ),
       );
+      return false;
     } finally {
       setMfaBusy(false);
     }
@@ -521,15 +527,15 @@ function LoginForm({
       const has2fa = !listErr && factors?.totp?.some(f => f.status === "verified");
       setHas2FaFactor(has2fa);
 
-      // Show OTP/2FA UI immediately — send mail in background (don't block on SMTP).
       // 2FA enrolled → choose Authenticator OR email code only.
-      // No 2FA → email verification code only (no other channels).
+      // No 2FA → email verification (send first, then show code entry).
       setVerificationRequired(true);
+      setEmailOtpSent(false);
       if (has2fa) {
         setVerificationMethod(null);
       } else {
         setVerificationMethod("email");
-        void sendEmailOtp(email);
+        await sendEmailOtp(email);
       }
     } catch (err: unknown) {
       if (typeof window !== "undefined") {
@@ -719,8 +725,10 @@ function LoginForm({
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={async () => {
+                if (mfaBusy) return;
                 const email = user?.email || identifier.trim();
                 setVerificationMethod("email");
+                setEmailOtpSent(false);
                 await sendEmailOtp(email);
               }}
               className="flex items-start gap-4 p-4 rounded-2xl border border-border/80 bg-card/50 hover:bg-secondary/40 transition-colors cursor-pointer group shadow-sm hover:shadow-md"
@@ -780,7 +788,11 @@ function LoginForm({
 
           <div className="space-y-2 py-2 text-center select-none">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              We've sent a 6-digit verification code to your email. Enter it below to complete sign-in:
+              {mfaBusy && !emailOtpSent
+                ? "Sending a 6-digit code to your email…"
+                : emailOtpSent
+                  ? "We sent a 6-digit code to your email. Enter it below (check spam if you don't see it):"
+                  : "Code not sent yet. Tap Resend to send a verification email."}
             </p>
             <div className="pt-2">
               <AuthInput
@@ -791,26 +803,33 @@ function LoginForm({
                 required
                 maxLength={6}
                 autoFocus
+                disabled={mfaBusy && !emailOtpSent}
                 className="text-center font-mono text-2xl font-black tracking-[0.25em] bg-secondary/30 border-primary/20 focus:ring-primary/25 pr-2 pl-2"
               />
             </div>
           </div>
 
           <div className="pt-2 space-y-3">
-            <AuthButton type="submit" busy={mfaBusy} disabled={otpCode.length !== 6}>
+            <AuthButton type="submit" busy={mfaBusy && emailOtpSent} disabled={otpCode.length !== 6 || !emailOtpSent}>
               Verify and Login
             </AuthButton>
             <button
               type="button"
-              disabled={resendCountdown > 0}
+              disabled={resendCountdown > 0 || mfaBusy}
               onClick={async () => {
-                if (resendCountdown > 0) return;
+                if (resendCountdown > 0 || mfaBusy) return;
                 const email = (user?.email || identifierRef.current?.value || identifier || "").trim();
                 await sendEmailOtp(email);
               }}
               className="text-xs font-semibold text-primary disabled:text-muted-foreground hover:underline disabled:no-underline text-center w-full block transition-all"
             >
-              {resendCountdown > 0 ? `Resend code in ${resendCountdown}s` : "Resend code"}
+              {mfaBusy && !emailOtpSent
+                ? "Sending…"
+                : resendCountdown > 0
+                  ? `Resend code in ${resendCountdown}s`
+                  : emailOtpSent
+                    ? "Resend code"
+                    : "Send code"}
             </button>
           </div>
         </form>

@@ -141,16 +141,26 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
     const code = makeSixDigitCode();
     const prev = user.user_metadata || {};
 
-    const [updateRes, sent] = await Promise.all([
-      supabaseAdmin.auth.admin.updateUserById(context.userId, {
-        user_metadata: {
-          ...prev,
-          jj_login_otp_hash: hashCode(email, code),
-          jj_login_otp_exp: Date.now() + 10 * 60 * 1000,
-        },
-      }),
-      sendCodeEmail({ email, code, kind: "login" }),
-    ]);
+    // Send first — only store the hash after the provider accepts the message.
+    // Avoids "OTP sent" UX when Hostinger actually rejected the mail.
+    let sent: { via: string };
+    try {
+      sent = await sendCodeEmail({ email, code, kind: "login" });
+    } catch (e: any) {
+      console.error("[AuthOTP] Login mail failed:", e?.message || e);
+      throw new Error(
+        e?.message ||
+          "Could not send the verification email. Check spam, or ask admin to verify HOSTINGER_MAIL_TOKEN on the server.",
+      );
+    }
+
+    const updateRes = await supabaseAdmin.auth.admin.updateUserById(context.userId, {
+      user_metadata: {
+        ...prev,
+        jj_login_otp_hash: hashCode(email, code),
+        jj_login_otp_exp: Date.now() + 10 * 60 * 1000,
+      },
+    });
 
     if (updateRes.error) {
       throw new Error(updateRes.error.message || "Could not store verification code.");
@@ -159,7 +169,7 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
     console.log(
       `[AuthOTP] Login OTP to ${email} via ${sent.via} in ${Date.now() - t0}ms`,
     );
-    return { sent: true, via: sent.via, ms: Date.now() - t0 };
+    return { sent: true, via: sent.via, ms: Date.now() - t0, to: email };
   });
 
 /** Verify login email OTP (hashed in user_metadata). */

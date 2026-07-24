@@ -87,57 +87,90 @@ async function sendViaHostingerMailApi(
     "HOSTINGER_MAILBOX_RESOURCE_ID",
   );
 
+  // Known production mailbox (noreply@playjackpotjungle.com) — used if env/auto-detect fails.
+  const KNOWN_NOREPLY_MAILBOX = "AC7f4db336147d8eb5cf09a00fee4f";
+
   if (!mailboxId) {
-    const meRes = await fetch("https://api.mail.hostinger.com/api/v1/me", {
-      headers: { Authorization: `Bearer ${token}`, accept: "application/json" },
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!meRes.ok) {
-      throw new Error(`Hostinger /me failed (${meRes.status}): ${(await meRes.text()).slice(0, 180)}`);
+    try {
+      const meRes = await fetch("https://api.mail.hostinger.com/api/v1/me", {
+        headers: { Authorization: `Bearer ${token}`, accept: "application/json" },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (meRes.ok) {
+        const me = (await meRes.json()) as any;
+        const boxes: HostingerMailbox[] =
+          me?.data?.mailboxes || me?.mailboxes || me?.data || [];
+        const list = Array.isArray(boxes) ? boxes : [];
+        const want = opts.fromEmail.toLowerCase();
+        const hit =
+          list.find((b) => (b.address || "").toLowerCase() === want) ||
+          list.find((b) => (b.address || "").toLowerCase().includes("noreply")) ||
+          list[0];
+        mailboxId = hit?.resourceId || hit?.resource_id || "";
+        if (mailboxId) {
+          console.log(`[Mail] Hostinger mailbox ${hit?.address} → ${mailboxId}`);
+        }
+      } else {
+        console.warn(`[Mail] Hostinger /me failed (${meRes.status})`);
+      }
+    } catch (e: any) {
+      console.warn("[Mail] Hostinger /me error:", e?.message || e);
     }
-    const me = (await meRes.json()) as any;
-    const boxes: HostingerMailbox[] =
-      me?.data?.mailboxes || me?.mailboxes || me?.data || [];
-    const list = Array.isArray(boxes) ? boxes : [];
-    const want = opts.fromEmail.toLowerCase();
-    const hit =
-      list.find((b) => (b.address || "").toLowerCase() === want) ||
-      list.find((b) => (b.address || "").toLowerCase().includes("noreply")) ||
-      list[0];
-    mailboxId = hit?.resourceId || hit?.resource_id || "";
-    if (!mailboxId) {
-      throw new Error("Hostinger API returned no mailbox. Set HOSTINGER_MAILBOX_ID in ~/app/.env");
-    }
-    console.log(`[Mail] Hostinger mailbox ${hit?.address} → ${mailboxId}`);
   }
 
-  const res = await fetch(
-    `https://api.mail.hostinger.com/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/send`,
+  if (!mailboxId) {
+    mailboxId = KNOWN_NOREPLY_MAILBOX;
+    console.warn(`[Mail] Using known noreply mailbox id ${mailboxId}`);
+  }
+
+  const payloads = [
     {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        accept: "application/json",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        to: [opts.to],
-        subject: opts.subject,
-        text: opts.text,
-        html: opts.html,
-        displayName: opts.fromName,
-      }),
-      signal: AbortSignal.timeout(20000),
+      to: [opts.to],
+      subject: opts.subject,
+      text: opts.text,
+      html: opts.html,
+      displayName: opts.fromName,
     },
-  );
+    // Some Hostinger API revisions expect address objects.
+    {
+      to: [{ email: opts.to }],
+      subject: opts.subject,
+      text: opts.text,
+      html: opts.html,
+      displayName: opts.fromName,
+    },
+  ];
 
-  if (res.ok || res.status === 204) {
-    console.log(`[Mail] Sent via Hostinger Mail API to ${opts.to} mailbox=${mailboxId}`);
-    return { via: "hostinger-api" };
+  let lastErr = "";
+  for (const body of payloads) {
+    const res = await fetch(
+      `https://api.mail.hostinger.com/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/send`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000),
+      },
+    );
+
+    if (res.ok || res.status === 204) {
+      console.log(
+        `[Mail] Sent via Hostinger Mail API to ${opts.to} mailbox=${mailboxId}`,
+      );
+      return { via: "hostinger-api" };
+    }
+
+    lastErr = (await res.text()).slice(0, 300);
+    console.warn(`[Mail] Hostinger send attempt failed (${res.status}): ${lastErr}`);
+    // Retry only when payload shape looks rejected.
+    if (res.status !== 400 && res.status !== 422) break;
   }
 
-  const body = (await res.text()).slice(0, 300);
-  throw new Error(`Hostinger send failed (${res.status}): ${body}`);
+  throw new Error(`Hostinger send failed: ${lastErr || "unknown error"}`);
 }
 
 /**
