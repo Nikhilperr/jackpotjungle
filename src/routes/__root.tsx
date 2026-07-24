@@ -275,6 +275,8 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
+    // Web + native: match theme classes / status bar before shells paint.
+    void import("@/lib/app-theme").then(({ bootstrapAppTheme }) => bootstrapAppTheme());
     initializeNativeBridge(router);
   }, [router]);
 

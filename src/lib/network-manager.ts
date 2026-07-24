@@ -171,6 +171,21 @@ class ClientNetworkManager {
     }
   }
 
+  /** External (Capacitor Network / UI) can force an immediate re-check. */
+  forceHealthCheck() {
+    return this.checkConnectionHealth();
+  }
+
+  /** Native Network plugin lost link — show offline banner immediately. */
+  reportNativeOffline() {
+    this.updateStatus("offline");
+  }
+
+  /** Native Network plugin regained link — verify then restore. */
+  reportNativeOnline() {
+    void this.handleOnlineEvent();
+  }
+
   private async checkConnectionHealth() {
     if (typeof window === "undefined") return;
     if (!navigator.onLine) {

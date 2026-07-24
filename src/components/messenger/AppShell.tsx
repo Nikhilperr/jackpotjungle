@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState, useRouter, useLocation } from "@tanstack/react-router";
-import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wifi, WifiOff, Wallet, Award, Trophy, Gift, Phone, MoreHorizontal, Coins, Crown, Target, Bell, Settings, HelpCircle, Ban, Share2, Star, Info, ChevronRight, Activity, Loader2 } from "lucide-react";
+import { MessageCircle, Users, User as UserIcon, LogOut, Shield, Menu, X, Wallet, Award, Trophy, Gift, Phone, MoreHorizontal, Coins, Crown, Target, Bell, Settings, HelpCircle, Ban, Share2, Star, Info, ChevronRight, Activity } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,83 +14,13 @@ import { toast } from "sonner";
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
+import { OnlineStatusBanner } from "@/components/messenger/OnlineStatusBanner";
 import { Capacitor } from "@capacitor/core";
 import { runAfterFirstPaint } from "@/lib/native/defer";
-import { NetworkManager, type NetworkStatus } from "@/lib/network-manager";
 import { registerBackAction } from "@/lib/native/navigation";
 import { NativeSideDrawer } from "@/components/messenger/NativeSideDrawer";
 const DrawerCtx = createContext<{ open: () => void }>({ open: () => {} });
 export const useAppDrawer = () => useContext(DrawerCtx);
-
-function OnlineStatusBanner() {
-  const [status, setStatus] = useState<NetworkStatus>(() => {
-    return typeof window !== "undefined" ? NetworkManager.getStatus() : "online";
-  });
-  const [showConnected, setShowConnected] = useState(false);
-
-  useEffect(() => {
-    let lastStatus = typeof window !== "undefined" ? NetworkManager.getStatus() : "online";
-    const unsubscribe = NetworkManager.subscribe((newStatus) => {
-      setStatus(newStatus);
-      if (
-        newStatus === "online" &&
-        (lastStatus === "offline" || lastStatus === "poor" || lastStatus === "reconnecting")
-      ) {
-        setShowConnected(true);
-        const timer = setTimeout(() => {
-          setShowConnected(false);
-        }, 3000);
-        return () => clearTimeout(timer);
-      }
-      if (newStatus !== "online") {
-        setShowConnected(false);
-      }
-      lastStatus = newStatus;
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  if (status === "offline") {
-    return (
-      <div className="bg-amber-600 dark:bg-amber-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0 select-none">
-        <WifiOff className="h-3.5 w-3.5" />
-        <span>No internet connection · Actions will be queued</span>
-      </div>
-    );
-  }
-
-  if (status === "poor") {
-    return (
-      <div className="bg-orange-600 dark:bg-orange-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0 select-none">
-        <Activity className="h-3.5 w-3.5 animate-pulse" />
-        <span>Slow/unstable connection detected · Retrying...</span>
-      </div>
-    );
-  }
-
-  if (status === "reconnecting") {
-    return (
-      <div className="bg-blue-600 dark:bg-blue-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0 select-none">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        <span>Reconnecting to Jackpot Jungle...</span>
-      </div>
-    );
-  }
-
-  if (showConnected) {
-    return (
-      <div className="bg-emerald-600 dark:bg-emerald-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top exit-to-top duration-300 shadow-sm shrink-0 select-none">
-        <Wifi className="h-3.5 w-3.5" />
-        <span>Connection restored! Syncing offline queues...</span>
-      </div>
-    );
-  }
-
-  return null;
-}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();

@@ -13,10 +13,12 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
+import androidx.core.graphics.ColorUtils;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 import com.codetrixstudio.capacitor.GoogleAuth.GoogleAuth;
 
@@ -438,7 +440,47 @@ public class MainActivity extends BridgeActivity {
                     });
                 }
             }
+
+            /**
+             * Sync status/nav bar with in-app theme.
+             * @param lightIcons true = dark (black) clock/battery for light backgrounds;
+             *                   false = white clock/battery for dark/amoled backgrounds.
+             * @param colorHex   e.g. "#000000" or "#ffffff"
+             */
+            @android.webkit.JavascriptInterface
+            public void setSystemBars(final boolean lightIcons, final String colorHex) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        applySystemBars(lightIcons, colorHex);
+                    }
+                });
+            }
         }, "AndroidBridge");
+    }
+
+    private void applySystemBars(boolean lightIcons, String colorHex) {
+        try {
+            int color = 0xFF000000;
+            if (colorHex != null && colorHex.startsWith("#")) {
+                try {
+                    color = ColorUtils.setAlphaComponent(android.graphics.Color.parseColor(colorHex), 255);
+                } catch (Exception ignored) {}
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                getWindow().setStatusBarColor(color);
+                getWindow().setNavigationBarColor(color);
+            }
+            WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+            if (controller != null) {
+                controller.setAppearanceLightStatusBars(lightIcons);
+                controller.setAppearanceLightNavigationBars(lightIcons);
+            }
+            Log.d("MainActivity", "System bars lightIcons=" + lightIcons + " color=" + colorHex);
+        } catch (Exception e) {
+            Log.e("MainActivity", "Failed to apply system bars", e);
+        }
     }
 
     private void stopCallForegroundService() {
@@ -492,10 +534,8 @@ public class MainActivity extends BridgeActivity {
         try {
             // true = WebView laid out below system bars when the OEM respects it.
             WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                getWindow().setStatusBarColor(0xFF000000);
-                getWindow().setNavigationBarColor(0xFF000000);
-            }
+            // Default dark chrome + white icons; JS ThemeToggle syncs light/dark later.
+            applySystemBars(false, "#000000");
         } catch (Exception e) {
             Log.e("MainActivity", "Failed to set decorFitsSystemWindows", e);
         }

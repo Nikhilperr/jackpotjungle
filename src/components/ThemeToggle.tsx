@@ -1,47 +1,22 @@
 import { useEffect, useState } from "react";
 import { Moon, Sun, Sparkles, Zap, Layers } from "lucide-react";
-
-function getInitialTheme(): "dark" | "light" | "jackpot" | "amoled" | "glass" {
-  if (typeof window === "undefined") return "amoled";
-  // One-time migrate product default jackpot → amoled black
-  try {
-    if (localStorage.getItem("jj_theme_default_v2") !== "1") {
-      const prev = localStorage.getItem("theme");
-      if (!prev || prev === "jackpot") localStorage.setItem("theme", "amoled");
-      localStorage.setItem("jj_theme_default_v2", "1");
-    }
-  } catch {
-    /* ignore */
-  }
-  const stored = localStorage.getItem("theme");
-  if (stored === "dark" || stored === "light" || stored === "jackpot" || stored === "amoled" || stored === "glass") {
-    return stored;
-  }
-  return "amoled";
-}
+import {
+  applyAppTheme,
+  getInitialTheme,
+  type AppThemeName,
+} from "@/lib/app-theme";
 
 export function ThemeToggle({ className = "" }: { className?: string }) {
-  const [theme, setTheme] = useState<"dark" | "light" | "jackpot" | "amoled" | "glass">("amoled");
+  const [theme, setTheme] = useState<AppThemeName>("amoled");
 
   useEffect(() => {
     const t = getInitialTheme();
     setTheme(t);
-    applyTheme(t);
+    applyAppTheme(t);
   }, []);
 
-  function applyTheme(t: "dark" | "light" | "jackpot" | "amoled" | "glass") {
-    const root = document.documentElement;
-    root.classList.toggle("dark", t === "dark");
-    root.classList.toggle("light", t === "light");
-    root.classList.toggle("jackpot", t === "jackpot");
-    root.classList.toggle("amoled", t === "amoled");
-    root.classList.toggle("glass", t === "glass");
-    const shellBg = t === "light" || t === "jackpot" || t === "glass" ? "#ffffff" : "#121212";
-    root.style.setProperty("--jj-shell-bg", shellBg);
-  }
-
   function toggle() {
-    let next: "dark" | "light" | "jackpot" | "amoled" | "glass";
+    let next: AppThemeName;
     if (theme === "amoled") {
       next = "light";
     } else if (theme === "light") {
@@ -55,7 +30,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
     }
     setTheme(next);
     localStorage.setItem("theme", next);
-    applyTheme(next);
+    applyAppTheme(next);
   }
 
   return (

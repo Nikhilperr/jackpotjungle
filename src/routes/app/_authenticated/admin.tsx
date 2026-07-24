@@ -134,6 +134,7 @@ import { UsersManagementView } from "@/components/admin/UsersManagement";
 import { MonitorChatsView } from "@/components/admin/MonitorChatsView";
 import { MonthlyProfitView } from "@/components/admin/MonthlyProfit";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
+import { OnlineStatusBanner } from "@/components/messenger/OnlineStatusBanner";
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 import { useServerFn } from "@tanstack/react-start";
 import { getSupportLinks, updateSupportLinksAdmin } from "@/lib/admin-super.functions";
@@ -519,7 +520,9 @@ function AdminPage() {
   );
 
   return (
-    <div className="flex h-full max-h-full flex-1 bg-background text-foreground overflow-hidden native-safe-shell">
+    <div className="flex h-full max-h-full flex-1 flex-col bg-background text-foreground overflow-hidden native-safe-shell">
+      <OnlineStatusBanner />
+      <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <NativeSideDrawer open={navOpen} onClose={() => setNavOpen(false)} width={240}>
         {SideNav}
       </NativeSideDrawer>
@@ -623,6 +626,7 @@ function AdminPage() {
           </ScrollWrap>
         </div>
       </main>
+      </div>
 
       <SignOutDialog isOpen={confirmOut} onClose={() => setConfirmOut(false)} onConfirm={signOut} />
     </div>

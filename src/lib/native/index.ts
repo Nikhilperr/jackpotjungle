@@ -4,6 +4,7 @@ import { initNetworkMonitoring } from "./network";
 import { initLifecycleMonitoring } from "./state";
 import { initViewportHeightLock } from "./viewport-height";
 import { localDbWarm } from "@/lib/local-db";
+import { bootstrapAppTheme } from "@/lib/app-theme";
 export { registerBackAction } from "./navigation";
 export { isNative } from "./utils";
 export { runAfterFirstPaint } from "./defer";
@@ -38,6 +39,12 @@ export function initializeNativeBridge(router: any) {
   isInitialized = true;
 
   try {
+    // Status bar clock/battery contrast must match theme before first paint settles.
+    bootstrapAppTheme();
+    // Bridge may attach slightly after WebView load — re-sync once more.
+    window.setTimeout(() => bootstrapAppTheme(), 400);
+    window.setTimeout(() => bootstrapAppTheme(), 1200);
+
     localDbWarm();
     initViewportHeightLock();
     initNetworkMonitoring(router);
