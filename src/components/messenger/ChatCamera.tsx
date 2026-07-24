@@ -13,6 +13,8 @@ type Props = {
   onCapture: (file: File) => void;
 };
 
+const LOGO = "/icons/icon-256.webp";
+
 function pickRecorderMime(): string {
   const candidates = [
     "video/webm;codecs=vp9,opus",
@@ -26,9 +28,22 @@ function pickRecorderMime(): string {
   return "";
 }
 
+function CameraLogoSplash({ label = "Opening camera…" }: { label?: string }) {
+  return (
+    <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center gap-4 bg-black">
+      <img
+        src={LOGO}
+        alt="Jackpot Jungle"
+        className="h-24 w-24 rounded-2xl object-cover shadow-lg animate-pulse"
+      />
+      <p className="text-white/75 text-sm font-medium">{label}</p>
+    </div>
+  );
+}
+
 /**
  * Full-screen in-chat camera: Photo | Video, front/back flip.
- * Does not auto-send — returns a File to the parent for confirm.
+ * Stream stays hot so Photo↔Video is instant. Does not auto-send.
  */
 export function ChatCamera({ open, onClose, onCapture }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -36,14 +51,19 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordingStartedAt = useRef(0);
+  const facingRef = useRef<Facing>("environment");
+  const openGen = useRef(0);
 
   const [mode, setMode] = useState<Mode>("photo");
   const [facing, setFacing] = useState<Facing>("environment");
   const [ready, setReady] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [busy, setBusy] = useState(false);
+
+  facingRef.current = facing;
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -51,28 +71,53 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
     if (videoRef.current) videoRef.current.srcObject = null;
   }, []);
 
+  const attachStream = useCallback(async (stream: MediaStream) => {
+    streamRef.current = stream;
+    const el = videoRef.current;
+    if (!el) return;
+    el.srcObject = stream;
+    el.muted = true;
+    el.playsInline = true;
+    el.setAttribute("playsinline", "true");
+    el.setAttribute("webkit-playsinline", "true");
+    el.controls = false;
+    await el.play().catch(() => undefined);
+  }, []);
+
   const startStream = useCallback(
-    async (nextFacing: Facing) => {
-      setReady(false);
+    async (nextFacing: Facing, opts?: { soft?: boolean }) => {
+      const gen = openGen.current;
+      if (!opts?.soft) setReady(false);
+      else setSwitching(true);
       setError(null);
-      stopStream();
+
+      // Keep old stream until new one is ready (avoids blank play-button flash).
+      const prev = streamRef.current;
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: mode === "video",
+          // Always grab mic so Photo↔Video never restarts the camera.
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
           video: {
             facingMode: { ideal: nextFacing },
             width: { ideal: 1280 },
             height: { ideal: 720 },
           },
         });
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.setAttribute("playsinline", "true");
-          await videoRef.current.play().catch(() => undefined);
+        if (gen !== openGen.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
         }
+        await attachStream(stream);
+        prev?.getTracks().forEach((t) => t.stop());
         setReady(true);
+        setSwitching(false);
       } catch (e: any) {
+        if (gen !== openGen.current) return;
+        prev?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
         const name = e?.name || "";
         if (name === "NotAllowedError" || name === "PermissionDeniedError") {
           toastPermissionDenied("camera");
@@ -83,13 +128,15 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
           setError(e?.message || "Could not open camera");
         }
         setReady(false);
+        setSwitching(false);
       }
     },
-    [mode, stopStream],
+    [attachStream],
   );
 
   useEffect(() => {
     if (!open) {
+      openGen.current += 1;
       if (recorderRef.current && recorderRef.current.state !== "inactive") {
         try {
           recorderRef.current.stop();
@@ -99,15 +146,23 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
       }
       recorderRef.current = null;
       setRecording(false);
+      setReady(false);
+      setSwitching(false);
+      setError(null);
+      setMode("photo");
+      setFacing("environment");
       stopStream();
       return;
     }
-    void startStream(facing);
+    openGen.current += 1;
+    void startStream("environment");
     return () => {
+      openGen.current += 1;
       stopStream();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- restart only on open/facing/mode
-  }, [open, facing, mode]);
+    // Only boot when opened — mode switches never restart the stream.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!recording) {
@@ -121,12 +176,15 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
   }, [recording]);
 
   async function flipCamera() {
-    if (recording || busy) return;
-    setFacing((f) => (f === "user" ? "environment" : "user"));
+    if (recording || busy || switching) return;
+    const next: Facing = facing === "user" ? "environment" : "user";
+    setFacing(next);
+    await startStream(next, { soft: true });
   }
 
-  async function switchMode(next: Mode) {
+  function switchMode(next: Mode) {
     if (recording || busy || next === mode) return;
+    // Instant — stream already has video (+ mic).
     setMode(next);
   }
 
@@ -145,7 +203,6 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
       canvas.height = h;
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas unavailable");
-      // Mirror front camera so the captured still matches the preview.
       if (facing === "user") {
         ctx.translate(w, 0);
         ctx.scale(-1, 1);
@@ -222,7 +279,13 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
   }
 
   function handleClose() {
-    if (recording) stopRecording();
+    if (recording) {
+      try {
+        recorderRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
+    }
     onClose();
   }
 
@@ -232,32 +295,36 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
     .toString()
     .padStart(2, "0");
   const ss = (elapsed % 60).toString().padStart(2, "0");
+  const showSplash = (!ready || switching) && !error;
 
   return (
     <div className="fixed inset-0 z-[80] bg-black flex flex-col" role="dialog" aria-modal="true" aria-label="Camera">
-      <div className="relative flex-1 min-h-0 overflow-hidden">
+      <div className="relative flex-1 min-h-0 overflow-hidden bg-black">
         <video
           ref={videoRef}
           muted
           playsInline
           autoPlay
+          controls={false}
+          disablePictureInPicture
           className={cn(
-            "absolute inset-0 h-full w-full object-cover",
+            "absolute inset-0 h-full w-full object-cover bg-black transition-opacity duration-150",
+            ready && !switching ? "opacity-100" : "opacity-0",
             facing === "user" && "scale-x-[-1]",
           )}
         />
 
-        {!ready && !error && (
-          <div className="absolute inset-0 flex items-center justify-center text-white/80 text-sm">
-            Opening camera…
-          </div>
+        {showSplash && (
+          <CameraLogoSplash label={switching ? "Switching camera…" : "Opening camera…"} />
         )}
+
         {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+          <div className="absolute inset-0 z-[2] flex flex-col items-center justify-center gap-3 px-6 text-center bg-black">
+            <img src={LOGO} alt="" className="h-16 w-16 rounded-xl object-cover opacity-90" />
             <p className="text-white text-sm font-medium">{error}</p>
             <button
               type="button"
-              onClick={() => void startStream(facing)}
+              onClick={() => void startStream(facingRef.current)}
               className="h-10 px-4 rounded-full bg-white/15 text-white text-sm font-semibold"
             >
               Try again
@@ -265,7 +332,7 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
           </div>
         )}
 
-        <div className="absolute top-0 inset-x-0 pt-[max(0.75rem,env(safe-area-inset-top))] px-3 flex items-center justify-between">
+        <div className="absolute top-0 inset-x-0 z-[3] pt-[max(0.75rem,env(safe-area-inset-top))] px-3 flex items-center justify-between">
           <button
             type="button"
             onClick={handleClose}
@@ -279,7 +346,7 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
             <button
               type="button"
               disabled={recording || busy}
-              onClick={() => void switchMode("photo")}
+              onClick={() => switchMode("photo")}
               className={cn(
                 "h-8 px-3 rounded-full text-xs font-semibold transition-colors",
                 mode === "photo" ? "bg-white text-black" : "text-white/80",
@@ -290,7 +357,7 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
             <button
               type="button"
               disabled={recording || busy}
-              onClick={() => void switchMode("video")}
+              onClick={() => switchMode("video")}
               className={cn(
                 "h-8 px-3 rounded-full text-xs font-semibold transition-colors",
                 mode === "video" ? "bg-white text-black" : "text-white/80",
@@ -303,7 +370,7 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
           <button
             type="button"
             onClick={() => void flipCamera()}
-            disabled={recording || busy || !ready}
+            disabled={recording || busy || !ready || switching}
             className="h-10 w-10 rounded-full bg-black/45 text-white flex items-center justify-center disabled:opacity-40"
             aria-label="Flip camera"
           >
@@ -312,7 +379,7 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
         </div>
 
         {recording && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-red-600/90 text-white text-xs font-semibold px-3 py-1.5">
+          <div className="absolute top-16 left-1/2 z-[3] -translate-x-1/2 flex items-center gap-2 rounded-full bg-red-600/90 text-white text-xs font-semibold px-3 py-1.5">
             <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
             REC {mm}:{ss}
           </div>
@@ -324,7 +391,7 @@ export function ChatCamera({ open, onClose, onCapture }: Props) {
         <button
           type="button"
           onClick={onShutter}
-          disabled={!ready || !!error || busy}
+          disabled={!ready || !!error || busy || switching}
           className={cn(
             "relative h-[72px] w-[72px] rounded-full border-[3px] border-white flex items-center justify-center disabled:opacity-40",
             recording && "border-red-500",

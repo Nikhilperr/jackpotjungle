@@ -34,8 +34,12 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
   const [connected, setConnected] = useState(false);
   const [remoteMuted, setRemoteMuted] = useState(false);
   const [remoteVideoActive, setRemoteVideoActive] = useState(true);
-  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  // Video calls open on the rear camera (same as in-chat camera); flip to selfie anytime.
+  const [facingMode, setFacingMode] = useState<"user" | "environment">(
+    kind === "video" ? "environment" : "user",
+  );
   const [error, setError] = useState<string | null>(null);
+  const facingModeRef = useRef<"user" | "environment">(kind === "video" ? "environment" : "user");
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -177,9 +181,18 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
     (async () => {
       const wantVideo = kind === "video";
       try {
+        const initialFacing: "user" | "environment" = wantVideo ? "environment" : "user";
+        facingModeRef.current = initialFacing;
+        setFacingMode(initialFacing);
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: wantVideo ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+          video: wantVideo
+            ? {
+                facingMode: { ideal: initialFacing },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              }
+            : false,
         });
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         setLocalStream(stream);
@@ -248,46 +261,77 @@ export function useWebRTC({ callId, role, kind, meId, context, onRemoteHangup, o
   const switchCamera = useCallback(async () => {
     if (!localStream || !pcRef.current) return;
     const cur = localStream.getVideoTracks()[0];
-    const next = facingMode === "user" ? "environment" : "user";
+    const next: "user" | "environment" = facingModeRef.current === "user" ? "environment" : "user";
+
+    const applyTrack = async (newTrack: MediaStreamTrack) => {
+      const sender = pcRef.current?.getSenders().find((s) => s.track?.kind === "video");
+      if (!sender) return false;
+      await sender.replaceTrack(newTrack);
+      if (cur) {
+        try {
+          cur.stop();
+        } catch {
+          /* ignore */
+        }
+        try {
+          localStream.removeTrack(cur);
+        } catch {
+          /* ignore */
+        }
+      }
+      localStream.addTrack(newTrack);
+      setLocalStream(new MediaStream(localStream.getTracks()));
+      facingModeRef.current = next;
+      setFacingMode(next);
+      return true;
+    };
+
     try {
+      // Prefer device enumeration for a reliable rear/front swap on Android WebViews.
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter((d) => d.kind === "videoinput");
+      let deviceId: string | undefined;
+      if (cams.length > 1) {
+        const labelMatch = cams.find((d) => {
+          const label = (d.label || "").toLowerCase();
+          return next === "environment"
+            ? /back|rear|environment|world/i.test(label)
+            : /front|user|face|selfie/i.test(label);
+        });
+        // If labels aren't helpful, pick "the other" camera.
+        const curSettings = cur?.getSettings?.() || {};
+        const curId = curSettings.deviceId;
+        deviceId = labelMatch?.deviceId || cams.find((d) => d.deviceId && d.deviceId !== curId)?.deviceId;
+      }
+
       const newStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: { exact: next } },
+        video: deviceId
+          ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { facingMode: { ideal: next }, width: { ideal: 1280 }, height: { ideal: 720 } },
       });
       const newTrack = newStream.getVideoTracks()[0];
-      const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
-      if (sender && newTrack) {
-        await sender.replaceTrack(newTrack);
-        cur?.stop();
-        localStream.removeTrack(cur);
-        localStream.addTrack(newTrack);
-        setLocalStream(new MediaStream(localStream.getTracks()));
-        setFacingMode(next);
-        console.log("[WebRTC] Successfully switched camera to:", next);
+      if (newTrack) {
+        const ok = await applyTrack(newTrack);
+        if (!ok) newTrack.stop();
       }
     } catch (e) {
-      console.warn("switchCamera failed, attempting ideal constraint fallback", e);
+      console.warn("switchCamera primary failed, trying facingMode fallback", e);
       try {
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { facingMode: { ideal: next } },
+          video: { facingMode: { ideal: next }, width: { ideal: 1280 }, height: { ideal: 720 } },
         });
         const newTrack = newStream.getVideoTracks()[0];
-        const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
-        if (sender && newTrack) {
-          await sender.replaceTrack(newTrack);
-          cur?.stop();
-          localStream.removeTrack(cur);
-          localStream.addTrack(newTrack);
-          setLocalStream(new MediaStream(localStream.getTracks()));
-          setFacingMode(next);
-          console.log("[WebRTC] Successfully switched camera (fallback) to:", next);
+        if (newTrack) {
+          const ok = await applyTrack(newTrack);
+          if (!ok) newTrack.stop();
         }
       } catch (err) {
         console.error("switchCamera fallback failed", err);
       }
     }
-  }, [localStream, facingMode]);
+  }, [localStream]);
 
   return { localStream, remoteStream, connected, remoteMuted, remoteVideoActive, facingMode, error, sendHangup, toggleAudio, toggleVideo, switchCamera, sendMediaState, stopAll };
 }

@@ -254,7 +254,10 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
           ref={remoteVideoRef} 
           autoPlay 
           playsInline 
-          className={`w-full h-full object-cover transition-opacity duration-200 ${
+          muted={false}
+          controls={false}
+          disablePictureInPicture
+          className={`w-full h-full object-cover bg-black transition-opacity duration-200 ${
             hasRemoteVideo && remoteVideoActive && !noAnswer ? "opacity-100" : "opacity-0 pointer-events-none"
           }`} 
         />
@@ -315,12 +318,24 @@ export function CallScreen({ callId, role, kind, meId, peerName, peerAvatar, ini
           autoPlay 
           playsInline 
           muted 
+          controls={false}
+          disablePictureInPicture
           style={{ transform: facingMode === "user" ? "scaleX(-1)" : "none" }}
-          className={`w-full h-full object-cover transition-opacity duration-150 ${cameraOff ? "opacity-0" : "opacity-100"}`} 
+          className={`w-full h-full object-cover bg-black transition-opacity duration-150 ${
+            cameraOff || !localStream ? "opacity-0" : "opacity-100"
+          }`} 
         />
-        {cameraOff && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
-            <VideoOff className="h-6 w-6 text-white/70" />
+        {(!localStream || cameraOff) && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+            {cameraOff ? (
+              <VideoOff className="h-6 w-6 text-white/70" />
+            ) : (
+              <img
+                src="/icons/icon-256.webp"
+                alt="Jackpot Jungle"
+                className="h-10 w-10 rounded-lg object-cover animate-pulse"
+              />
+            )}
           </div>
         )}
       </motion.div>
