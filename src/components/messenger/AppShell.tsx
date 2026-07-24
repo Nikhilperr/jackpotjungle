@@ -19,6 +19,7 @@ import { runAfterFirstPaint } from "@/lib/native/defer";
 import { NetworkManager, type NetworkStatus } from "@/lib/network-manager";
 import { registerBackAction } from "@/lib/native/navigation";
 import { NativeSideDrawer } from "@/components/messenger/NativeSideDrawer";
+import { useSessionKillListener } from "@/hooks/useSessionKillListener";
 
 const DrawerCtx = createContext<{ open: () => void }>({ open: () => {} });
 export const useAppDrawer = () => useContext(DrawerCtx);
@@ -108,6 +109,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const closeDrawer = useCallback(() => setOpen(false), []);
   const closeMore = useCallback(() => setMoreOpen(false), []);
 
+  // Instant remote logout when this session is terminated from another device.
+  useSessionKillListener(true);
   // Android back closes overlays before navigating (Messenger-style).
   useEffect(() => {
     if (!moreOpen) return;

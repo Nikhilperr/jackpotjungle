@@ -2309,24 +2309,83 @@ export const getActiveSessionsUser = createServerFn({ method: "POST" })
 
 export const terminateSessionUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
+  .validator((d: { sessionId: string }) => d)
   .handler(async ({ data, context }) => {
     const userId = context.userId;
     const sessionId = data.sessionId;
     if (!sessionId) throw new Error("Session ID required");
 
+    // Never allow terminating the caller's own current session from this list.
+    const claimSessionId =
+      typeof (context.claims as { session_id?: unknown })?.session_id === "string"
+        ? (context.claims as { session_id: string }).session_id
+        : null;
+    if (claimSessionId && claimSessionId === sessionId) {
+      throw new Error("Cannot terminate your current session");
+    }
+
     const client = await getDbClient();
+    let terminatedCount = 0;
     try {
       const query = `
         DELETE FROM auth.sessions
         WHERE id = $1 AND user_id = $2
       `;
       const { rowCount } = await client.query(query, [sessionId, userId]);
-      return { ok: true, terminatedCount: rowCount };
+      terminatedCount = rowCount || 0;
     } catch (err: any) {
       throw new Error(err.message || "Failed to terminate session");
     } finally {
       await client.end();
     }
+
+    if (terminatedCount > 0) {
+      // Instant kick: broadcast to all of this user's devices (Realtime).
+      try {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const {
+          sessionKillChannelName,
+          SESSION_KILL_EVENT,
+          SESSIONS_CHANGED_EVENT,
+        } = await import("@/lib/session-kill");
+
+        const channel = supabaseAdmin.channel(sessionKillChannelName(userId), {
+          config: { broadcast: { ack: false, self: true } },
+        });
+
+        await new Promise<void>((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error("Realtime subscribe timeout")), 4000);
+          channel.subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              clearTimeout(t);
+              resolve();
+            }
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+              clearTimeout(t);
+              reject(new Error(`Realtime ${status}`));
+            }
+          });
+        });
+
+        await channel.send({
+          type: "broadcast",
+          event: SESSION_KILL_EVENT,
+          payload: { sessionId, at: Date.now(), reason: "terminated" },
+        });
+        await channel.send({
+          type: "broadcast",
+          event: SESSIONS_CHANGED_EVENT,
+          payload: { at: Date.now(), action: "terminated", sessionId },
+        });
+        await supabaseAdmin.removeChannel(channel);
+        console.log(`[Sessions] Broadcast session_killed for ${sessionId} → user ${userId}`);
+      } catch (e: any) {
+        // Session already deleted; kick is best-effort (JWT will fail on refresh anyway).
+        console.warn("[Sessions] Realtime kick failed:", e?.message || e);
+      }
+    }
+
+    return { ok: true, terminatedCount };
   });
 
 export const getPushNotificationTargetCount = createServerFn({ method: "POST" })

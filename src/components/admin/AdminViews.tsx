@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphone, Bell, Bot, Activity, KeyRound, Ban, ShieldOff, ArrowLeft, Users, Search, Share, Shield, ShieldCheck, History, Smartphone, Laptop, Globe, User, CheckCircle, Coins } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { sendBroadcast, deleteAdminUser, setUserBlocked, resetUserPassword, getActiveSessionsUser, terminateSessionUser, getPushNotificationTargetCount, sendCustomPushNotificationAllUsers } from "@/lib/admin-super.functions";
+import { useLiveSessionsRefresh } from "@/hooks/useLiveSessionsRefresh";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -1247,7 +1248,7 @@ export function ReferralsAdminView({ onUserClick }: { onUserClick?: (userId: str
 function parseUserAgent(ua: string | null): string {
   if (!ua) return "Unknown Device";
   const lowercase = ua.toLowerCase();
-  
+
   let os = "Unknown OS";
   if (lowercase.includes("windows")) os = "Windows PC";
   else if (lowercase.includes("macintosh") || lowercase.includes("mac os")) os = "Mac";
@@ -1256,12 +1257,13 @@ function parseUserAgent(ua: string | null): string {
   else if (lowercase.includes("linux")) os = "Linux PC";
 
   let browser = "Web Browser";
-  if (lowercase.includes("chrome") || lowercase.includes("chromium")) browser = "Chrome";
+  if (lowercase.includes("capacitor") || lowercase.includes("; wv)")) browser = "App";
+  else if (lowercase.includes("edg/") || lowercase.includes("edge")) browser = "Edge";
   else if (lowercase.includes("firefox")) browser = "Firefox";
-  else if (lowercase.includes("safari") && !lowercase.includes("chrome")) browser = "Safari";
-  else if (lowercase.includes("edge")) browser = "Edge";
   else if (lowercase.includes("opr") || lowercase.includes("opera")) browser = "Opera";
-  
+  else if (lowercase.includes("chrome") || lowercase.includes("chromium")) browser = "Chrome";
+  else if (lowercase.includes("safari")) browser = "Safari";
+
   return `${os} (${browser})`;
 }
 
@@ -1476,7 +1478,7 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
     }
   };
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
     try {
       const res = await getSessionsFn();
@@ -1486,7 +1488,13 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
     } finally {
       setLoadingSessions(false);
     }
-  };
+  }, [getSessionsFn]);
+
+  const { live: sessionsLive } = useLiveSessionsRefresh({
+    userId,
+    onRefresh: loadSessions,
+    enabled: activeSubTab === "logins",
+  });
 
   const handleTerminateSession = async (sessionId: string) => {
     try {
@@ -1791,20 +1799,31 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
                   <h2 className="font-semibold flex items-center gap-2 text-foreground">
                     <Smartphone className="h-5 w-5 text-primary" /> Active Login Sessions
                   </h2>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={loadSessions}
-                    disabled={loadingSessions}
-                    className="h-8 rounded-full text-xs font-bold px-3"
-                  >
-                    {loadingSessions ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : null}
-                    Refresh Sessions
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                        sessionsLive
+                          ? "bg-green-500/15 text-green-600 border-green-500/30"
+                          : "bg-muted text-muted-foreground border-border"
+                      }`}
+                    >
+                      {sessionsLive ? "Live" : "Connecting…"}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void loadSessions()}
+                      disabled={loadingSessions}
+                      className="h-8 rounded-full text-xs font-bold px-3"
+                    >
+                      {loadingSessions ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : null}
+                      Refresh
+                    </Button>
+                  </div>
                 </div>
 
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Below is a list of devices and sessions currently signed into your Jackpot Jungle admin account. You can log out other devices instantly.
+                  Devices signed into your admin account update live. Removing another device signs it out instantly.
                 </p>
 
                 <div className="space-y-3 pt-2">

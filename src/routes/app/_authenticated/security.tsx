@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, HamburgerButton } from "@/components/messenger/AppShell";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Shield, KeyRound, Loader2, CheckCircle, Smartphone, Laptop, Globe, Tras
 import { useAuth } from "@/hooks/useAuth";
 import { getActiveSessionsUser, terminateSessionUser } from "@/lib/admin-super.functions";
 import { useServerFn } from "@tanstack/react-start";
+import { useLiveSessionsRefresh } from "@/hooks/useLiveSessionsRefresh";
 
 export const Route = createFileRoute("/app/_authenticated/security")({
   ssr: false,
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/app/_authenticated/security")({
 function parseUserAgent(ua: string | null): string {
   if (!ua) return "Unknown Device";
   const lowercase = ua.toLowerCase();
-  
+
   let os = "Unknown OS";
   if (lowercase.includes("windows")) os = "Windows PC";
   else if (lowercase.includes("macintosh") || lowercase.includes("mac os")) os = "Mac";
@@ -29,12 +30,13 @@ function parseUserAgent(ua: string | null): string {
   else if (lowercase.includes("linux")) os = "Linux PC";
 
   let browser = "Web Browser";
-  if (lowercase.includes("chrome") || lowercase.includes("chromium")) browser = "Chrome";
+  if (lowercase.includes("capacitor") || lowercase.includes("; wv)")) browser = "App";
+  else if (lowercase.includes("edg/") || lowercase.includes("edge")) browser = "Edge";
   else if (lowercase.includes("firefox")) browser = "Firefox";
-  else if (lowercase.includes("safari") && !lowercase.includes("chrome")) browser = "Safari";
-  else if (lowercase.includes("edge")) browser = "Edge";
   else if (lowercase.includes("opr") || lowercase.includes("opera")) browser = "Opera";
-  
+  else if (lowercase.includes("chrome") || lowercase.includes("chromium")) browser = "Chrome";
+  else if (lowercase.includes("safari")) browser = "Safari";
+
   return `${os} (${browser})`;
 }
 
@@ -93,7 +95,7 @@ function SecurityPage() {
     } catch {}
   };
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
     try {
       const res = await getSessionsFn();
@@ -103,19 +105,25 @@ function SecurityPage() {
     } finally {
       setLoadingSessions(false);
     }
-  };
+  }, [getSessionsFn]);
+
+  const { live: sessionsLive } = useLiveSessionsRefresh({
+    userId: user?.id,
+    onRefresh: loadSessions,
+    enabled: !!user,
+  });
 
   useEffect(() => {
     if (!user) return;
     checkMFA();
     checkAalStatus();
-    loadSessions();
+    void loadSessions();
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         setCurrentSessionId(data.session.id);
       }
     });
-  }, [user]);
+  }, [user, loadSessions]);
 
   const handleEnableMFA = async () => {
     setMfaLoading(true);
@@ -449,20 +457,31 @@ function SecurityPage() {
               <h2 className="font-semibold flex items-center gap-2 text-foreground">
                 <Smartphone className="h-5 w-5 text-primary" /> Active Login Sessions
               </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadSessions}
-                disabled={loadingSessions}
-                className="h-8 rounded-full text-xs font-bold px-3"
-              >
-                {loadingSessions ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : null}
-                Refresh Sessions
-              </Button>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                    sessionsLive
+                      ? "bg-green-500/15 text-green-600 border-green-500/30"
+                      : "bg-muted text-muted-foreground border-border"
+                  }`}
+                >
+                  {sessionsLive ? "Live" : "Connecting…"}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadSessions()}
+                  disabled={loadingSessions}
+                  className="h-8 rounded-full text-xs font-bold px-3"
+                >
+                  {loadingSessions ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : null}
+                  Refresh
+                </Button>
+              </div>
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Below is a list of devices and sessions currently signed into your Jackpot Jungle account. You can log out other devices instantly.
+              Devices signed into your account update live. Removing another device signs it out instantly.
             </p>
 
             <div className="space-y-3 pt-2">
