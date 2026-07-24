@@ -166,13 +166,56 @@ function ChatLayout() {
       console.error("Failed to load VIP stats in chat view:", e);
     }
   }
-  const [pageUnread, setPageUnread] = useState(0);
-  const [pageLast, setPageLast] = useState<{ content: string | null; at: string | null }>({ content: null, at: null });
-  const [pageConvId, setPageConvId] = useState<string | null>(null);
-  const pageConvIdRef = useRef<string | null>(null);
+  const [pageUnread, setPageUnread] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    try {
+      return Number(localStorage.getItem("jj_page_unread") || 0) || 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [pageLast, setPageLast] = useState<{ content: string | null; at: string | null }>(() => {
+    if (typeof window === "undefined") return { content: null, at: null };
+    try {
+      const raw = localStorage.getItem("jj_page_last");
+      if (!raw) return { content: null, at: null };
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object"
+        ? { content: parsed.content ?? null, at: parsed.at ?? null }
+        : { content: null, at: null };
+    } catch {
+      return { content: null, at: null };
+    }
+  });
+  const [pageConvId, setPageConvId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return localStorage.getItem("jj_page_conv_id") || null;
+    } catch {
+      return null;
+    }
+  });
+  const pageConvIdRef = useRef<string | null>(pageConvId);
+  const pageLastAtRef = useRef<string | null>(pageLast.at);
   useEffect(() => {
     pageConvIdRef.current = pageConvId;
+    if (pageConvId) {
+      try {
+        localStorage.setItem("jj_page_conv_id", pageConvId);
+      } catch {
+        /* ignore */
+      }
+    }
   }, [pageConvId]);
+  useEffect(() => {
+    pageLastAtRef.current = pageLast.at;
+    try {
+      localStorage.setItem("jj_page_last", JSON.stringify(pageLast));
+      localStorage.setItem("jj_page_unread", String(pageUnread));
+    } catch {
+      /* ignore */
+    }
+  }, [pageLast, pageUnread]);
   const [search, setSearch] = useState("");
   const [meId, setMeId] = useState<string | null>(null);
   const [systemAnnouncements, setSystemAnnouncements] = useState<any[]>([]);
@@ -220,6 +263,66 @@ function ChatLayout() {
     setSpammedByIds(new Set((incoming ?? []).map((r: any) => r.user_id)));
   }
 
+  function previewPageContent(m: {
+    content?: string | null;
+    image_url?: string | null;
+    audio_url?: string | null;
+  }): string | null {
+    let preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content ?? null;
+    if (preview?.startsWith("[system:reaction:")) preview = "Reacted to a message";
+    else if (preview?.startsWith("[system:pin:")) preview = "Pinned a message";
+    else if (preview?.startsWith("[system:unpin:")) preview = "Unpinned a message";
+    else if (preview?.startsWith("[system:unsent]")) preview = "Unsent a message";
+    else if (preview?.startsWith("[system:forwarded] ")) preview = preview.slice("[system:forwarded] ".length);
+    else if (preview?.startsWith("[system:forwarded]")) {
+      preview =
+        preview.slice("[system:forwarded]".length).trim() ||
+        (m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message");
+    } else if (preview === "[system:forwarded]") {
+      preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message";
+    } else if (preview?.startsWith("[reply:")) {
+      const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+      if (match) preview = match[1];
+    }
+    return preview;
+  }
+
+  async function softCatchUpPage(myId: string) {
+    const convId = pageConvIdRef.current;
+    if (!convId) {
+      // Resolve conversation id once if ref was empty (RT gate was dropping events).
+      const { data: conv } = await supabase
+        .from("page_conversations")
+        .select("id")
+        .eq("user_id", myId)
+        .maybeSingle();
+      if (!conv?.id) return;
+      pageConvIdRef.current = conv.id;
+      setPageConvId(conv.id);
+    }
+    const id = pageConvIdRef.current!;
+    const since = pageLastAtRef.current;
+    const { fetchPageMessagesDelta } = await import("@/lib/live-page-messages");
+    const rows = await fetchPageMessagesDelta(id, since, 40);
+    if (rows.length) {
+      const newest = rows[rows.length - 1];
+      const preview = previewPageContent(newest);
+      pageLastAtRef.current = newest.created_at;
+      setPageLast({ content: preview, at: newest.created_at });
+      window.dispatchEvent(
+        new CustomEvent("jj-page-message", { detail: { ...newest, preview } }),
+      );
+    }
+    const { data: unreadRows } = await supabase
+      .from("page_messages")
+      .select("id")
+      .eq("conversation_id", id)
+      .eq("from_page", true)
+      .eq("seen", false)
+      .limit(99);
+    if (unreadRows) setPageUnread(unreadRows.length);
+  }
+
   async function loadPage(myId: string) {
     const { data: conv } = await supabase
       .from("page_conversations")
@@ -227,6 +330,8 @@ function ChatLayout() {
       .eq("user_id", myId)
       .maybeSingle();
     if (!conv) return;
+    // Sync ref immediately so realtime page_messages are not dropped.
+    pageConvIdRef.current = conv.id;
     setPageConvId(conv.id);
 
     const [{ data: last }, { data: lastCalls }] = await Promise.all([
@@ -722,20 +827,21 @@ function ChatLayout() {
     if (!meId) return;
     let mounted = true;
 
-    // Local-first: paint from phone mirror; sync only differences.
-    // Full rebuild only when inbox mirror is empty / extremely stale (24h).
-    let softTimer: ReturnType<typeof setTimeout> | null = null;
+    // Instant paint from local mirror — never gate UI on network.
+    setLoadingConvs(false);
     if (shouldFullRebuildInbox()) {
-      load(meId);
+      void load(meId);
     } else {
-      setLoadingConvs(false);
-      softTimer = setTimeout(() => {
-        if (mounted) void loadInboxDelta(meId);
-      }, 600);
+      void loadInboxDelta(meId);
     }
-    loadPage(meId);
-    loadSpam(meId);
-    loadSystemAnnouncements();
+    void loadPage(meId);
+    void loadSpam(meId);
+    void loadSystemAnnouncements();
+
+    // Admin→user page tips: realtime can drop on mobile — soft catch-up like admin inbox.
+    const pageSoftTimer = setInterval(() => {
+      if (mounted) void softCatchUpPage(meId);
+    }, 1500);
 
     const systemChannel = supabase
       .channel("system-announcements-list")
@@ -936,33 +1042,23 @@ function ChatLayout() {
         if (!mounted) return;
         const m = (payload.new ?? payload.old) as any;
         if (!m) return;
-        if (m.conversation_id !== pageConvIdRef.current) return;
+        // If we learn the conversation id from the event, lock it in (don't drop).
+        if (!pageConvIdRef.current && m.conversation_id) {
+          pageConvIdRef.current = m.conversation_id;
+          setPageConvId(m.conversation_id);
+        }
+        if (pageConvIdRef.current && m.conversation_id !== pageConvIdRef.current) return;
 
         if (payload.eventType === "INSERT") {
-          let preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
-          if (preview?.startsWith("[system:reaction:")) {
-            preview = "Reacted to a message";
-          } else if (preview?.startsWith("[system:pin:")) {
-            preview = "Pinned a message";
-          } else if (preview?.startsWith("[system:unpin:")) {
-            preview = "Unpinned a message";
-          } else if (preview?.startsWith("[system:unsent]")) {
-            preview = "Unsent a message";
-          } else if (preview?.startsWith("[system:forwarded] ")) {
-            preview = preview.slice("[system:forwarded] ".length);
-          } else if (preview?.startsWith("[system:forwarded]")) {
-            preview = preview.slice("[system:forwarded]".length).trim() || (m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message");
-          } else if (preview === "[system:forwarded]") {
-            preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : "Forwarded message";
-          } else if (preview?.startsWith("[reply:")) {
-            const match = preview.match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
-            if (match) preview = match[1];
-          }
-
+          const preview = previewPageContent(m);
           setPageLast({ content: preview, at: m.created_at });
           if (m.from_page && !m.seen) {
             setPageUnread((prev) => prev + 1);
           }
+          // Keep open page thread + other listeners in sync.
+          window.dispatchEvent(
+            new CustomEvent("jj-page-message", { detail: { ...m, preview } }),
+          );
         } else if (payload.eventType === "UPDATE") {
           if (m.from_page && m.seen) {
             setPageUnread(0);
@@ -1023,25 +1119,69 @@ function ChatLayout() {
     const onForeground = () => {
       if (!mounted) return;
       void NetworkManager.processQueues().catch(() => {});
-      // Soft inbox catch-up on resume (not a forced full rebuild).
       void loadInboxDelta(meId);
-      loadPage(meId);
+      void loadPage(meId);
+      void softCatchUpPage(meId);
     };
     window.addEventListener("jj-app-foreground", onForeground);
+    window.addEventListener("jj-network-restored", onForeground);
 
     return () => {
       mounted = false;
-      if (softTimer) clearTimeout(softTimer);
+      clearInterval(pageSoftTimer);
       window.removeEventListener("jj-app-foreground", onForeground);
+      window.removeEventListener("jj-network-restored", onForeground);
       supabase.removeChannel(channel);
       supabase.removeChannel(systemChannel);
     };
   }, [meId]);
 
+  // Instant tip updates from open page thread / soft catch-up.
+  useEffect(() => {
+    function onPageMsg(e: Event) {
+      const m = (e as CustomEvent).detail as any;
+      if (!m?.created_at) return;
+      if (m.conversation_id) {
+        pageConvIdRef.current = m.conversation_id;
+        setPageConvId(m.conversation_id);
+      }
+      const preview = previewPageContent(m);
+      setPageLast((prev) => {
+        if (!prev.at || m.created_at >= prev.at) {
+          pageLastAtRef.current = m.created_at;
+          return { content: preview, at: m.created_at };
+        }
+        return prev;
+      });
+      if (m.from_page && !m.seen && !isPageActive) {
+        setPageUnread((prev) => prev + 1);
+      }
+      if (m.from_page && m.seen) setPageUnread(0);
+    }
+    window.addEventListener("jj-page-message", onPageMsg);
+    return () => window.removeEventListener("jj-page-message", onPageMsg);
+  }, [isPageActive]);
+
   useEffect(() => {
     function handleSent(e: Event) {
       const detail = (e as CustomEvent).detail;
       if (!detail) return;
+      // Support/page chat tip (Jackpot Jungle row)
+      if (detail.isPage) {
+        let preview = detail.content;
+        if (!preview) {
+          preview = detail.image_url ? "📷 Photo" : detail.audio_url ? "🎤 Voice message" : "Message";
+        }
+        setPageLast({
+          content: preview,
+          at: detail.created_at || new Date().toISOString(),
+        });
+        if (detail.conversationId) {
+          pageConvIdRef.current = detail.conversationId;
+          setPageConvId(detail.conversationId);
+        }
+        return;
+      }
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.friendId === detail.receiverId);
         if (idx === -1) return prev;

@@ -1406,13 +1406,14 @@ const [myUsername, setMyUsername] = useState("Admin");
       })
       .subscribe();
 
-    // Soft list catch-up: realtime can drop on mobile; poll recent tips every 2.5s.
+    // Soft list catch-up: realtime can drop on mobile; poll recent tips every 1.5s.
     const softCatchUp = async () => {
       if (!mounted) return;
       const rows = await fetchRecentPageMessagesGlobal(40);
       for (const m of [...rows].reverse()) applyListInsert(m);
     };
-    const softTimer = setInterval(() => { void softCatchUp(); }, 2500);
+    void softCatchUp();
+    const softTimer = setInterval(() => { void softCatchUp(); }, 1500);
     const onResume = () => { void softCatchUp(); void load(); };
     window.addEventListener("jj-app-foreground", onResume);
     window.addEventListener("jj-network-restored", onResume);
@@ -2372,11 +2373,74 @@ function TeamChatView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNa
     load();
     let mounted = true;
     const rand = Math.random().toString(36).slice(2, 9);
+
+    const applyTeamTip = (m: any) => {
+      if (!m?.created_at) return;
+      let preview = m.image_url ? "📷 Photo" : m.audio_url ? "🎤 Voice message" : m.content;
+      if (preview?.startsWith("[system:reaction:")) preview = "Reacted to a message";
+      else if (preview?.startsWith("[system:unsent]")) preview = "Unsent a message";
+      else if (preview?.startsWith("[reply:")) {
+        const match = String(preview).match(/^\[reply:[^\]]+\]\s*([\s\S]*)/);
+        if (match) preview = match[1];
+      }
+
+      if (m.group_id) {
+        const key = `group-${m.group_id}`;
+        setGroupRows((prev) => {
+          const idx = prev.findIndex((c) => c.conversationId === key || c.conversationId === m.group_id);
+          if (idx === -1) return prev;
+          const row = { ...prev[idx] };
+          if (!row.lastAt || m.created_at > row.lastAt) {
+            row.lastMessage = preview;
+            row.lastAt = m.created_at;
+          }
+          if (m.sender_id !== meId && !m.seen) row.unread = (row.unread || 0) + 1;
+          const next = prev.slice();
+          next[idx] = row;
+          return next.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+        });
+        return;
+      }
+
+      const otherId = m.sender_id === meId ? m.receiver_id : m.sender_id;
+      if (!otherId) return;
+      setConvs((prev) => {
+        const idx = prev.findIndex((c) => c.userId === otherId || c.conversationId === otherId);
+        if (idx === -1) {
+          // Unknown peer — fall back to full load once.
+          void load();
+          return prev;
+        }
+        const row = { ...prev[idx] };
+        if (!row.lastAt || m.created_at > row.lastAt) {
+          row.lastMessage = preview;
+          row.lastAt = m.created_at;
+        }
+        if (m.sender_id !== meId && !m.seen) row.unread = (row.unread || 0) + 1;
+        const next = prev.slice();
+        next[idx] = row;
+        return next.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+      });
+    };
+
     const ch = supabase
       .channel(`admin-teamchat-${rand}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
         if (!mounted) return;
-        load();
+        applyTeamTip(payload.new);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
+        if (!mounted) return;
+        const m = payload.new as any;
+        if (m?.seen && m.receiver_id === meId) {
+          setConvs((prev) =>
+            prev.map((c) =>
+              c.userId === m.sender_id || c.conversationId === m.sender_id
+                ? { ...c, unread: 0 }
+                : c,
+            ),
+          );
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "groups" }, () => {
         if (mounted) load();
@@ -2386,8 +2450,14 @@ function TeamChatView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNa
       })
       .subscribe();
 
+    // Soft catch-up so team DMs stay live if realtime drops.
+    const softTimer = setInterval(() => {
+      if (mounted) void load();
+    }, 8000);
+
     return () => {
       mounted = false;
+      clearInterval(softTimer);
       supabase.removeChannel(ch);
     };
   }, [meId]);
@@ -4282,7 +4352,7 @@ function Conversation({
           return next;
         });
       },
-      pollMs: 2000,
+      pollMs: 1000,
     });
 
     const callsChannel = supabase

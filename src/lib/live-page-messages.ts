@@ -135,7 +135,7 @@ export function attachPageMessagesLive(opts: AttachOpts): () => void {
   let disposed = false;
   let channel: RealtimeChannel | null = null;
   let resubTimer: ReturnType<typeof setTimeout> | null = null;
-  const pollMs = opts.pollMs ?? 2000;
+  const pollMs = opts.pollMs ?? 1000;
 
   const catchUp = async () => {
     if (disposed) return;

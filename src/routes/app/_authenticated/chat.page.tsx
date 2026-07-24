@@ -566,6 +566,8 @@ function PageChatView() {
       },
       onInsert: (m) => {
         setMessages((prev) => mergeIncomingPageMessage(prev, m as Msg));
+        // Instant parent inbox tip (Jackpot Jungle row) without waiting for soft poll.
+        window.dispatchEvent(new CustomEvent("jj-page-message", { detail: m }));
         if (m.from_page) {
           void supabase.from("page_messages").update({ seen: true }).eq("id", m.id);
         }
@@ -576,7 +578,7 @@ function PageChatView() {
       onDelete: (id) => {
         setMessages((prev) => prev.filter((x) => x.id !== id));
       },
-      pollMs: 2000,
+      pollMs: 1000,
     });
 
     const rand = Math.random().toString(36).slice(2, 9);
