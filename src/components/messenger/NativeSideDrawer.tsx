@@ -64,6 +64,16 @@ export function NativeSideDrawer({ open, onClose, children, width = DEFAULT_WIDT
 
   const onPointerDown = (e: ReactPointerEvent) => {
     if (e.button !== 0) return;
+    // Desktop mouse: capturing the whole panel steals click from buttons/links.
+    // Only start drag-to-dismiss from non-interactive chrome (empty padding, labels, etc.).
+    const target = e.target as HTMLElement | null;
+    if (
+      target?.closest(
+        "button, a, input, textarea, select, label, [role='button'], [role='link'], [data-no-drawer-drag]",
+      )
+    ) {
+      return;
+    }
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDragging(true);
     startXRef.current = e.clientX;

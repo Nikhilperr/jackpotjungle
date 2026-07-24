@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Loader2 } from "lucide-react";
 
 type Props = {
@@ -23,7 +24,7 @@ export function SignOutDialog({ isOpen, onClose, onConfirm }: Props) {
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
   const handleConfirm = () => {
     if (busy) return;
@@ -33,18 +34,19 @@ export function SignOutDialog({ isOpen, onClose, onConfirm }: Props) {
     });
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in">
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity" 
-        onClick={onClose} 
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+        onClick={onClose}
       />
 
       {/* Dialog Container */}
       <div className="relative z-10 w-full max-w-[320px] bg-card border border-border rounded-2xl p-6 text-center shadow-2xl space-y-4 animate-scale-in max-h-[90vh] overflow-y-auto">
         {/* Close Button */}
         <button
+          type="button"
           onClick={onClose}
           className="absolute top-3 right-3 text-muted-foreground hover:text-foreground hover:bg-secondary/50 p-1.5 rounded-full transition-colors cursor-pointer"
           aria-label="Close"
@@ -55,9 +57,9 @@ export function SignOutDialog({ isOpen, onClose, onConfirm }: Props) {
 
         {/* Character Image */}
         <div className="flex justify-center pt-2 select-none pointer-events-none">
-          <img 
-            src="/signout.png" 
-            alt="Sad character" 
+          <img
+            src="/signout.png"
+            alt="Sad character"
             className="w-28 h-auto object-contain select-none max-h-32"
           />
         </div>
@@ -71,6 +73,7 @@ export function SignOutDialog({ isOpen, onClose, onConfirm }: Props) {
         {/* Actions */}
         <div className="flex items-center gap-2.5 pt-2">
           <button
+            type="button"
             onClick={handleConfirm}
             disabled={busy}
             className="flex-1 h-10 text-xs font-semibold rounded-xl bg-transparent border border-border text-foreground hover:bg-secondary/40 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
@@ -79,6 +82,7 @@ export function SignOutDialog({ isOpen, onClose, onConfirm }: Props) {
             Logout
           </button>
           <button
+            type="button"
             onClick={onClose}
             disabled={busy}
             className="flex-1 h-10 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
@@ -87,6 +91,7 @@ export function SignOutDialog({ isOpen, onClose, onConfirm }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

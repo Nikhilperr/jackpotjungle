@@ -398,11 +398,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
         <button
-          onClick={() => {
-            closeDrawer();
+          type="button"
+          data-no-drawer-drag
+          onClick={(e) => {
+            e.stopPropagation();
+            // Open dialog first so closing the drawer can't swallow the click (desktop mouse).
             setConfirmOut(true);
+            requestAnimationFrame(() => closeDrawer());
           }}
-          className="flex-1 min-h-12 rounded-xl flex items-center gap-3 px-3 text-sm font-medium text-muted-foreground active:bg-destructive/10 active:text-destructive"
+          className="flex-1 min-h-12 rounded-xl flex items-center gap-3 px-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive active:bg-destructive/10 active:text-destructive cursor-pointer"
         >
           <LogOut className="h-5 w-5 shrink-0" />
           <span>Sign out</span>

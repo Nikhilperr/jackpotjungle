@@ -501,8 +501,15 @@ function AdminPage() {
       <div className="px-3 py-3 border-t border-border flex items-center gap-2">
         <ThemeToggle />
         <button
-          onClick={() => { setNavOpen(false); setConfirmOut(true); }}
-          className="flex-1 h-10 rounded-lg flex items-center gap-2 px-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          type="button"
+          data-no-drawer-drag
+          onClick={(e) => {
+            e.stopPropagation();
+            // Open dialog first so closing the drawer can't swallow the click (desktop mouse).
+            setConfirmOut(true);
+            requestAnimationFrame(() => setNavOpen(false));
+          }}
+          className="flex-1 h-10 rounded-lg flex items-center gap-2 px-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer"
         >
           <LogOut className="h-4 w-4 shrink-0" />
           <span>Sign out</span>
