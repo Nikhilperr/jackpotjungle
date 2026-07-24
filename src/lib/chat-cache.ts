@@ -5,7 +5,14 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
-import { localDbGetMessages, localDbSetMessages, localDbDeleteMessages } from "@/lib/local-db";
+import {
+  localDbGetMessages,
+  localDbSetMessages,
+  localDbDeleteMessages,
+  localDbGetProfile,
+  localDbSetProfile,
+} from "@/lib/local-db";
+import { dmConvKey, pageConvKey } from "@/lib/local-first-sync";
 
 export type CachedProfile = {
   id: string;
@@ -48,7 +55,7 @@ const messageCache = new Map<string, { messages: CachedMessage[]; loadedAt: numb
 const pageMessageCache = new Map<string, { messages: CachedPageMessage[]; loadedAt: number }>();
 const inflight = new Set<string>(); // prevent duplicate in-flight requests
 
-const MESSAGE_CACHE_TTL_MS = 30_000; // 30 s — stale after this, will refresh silently
+const MESSAGE_CACHE_TTL_MS = 5 * 60_000; // 5 min — local-first; delta sync handles freshness
 
 // ─── Profile cache ────────────────────────────────────────────────────────────
 export function getCachedProfile(friendId: string): CachedProfile | undefined {
@@ -66,22 +73,34 @@ export function getCachedProfile(friendId: string): CachedProfile | undefined {
         }
       }
     } catch {}
+    // Durable hydrate for next tick / await path.
+    void localDbGetProfile<CachedProfile>(friendId).then((p) => {
+      if (p && !profileCache.has(friendId)) profileCache.set(friendId, p);
+    });
   }
   return cached;
 }
 
+/** Await durable profile (local-first open). */
+export async function hydrateCachedProfile(friendId: string): Promise<CachedProfile | undefined> {
+  const mem = profileCache.get(friendId);
+  if (mem) return mem;
+  const fromDb = await localDbGetProfile<CachedProfile>(friendId);
+  if (fromDb) {
+    profileCache.set(friendId, fromDb);
+    return fromDb;
+  }
+  return getCachedProfile(friendId);
+}
+
 export function setCachedProfile(friendId: string, profile: CachedProfile) {
   profileCache.set(friendId, profile);
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem(`jj_profile_${friendId}`, JSON.stringify(profile));
-    } catch {}
-  }
+  void localDbSetProfile(friendId, profile);
 }
 
 // ─── Message cache ────────────────────────────────────────────────────────────
 function msgKey(meId: string, friendId: string) {
-  return [meId, friendId].sort().join("-");
+  return dmConvKey(meId, friendId);
 }
 
 export function getCachedMessages(meId: string, friendId: string): CachedMessage[] | null {
@@ -95,7 +114,6 @@ export function getCachedMessages(meId: string, friendId: string): CachedMessage
         const messages = JSON.parse(stored);
         if (Array.isArray(messages)) {
           messageCache.set(key, { messages, loadedAt: Date.now() });
-          // Upgrade localStorage → durable IDB in the background.
           void localDbSetMessages(key, messages);
           return messages;
         } else {
@@ -103,7 +121,6 @@ export function getCachedMessages(meId: string, friendId: string): CachedMessage
         }
       }
     } catch {}
-    // Async hydrate from durable store for next open (non-blocking).
     void localDbGetMessages<CachedMessage>(key).then((msgs) => {
       if (msgs && !messageCache.has(key)) {
         messageCache.set(key, { messages: msgs, loadedAt: Date.now() });
@@ -111,6 +128,24 @@ export function getCachedMessages(meId: string, friendId: string): CachedMessage
     });
   }
   return null;
+}
+
+/** Await IndexedDB hydrate — use on conversation open before network. */
+export async function hydrateCachedMessages(
+  meId: string,
+  friendId: string,
+): Promise<CachedMessage[] | null> {
+  const key = msgKey(meId, friendId);
+  const entry = messageCache.get(key);
+  if (entry) return entry.messages;
+
+  const fromDb = await localDbGetMessages<CachedMessage>(key);
+  if (fromDb?.length) {
+    messageCache.set(key, { messages: fromDb, loadedAt: Date.now() });
+    return fromDb;
+  }
+
+  return getCachedMessages(meId, friendId);
 }
 
 export function setCachedMessages(meId: string, friendId: string, messages: CachedMessage[]) {
@@ -136,30 +171,81 @@ export function getCachedPageMessages(conversationId: string): CachedPageMessage
         const messages = JSON.parse(stored);
         if (Array.isArray(messages)) {
           pageMessageCache.set(conversationId, { messages, loadedAt: Date.now() });
+          void localDbSetMessages(pageConvKey(conversationId), messages);
           return messages;
         } else {
           localStorage.removeItem(`jj_page_msgs_${conversationId}`);
         }
       }
     } catch {}
+    void localDbGetMessages<CachedPageMessage>(pageConvKey(conversationId)).then((msgs) => {
+      if (msgs && !pageMessageCache.has(conversationId)) {
+        pageMessageCache.set(conversationId, { messages: msgs, loadedAt: Date.now() });
+      }
+    });
   }
   return null;
 }
 
+export async function hydrateCachedPageMessages(
+  conversationId: string,
+): Promise<CachedPageMessage[] | null> {
+  const entry = pageMessageCache.get(conversationId);
+  if (entry) return entry.messages;
+  const fromDb = await localDbGetMessages<CachedPageMessage>(pageConvKey(conversationId));
+  if (fromDb?.length) {
+    pageMessageCache.set(conversationId, { messages: fromDb, loadedAt: Date.now() });
+    return fromDb;
+  }
+  return getCachedPageMessages(conversationId);
+}
+
 export function setCachedPageMessages(conversationId: string, messages: CachedPageMessage[]) {
   pageMessageCache.set(conversationId, { messages, loadedAt: Date.now() });
+  void localDbSetMessages(pageConvKey(conversationId), messages);
   if (typeof window !== "undefined") {
     try {
-      localStorage.setItem(`jj_page_msgs_${conversationId}`, JSON.stringify(messages));
+      const slim = messages.length > 40 ? messages.slice(-40) : messages;
+      localStorage.setItem(`jj_page_msgs_${conversationId}`, JSON.stringify(slim));
     } catch {}
   }
 }
 
 export function invalidatePageMessageCache(conversationId: string) {
   pageMessageCache.delete(conversationId);
+  void localDbDeleteMessages(pageConvKey(conversationId));
   if (typeof window !== "undefined") {
     try {
       localStorage.removeItem(`jj_page_msgs_${conversationId}`);
+    } catch {}
+  }
+}
+
+// ─── Group message cache (local-first) ───────────────────────────────────────
+export async function hydrateCachedGroupMessages(groupId: string): Promise<any[] | null> {
+  const key = `group-${groupId}`;
+  const fromDb = await localDbGetMessages<any>(key);
+  if (fromDb?.length) return fromDb;
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem(`jj_group_msgs_${groupId}`);
+    if (!stored) return null;
+    const messages = JSON.parse(stored);
+    if (!Array.isArray(messages)) return null;
+    void localDbSetMessages(key, messages);
+    return messages;
+  } catch {
+    return null;
+  }
+}
+
+export function setCachedGroupMessagesDurable(groupId: string, messages: any[]) {
+  const key = `group-${groupId}`;
+  void localDbSetMessages(key, messages);
+  if (typeof window !== "undefined") {
+    try {
+      const slim = messages.length > 40 ? messages.slice(-40) : messages;
+      localStorage.setItem(`jj_group_msgs_${groupId}`, JSON.stringify(slim));
     } catch {}
   }
 }

@@ -1,20 +1,26 @@
 /**
- * Durable local store for native-first messaging.
+ * Local-first durable store (Messenger-style phone mirror).
  *
- * Uses IndexedDB in the Capacitor WebView (no extra native plugin) so message
- * JSON is not unbounded in localStorage. Falls back to localStorage when IDB
- * is unavailable. Sync cursors live here too.
+ * IndexedDB in the Capacitor WebView — no extra native plugin.
+ * Server (Supabase/VPS) remains source of truth; this is the fast local mirror.
+ *
+ * Message/inbox payloads are AES-GCM encrypted at rest when Web Crypto is available.
  */
 
 const DB_NAME = "jackpot_jungle_local_db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_KV = "kv";
 const STORE_MSGS = "messages";
 const STORE_INBOX = "inbox";
+const STORE_PROFILES = "profiles";
 
-type KvValue = string | object | null;
+const ENC_PREFIX = "jjenc1:";
+const DEVICE_KEY_ID = "__jj_device_aes_key";
 
-let dbPromise: Promise<IDBDatabase> | null = null;
+type KvValue = string | number | boolean | object | null;
+
+let dbPromise: Promise<IDBDatabase | null> | null = null;
+let cryptoKeyPromise: Promise<CryptoKey | null> | null = null;
 
 function openDb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === "undefined") return Promise.resolve(null);
@@ -26,16 +32,17 @@ function openDb(): Promise<IDBDatabase | null> {
         if (!db.objectStoreNames.contains(STORE_KV)) db.createObjectStore(STORE_KV);
         if (!db.objectStoreNames.contains(STORE_MSGS)) db.createObjectStore(STORE_MSGS);
         if (!db.objectStoreNames.contains(STORE_INBOX)) db.createObjectStore(STORE_INBOX);
+        if (!db.objectStoreNames.contains(STORE_PROFILES)) db.createObjectStore(STORE_PROFILES);
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     }).catch((err) => {
       console.warn("[local-db] IndexedDB open failed, using localStorage fallback:", err);
       dbPromise = null;
-      return null as unknown as IDBDatabase;
+      return null;
     });
   }
-  return dbPromise.then((db) => db ?? null);
+  return dbPromise;
 }
 
 function idbGet<T>(store: string, key: string): Promise<T | undefined> {
@@ -110,7 +117,7 @@ function lsSet(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
   } catch {
-    /* quota — ignore */
+    /* quota */
   }
 }
 
@@ -119,6 +126,79 @@ function lsRemove(key: string) {
     localStorage.removeItem(key);
   } catch {
     /* ignore */
+  }
+}
+
+function bufToB64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+
+function b64ToBuf(b64: string): ArrayBuffer {
+  const s = atob(b64);
+  const bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function getDeviceKey(): Promise<CryptoKey | null> {
+  if (typeof crypto === "undefined" || !crypto.subtle) return null;
+  if (!cryptoKeyPromise) {
+    cryptoKeyPromise = (async () => {
+      try {
+        let rawB64 = await idbGet<string>(STORE_KV, DEVICE_KEY_ID);
+        let raw: Uint8Array;
+        if (typeof rawB64 === "string" && rawB64.length > 0) {
+          raw = new Uint8Array(b64ToBuf(rawB64));
+        } else {
+          raw = crypto.getRandomValues(new Uint8Array(32));
+          await idbSet(STORE_KV, DEVICE_KEY_ID, bufToB64(raw.buffer));
+        }
+        return await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, [
+          "encrypt",
+          "decrypt",
+        ]);
+      } catch (e) {
+        console.warn("[local-db] crypto key unavailable:", e);
+        return null;
+      }
+    })();
+  }
+  return cryptoKeyPromise;
+}
+
+async function seal(value: unknown): Promise<unknown> {
+  try {
+    const key = await getDeviceKey();
+    if (!key) return value;
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const plain = new TextEncoder().encode(JSON.stringify(value));
+    const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
+    return ENC_PREFIX + bufToB64(iv.buffer) + "." + bufToB64(cipher);
+  } catch {
+    return value;
+  }
+}
+
+async function unseal<T>(stored: unknown): Promise<T | undefined> {
+  if (stored == null) return undefined;
+  if (typeof stored !== "string" || !stored.startsWith(ENC_PREFIX)) {
+    return stored as T;
+  }
+  try {
+    const key = await getDeviceKey();
+    if (!key) return undefined;
+    const body = stored.slice(ENC_PREFIX.length);
+    const [ivB64, cipherB64] = body.split(".");
+    if (!ivB64 || !cipherB64) return undefined;
+    const iv = new Uint8Array(b64ToBuf(ivB64));
+    const cipher = b64ToBuf(cipherB64);
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, cipher);
+    return JSON.parse(new TextDecoder().decode(plain)) as T;
+  } catch {
+    return undefined;
   }
 }
 
@@ -144,10 +224,23 @@ export async function localDbSetKv(key: string, value: KvValue): Promise<void> {
   }
 }
 
-/** Thread messages by conversation key (sorted peer ids or group-*). */
+/** Per-conversation sync cursor (ISO timestamp of last synced message). */
+export async function localDbGetSyncCursor(convKey: string): Promise<string | null> {
+  const v = await localDbGetKv(`sync_cursor_${convKey}`);
+  return typeof v === "string" && v ? v : null;
+}
+
+export async function localDbSetSyncCursor(convKey: string, iso: string): Promise<void> {
+  await localDbSetKv(`sync_cursor_${convKey}`, iso);
+}
+
+/** Thread messages by conversation key (sorted peer ids, group-*, page-*). */
 export async function localDbGetMessages<T>(convKey: string): Promise<T[] | null> {
-  const fromIdb = await idbGet<T[]>(STORE_MSGS, convKey);
-  if (fromIdb) return fromIdb;
+  const fromIdb = await idbGet<unknown>(STORE_MSGS, convKey);
+  if (fromIdb !== undefined) {
+    const decoded = await unseal<T[]>(fromIdb);
+    if (Array.isArray(decoded)) return decoded;
+  }
   const raw = lsGet(`jj_msgs_${convKey}`);
   if (!raw) return null;
   try {
@@ -159,15 +252,43 @@ export async function localDbGetMessages<T>(convKey: string): Promise<T[] | null
 }
 
 export async function localDbSetMessages(convKey: string, messages: unknown[]): Promise<void> {
-  await idbSet(STORE_MSGS, convKey, messages);
-  // Keep a small localStorage mirror for cold-start sync read of last few threads only
-  // is handled by chat-cache; prefer IDB as source of truth going forward.
+  const sealed = await seal(messages);
+  await idbSet(STORE_MSGS, convKey, sealed);
+  // Slim plaintext LS mirror for cold-start sync paint only (last 40).
   try {
-    const slim = messages.length > 80 ? messages.slice(-80) : messages;
+    const slim = messages.length > 40 ? messages.slice(-40) : messages;
     lsSet(`jj_msgs_${convKey}`, JSON.stringify(slim));
   } catch {
     lsRemove(`jj_msgs_${convKey}`);
   }
+  // Advance cursor from newest message.
+  const last = messages[messages.length - 1] as { created_at?: string } | undefined;
+  if (last?.created_at) {
+    await localDbSetSyncCursor(convKey, last.created_at);
+  }
+}
+
+/** Merge by id (edits/seen) and persist — used by realtime + delta sync. */
+export async function localDbUpsertMessages<T extends { id: string; created_at?: string }>(
+  convKey: string,
+  rows: T[],
+  opts?: { deleteIds?: string[] },
+): Promise<T[]> {
+  const existing = (await localDbGetMessages<T>(convKey)) || [];
+  const byId = new Map(existing.map((m) => [m.id, m]));
+  for (const row of rows) {
+    byId.set(row.id, { ...(byId.get(row.id) as T | undefined), ...row });
+  }
+  if (opts?.deleteIds?.length) {
+    for (const id of opts.deleteIds) byId.delete(id);
+  }
+  const next = Array.from(byId.values()).sort((a, b) =>
+    String(a.created_at || "").localeCompare(String(b.created_at || "")),
+  );
+  // Cap local history to keep IDB healthy (older pages stay on server).
+  const capped = next.length > 500 ? next.slice(-500) : next;
+  await localDbSetMessages(convKey, capped);
+  return capped;
 }
 
 export async function localDbDeleteMessages(convKey: string): Promise<void> {
@@ -176,8 +297,11 @@ export async function localDbDeleteMessages(convKey: string): Promise<void> {
 }
 
 export async function localDbGetInbox<T>(): Promise<T[] | null> {
-  const fromIdb = await idbGet<T[]>(STORE_INBOX, "conversations");
-  if (fromIdb) return fromIdb;
+  const fromIdb = await idbGet<unknown>(STORE_INBOX, "conversations");
+  if (fromIdb !== undefined) {
+    const decoded = await unseal<T[]>(fromIdb);
+    if (Array.isArray(decoded)) return decoded;
+  }
   const raw = lsGet("jj_cached_conversations");
   if (!raw) return null;
   try {
@@ -189,7 +313,8 @@ export async function localDbGetInbox<T>(): Promise<T[] | null> {
 }
 
 export async function localDbSetInbox(conversations: unknown[]): Promise<void> {
-  await idbSet(STORE_INBOX, "conversations", conversations);
+  const sealed = await seal(conversations);
+  await idbSet(STORE_INBOX, "conversations", sealed);
   try {
     lsSet("jj_cached_conversations", JSON.stringify(conversations));
   } catch {
@@ -197,7 +322,32 @@ export async function localDbSetInbox(conversations: unknown[]): Promise<void> {
   }
 }
 
-/** Warm the IDB connection early on native boot (fire-and-forget). */
+export async function localDbGetProfile<T>(userId: string): Promise<T | null> {
+  const fromIdb = await idbGet<unknown>(STORE_PROFILES, userId);
+  if (fromIdb !== undefined) {
+    const decoded = await unseal<T>(fromIdb);
+    if (decoded && typeof decoded === "object") return decoded;
+  }
+  const raw = lsGet(`jj_profile_${userId}`);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function localDbSetProfile(userId: string, profile: unknown): Promise<void> {
+  const sealed = await seal(profile);
+  await idbSet(STORE_PROFILES, userId, sealed);
+  try {
+    lsSet(`jj_profile_${userId}`, JSON.stringify(profile));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Warm the IDB connection + crypto key early on native boot. */
 export function localDbWarm(): void {
-  void openDb();
+  void openDb().then(() => getDeviceKey());
 }

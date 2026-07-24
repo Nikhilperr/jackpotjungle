@@ -35,6 +35,10 @@ import { CreateGroupModal } from "./chat";
 import {
   getCachedProfile,
   getCachedMessages,
+  hydrateCachedMessages,
+  hydrateCachedProfile,
+  hydrateCachedGroupMessages,
+  setCachedGroupMessagesDurable,
   setCachedProfile,
   setCachedMessages,
   invalidateMessageCache,
@@ -42,6 +46,7 @@ import {
   setDraft,
   clearDraft,
 } from "@/lib/chat-cache";
+import { syncDmThread, applyRealtimeMessageToLocal, dmConvKey } from "@/lib/local-first-sync";
 
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 
@@ -73,10 +78,7 @@ function getCachedGroupMessages(groupId: string) {
 }
 
 function setCachedGroupMessages(groupId: string, messages: any[]) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(`jj_group_msgs_${groupId}`, JSON.stringify(messages));
-  } catch {}
+  setCachedGroupMessagesDurable(groupId, messages);
 }
 
 type CallRow = {
@@ -846,7 +848,9 @@ function ChatView() {
 
     if (isGroup) {
       const cachedDetails = getCachedGroupDetails(groupId || "");
-      let cachedGroupMsgs = getCachedGroupMessages(groupId || "");
+      let cachedGroupMsgs =
+        (groupId ? await hydrateCachedGroupMessages(groupId) : null) ||
+        getCachedGroupMessages(groupId || "");
       if (cachedGroupMsgs) {
         const sample = cachedGroupMsgs[0];
         if (sample && sample.group_id !== groupId) {
@@ -1032,11 +1036,12 @@ function ChatView() {
       return;
     }
 
-    // ── Direct Chat Hydration (unchanged direct chat flow) ───────────
-    const cachedProfile = getCachedProfile(friendId);
-    let cachedMsgs = getCachedMessages(meId, friendId);
+    // ── Local-first DM: paint local mirror → delta sync only ───────────
+    const cachedProfile =
+      (await hydrateCachedProfile(friendId)) || getCachedProfile(friendId);
+    let cachedMsgs = await hydrateCachedMessages(meId, friendId);
     if (cachedMsgs) {
-      const sample = cachedMsgs[0];
+      const sample = cachedMsgs[0] as any;
       if (sample) {
         if (sample.group_id) {
           invalidateMessageCache(meId, friendId);
@@ -1055,98 +1060,75 @@ function ChatView() {
     setMessages(cachedMsgs || []);
 
     const PAGE = 50;
-    const lastCachedMsg = cachedMsgs && cachedMsgs.length > 0 ? cachedMsgs[cachedMsgs.length - 1] : null;
 
     try {
-      if (lastCachedMsg) {
-        // Catch-up: re-fetch recent cached rows for edits/seen/delivered (no updated_at column).
-        const catchUpIds = (cachedMsgs || [])
-          .slice(-40)
-          .map((m) => m.id)
-          .filter((id) => id && !String(id).startsWith("temp-"));
-        const [{ data: prof }, { data: deltaMsgs }, { data: catchUpRows }, { data: spamRow }, { data: callRows }] =
-          await Promise.all([
-          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at, vip_status").eq("id", friendId).maybeSingle(),
-          supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
-            .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
-            .gt("created_at", lastCachedMsg.created_at)
-            .order("created_at", { ascending: false })
-            .limit(200),
-          catchUpIds.length
-            ? supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)").in("id", catchUpIds)
-            : Promise.resolve({ data: [] as any[] }),
-          supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
-          supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-            .or(`and(caller_id.eq.${meId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${meId})`)
-            .eq("context", "friend")
-            .order("created_at", { ascending: true }).limit(200),
-        ]);
-        if (!isMountedRef.current) return;
-        if (activeFriendIdRef.current !== friendId) return;
+      const [{ data: prof }, { data: spamRow }, { data: callRows }, syncResult] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select(
+            "id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at, vip_status",
+          )
+          .eq("id", friendId)
+          .maybeSingle(),
+        supabase
+          .from("spam_list")
+          .select("id")
+          .eq("user_id", friendId)
+          .eq("spammed_user_id", meId)
+          .maybeSingle(),
+        supabase
+          .from("calls")
+          .select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
+          .or(
+            `and(caller_id.eq.${meId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${meId})`,
+          )
+          .eq("context", "friend")
+          .order("created_at", { ascending: true })
+          .limit(200),
+        syncDmThread({
+          meId,
+          friendId,
+          localMessages: (cachedMsgs as any) || [],
+          pageSize: PAGE,
+        }),
+      ]);
+      if (!isMountedRef.current) return;
+      if (activeFriendIdRef.current !== friendId) return;
 
-        const profile = prof as Profile | null;
-        if (profile && spamRow) profile.online = false;
-        if (profile) { setFriend(profile); setCachedProfile(friendId, profile); }
-
-        const byId = new Map((cachedMsgs || []).map((m) => [m.id, m]));
-        // Drop catch-up ids that disappeared from the server (deleted while offline).
-        const stillOnServer = new Set((catchUpRows ?? []).map((m: any) => m.id));
-        for (const id of catchUpIds) {
-          if (!stillOnServer.has(id)) byId.delete(id);
-        }
-        for (const row of (catchUpRows ?? []) as Message[]) {
-          byId.set(row.id, { ...(byId.get(row.id) as Message | undefined), ...row });
-        }
-        const delta = (deltaMsgs ?? []) as Message[];
-        delta.reverse().forEach((m) => {
-          byId.set(m.id, m);
-        });
-        const combined = Array.from(byId.values()).sort((a, b) =>
-          (a.created_at || "").localeCompare(b.created_at || ""),
-        );
-
-        const queued = getOfflineQueuedForCurrent();
-        setMessages([...combined, ...queued]);
-        setCachedMessages(meId, friendId, combined);
-        // Warm open: assume older history may still exist.
-        setHasOlderMessages(true);
-        setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
-      } else {
-        const [{ data: prof }, { data: msgs }, { data: spamRow }, { data: callRows }] = await Promise.all([
-          supabase.from("profiles").select("id, username, first_name, last_name, avatar_url, online, last_seen, friend_code, referral_code, phone, address, created_at, vip_status").eq("id", friendId).maybeSingle(),
-          supabase.from("messages").select("*, sender:sender_id(id, username, first_name, last_name, avatar_url, vip_status)")
-            .or(`and(sender_id.eq.${meId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${meId})`)
-            .order("created_at", { ascending: false }).limit(PAGE + 1),
-          supabase.from("spam_list").select("id").eq("user_id", friendId).eq("spammed_user_id", meId).maybeSingle(),
-          supabase.from("calls").select("id, caller_id, callee_id, call_type, status, duration_seconds, created_at")
-            .or(`and(caller_id.eq.${meId},callee_id.eq.${friendId}),and(caller_id.eq.${friendId},callee_id.eq.${meId})`)
-            .eq("context", "friend")
-            .order("created_at", { ascending: true }).limit(200),
-        ]);
-        if (!isMountedRef.current) return;
-        if (activeFriendIdRef.current !== friendId) return;
-
-        const profile = prof as Profile | null;
-        if (profile && spamRow) profile.online = false;
-        if (profile) { setFriend(profile); setCachedProfile(friendId, profile); }
-
-        const rawMsgs = (msgs ?? []) as Message[];
-        const hasMore = rawMsgs.length > PAGE;
-        const pageMsgs = rawMsgs.slice(0, PAGE).reverse();
-        setHasOlderMessages(hasMore);
-        const queued = getOfflineQueuedForCurrent();
-        setMessages([...pageMsgs, ...queued]);
-        setCachedMessages(meId, friendId, pageMsgs);
-        setCalls(((callRows ?? []) as CallRow[]).filter((c) => c.status !== "ringing" && c.status !== "active"));
+      const profile = prof as Profile | null;
+      if (profile && spamRow) profile.online = false;
+      if (profile) {
+        setFriend(profile);
+        setCachedProfile(friendId, profile);
       }
 
+      const combined = syncResult.messages as Message[];
+      const queued = getOfflineQueuedForCurrent();
+      setMessages([...combined, ...queued]);
+      setCachedMessages(meId, friendId, combined);
+      setHasOlderMessages(syncResult.hasOlder || combined.length >= PAGE);
+      setCalls(
+        ((callRows ?? []) as CallRow[]).filter(
+          (c) => c.status !== "ringing" && c.status !== "active",
+        ),
+      );
+
       // Opening a thread: mark delivered for anything still undelivered, then seen.
-      await supabase.from("messages").update({ delivered: true } as any)
-        .eq("sender_id", friendId).eq("receiver_id", meId).eq("delivered", false);
-      await supabase.from("messages").update({ seen: true, delivered: true } as any)
-        .eq("sender_id", friendId).eq("receiver_id", meId).eq("seen", false);
+      await supabase
+        .from("messages")
+        .update({ delivered: true } as any)
+        .eq("sender_id", friendId)
+        .eq("receiver_id", meId)
+        .eq("delivered", false);
+      await supabase
+        .from("messages")
+        .update({ seen: true, delivered: true } as any)
+        .eq("sender_id", friendId)
+        .eq("receiver_id", meId)
+        .eq("seen", false);
     } catch (err) {
       console.error("Error fetching chat data:", err);
+      // Keep locally painted messages visible offline.
     }
   }, [friendId, meId]);
 
@@ -1355,14 +1337,19 @@ function ChatView() {
               .eq("id", m.id)
               .then();
           }
-        } else {
-          if (!m.group_id) {
-            const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
-            const cached = getCachedMessages(meId, otherFid);
-            if (cached && !cached.some(x => x.id === m.id)) {
-              setCachedMessages(meId, otherFid, [...cached, m]);
-            }
+        } else if (!m.group_id && meId) {
+          const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
+          if (otherFid) {
+            void applyRealtimeMessageToLocal(dmConvKey(meId, otherFid), m, "INSERT").then((next) => {
+              setCachedMessages(meId, otherFid, next as any);
+            });
           }
+        }
+        if (involves && meId) {
+          const key = m.group_id
+            ? `group-${m.group_id}`
+            : dmConvKey(meId, m.sender_id === meId ? m.receiver_id : m.sender_id);
+          void applyRealtimeMessageToLocal(key, m, "INSERT");
         }
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
@@ -1373,13 +1360,18 @@ function ChatView() {
 
         if (involves) {
           setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, ...m } : x)));
-        } else {
-          if (!m.group_id) {
-            const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
-            const cached = getCachedMessages(meId, otherFid);
-            if (cached) {
-              setCachedMessages(meId, otherFid, cached.map(x => x.id === m.id ? { ...x, ...m } : x));
-            }
+          if (meId) {
+            const key = m.group_id
+              ? `group-${m.group_id}`
+              : dmConvKey(meId, friendId);
+            void applyRealtimeMessageToLocal(key, m, "UPDATE");
+          }
+        } else if (!m.group_id && meId) {
+          const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
+          if (otherFid) {
+            void applyRealtimeMessageToLocal(dmConvKey(meId, otherFid), m, "UPDATE").then((next) => {
+              setCachedMessages(meId, otherFid, next as any);
+            });
           }
         }
       })
@@ -1389,13 +1381,18 @@ function ChatView() {
         const involves = involvesGroupMsg(m);
         if (involves) {
           setMessages((prev) => prev.filter((x) => x.id !== m.id));
+          if (meId) {
+            const key = m.group_id
+              ? `group-${m.group_id}`
+              : dmConvKey(meId, friendId);
+            void applyRealtimeMessageToLocal(key, m, "DELETE");
+          }
         } else if (!m.group_id && meId) {
           const otherFid = m.sender_id === meId ? m.receiver_id : m.sender_id;
           if (otherFid) {
-            const cached = getCachedMessages(meId, otherFid);
-            if (cached) {
-              setCachedMessages(meId, otherFid, cached.filter((x) => x.id !== m.id));
-            }
+            void applyRealtimeMessageToLocal(dmConvKey(meId, otherFid), m, "DELETE").then((next) => {
+              setCachedMessages(meId, otherFid, next as any);
+            });
           }
         }
       })

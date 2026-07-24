@@ -68,15 +68,19 @@ function ChatLayout() {
     }
   });
 
-  // Hydrate / upgrade durable IndexedDB inbox store after mount.
+  // Local-first: hydrate durable inbox (IDB) before any network rebuild.
   useEffect(() => {
     void import("@/lib/local-db").then(async ({ localDbGetInbox, localDbSetInbox }) => {
       if (conversations.length > 0) {
         await localDbSetInbox(conversations);
+        setLoadingConvs(false);
         return;
       }
       const rows = await localDbGetInbox<Conversation>();
-      if (rows?.length) setConversations(rows);
+      if (rows?.length) {
+        setConversations(rows);
+        setLoadingConvs(false);
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cold-start hydrate once
   }, []);
@@ -716,8 +720,8 @@ function ChatLayout() {
     if (!meId) return;
     let mounted = true;
 
-    // Native-first: warm cache paints instantly; skip immediate full 500-msg rebuild
-    // unless cache is empty/stale. Soft-revalidate shortly after first paint.
+    // Local-first: paint from phone mirror; sync only differences.
+    // Full rebuild only when inbox mirror is empty / extremely stale (24h).
     let softTimer: ReturnType<typeof setTimeout> | null = null;
     if (shouldFullRebuildInbox()) {
       load(meId);
@@ -725,7 +729,7 @@ function ChatLayout() {
       setLoadingConvs(false);
       softTimer = setTimeout(() => {
         if (mounted) void loadInboxDelta(meId);
-      }, 1500);
+      }, 600);
     }
     loadPage(meId);
     loadSpam(meId);

@@ -4,12 +4,12 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
-import { localDbSetInbox } from "@/lib/local-db";
+import { localDbSetKv, localDbSetInbox } from "@/lib/local-db";
 
 export const INBOX_CACHE_KEY = "jj_cached_conversations";
 export const INBOX_SYNCED_AT_KEY = "jj_inbox_synced_at";
-/** Full rebuild if cache older than this (ms). */
-export const INBOX_FULL_REBUILD_TTL_MS = 5 * 60 * 1000;
+/** Full rebuild only if cache is empty or very stale — prefer delta sync. */
+export const INBOX_FULL_REBUILD_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type InboxPreviewPatch = {
   peerKey: string; // friendId or group-<id>
@@ -36,6 +36,7 @@ export function setInboxSyncedAt(ts = Date.now()) {
   } catch {
     /* ignore */
   }
+  void localDbSetKv(INBOX_SYNCED_AT_KEY, ts);
 }
 
 export function hasWarmInboxCache(): boolean {
