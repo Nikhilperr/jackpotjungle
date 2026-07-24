@@ -6,7 +6,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatSystemMessage, isSystemMessage } from "@/lib/chat-helpers";
 import { useRole, type AppRole } from "@/hooks/useRole";
 import { useAuth } from "@/hooks/useAuth";
-import { useSessionKillListener } from "@/hooks/useSessionKillListener";
 import { Capacitor } from "@capacitor/core";
 import { useNativePush } from "@/hooks/useNativePush";
 import { registerBackAction } from "@/lib/native/navigation";
@@ -267,7 +266,6 @@ type ConvRow = {
 function AdminPage() {
   const { user } = useAuth();
   const { isAdmin, isSuperAdmin, permissions, loading } = useRole();
-  useSessionKillListener(!!user);
   const activePermissions = useMemo(() => permissions && permissions.length > 0 ? permissions : DEFAULT_PERMISSIONS, [permissions]);
   const hasPerm = useCallback((t: string) => isSuperAdmin || activePermissions.includes(t), [isSuperAdmin, activePermissions]);
   const navigate = useNavigate();

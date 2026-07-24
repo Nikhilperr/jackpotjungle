@@ -15,6 +15,7 @@ import { PasswordStrength } from "@/components/auth/PasswordStrength";
 import { Capacitor } from "@capacitor/core";
 import { registerBackAction } from "@/lib/native";
 import { signalShellReady } from "@/lib/shell-ready";
+import { consumeForcedLogoutMessage } from "@/lib/session-kill";
 import { z } from "zod";
 
 const searchSchema = z.object({
@@ -49,7 +50,9 @@ function AuthPage() {
   const [mode, setMode] = useState<Mode>(urlMode || "welcome");
   const [googleBusy, setGoogleBusy] = useState(false);
 
-  const isLogoutRequest = logout === "true" || logout === true;
+  const logoutFlag = typeof logout === "string" ? logout : logout === true ? "true" : undefined;
+  const isLogoutRequest = logoutFlag === "true" || logoutFlag === "remote";
+  const isRemoteLogout = logoutFlag === "remote";
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -73,6 +76,10 @@ function AuthPage() {
   useEffect(() => {
     if (isLogoutRequest) {
       async function clearAll() {
+        const remoteMsg = consumeForcedLogoutMessage();
+        if (isRemoteLogout || remoteMsg) {
+          toast.info(remoteMsg || "You have been logged out.", { duration: 5000 });
+        }
         try {
           await supabase.auth.signOut({ scope: "local" });
         } catch {}
@@ -94,7 +101,7 @@ function AuthPage() {
       }
       clearAll();
     }
-  }, [isLogoutRequest, navigate]);
+  }, [isLogoutRequest, isRemoteLogout, navigate]);
 
   useEffect(() => {
     if (urlMode) {

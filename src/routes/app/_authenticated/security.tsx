@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getActiveSessionsUser, terminateSessionUser } from "@/lib/admin-super.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { useLiveSessionsRefresh } from "@/hooks/useLiveSessionsRefresh";
+import { broadcastSessionKillClient } from "@/lib/session-kill";
 
 export const Route = createFileRoute("/app/_authenticated/security")({
   ssr: false,
@@ -64,6 +65,7 @@ function SecurityPage() {
   const terminateSessionFn = useServerFn(terminateSessionUser);
   const [sessions, setSessions] = useState<any[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [terminatingId, setTerminatingId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   const isGoogle = user?.app_metadata?.provider === "google" || user?.identities?.some((id: any) => id.provider === "google");
@@ -95,21 +97,22 @@ function SecurityPage() {
     } catch {}
   };
 
-  const loadSessions = useCallback(async () => {
-    setLoadingSessions(true);
+  const loadSessions = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) setLoadingSessions(true);
     try {
       const res = await getSessionsFn();
       setSessions(res.sessions || []);
     } catch (err: any) {
-      toast.error(err.message || "Failed to load active sessions");
+      if (!silent) toast.error(err.message || "Failed to load active sessions");
     } finally {
-      setLoadingSessions(false);
+      if (!silent) setLoadingSessions(false);
     }
   }, [getSessionsFn]);
 
   const { live: sessionsLive } = useLiveSessionsRefresh({
     userId: user?.id,
-    onRefresh: loadSessions,
+    onRefresh: () => loadSessions({ silent: true }),
     enabled: !!user,
   });
 
@@ -260,14 +263,26 @@ function SecurityPage() {
   };
 
   const handleTerminateSession = async (sessionId: string) => {
+    if (terminatingId) return;
+    setTerminatingId(sessionId);
+
+    // Kick the other device immediately (don't wait for server round-trip)
+    if (user?.id) {
+      void broadcastSessionKillClient(supabase, user.id, sessionId).catch(() => {});
+    }
+
     try {
       const res = await terminateSessionFn({ data: { sessionId } });
-      if (res.ok) {
-        toast.success("Device logged out successfully!");
-        setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (!res.ok || (res.terminatedCount ?? 0) === 0) {
+        toast.error("Could not log out that device. Try again.");
+        return;
       }
+      setSessions((s) => s.filter((row) => row.id !== sessionId));
+      toast.success("Device logged out");
     } catch (err: any) {
       toast.error(err.message || "Failed to terminate device session");
+    } finally {
+      setTerminatingId(null);
     }
   };
 
@@ -555,11 +570,16 @@ function SecurityPage() {
                           <Button
                             variant="destructive"
                             size="icon"
-                            onClick={() => handleTerminateSession(s.id)}
+                            onClick={() => void handleTerminateSession(s.id)}
+                            disabled={!!terminatingId}
                             className="h-8 w-8 rounded-lg shrink-0"
                             title="Log out device"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            {terminatingId === s.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       );

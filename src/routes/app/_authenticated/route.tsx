@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { waitInitialSession, getVerifiedStatus, setVerifiedStatus } from "@/lib/auth-wait";
 import { CallProvider } from "@/components/messenger/CallProvider";
+import { SessionKillGate } from "@/components/SessionKillGate";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/app/_authenticated")({
@@ -116,6 +117,7 @@ export const Route = createFileRoute("/app/_authenticated")({
   },
   component: () => (
     <CallProvider>
+      <SessionKillGate />
       <Outlet />
     </CallProvider>
   ),

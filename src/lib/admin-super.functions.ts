@@ -2290,20 +2290,43 @@ export const getActiveSessionsUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const userId = context.userId;
-    const client = await getDbClient();
     try {
-      const query = `
-        SELECT id, created_at, updated_at, ip, user_agent
-        FROM auth.sessions
-        WHERE user_id = $1
-        ORDER BY updated_at DESC
-      `;
-      const { rows } = await client.query(query, [userId]);
-      return { sessions: rows };
+      const { withAuthSessionsDb } = await import("@/lib/auth-sessions.server");
+      const sessions = await withAuthSessionsDb(async (client) => {
+        const { rows } = await client.query(
+          `
+            SELECT id, created_at, updated_at, ip, user_agent
+            FROM auth.sessions
+            WHERE user_id = $1
+            ORDER BY updated_at DESC
+            LIMIT 50
+          `,
+          [userId],
+        );
+        return rows;
+      });
+      return { sessions };
     } catch (err: any) {
-      throw new Error(err.message || "Failed to query active sessions");
-    } finally {
-      await client.end();
+      // Fallback to legacy connector only if pooled path is unavailable.
+      console.warn("[Sessions] Fast pool failed, falling back:", err?.message || err);
+      const client = await getDbClient();
+      try {
+        const { rows } = await client.query(
+          `
+            SELECT id, created_at, updated_at, ip, user_agent
+            FROM auth.sessions
+            WHERE user_id = $1
+            ORDER BY updated_at DESC
+            LIMIT 50
+          `,
+          [userId],
+        );
+        return { sessions: rows };
+      } catch (e2: any) {
+        throw new Error(e2.message || "Failed to query active sessions");
+      } finally {
+        await client.end();
+      }
     }
   });
 
@@ -2324,65 +2347,49 @@ export const terminateSessionUser = createServerFn({ method: "POST" })
       throw new Error("Cannot terminate your current session");
     }
 
-    const client = await getDbClient();
     let terminatedCount = 0;
     try {
-      const query = `
-        DELETE FROM auth.sessions
-        WHERE id = $1 AND user_id = $2
-      `;
-      const { rowCount } = await client.query(query, [sessionId, userId]);
-      terminatedCount = rowCount || 0;
+      const { withAuthSessionsDb } = await import("@/lib/auth-sessions.server");
+      terminatedCount = await withAuthSessionsDb(async (client) => {
+        // Drop refresh tokens for this session so refresh cannot resurrect it.
+        try {
+          await client.query(`DELETE FROM auth.refresh_tokens WHERE session_id = $1`, [sessionId]);
+        } catch {
+          /* older schemas may differ */
+        }
+        const { rowCount } = await client.query(
+          `DELETE FROM auth.sessions WHERE id = $1 AND user_id = $2`,
+          [sessionId, userId],
+        );
+        return rowCount || 0;
+      });
     } catch (err: any) {
-      throw new Error(err.message || "Failed to terminate session");
-    } finally {
-      await client.end();
+      console.warn("[Sessions] Fast terminate pool failed, falling back:", err?.message || err);
+      const client = await getDbClient();
+      try {
+        try {
+          await client.query(`DELETE FROM auth.refresh_tokens WHERE session_id = $1`, [sessionId]);
+        } catch {
+          /* ignore */
+        }
+        const { rowCount } = await client.query(
+          `DELETE FROM auth.sessions WHERE id = $1 AND user_id = $2`,
+          [sessionId, userId],
+        );
+        terminatedCount = rowCount || 0;
+      } catch (e2: any) {
+        throw new Error(e2.message || "Failed to terminate session");
+      } finally {
+        await client.end();
+      }
     }
 
     if (terminatedCount > 0) {
-      // Instant kick: broadcast to all of this user's devices (Realtime).
-      try {
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const {
-          sessionKillChannelName,
-          SESSION_KILL_EVENT,
-          SESSIONS_CHANGED_EVENT,
-        } = await import("@/lib/session-kill");
-
-        const channel = supabaseAdmin.channel(sessionKillChannelName(userId), {
-          config: { broadcast: { ack: false, self: true } },
-        });
-
-        await new Promise<void>((resolve, reject) => {
-          const t = setTimeout(() => reject(new Error("Realtime subscribe timeout")), 4000);
-          channel.subscribe((status) => {
-            if (status === "SUBSCRIBED") {
-              clearTimeout(t);
-              resolve();
-            }
-            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-              clearTimeout(t);
-              reject(new Error(`Realtime ${status}`));
-            }
-          });
-        });
-
-        await channel.send({
-          type: "broadcast",
-          event: SESSION_KILL_EVENT,
-          payload: { sessionId, at: Date.now(), reason: "terminated" },
-        });
-        await channel.send({
-          type: "broadcast",
-          event: SESSIONS_CHANGED_EVENT,
-          payload: { at: Date.now(), action: "terminated", sessionId },
-        });
-        await supabaseAdmin.removeChannel(channel);
-        console.log(`[Sessions] Broadcast session_killed for ${sessionId} → user ${userId}`);
-      } catch (e: any) {
-        // Session already deleted; kick is best-effort (JWT will fail on refresh anyway).
-        console.warn("[Sessions] Realtime kick failed:", e?.message || e);
-      }
+      // Instant kick via HTTP broadcast (no websocket subscribe delay).
+      const { httpBroadcastSessionKill } = await import("@/lib/auth-sessions.server");
+      void httpBroadcastSessionKill(userId, sessionId)
+        .then(() => console.log(`[Sessions] HTTP kick for ${sessionId} → user ${userId}`))
+        .catch((e: any) => console.warn("[Sessions] HTTP kick failed:", e?.message || e));
     }
 
     return { ok: true, terminatedCount };

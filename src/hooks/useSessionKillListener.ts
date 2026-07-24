@@ -4,10 +4,14 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { performSignOut } from "@/lib/sign-out";
 import {
+  FORCED_LOGOUT_KEY,
   SESSION_KILL_EVENT,
+  markForcedLogout,
   sessionKillChannelName,
   type SessionKillPayload,
 } from "@/lib/session-kill";
+
+const LOGOUT_MSG = "You have been logged out.";
 
 /**
  * Listen for remote "log out this device" broadcasts.
@@ -24,14 +28,36 @@ export function useSessionKillListener(enabled = true) {
     let mySessionId: string | null = null;
     let userId: string | null = null;
 
-    const kickIfMine = async (payload: SessionKillPayload) => {
-      if (!payload?.sessionId || !mySessionId) return;
-      if (payload.sessionId !== mySessionId) return;
+    const kickNow = async () => {
       if (signingOut.current) return;
       signingOut.current = true;
-      toast.info("Signed out from another device.");
+      markForcedLogout(LOGOUT_MSG);
+      toast.info(LOGOUT_MSG, { duration: 5000 });
+
+      // Navigate / hard-redirect first so the user cannot keep chatting.
       try {
-        await performSignOut();
+        if (!Capacitor.isNativePlatform()) {
+          const hostname = window.location.hostname.toLowerCase();
+          if (hostname.endsWith("playjackpotjungle.com")) {
+            window.location.replace(
+              "https://chat.playjackpotjungle.com/app/auth?logout=remote",
+            );
+            return;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      try {
+        await performSignOut(undefined, async (opts) => {
+          const { getRouter } = await import("@/router");
+          await getRouter().navigate({
+            to: opts.to,
+            search: { logout: "remote" },
+            replace: true,
+          });
+        });
       } catch (e) {
         console.error("[SessionKill] signOut failed:", e);
         try {
@@ -39,8 +65,23 @@ export function useSessionKillListener(enabled = true) {
         } catch {
           /* ignore */
         }
-        window.location.href = "/app/auth?logout=true";
+        try {
+          const { getRouter } = await import("@/router");
+          await getRouter().navigate({
+            to: "/app/auth",
+            search: { logout: "remote" },
+            replace: true,
+          });
+        } catch {
+          window.location.href = "/app/auth?logout=remote";
+        }
       }
+    };
+
+    const kickIfMine = async (payload: SessionKillPayload) => {
+      if (!payload?.sessionId || !mySessionId) return;
+      if (payload.sessionId !== mySessionId) return;
+      await kickNow();
     };
 
     const subscribe = async () => {
@@ -74,21 +115,17 @@ export function useSessionKillListener(enabled = true) {
       void import("@capacitor/app")
         .then(async ({ App }) => {
           const handle = await App.addListener("appStateChange", async (state) => {
-            if (!state.isActive || !mySessionId) return;
+            if (!state.isActive || !mySessionId || signingOut.current) return;
             try {
-              const { data, error } = await supabase.auth.getUser();
+              const { error } = await supabase.auth.getUser();
               if (error) {
-                await kickIfMine({ sessionId: mySessionId, at: Date.now(), reason: "stale" });
+                await kickNow();
                 return;
               }
               const { data: sess } = await supabase.auth.getSession();
-              if (!sess.session) {
-                await kickIfMine({ sessionId: mySessionId, at: Date.now(), reason: "missing" });
-              }
+              if (!sess.session) await kickNow();
             } catch {
-              if (mySessionId) {
-                await kickIfMine({ sessionId: mySessionId, at: Date.now(), reason: "error" });
-              }
+              await kickNow();
             }
           });
           if (!cancelled) {
@@ -102,11 +139,27 @@ export function useSessionKillListener(enabled = true) {
         .catch(() => {});
     }
 
-    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Visibility re-check on web (tab focus after being kicked).
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !mySessionId || signingOut.current) return;
+      void supabase.auth.getUser().then(({ error }) => {
+        if (error) void kickNow();
+      });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.id) mySessionId = session.id;
-      if (session?.user?.id && session.user.id !== userId) {
-        // User switched — resubscribe would be ideal; rare in this app.
-        userId = session.user.id;
+      if (session?.user?.id) userId = session.user.id;
+      // Token refresh failed after remote session delete → friendly logout, not "invalid token".
+      if (
+        (event === "TOKEN_REFRESHED" && !session) ||
+        (event === "SIGNED_OUT" && sessionStorage.getItem(FORCED_LOGOUT_KEY) !== "1")
+      ) {
+        // Only auto-kick on unexpected sign-out if we still thought we had a session id.
+        if (event === "SIGNED_OUT" && mySessionId && !signingOut.current) {
+          // Manual logout elsewhere — leave alone.
+        }
       }
     });
 
@@ -114,6 +167,7 @@ export function useSessionKillListener(enabled = true) {
       cancelled = true;
       authSub.subscription.unsubscribe();
       removeAppListener?.();
+      document.removeEventListener("visibilitychange", onVisible);
       if (channel) void supabase.removeChannel(channel);
     };
   }, [enabled]);

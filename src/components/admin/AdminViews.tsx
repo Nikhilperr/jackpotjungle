@@ -10,6 +10,7 @@ import { Plus, Trash2, Tag as TagIcon, Send, Loader2, X, Check, Wallet, Megaphon
 import { useServerFn } from "@tanstack/react-start";
 import { sendBroadcast, deleteAdminUser, setUserBlocked, resetUserPassword, getActiveSessionsUser, terminateSessionUser, getPushNotificationTargetCount, sendCustomPushNotificationAllUsers } from "@/lib/admin-super.functions";
 import { useLiveSessionsRefresh } from "@/hooks/useLiveSessionsRefresh";
+import { broadcastSessionKillClient } from "@/lib/session-kill";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -1301,6 +1302,7 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
   const terminateSessionFn = useServerFn(terminateSessionUser);
   const [sessions, setSessions] = useState<any[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [terminatingId, setTerminatingId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   // Check MFA status
@@ -1478,33 +1480,41 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
     }
   };
 
-  const loadSessions = useCallback(async () => {
-    setLoadingSessions(true);
+  const loadSessions = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) setLoadingSessions(true);
     try {
       const res = await getSessionsFn();
       setSessions(res.sessions || []);
     } catch (err: any) {
-      toast.error(err.message || "Failed to load active sessions");
+      if (!silent) toast.error(err.message || "Failed to load active sessions");
     } finally {
-      setLoadingSessions(false);
+      if (!silent) setLoadingSessions(false);
     }
   }, [getSessionsFn]);
 
   const { live: sessionsLive } = useLiveSessionsRefresh({
     userId,
-    onRefresh: loadSessions,
+    onRefresh: () => loadSessions({ silent: true }),
     enabled: activeSubTab === "logins",
   });
 
   const handleTerminateSession = async (sessionId: string) => {
+    if (terminatingId) return;
+    setTerminatingId(sessionId);
+    void broadcastSessionKillClient(supabase, userId, sessionId).catch(() => {});
     try {
       const res = await terminateSessionFn({ data: { sessionId } });
-      if (res.ok) {
-        toast.success("Device logged out successfully!");
-        setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (!res.ok || (res.terminatedCount ?? 0) === 0) {
+        toast.error("Could not log out that device. Try again.");
+        return;
       }
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      toast.success("Device logged out");
     } catch (err: any) {
       toast.error(err.message || "Failed to terminate device session");
+    } finally {
+      setTerminatingId(null);
     }
   };
 
@@ -1897,11 +1907,16 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
                               <Button
                                 variant="destructive"
                                 size="icon"
-                                onClick={() => handleTerminateSession(s.id)}
+                                onClick={() => void handleTerminateSession(s.id)}
+                                disabled={!!terminatingId}
                                 className="h-8 w-8 rounded-lg shrink-0"
                                 title="Log out device"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                {terminatingId === s.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
                               </Button>
                             </div>
                           );
