@@ -7,6 +7,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
 import android.media.RingtoneManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -456,7 +459,41 @@ public class MainActivity extends BridgeActivity {
                     }
                 });
             }
+
+            /** True when an active network has VPN transport (Discord/VPN apps). */
+            @android.webkit.JavascriptInterface
+            public boolean isVpnActive() {
+                return MainActivity.this.isVpnNetworkActive();
+            }
         }, "AndroidBridge");
+    }
+
+    private boolean isVpnNetworkActive() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network[] networks = cm.getAllNetworks();
+                if (networks != null) {
+                    for (Network network : networks) {
+                        NetworkCapabilities caps = cm.getNetworkCapabilities(network);
+                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                            return true;
+                        }
+                    }
+                }
+                Network active = cm.getActiveNetwork();
+                if (active != null) {
+                    NetworkCapabilities caps = cm.getNetworkCapabilities(active);
+                    if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e("MainActivity", "Failed to detect VPN", e);
+        }
+        return false;
     }
 
     private void applySystemBars(boolean lightIcons, String colorHex) {

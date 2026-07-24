@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export type NetworkStatus = "online" | "offline" | "poor" | "reconnecting";
+/** online = normal, vpn = online via VPN (info only), offline = no reachability, reconnecting = verifying after link restored */
+export type NetworkStatus = "online" | "offline" | "vpn" | "reconnecting";
 
 // Client-side RFC4122 v4 UUID generator
 export function generateUUID(): string {
@@ -119,16 +120,22 @@ class ClientNetworkManager {
   private retryDelay = 2000; // Starting backoff at 2s
   private maxRetryDelay = 30000;
   private pingInterval: any = null;
+  /** Require consecutive hard failures before showing offline (VPN/jitter must not flap). */
+  private consecutiveFailures = 0;
+  private healthCheckInFlight: Promise<void> | null = null;
 
   constructor() {
     if (typeof window !== "undefined") {
       this.currentStatus = navigator.onLine ? "online" : "offline";
 
       window.addEventListener("online", () => this.handleOnlineEvent());
-      window.addEventListener("offline", () => this.updateStatus("offline"));
+      window.addEventListener("offline", () => {
+        this.consecutiveFailures = 3;
+        this.updateStatus("offline");
+      });
 
-      // Background connection monitor ping
-      this.pingInterval = setInterval(() => this.checkConnectionHealth(), 20000);
+      // Background reachability monitor (VPN latency is OK — we only care if unreachable)
+      this.pingInterval = setInterval(() => this.checkConnectionHealth(), 25000);
       this.checkConnectionHealth();
     }
   }
@@ -138,7 +145,11 @@ class ClientNetworkManager {
   }
 
   isOnline(): boolean {
-    return this.currentStatus === "online" || this.currentStatus === "reconnecting";
+    return (
+      this.currentStatus === "online" ||
+      this.currentStatus === "vpn" ||
+      this.currentStatus === "reconnecting"
+    );
   }
 
   subscribe(callback: (status: NetworkStatus) => void): () => void {
@@ -151,24 +162,26 @@ class ClientNetworkManager {
 
   private updateStatus(newStatus: NetworkStatus) {
     if (this.currentStatus === newStatus) return;
+    const prev = this.currentStatus;
     this.currentStatus = newStatus;
     console.log(`[NetworkManager] Status changed to: ${newStatus}`);
     this.listeners.forEach((cb) => cb(newStatus));
 
-    if (newStatus === "online") {
+    if (
+      (newStatus === "online" || newStatus === "vpn") &&
+      (prev === "offline" || prev === "reconnecting")
+    ) {
       this.reconnectRealtime();
       this.processQueues();
     }
   }
 
   private async handleOnlineEvent() {
-    this.updateStatus("reconnecting");
-    const isHealthy = await this.pingTest();
-    if (isHealthy) {
-      this.updateStatus("online");
-    } else {
-      this.updateStatus("poor");
+    // Only show "Reconnecting..." when we were actually offline.
+    if (this.currentStatus === "offline") {
+      this.updateStatus("reconnecting");
     }
+    await this.checkConnectionHealth();
   }
 
   /** External (Capacitor Network / UI) can force an immediate re-check. */
@@ -178,6 +191,7 @@ class ClientNetworkManager {
 
   /** Native Network plugin lost link — show offline banner immediately. */
   reportNativeOffline() {
+    this.consecutiveFailures = 3;
     this.updateStatus("offline");
   }
 
@@ -186,58 +200,96 @@ class ClientNetworkManager {
     void this.handleOnlineEvent();
   }
 
-  private async checkConnectionHealth() {
-    if (typeof window === "undefined") return;
-    if (!navigator.onLine) {
-      this.updateStatus("offline");
-      return;
-    }
-
-    // Check navigator connection object for poor cellular data/unstable signal
-    const conn = (navigator as any).connection;
-    if (conn) {
-      if (conn.rtt > 2000 || conn.downlink < 0.15) {
-        this.updateStatus("poor");
-        return;
+  private detectVpnActive(): boolean {
+    try {
+      const bridge = (window as any).AndroidBridge;
+      if (bridge && typeof bridge.isVpnActive === "function") {
+        return !!bridge.isVpnActive();
       }
+    } catch {
+      /* ignore */
     }
-
-    const isHealthy = await this.pingTest();
-    if (isHealthy) {
-      // If we were poor/offline, promote back to online
-      if (this.currentStatus !== "online") {
-        this.updateStatus("online");
-      }
-    } else {
-      this.updateStatus(this.currentStatus === "offline" ? "offline" : "poor");
+    // Soft web heuristic — never treat VPN as failure.
+    try {
+      const conn = (navigator as any).connection;
+      const type = String(conn?.type || conn?.effectiveType || "").toLowerCase();
+      if (type.includes("vpn")) return true;
+    } catch {
+      /* ignore */
     }
+    return false;
   }
 
+  private async checkConnectionHealth() {
+    if (typeof window === "undefined") return;
+    if (this.healthCheckInFlight) return this.healthCheckInFlight;
+
+    this.healthCheckInFlight = (async () => {
+      if (!navigator.onLine) {
+        this.consecutiveFailures = 3;
+        this.updateStatus("offline");
+        return;
+      }
+
+      const reachable = await this.pingTest();
+      if (reachable) {
+        this.consecutiveFailures = 0;
+        this.updateStatus(this.detectVpnActive() ? "vpn" : "online");
+        return;
+      }
+
+      // Ping failed — do NOT mark "poor/unstable" on VPN lag. Only go offline after repeats.
+      this.consecutiveFailures += 1;
+      if (this.consecutiveFailures >= 2) {
+        this.updateStatus("offline");
+      } else if (this.currentStatus === "offline") {
+        this.updateStatus("reconnecting");
+      }
+      // else: stay online/vpn — one flaky ping through VPN is not an outage
+    })().finally(() => {
+      this.healthCheckInFlight = null;
+    });
+
+    return this.healthCheckInFlight;
+  }
+
+  /** True if the backend answers at all — latency/VPN must not count as failure. */
   private async pingTest(): Promise<boolean> {
+    const url = import.meta.env.VITE_SUPABASE_URL;
+    if (!url) {
+      // No URL configured — fall back to browser online flag only.
+      return navigator.onLine;
+    }
+
     try {
       const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 6000); // 6s timeout
+      const id = setTimeout(() => controller.abort(), 10000);
 
-      // Ping Supabase public settings endpoint as a real connection health indicator
-      const startTime = Date.now();
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/`, {
+      const res = await fetch(`${url}/rest/v1/`, {
         method: "HEAD",
-        signal: controller.signal
+        signal: controller.signal,
+        cache: "no-store",
       });
       clearTimeout(id);
 
-      const rtt = Date.now() - startTime;
-      if (res.ok || res.status === 400 || res.status === 401) {
-        // A response from server (even auth failure / bad request) means connection is active
-        if (rtt > 3500) {
-          // Slow response time indicates poor connection
-          return false;
-        }
-        return true;
-      }
-      return false;
+      // Any HTTP response means the internet path works (VPN/slow is fine).
+      return res.status > 0;
     } catch {
-      return false;
+      // Second chance: tiny no-cors ping to same origin / public DNS — still online if anything returns.
+      try {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), 5000);
+        await fetch("https://www.gstatic.com/generate_204", {
+          method: "GET",
+          mode: "no-cors",
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        clearTimeout(id);
+        return true;
+      } catch {
+        return false;
+      }
     }
   }
 

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Wifi, WifiOff, Activity, Loader2 } from "lucide-react";
+import { Wifi, WifiOff, Loader2, Shield } from "lucide-react";
 import { NetworkManager, type NetworkStatus } from "@/lib/network-manager";
 
 /**
- * Global offline / poor-connection banner for user, admin, and super-admin shells.
+ * Global connection banner for user / admin / super-admin.
+ * Offline + reconnecting only when internet is actually down.
+ * VPN shows a calm info notice — never "retrying".
  */
 export function OnlineStatusBanner() {
   const [status, setStatus] = useState<NetworkStatus>(() => {
@@ -25,23 +27,22 @@ export function OnlineStatusBanner() {
       }
 
       if (
-        newStatus === "online" &&
-        (prev === "offline" || prev === "poor" || prev === "reconnecting")
+        (newStatus === "online" || newStatus === "vpn") &&
+        (prev === "offline" || prev === "reconnecting")
       ) {
         setShowConnected(true);
         connectedTimerRef.current = setTimeout(() => {
           setShowConnected(false);
           connectedTimerRef.current = null;
-        }, 3000);
+        }, 2500);
         return;
       }
 
-      if (newStatus !== "online") {
+      if (newStatus === "offline" || newStatus === "reconnecting") {
         setShowConnected(false);
       }
     });
 
-    // Immediate health check when banner mounts (admin/user shells).
     void NetworkManager.forceHealthCheck();
 
     return () => {
@@ -63,19 +64,6 @@ export function OnlineStatusBanner() {
     );
   }
 
-  if (status === "poor") {
-    return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="bg-orange-600 dark:bg-orange-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0 select-none z-30"
-      >
-        <Activity className="h-3.5 w-3.5 animate-pulse shrink-0" />
-        <span>Slow/unstable connection detected · Retrying...</span>
-      </div>
-    );
-  }
-
   if (status === "reconnecting") {
     return (
       <div
@@ -84,7 +72,7 @@ export function OnlineStatusBanner() {
         className="bg-blue-600 dark:bg-blue-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0 select-none z-30"
       >
         <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-        <span>Reconnecting to Jackpot Jungle...</span>
+        <span>Reconnecting · Waiting for internet...</span>
       </div>
     );
   }
@@ -97,7 +85,20 @@ export function OnlineStatusBanner() {
         className="bg-emerald-600 dark:bg-emerald-700 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-300 shadow-sm shrink-0 select-none z-30"
       >
         <Wifi className="h-3.5 w-3.5 shrink-0" />
-        <span>Connection restored · Syncing...</span>
+        <span>Internet restored · Syncing...</span>
+      </div>
+    );
+  }
+
+  if (status === "vpn") {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="bg-slate-700 dark:bg-slate-800 text-white text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-1.5 animate-in slide-in-from-top duration-200 shadow-sm shrink-0 select-none z-30"
+      >
+        <Shield className="h-3.5 w-3.5 shrink-0" />
+        <span>VPN connected · You are online</span>
       </div>
     );
   }
