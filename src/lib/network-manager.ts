@@ -134,8 +134,25 @@ class ClientNetworkManager {
         this.updateStatus("offline");
       });
 
+      // Android ConnectivityManager → instant offline when Wi‑Fi/data drops
+      // (WebView navigator.onLine often stays true with VPN).
+      window.addEventListener("jj-native-network", ((e: CustomEvent) => {
+        const online = !!e.detail?.online;
+        const vpn = !!e.detail?.vpn;
+        if (!online) {
+          this.consecutiveFailures = 3;
+          this.updateStatus("offline");
+          return;
+        }
+        this.consecutiveFailures = 0;
+        if (this.currentStatus === "offline") {
+          this.updateStatus("reconnecting");
+        }
+        this.updateStatus(vpn ? "vpn" : "online");
+      }) as EventListener);
+
       // Background reachability monitor (VPN latency is OK — we only care if unreachable)
-      this.pingInterval = setInterval(() => this.checkConnectionHealth(), 25000);
+      this.pingInterval = setInterval(() => this.checkConnectionHealth(), 12000);
       this.checkConnectionHealth();
     }
   }
@@ -209,7 +226,6 @@ class ClientNetworkManager {
     } catch {
       /* ignore */
     }
-    // Soft web heuristic — never treat VPN as failure.
     try {
       const conn = (navigator as any).connection;
       const type = String(conn?.type || conn?.effectiveType || "").toLowerCase();
@@ -220,12 +236,34 @@ class ClientNetworkManager {
     return false;
   }
 
+  /** Android validated-internet snapshot (null = bridge unavailable). */
+  private nativeInternetAvailable(): boolean | null {
+    try {
+      const bridge = (window as any).AndroidBridge;
+      if (bridge && typeof bridge.isInternetAvailable === "function") {
+        return !!bridge.isInternetAvailable();
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
   private async checkConnectionHealth() {
     if (typeof window === "undefined") return;
     if (this.healthCheckInFlight) return this.healthCheckInFlight;
 
     this.healthCheckInFlight = (async () => {
-      if (!navigator.onLine) {
+      const nativeOnline = this.nativeInternetAvailable();
+
+      // Trust Android first — Wi‑Fi off must show offline immediately.
+      if (nativeOnline === false) {
+        this.consecutiveFailures = 3;
+        this.updateStatus("offline");
+        return;
+      }
+
+      if (!navigator.onLine && nativeOnline !== true) {
         this.consecutiveFailures = 3;
         this.updateStatus("offline");
         return;
@@ -238,14 +276,15 @@ class ClientNetworkManager {
         return;
       }
 
-      // Ping failed — do NOT mark "poor/unstable" on VPN lag. Only go offline after repeats.
+      // Native said online but ping failed once — don't flap; wait for a second miss.
+      // If native is unavailable (web), one miss → offline faster.
       this.consecutiveFailures += 1;
-      if (this.consecutiveFailures >= 2) {
+      const need = nativeOnline === true ? 2 : 1;
+      if (this.consecutiveFailures >= need) {
         this.updateStatus("offline");
       } else if (this.currentStatus === "offline") {
         this.updateStatus("reconnecting");
       }
-      // else: stay online/vpn — one flaky ping through VPN is not an outage
     })().finally(() => {
       this.healthCheckInFlight = null;
     });
@@ -257,13 +296,12 @@ class ClientNetworkManager {
   private async pingTest(): Promise<boolean> {
     const url = import.meta.env.VITE_SUPABASE_URL;
     if (!url) {
-      // No URL configured — fall back to browser online flag only.
       return navigator.onLine;
     }
 
     try {
       const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 10000);
+      const id = setTimeout(() => controller.abort(), 8000);
 
       const res = await fetch(`${url}/rest/v1/`, {
         method: "HEAD",
@@ -275,21 +313,7 @@ class ClientNetworkManager {
       // Any HTTP response means the internet path works (VPN/slow is fine).
       return res.status > 0;
     } catch {
-      // Second chance: tiny no-cors ping to same origin / public DNS — still online if anything returns.
-      try {
-        const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), 5000);
-        await fetch("https://www.gstatic.com/generate_204", {
-          method: "GET",
-          mode: "no-cors",
-          signal: controller.signal,
-          cache: "no-store",
-        });
-        clearTimeout(id);
-        return true;
-      } catch {
-        return false;
-      }
+      return false;
     }
   }
 

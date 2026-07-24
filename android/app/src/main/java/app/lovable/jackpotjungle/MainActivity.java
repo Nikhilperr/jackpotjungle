@@ -34,6 +34,8 @@ public class MainActivity extends BridgeActivity {
     private boolean isCallActive = false;
     private boolean userWantsSpeaker = false;
     private android.media.AudioDeviceCallback audioDeviceCallback = null;
+    private ConnectivityManager.NetworkCallback networkCallback = null;
+    private String lastPublishedNetworkKey = null;
 
     private boolean isBluetoothConnected() {
         try {
@@ -465,6 +467,12 @@ public class MainActivity extends BridgeActivity {
             public boolean isVpnActive() {
                 return MainActivity.this.isVpnNetworkActive();
             }
+
+            /** True when Android reports a validated internet-capable network. */
+            @android.webkit.JavascriptInterface
+            public boolean isInternetAvailable() {
+                return MainActivity.this.hasValidatedInternet();
+            }
         }, "AndroidBridge");
     }
 
@@ -494,6 +502,112 @@ public class MainActivity extends BridgeActivity {
             Log.e("MainActivity", "Failed to detect VPN", e);
         }
         return false;
+    }
+
+    /**
+     * True only when Android has validated real internet.
+     * VPN/Wi‑Fi "link up" without VALIDATED must not count as online
+     * (turning Wi‑Fi off must immediately show offline).
+     */
+    private boolean hasValidatedInternet() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network active = cm.getActiveNetwork();
+                if (active == null) return false;
+                NetworkCapabilities caps = cm.getNetworkCapabilities(active);
+                if (caps == null) return false;
+                return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+            }
+        } catch (Exception e) {
+            Log.e("MainActivity", "Failed to check internet", e);
+        }
+        return false;
+    }
+
+    private void publishNetworkStatusToJs() {
+        final boolean online = hasValidatedInternet();
+        final boolean vpn = online && isVpnNetworkActive();
+        final String key = (online ? "1" : "0") + (vpn ? "v" : "");
+        if (key.equals(lastPublishedNetworkKey)) return;
+        lastPublishedNetworkKey = key;
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        final android.webkit.WebView webView = getBridge().getWebView();
+        final String js =
+            "(function(){try{" +
+            "window.dispatchEvent(new CustomEvent('jj-native-network',{detail:{" +
+            "online:" + (online ? "true" : "false") + "," +
+            "vpn:" + (vpn ? "true" : "false") +
+            "}}));" +
+            "}catch(e){}})();";
+        webView.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    webView.evaluateJavascript(js, null);
+                    Log.d("MainActivity", "Published network online=" + online + " vpn=" + vpn);
+                } catch (Exception e) {
+                    Log.e("MainActivity", "Failed to publish network status", e);
+                }
+            }
+        });
+    }
+
+    private void setupNetworkMonitor() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return;
+
+            if (networkCallback != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try { cm.unregisterNetworkCallback(networkCallback); } catch (Exception ignored) {}
+            }
+
+            networkCallback = new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(Network network) {
+                    lastPublishedNetworkKey = null;
+                    publishNetworkStatusToJs();
+                }
+
+                @Override
+                public void onLost(Network network) {
+                    lastPublishedNetworkKey = null;
+                    publishNetworkStatusToJs();
+                }
+
+                @Override
+                public void onCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) {
+                    lastPublishedNetworkKey = null;
+                    publishNetworkStatusToJs();
+                }
+
+                @Override
+                public void onUnavailable() {
+                    lastPublishedNetworkKey = null;
+                    publishNetworkStatusToJs();
+                }
+            };
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                cm.registerDefaultNetworkCallback(networkCallback);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                android.net.NetworkRequest request = new android.net.NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build();
+                cm.registerNetworkCallback(request, networkCallback);
+            }
+
+            getWindow().getDecorView().post(new Runnable() {
+                @Override
+                public void run() {
+                    publishNetworkStatusToJs();
+                }
+            });
+        } catch (Exception e) {
+            Log.e("MainActivity", "Failed to setup network monitor", e);
+        }
     }
 
     private void applySystemBars(boolean lightIcons, String colorHex) {
@@ -626,6 +740,7 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void run() {
                 setupSystemBarInsets();
+                setupNetworkMonitor();
             }
         });
         stopCallForegroundService();
