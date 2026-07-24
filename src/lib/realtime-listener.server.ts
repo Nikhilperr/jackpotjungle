@@ -3,6 +3,46 @@ import { SERVICES_CONFIG, toCDNUrl } from "@/config";
 import { sendPushNotification } from "./fcm.server";
 import { shouldSkipPushForRecipient } from "@/lib/active-conversation-core";
 
+const PROFILE_NOTIF_CONTEXT_COLS =
+  "id, notif_enabled, active_conversation_key, app_in_foreground, active_conversation_at";
+const PROFILE_NOTIF_SAFE_COLS = "id, notif_enabled";
+
+/**
+ * Load notif prefs + optional active-chat context.
+ * Falls back to notif_enabled-only if migration columns are not applied yet —
+ * so missing columns never break push delivery.
+ */
+async function fetchProfilesForPush(ids: string[]) {
+  if (ids.length === 0) return [] as any[];
+  const full = await supabaseAdmin
+    .from("profiles")
+    .select(PROFILE_NOTIF_CONTEXT_COLS as any)
+    .in("id", ids);
+  if (!full.error && full.data) return full.data as any[];
+
+  const safe = await supabaseAdmin
+    .from("profiles")
+    .select(PROFILE_NOTIF_SAFE_COLS as any)
+    .in("id", ids);
+  return (safe.data ?? []) as any[];
+}
+
+async function fetchProfileForPush(id: string) {
+  const full = await supabaseAdmin
+    .from("profiles")
+    .select(PROFILE_NOTIF_CONTEXT_COLS as any)
+    .eq("id", id)
+    .maybeSingle();
+  if (!full.error) return full.data as any;
+
+  const safe = await supabaseAdmin
+    .from("profiles")
+    .select(PROFILE_NOTIF_SAFE_COLS as any)
+    .eq("id", id)
+    .maybeSingle();
+  return safe.data as any;
+}
+
 /** Messenger-style notification body for page inbox messages. */
 function pageInboxPreviewBody(
   content: string | null | undefined,
@@ -520,14 +560,9 @@ export async function initRealtimeListeners() {
 
               // Check notification settings for group members (+ Messenger active-chat suppress).
               const groupKey = `group-${m.group_id}`;
-              const { data: recipientProfiles } = await supabaseAdmin
-                .from("profiles")
-                .select(
-                  "id, notif_enabled, active_conversation_key, app_in_foreground, active_conversation_at" as any,
-                )
-                .in("id", recipientIds);
+              const recipientProfiles = await fetchProfilesForPush(recipientIds);
 
-              const activeRecipientIds = (recipientProfiles ?? [])
+              const activeRecipientIds = recipientProfiles
                 .filter((p: any) => (p.notif_enabled ?? true) !== false)
                 .filter((p: any) => !shouldSkipPushForRecipient(p, groupKey))
                 .map((p: any) => p.id);
@@ -565,19 +600,14 @@ export async function initRealtimeListeners() {
                 return;
               }
 
-              const [{ data: receiverProfile }, { data: tokensRows }] = await Promise.all([
-                supabaseAdmin
-                  .from("profiles")
-                  .select(
-                    "notif_enabled, active_conversation_key, app_in_foreground, active_conversation_at" as any,
-                  )
-                  .eq("id", m.receiver_id)
-                  .maybeSingle(),
+              const [receiverProfile, tokensRes] = await Promise.all([
+                fetchProfileForPush(m.receiver_id),
                 supabaseAdmin
                   .from("push_tokens" as any)
                   .select("token")
                   .eq("user_id", m.receiver_id),
               ]);
+              const tokensRows = tokensRes.data;
 
               const enabled = (receiverProfile as any)?.notif_enabled ?? true;
               if (!enabled) {
@@ -661,19 +691,14 @@ export async function initRealtimeListeners() {
               }
 
               // Parallel: notif preference + tokens (was sequential → slow pushes).
-              const [{ data: receiverProfile }, { data: tokensRows }] = await Promise.all([
-                supabaseAdmin
-                  .from("profiles")
-                  .select(
-                    "notif_enabled, active_conversation_key, app_in_foreground, active_conversation_at" as any,
-                  )
-                  .eq("id", userId)
-                  .maybeSingle(),
+              const [receiverProfile, tokensRes] = await Promise.all([
+                fetchProfileForPush(userId),
                 supabaseAdmin
                   .from("push_tokens" as any)
                   .select("token")
                   .eq("user_id", userId),
               ]);
+              const tokensRows = tokensRes.data;
 
               const enabled = (receiverProfile as any)?.notif_enabled ?? true;
               if (!enabled) {
@@ -744,21 +769,17 @@ export async function initRealtimeListeners() {
 
               // Parallel: admin notif prefs + tokens (+ suppress admins viewing this thread)
               const pageKey = `page:${pm.conversation_id}`;
-              const [{ data: adminProfiles }, { data: tokensRows }] = await Promise.all([
-                supabaseAdmin
-                  .from("profiles")
-                  .select(
-                    "id, notif_enabled, active_conversation_key, app_in_foreground, active_conversation_at" as any,
-                  )
-                  .in("id", adminUserIds),
+              const [adminProfiles, tokensRes] = await Promise.all([
+                fetchProfilesForPush(adminUserIds),
                 supabaseAdmin
                   .from("push_tokens" as any)
                   .select("token, user_id")
                   .in("user_id", adminUserIds),
               ]);
+              const tokensRows = tokensRes.data;
 
               const enabledAdminIds = new Set(
-                (adminProfiles ?? [])
+                adminProfiles
                   .filter((p: any) => (p.notif_enabled ?? true) !== false)
                   .filter((p: any) => !shouldSkipPushForRecipient(p, pageKey))
                   .map((p: any) => p.id),
