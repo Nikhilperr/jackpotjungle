@@ -66,28 +66,17 @@ function envPick(fileEnv: Record<string, string>, ...keys: string[]) {
   return "";
 }
 
-/**
- * Hostinger Mail REST API over HTTPS :443 — works on DigitalOcean.
- * Do NOT fall back to SMTP 465/587 (those hang for minutes = "Processing…" forever).
- */
-async function sendViaHostingerMailApi(
-  opts: MailPayload & { fromEmail: string; fromName: string },
+const ALLOW_BLOCK_HINT =
+  "Hostinger Agentic Mail Allow/Block list is likely blocking delivery (API still returns 204). " +
+  "In hPanel → Emails → Agentic Mail → Allow/Block lists for noreply@playjackpotjungle.com: " +
+  "clear the Allow list (leave empty) and remove gmail.com from Block list.";
+
+async function resolveMailboxId(
+  token: string,
+  fromEmail: string,
   fileEnv: Record<string, string>,
-): Promise<{ via: string }> {
-  const token = envPick(fileEnv, "HOSTINGER_MAIL_TOKEN", "HOSTINGER_API_TOKEN");
-  if (!token) {
-    throw new Error(
-      "HOSTINGER_MAIL_TOKEN is missing in ~/app/.env. Add the Agentic Mail API token, then: pm2 restart all --update-env",
-    );
-  }
-
-  let mailboxId = envPick(
-    fileEnv,
-    "HOSTINGER_MAILBOX_ID",
-    "HOSTINGER_MAILBOX_RESOURCE_ID",
-  );
-
-  // Known production mailbox (noreply@playjackpotjungle.com) — used if env/auto-detect fails.
+): Promise<string> {
+  let mailboxId = envPick(fileEnv, "HOSTINGER_MAILBOX_ID", "HOSTINGER_MAILBOX_RESOURCE_ID");
   const KNOWN_NOREPLY_MAILBOX = "AC7f4db336147d8eb5cf09a00fee4f";
 
   if (!mailboxId) {
@@ -101,7 +90,7 @@ async function sendViaHostingerMailApi(
         const boxes: HostingerMailbox[] =
           me?.data?.mailboxes || me?.mailboxes || me?.data || [];
         const list = Array.isArray(boxes) ? boxes : [];
-        const want = opts.fromEmail.toLowerCase();
+        const want = fromEmail.toLowerCase();
         const hit =
           list.find((b) => (b.address || "").toLowerCase() === want) ||
           list.find((b) => (b.address || "").toLowerCase().includes("noreply")) ||
@@ -110,71 +99,193 @@ async function sendViaHostingerMailApi(
         if (mailboxId) {
           console.log(`[Mail] Hostinger mailbox ${hit?.address} → ${mailboxId}`);
         }
-      } else {
-        console.warn(`[Mail] Hostinger /me failed (${meRes.status})`);
       }
     } catch (e: any) {
       console.warn("[Mail] Hostinger /me error:", e?.message || e);
     }
   }
 
-  if (!mailboxId) {
-    mailboxId = KNOWN_NOREPLY_MAILBOX;
-    console.warn(`[Mail] Using known noreply mailbox id ${mailboxId}`);
-  }
+  return mailboxId || KNOWN_NOREPLY_MAILBOX;
+}
 
-  const payloads = [
-    {
+/** Best-effort: confirm the message landed in Sent (silent allow/block drops never appear).
+ *  returns true | false | null (null = could not verify — don't treat as failure).
+ */
+async function confirmInSentFolder(
+  token: string,
+  mailboxId: string,
+  subject: string,
+): Promise<boolean | null> {
+  try {
+    const foldersRes = await fetch(
+      `https://api.mail.hostinger.com/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/folders`,
+      {
+        headers: { Authorization: `Bearer ${token}`, accept: "application/json" },
+        signal: AbortSignal.timeout(10000),
+      },
+    );
+    if (!foldersRes.ok) {
+      console.warn(`[Mail] Could not list folders (${foldersRes.status}) — skip Sent check`);
+      return null;
+    }
+    const foldersJson = (await foldersRes.json()) as any;
+    const folders: any[] =
+      foldersJson?.data?.folders ||
+      foldersJson?.data ||
+      foldersJson?.folders ||
+      (Array.isArray(foldersJson) ? foldersJson : []);
+
+    const candidates = [
+      ...folders
+        .map((f) => String(f?.path || f?.name || f?.id || ""))
+        .filter((p) => p.toLowerCase().includes("sent")),
+      "INBOX.Sent",
+      "Sent",
+    ].filter(Boolean);
+
+    const uniqueFolders = [...new Set(candidates)];
+    let listedAny = false;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 800));
+      for (const folderPath of uniqueFolders) {
+        const msgRes = await fetch(
+          `https://api.mail.hostinger.com/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/folders/${encodeURIComponent(folderPath)}/messages?limit=20`,
+          {
+            headers: { Authorization: `Bearer ${token}`, accept: "application/json" },
+            signal: AbortSignal.timeout(10000),
+          },
+        );
+        if (!msgRes.ok) continue;
+        listedAny = true;
+        const msgJson = (await msgRes.json()) as any;
+        const messages: any[] =
+          msgJson?.data?.messages ||
+          msgJson?.data ||
+          msgJson?.messages ||
+          (Array.isArray(msgJson) ? msgJson : []);
+        const hit = messages.some((m) => {
+          const subj = String(m?.subject || m?.Subject || "");
+          return subj.includes(subject) || (subj && subject.includes(subj));
+        });
+        if (hit) {
+          console.log(`[Mail] Confirmed in Sent folder (${folderPath})`);
+          return true;
+        }
+      }
+    }
+
+    if (!listedAny) {
+      console.warn("[Mail] Sent folder listing unavailable — skip confirmation");
+      return null;
+    }
+    console.warn(
+      "[Mail] Subject not found in Sent — likely Agentic Mail Allow/Block silent drop",
+    );
+    return false;
+  } catch (e: any) {
+    console.warn("[Mail] Sent-folder check skipped:", e?.message || e);
+    return null;
+  }
+}
+
+/**
+ * Resend HTTPS API — reliable fallback when Hostinger silently drops (allow/block lists).
+ * Same from-address after domain verify in Resend dashboard.
+ */
+async function sendViaResend(
+  opts: MailPayload & { fromEmail: string; fromName: string },
+  fileEnv: Record<string, string>,
+): Promise<{ via: string } | null> {
+  const key = envPick(fileEnv, "RESEND_API_KEY");
+  if (!key) return null;
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `${opts.fromName} <${opts.fromEmail}>`,
       to: [opts.to],
       subject: opts.subject,
       text: opts.text,
       html: opts.html,
-      displayName: opts.fromName,
-    },
-    // Some Hostinger API revisions expect address objects.
-    {
-      to: [{ email: opts.to }],
-      subject: opts.subject,
-      text: opts.text,
-      html: opts.html,
-      displayName: opts.fromName,
-    },
-  ];
+    }),
+    signal: AbortSignal.timeout(20000),
+  });
 
-  let lastErr = "";
-  for (const body of payloads) {
-    const res = await fetch(
-      `https://api.mail.hostinger.com/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/send`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          accept: "application/json",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(20000),
-      },
-    );
-
-    if (res.ok || res.status === 204) {
-      console.log(
-        `[Mail] Sent via Hostinger Mail API to ${opts.to} mailbox=${mailboxId}`,
-      );
-      return { via: "hostinger-api" };
-    }
-
-    lastErr = (await res.text()).slice(0, 300);
-    console.warn(`[Mail] Hostinger send attempt failed (${res.status}): ${lastErr}`);
-    // Retry only when payload shape looks rejected.
-    if (res.status !== 400 && res.status !== 422) break;
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 240);
+    throw new Error(`Resend failed (${res.status}): ${body}`);
   }
-
-  throw new Error(`Hostinger send failed: ${lastErr || "unknown error"}`);
+  console.log(`[Mail] Sent via Resend to ${opts.to}`);
+  return { via: "resend" };
 }
 
 /**
- * Send OTP / transactional mail. Hostinger HTTPS only (no SMTP hang on DO).
+ * Hostinger Mail REST API over HTTPS :443 — works on DigitalOcean.
+ * Do NOT fall back to SMTP 465/587 (those hang for minutes = "Processing…" forever).
+ *
+ * IMPORTANT: Hostinger Allow/Block lists can silently drop mail while still returning 204.
+ */
+async function sendViaHostingerMailApi(
+  opts: MailPayload & { fromEmail: string; fromName: string },
+  fileEnv: Record<string, string>,
+): Promise<{ via: string; confirmed: boolean | null }> {
+  const token = envPick(fileEnv, "HOSTINGER_MAIL_TOKEN", "HOSTINGER_API_TOKEN");
+  if (!token) {
+    throw new Error(
+      "HOSTINGER_MAIL_TOKEN is missing in ~/app/.env. Add the Agentic Mail API token, then: pm2 restart all --update-env",
+    );
+  }
+
+  const mailboxId = await resolveMailboxId(token, opts.fromEmail, fileEnv);
+
+  // Unique marker so we can confirm the exact message in Sent.
+  const marker = `jj-${Date.now().toString(36)}`;
+  const subject = opts.subject.includes("[jj-")
+    ? opts.subject
+    : `${opts.subject} [${marker}]`;
+
+  const res = await fetch(
+    `https://api.mail.hostinger.com/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/send`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        to: [opts.to],
+        subject,
+        text: opts.text,
+        html: opts.html,
+        displayName: opts.fromName,
+      }),
+      signal: AbortSignal.timeout(20000),
+    },
+  );
+
+  if (!(res.ok || res.status === 204)) {
+    const body = (await res.text()).slice(0, 300);
+    throw new Error(`Hostinger send failed (${res.status}): ${body}`);
+  }
+
+  console.log(
+    `[Mail] Hostinger API accepted send to ${opts.to} mailbox=${mailboxId} (HTTP ${res.status})`,
+  );
+
+  const confirmed = await confirmInSentFolder(token, mailboxId, marker);
+  return { via: "hostinger-api", confirmed };
+}
+
+/**
+ * Send OTP / transactional mail.
+ * Prefer Hostinger; if Hostinger silently drops (allow/block), use Resend when configured.
+ * Login + forgot-password both use this — UX flows unchanged.
  */
 export async function sendTransactionalMail(opts: MailPayload): Promise<{ via: string }> {
   const fileEnv = loadAppEnv();
@@ -186,6 +297,43 @@ export async function sendTransactionalMail(opts: MailPayload): Promise<{ via: s
     envPick(fileEnv, "MAIL_FROM", "HOSTINGER_MAIL_FROM", "SMTP_ADMIN_EMAIL", "SMTP_USER") ||
     "noreply@playjackpotjungle.com";
 
-  console.log(`[Mail] Sending to ${opts.to} from ${fromEmail} (Hostinger HTTPS)`);
-  return sendViaHostingerMailApi({ ...opts, fromEmail, fromName }, fileEnv);
+  const preferResend =
+    envPick(fileEnv, "MAIL_PROVIDER")?.toLowerCase() === "resend" ||
+    envPick(fileEnv, "MAIL_PREFER_RESEND") === "1";
+
+  console.log(`[Mail] Sending to ${opts.to} from ${fromEmail}`);
+
+  if (preferResend) {
+    const viaResend = await sendViaResend({ ...opts, fromEmail, fromName }, fileEnv);
+    if (viaResend) return viaResend;
+  }
+
+  let hostingerErr: string | null = null;
+  try {
+    const result = await sendViaHostingerMailApi({ ...opts, fromEmail, fromName }, fileEnv);
+    // null = could not verify Sent folder → accept Hostinger 204
+    // true = confirmed in Sent
+    // false = listed Sent but missing → silent allow/block drop
+    if (result.confirmed !== false) {
+      return { via: result.via };
+    }
+    console.warn(`[Mail] ${ALLOW_BLOCK_HINT}`);
+    hostingerErr = ALLOW_BLOCK_HINT;
+  } catch (e: any) {
+    hostingerErr = e?.message || String(e);
+    console.warn("[Mail] Hostinger path failed:", hostingerErr);
+  }
+
+  const viaResend = await sendViaResend({ ...opts, fromEmail, fromName }, fileEnv).catch(
+    (e) => {
+      console.warn("[Mail] Resend fallback failed:", e?.message || e);
+      return null;
+    },
+  );
+  if (viaResend) return viaResend;
+
+  throw new Error(
+    hostingerErr ||
+      "Could not send email. Clear Hostinger Agentic Mail Allow list, or set RESEND_API_KEY in ~/app/.env.",
+  );
 }
