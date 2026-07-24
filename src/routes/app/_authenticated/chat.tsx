@@ -22,6 +22,7 @@ import {
 import { localSearchMatches, hydrateLocalSearchIndex } from "@/lib/local-search";
 import { dmConvKey } from "@/lib/local-first-sync";
 import { NetworkManager } from "@/lib/network-manager";
+import { isViewingConversation } from "@/lib/active-conversation";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getUserVipDashboardStats } from "@/lib/api/vip-reward-engine/dashboard.functions";
 import { useServerFn } from "@tanstack/react-start";
@@ -900,7 +901,8 @@ function ChatLayout() {
             if (m.content) updated.allText += " " + m.content.toLowerCase();
             
             const isUnread = isGroup ? (!isMine && !m.seen) : (m.receiver_id === meId && !m.seen);
-            if (isUnread) {
+            // Messenger: no unread bump while already viewing this conversation.
+            if (isUnread && !isViewingConversation(convoKey)) {
               updated.unread += 1;
             }
 
@@ -1052,7 +1054,11 @@ function ChatLayout() {
         if (payload.eventType === "INSERT") {
           const preview = previewPageContent(m);
           setPageLast({ content: preview, at: m.created_at });
-          if (m.from_page && !m.seen) {
+          if (
+            m.from_page &&
+            !m.seen &&
+            !isViewingConversation(m.conversation_id ? `page:${m.conversation_id}` : "page")
+          ) {
             setPageUnread((prev) => prev + 1);
           }
           // Keep open page thread + other listeners in sync.
@@ -1153,7 +1159,12 @@ function ChatLayout() {
         }
         return prev;
       });
-      if (m.from_page && !m.seen && !isPageActive) {
+      if (
+        m.from_page &&
+        !m.seen &&
+        !isPageActive &&
+        !isViewingConversation(m.conversation_id ? `page:${m.conversation_id}` : "page")
+      ) {
         setPageUnread((prev) => prev + 1);
       }
       if (m.from_page && m.seen) setPageUnread(0);

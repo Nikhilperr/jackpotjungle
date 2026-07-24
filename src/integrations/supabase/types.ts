@@ -461,6 +461,9 @@ export type Database = {
           language: string
           verified: boolean
           status: string
+          active_conversation_key: string | null
+          app_in_foreground: boolean
+          active_conversation_at: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -485,6 +488,9 @@ export type Database = {
           language?: string
           verified?: boolean
           status?: string
+          active_conversation_key?: string | null
+          app_in_foreground?: boolean
+          active_conversation_at?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -509,6 +515,9 @@ export type Database = {
           language?: string
           verified?: boolean
           status?: string
+          active_conversation_key?: string | null
+          app_in_foreground?: boolean
+          active_conversation_at?: string | null
         }
         Relationships: []
       }

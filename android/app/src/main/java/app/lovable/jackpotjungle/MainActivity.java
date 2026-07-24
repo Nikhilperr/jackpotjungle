@@ -476,6 +476,24 @@ public class MainActivity extends BridgeActivity {
             public boolean isInternetAvailable() {
                 return MainActivity.this.hasNetworkLink();
             }
+
+            /**
+             * Messenger-style notification context for FCM suppression.
+             * Written from the WebView whenever the open conversation or visibility changes.
+             */
+            @android.webkit.JavascriptInterface
+            public void setNotificationContext(String conversationKey, boolean appInForeground) {
+                try {
+                    android.content.SharedPreferences prefs =
+                        getApplicationContext().getSharedPreferences("jj_notification_context", MODE_PRIVATE);
+                    prefs.edit()
+                        .putString("active_conversation_key", conversationKey != null ? conversationKey : "")
+                        .putBoolean("app_in_foreground", appInForeground)
+                        .apply();
+                } catch (Exception e) {
+                    Log.e("MainActivity", "Failed to persist notification context", e);
+                }
+            }
         }, "AndroidBridge");
     }
 

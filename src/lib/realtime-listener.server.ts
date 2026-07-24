@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { SERVICES_CONFIG, toCDNUrl } from "@/config";
 import { sendPushNotification } from "./fcm.server";
+import { shouldSkipPushForRecipient } from "@/lib/active-conversation-core";
 
 /** Messenger-style notification body for page inbox messages. */
 function pageInboxPreviewBody(
@@ -517,18 +518,22 @@ export async function initRealtimeListeners() {
               const recipientIds = (members ?? []).map((row: any) => row.user_id);
               if (recipientIds.length === 0) return;
 
-              // Check notification settings for group members
+              // Check notification settings for group members (+ Messenger active-chat suppress).
+              const groupKey = `group-${m.group_id}`;
               const { data: recipientProfiles } = await supabaseAdmin
                 .from("profiles")
-                .select("id, notif_enabled")
+                .select(
+                  "id, notif_enabled, active_conversation_key, app_in_foreground, active_conversation_at" as any,
+                )
                 .in("id", recipientIds);
 
               const activeRecipientIds = (recipientProfiles ?? [])
-                .filter((p: any) => p.notif_enabled ?? true)
+                .filter((p: any) => (p.notif_enabled ?? true) !== false)
+                .filter((p: any) => !shouldSkipPushForRecipient(p, groupKey))
                 .map((p: any) => p.id);
 
               if (activeRecipientIds.length === 0) {
-                console.log(`[Realtime Listener] No recipients have notifications enabled for group ${m.group_id}.`);
+                console.log(`[Realtime Listener] No recipients need a push for group ${m.group_id} (disabled or viewing).`);
                 return;
               }
 
@@ -563,7 +568,9 @@ export async function initRealtimeListeners() {
               const [{ data: receiverProfile }, { data: tokensRows }] = await Promise.all([
                 supabaseAdmin
                   .from("profiles")
-                  .select("notif_enabled" as any)
+                  .select(
+                    "notif_enabled, active_conversation_key, app_in_foreground, active_conversation_at" as any,
+                  )
                   .eq("id", m.receiver_id)
                   .maybeSingle(),
                 supabaseAdmin
@@ -575,6 +582,13 @@ export async function initRealtimeListeners() {
               const enabled = (receiverProfile as any)?.notif_enabled ?? true;
               if (!enabled) {
                 console.log(`[Realtime Listener] Recipient ${m.receiver_id} has disabled notifications. Skipping.`);
+                return;
+              }
+
+              if (shouldSkipPushForRecipient(receiverProfile as any, m.sender_id)) {
+                console.log(
+                  `[Realtime Listener] Recipient ${m.receiver_id} is viewing this DM — suppressing push.`,
+                );
                 return;
               }
 
@@ -650,7 +664,9 @@ export async function initRealtimeListeners() {
               const [{ data: receiverProfile }, { data: tokensRows }] = await Promise.all([
                 supabaseAdmin
                   .from("profiles")
-                  .select("notif_enabled" as any)
+                  .select(
+                    "notif_enabled, active_conversation_key, app_in_foreground, active_conversation_at" as any,
+                  )
                   .eq("id", userId)
                   .maybeSingle(),
                 supabaseAdmin
@@ -662,6 +678,17 @@ export async function initRealtimeListeners() {
               const enabled = (receiverProfile as any)?.notif_enabled ?? true;
               if (!enabled) {
                 console.log(`[Realtime Listener] Page conversation user ${userId} has disabled notifications. Skipping.`);
+                return;
+              }
+
+              const pageKey = `page:${pm.conversation_id}`;
+              if (
+                shouldSkipPushForRecipient(receiverProfile as any, pageKey) ||
+                shouldSkipPushForRecipient(receiverProfile as any, "page")
+              ) {
+                console.log(
+                  `[Realtime Listener] User ${userId} is viewing page chat — suppressing push.`,
+                );
                 return;
               }
 
@@ -715,11 +742,14 @@ export async function initRealtimeListeners() {
 
               const avatarUrl = absolutePushImageUrl(senderProfile?.avatar_url);
 
-              // Parallel: admin notif prefs + tokens
+              // Parallel: admin notif prefs + tokens (+ suppress admins viewing this thread)
+              const pageKey = `page:${pm.conversation_id}`;
               const [{ data: adminProfiles }, { data: tokensRows }] = await Promise.all([
                 supabaseAdmin
                   .from("profiles")
-                  .select("id, notif_enabled")
+                  .select(
+                    "id, notif_enabled, active_conversation_key, app_in_foreground, active_conversation_at" as any,
+                  )
                   .in("id", adminUserIds),
                 supabaseAdmin
                   .from("push_tokens" as any)
@@ -730,15 +760,16 @@ export async function initRealtimeListeners() {
               const enabledAdminIds = new Set(
                 (adminProfiles ?? [])
                   .filter((p: any) => (p.notif_enabled ?? true) !== false)
+                  .filter((p: any) => !shouldSkipPushForRecipient(p, pageKey))
                   .map((p: any) => p.id),
               );
 
               const tokens = (tokensRows ?? [])
-                .filter((r: any) => enabledAdminIds.size === 0 || enabledAdminIds.has(r.user_id))
+                .filter((r: any) => enabledAdminIds.has(r.user_id))
                 .map((r: any) => r.token);
 
               if (tokens.length === 0) {
-                console.log("[Realtime Listener] No push tokens found for admin users.");
+                console.log("[Realtime Listener] No admin push tokens (disabled or viewing this chat).");
                 return;
               }
 

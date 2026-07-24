@@ -47,6 +47,7 @@ import {
   clearDraft,
 } from "@/lib/chat-cache";
 import { syncDmThread, applyRealtimeMessageToLocal, dmConvKey } from "@/lib/local-first-sync";
+import { useTrackActiveConversation } from "@/lib/active-conversation";
 
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
 
@@ -530,6 +531,8 @@ function ChatView() {
   const { friendId } = useParams({ from: "/app/_authenticated/chat/$friendId" });
   const { user } = useAuth();
   const navigate = useNavigate();
+  // Messenger: suppress notifications for THIS open thread only.
+  useTrackActiveConversation(friendId);
   const [meId, setMeId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("jj_me_id");

@@ -34,6 +34,12 @@ export function initLifecycleMonitoring(router: any) {
       } catch {
         /* ignore */
       }
+    } else {
+      try {
+        window.dispatchEvent(new CustomEvent("jj-app-background"));
+      } catch {
+        /* ignore */
+      }
     }
   });
 

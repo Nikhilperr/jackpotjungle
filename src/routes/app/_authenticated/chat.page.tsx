@@ -19,6 +19,7 @@ import { Avatar } from "@/components/messenger/Avatar";
 import { getCachedPageMessages, setCachedPageMessages } from "@/lib/chat-cache";
 import { NetworkManager, generateUUID } from "@/lib/network-manager";
 import { attachPageMessagesLive, mergeIncomingPageMessage } from "@/lib/live-page-messages";
+import { useTrackActiveConversation } from "@/lib/active-conversation";
 
 type CallRow = {
   id: string;
@@ -57,6 +58,8 @@ function PageChatView() {
     const myId = localStorage.getItem("jj_me_id");
     return myId ? localStorage.getItem(`jj_page_conv_id_${myId}`) : null;
   });
+  // Messenger: suppress Jackpot Jungle support notifications while reading this thread.
+  useTrackActiveConversation(convId ? `page:${convId}` : "page");
   const [messages, setMessages] = useState<Msg[]>(() => {
     if (typeof window === "undefined") return [];
     try {

@@ -8,6 +8,7 @@ import { useRole } from "@/hooks/useRole";
 import { usePresence } from "@/hooks/usePresence";
 import { useChatNotifications } from "@/hooks/useChatNotifications";
 import { useNativePush } from "@/hooks/useNativePush";
+import { initActiveConversationLifecycle } from "@/lib/active-conversation";
 import { useServerFn } from "@tanstack/react-start";
 import { verifyDeposit } from "@/lib/deposit.functions";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ import { Capacitor } from "@capacitor/core";
 import { runAfterFirstPaint } from "@/lib/native/defer";
 import { registerBackAction } from "@/lib/native/navigation";
 import { NativeSideDrawer } from "@/components/messenger/NativeSideDrawer";
+import { NetworkManager } from "@/lib/network-manager";
 const DrawerCtx = createContext<{ open: () => void }>({ open: () => {} });
 export const useAppDrawer = () => useContext(DrawerCtx);
 
@@ -221,6 +223,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   usePresence();
+  useEffect(() => {
+    initActiveConversationLifecycle();
+  }, []);
   useChatNotifications();
   // Soft notification ask only after home is up — never on splash/auth; never opens Settings.
   useNativePush({ softAskNotifications: true });

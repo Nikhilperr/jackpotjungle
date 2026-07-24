@@ -136,6 +136,7 @@ import { MonthlyProfitView } from "@/components/admin/MonthlyProfit";
 import { SignOutDialog } from "@/components/messenger/SignOutDialog";
 import { OnlineStatusBanner } from "@/components/messenger/OnlineStatusBanner";
 import { ShareProfileModal } from "@/components/messenger/ShareProfileModal";
+import { useTrackActiveConversation, isViewingConversation } from "@/lib/active-conversation";
 import { useServerFn } from "@tanstack/react-start";
 import { getSupportLinks, updateSupportLinksAdmin } from "@/lib/admin-super.functions";
 import { ChatListSkeleton } from "@/components/messenger/ChatListSkeleton";
@@ -741,10 +742,20 @@ function InboxView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNav: 
   }, []);
 
   const activeId = searchParams.c || null;
+  const inboxTabActive = (searchParams.tab || "inbox") === "inbox";
   const activeIdLiveRef = useRef<string | null>(activeId);
   useEffect(() => {
     activeIdLiveRef.current = activeId;
   }, [activeId]);
+  // Messenger: suppress pushes for the open page/group thread only (this tab).
+  useTrackActiveConversation(
+    activeId
+      ? activeId.startsWith("group-")
+        ? activeId
+        : `page:${activeId}`
+      : null,
+    inboxTabActive,
+  );
   const setActiveId = (id: string | null) => {
     navigate({
       search: (old: any) => ({
@@ -1931,6 +1942,9 @@ function TeamChatView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNa
   const searchParams = Route.useSearch();
 
   const activeId = searchParams.c || null;
+  const teamTabActive = searchParams.tab === "teamchat";
+  // Messenger: team DM / group — suppress only for the open thread (this tab).
+  useTrackActiveConversation(activeId, teamTabActive);
   const setActiveId = (id: string | null) => {
     navigate({
       search: (old: any) => ({
@@ -2394,7 +2408,9 @@ function TeamChatView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNa
             row.lastMessage = preview;
             row.lastAt = m.created_at;
           }
-          if (m.sender_id !== meId && !m.seen) row.unread = (row.unread || 0) + 1;
+          if (m.sender_id !== meId && !m.seen && !isViewingConversation(key)) {
+            row.unread = (row.unread || 0) + 1;
+          }
           const next = prev.slice();
           next[idx] = row;
           return next.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
@@ -2416,7 +2432,9 @@ function TeamChatView({ meId, onOpenNav, onUserClick }: { meId: string; onOpenNa
           row.lastMessage = preview;
           row.lastAt = m.created_at;
         }
-        if (m.sender_id !== meId && !m.seen) row.unread = (row.unread || 0) + 1;
+        if (m.sender_id !== meId && !m.seen && !isViewingConversation(otherId)) {
+          row.unread = (row.unread || 0) + 1;
+        }
         const next = prev.slice();
         next[idx] = row;
         return next.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));

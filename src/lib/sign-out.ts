@@ -24,6 +24,13 @@ function clearAuthBrowserStorage() {
     localStorage.removeItem("jj_temp_auth_verification");
     localStorage.removeItem("jj_google_session");
     localStorage.removeItem("jj_user_role");
+    localStorage.removeItem("jj_active_conversation_key");
+    localStorage.removeItem("jj_app_in_foreground");
+    try {
+      (window as any).AndroidBridge?.setNotificationContext?.("", false);
+    } catch {
+      /* ignore */
+    }
     sessionStorage.removeItem("jj_auth_verifying");
     sessionStorage.removeItem("jj_auth_verify_state");
     sessionStorage.setItem("jj_signing_out", "1");
