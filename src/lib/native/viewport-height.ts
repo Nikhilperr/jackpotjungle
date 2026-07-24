@@ -1,9 +1,11 @@
 /**
  * Messenger-style keyboard layout for Capacitor Android.
  *
- * Only shrink the shell while a text field is focused AND the visual viewport
- * has actually gotten shorter. When the keyboard closes, restore the full
- * baseline height — otherwise the inbox shows a black void under the list.
+ * AndroidManifest uses windowSoftInputMode=adjustResize. On OEMs that honor it,
+ * window.innerHeight already excludes the IME — do NOT also shrink to
+ * visualViewport.height (that double-counts and leaves a black gap above the
+ * keyboard). On edge-to-edge OEMs where layout height does not shrink, fall
+ * back to visualViewport height.
  */
 
 import { Capacitor } from "@capacitor/core";
@@ -28,7 +30,6 @@ function readHeights() {
 }
 
 function rememberBaseline(layoutH: number, visibleH: number) {
-  // While keyboard is closed, keep the largest stable height we've seen.
   if (inputFocused) return;
   const candidate = Math.max(layoutH, visibleH);
   if (candidate > baselineH + 2) baselineH = candidate;
@@ -40,9 +41,20 @@ export function applyViewportHeight() {
   rememberBaseline(layoutH, visibleH);
 
   const fullH = Math.max(baselineH, layoutH, visibleH, 200);
-  const keyboardOpen =
-    inputFocused && fullH > 0 && visibleH > 0 && visibleH < fullH - 80;
-  const height = keyboardOpen ? Math.max(200, visibleH) : fullH;
+  const layoutAlreadyResized = baselineH > 0 && layoutH < baselineH - 60;
+  const vvShrunk = fullH > 0 && visibleH > 0 && visibleH < fullH - 80;
+  const keyboardOpen = inputFocused && (layoutAlreadyResized || vvShrunk);
+
+  // Prefer the layout height when adjustResize already shrank the WebView.
+  // Only use visualViewport when the layout did not shrink (edge-to-edge).
+  let height = fullH;
+  if (keyboardOpen) {
+    height = layoutAlreadyResized
+      ? Math.max(200, layoutH)
+      : Math.max(200, Math.min(layoutH, visibleH));
+  } else {
+    height = Math.max(200, layoutH, visibleH);
+  }
 
   const root = document.documentElement;
   root.style.setProperty("--jj-app-height", `${height}px`);
@@ -50,16 +62,9 @@ export function applyViewportHeight() {
 
   const el = document.getElementById("root");
   if (el) {
-    if (keyboardOpen) {
-      el.style.height = `${height}px`;
-      el.style.maxHeight = `${height}px`;
-      el.style.minHeight = `${height}px`;
-    } else {
-      // Let CSS 100% / baseline fill the window again — clears the black gap.
-      el.style.height = `${fullH}px`;
-      el.style.maxHeight = `${fullH}px`;
-      el.style.minHeight = `${fullH}px`;
-    }
+    el.style.height = `${height}px`;
+    el.style.maxHeight = `${height}px`;
+    el.style.minHeight = `${height}px`;
   }
 
   if (keyboardOpen) pinScroll();
@@ -71,7 +76,7 @@ function startFocusViewportLoop() {
   focusLoop = window.setInterval(() => {
     applyViewportHeight();
     ticks += 1;
-    if (ticks >= 24 || !inputFocused) window.clearInterval(focusLoop);
+    if (ticks >= 30 || !inputFocused) window.clearInterval(focusLoop);
   }, 50);
 }
 
@@ -127,7 +132,6 @@ export function initViewportHeightLock() {
         if (still) return;
         inputFocused = false;
         window.clearInterval(focusLoop);
-        // Re-measure full window after IME dismiss animation.
         baselineH = 0;
         applyViewportHeight();
         window.setTimeout(applyViewportHeight, 80);

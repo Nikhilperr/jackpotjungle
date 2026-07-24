@@ -225,6 +225,13 @@
   html.native-android.jj-keyboard-open .native-safe-shell {
     padding-bottom: 0 !important;
   }
+  /* Composer must sit on the IME — never leave a black void under the chat shell */
+  html.native-android.jj-keyboard-open #root {
+    background-color: var(--color-background, var(--jj-shell-bg, #121212)) !important;
+  }
+  html.native-android.jj-keyboard-open body {
+    background-color: var(--color-background, var(--jj-shell-bg, #121212)) !important;
+  }
   /* Auth: keep form centered; only top-align while keyboard is open */
   html.native-android.jj-keyboard-open .auth-layout-inner {
     justify-content: flex-start !important;

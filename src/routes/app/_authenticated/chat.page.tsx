@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toCDNUrl } from "@/config";
 import { CachedImage } from "@/components/messenger/CachedImage";
@@ -84,8 +84,20 @@ function PageChatView() {
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true);
+  const [threadPinned, setThreadPinned] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isNearBottomRef = useRef(true);
+  const lastMsgCountRef = useRef(0);
+
+  const pinThreadToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (smooth) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, []);
   const { startCall } = useCalls();
   const [deletedForMeIds, setDeletedForMeIds] = useState<Set<string>>(new Set());
   const [showDetail, setShowDetail] = useState(false);
@@ -604,21 +616,39 @@ function PageChatView() {
     };
   }, [convId]);
 
-  useEffect(() => {
-    if (messages.length > 0 && isInitialLoadRef.current) {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-      isInitialLoadRef.current = false;
-    } else {
-      const lastMsg = messages[messages.length - 1];
-      const isMine = lastMsg && !lastMsg.from_page;
-      if (isMine || isNearBottomRef.current) {
-        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-        setShowScrollToBottom(false);
-      } else {
-        setShowScrollToBottom(true);
-      }
+  // Messenger: open already at latest messages (no top→bottom scroll animation).
+  useLayoutEffect(() => {
+    const prevCount = lastMsgCountRef.current;
+    lastMsgCountRef.current = messages.length;
+    const hasContent = messages.length > 0 || calls.length > 0;
+
+    if (!hasContent) {
+      setThreadPinned(true);
+      return;
     }
-  }, [messages, calls]);
+
+    if (isInitialLoadRef.current) {
+      pinThreadToBottom(false);
+      requestAnimationFrame(() => pinThreadToBottom(false));
+      isInitialLoadRef.current = false;
+      setThreadPinned(true);
+      return;
+    }
+
+    const lastMsg = messages[messages.length - 1];
+    const isMine = lastMsg && !lastMsg.from_page;
+    const isSingleNew = messages.length === prevCount + 1;
+
+    if (isSingleNew && (isMine || isNearBottomRef.current)) {
+      pinThreadToBottom(true);
+      setShowScrollToBottom(false);
+    } else if (isNearBottomRef.current) {
+      pinThreadToBottom(false);
+      setShowScrollToBottom(false);
+    } else if (isSingleNew) {
+      setShowScrollToBottom(true);
+    }
+  }, [messages, calls, pinThreadToBottom]);
 
 
 
@@ -1034,7 +1064,11 @@ function PageChatView() {
           </div>
         )}
 
-        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto smooth-scroll px-4 py-6 space-y-1 relative">
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className={`flex-1 min-h-0 overflow-y-auto overscroll-contain smooth-scroll px-4 py-6 space-y-1 relative ${threadPinned ? "opacity-100" : "opacity-0"}`}
+        >
           {/* Floating scroll bottom indicator */}
           {showScrollToBottom && (
             <button

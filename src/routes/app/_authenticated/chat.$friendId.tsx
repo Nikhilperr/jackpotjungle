@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createFileRoute, useParams, Link, useNavigate } from "@tanstack/react-router";
 import { toCDNUrl } from "@/config";
 import { CachedImage } from "@/components/messenger/CachedImage";
@@ -747,6 +747,7 @@ function ChatView() {
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true);
+  const [threadPinned, setThreadPinned] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -1537,37 +1538,57 @@ function ChatView() {
 
   const lastMsgCountRef = useRef(0);
   const lastFriendIdRef = useRef<string | null>(null);
-  useEffect(() => {
+
+  const pinThreadToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (smooth) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    else el.scrollTop = el.scrollHeight;
+  }, []);
+
+  // Messenger: open already at latest messages — no top→bottom scroll animation.
+  useLayoutEffect(() => {
     const prevCount = lastMsgCountRef.current;
     lastMsgCountRef.current = messages.length;
+    const switched = friendId !== lastFriendIdRef.current;
 
-    if (friendId !== lastFriendIdRef.current) {
-      // Switched chat. Scroll to bottom instantly
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        // Schedule microtask to guarantee bottom placement after layout reflow
-        requestAnimationFrame(() => {
-          if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        });
-      }
+    if (switched) {
       lastFriendIdRef.current = friendId;
-      isInitialLoadRef.current = false;
-    } else if (messages.length > 0) {
-      const lastMsg = messages[messages.length - 1];
-      const isMine = lastMsg?.sender_id === meId;
-      const isSingleNewMessage = messages.length === prevCount + 1;
-
-      if (isSingleNewMessage && (isMine || isNearBottomRef.current)) {
-        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-        setShowScrollToBottom(false);
-      } else {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-        setShowScrollToBottom(false);
-      }
+      isInitialLoadRef.current = true;
+      setThreadPinned(false);
+      lastMsgCountRef.current = messages.length;
     }
-  }, [messages, calls, friendTyping, friendId, meId]);
+
+    if (messages.length === 0 && calls.length === 0) {
+      setThreadPinned(true);
+      isInitialLoadRef.current = false;
+      return;
+    }
+
+    if (isInitialLoadRef.current || switched) {
+      pinThreadToBottom(false);
+      requestAnimationFrame(() => pinThreadToBottom(false));
+      isInitialLoadRef.current = false;
+      setThreadPinned(true);
+      return;
+    }
+
+    const lastMsg = messages[messages.length - 1];
+    const isMine = lastMsg?.sender_id === meId;
+    const isSingleNewMessage = messages.length === prevCount + 1;
+
+    if (isSingleNewMessage && (isMine || isNearBottomRef.current)) {
+      pinThreadToBottom(true);
+      setShowScrollToBottom(false);
+    } else if (friendTyping && isNearBottomRef.current) {
+      pinThreadToBottom(false);
+    } else if (isNearBottomRef.current) {
+      pinThreadToBottom(false);
+      setShowScrollToBottom(false);
+    } else if (isSingleNewMessage) {
+      setShowScrollToBottom(true);
+    }
+  }, [messages, calls, friendTyping, friendId, meId, pinThreadToBottom]);
 
   useEffect(() => {
     if (friend) {
@@ -3070,7 +3091,11 @@ function ChatView() {
         </div>
       )}
 
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain smooth-scroll px-4 py-6 space-y-2 relative">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className={`flex-1 min-h-0 overflow-y-auto overscroll-contain smooth-scroll px-4 py-6 space-y-2 relative ${threadPinned ? "opacity-100" : "opacity-0"}`}
+      >
         {/* Floating scroll bottom arrow */}
         {showScrollToBottom && (
           <button
