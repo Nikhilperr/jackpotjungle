@@ -1535,6 +1535,9 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
     const isCallerSuperAdmin = callerRolesList.includes("super_admin");
     const isCallerAdmin = callerRolesList.includes("admin") || isCallerSuperAdmin;
     if (!isCallerAdmin) throw new Error("Admins only");
+    if (!isCallerSuperAdmin) {
+      throw new Error("Only super admins can edit user accounts.");
+    }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -1560,35 +1563,14 @@ export const updateUserProfileAdmin = createServerFn({ method: "POST" })
       throw new Error("Super admin accounts are read-only and cannot be modified.");
     }
 
-    if (isTargetAdmin && !isCallerSuperAdmin) {
-      throw new Error("Only super admins can modify administrator accounts.");
-    }
-
-    // Prepare updates — regular admins may only touch profile/general fields.
+    // Prepare updates
     const incoming = { ...(data.profileUpdates || {}) } as Record<string, unknown>;
-    const SUPER_ONLY_PROFILE_KEYS = [
-      "status",
-      "verified",
-      "coins",
-      "xp",
-      "wallet_balance",
-      "vip_status",
-    ] as const;
-
-    let roleUpdate = data.roleUpdate;
-    let permissionsUpdate = data.permissionsUpdate;
-
-    if (!isCallerSuperAdmin) {
-      for (const key of SUPER_ONLY_PROFILE_KEYS) {
-        delete incoming[key];
-      }
-      roleUpdate = undefined;
-      permissionsUpdate = undefined;
-    }
+    const roleUpdate = data.roleUpdate;
+    const permissionsUpdate = data.permissionsUpdate;
 
     const updates: any = { ...incoming };
 
-    // Synced status changes (super admin only — already stripped above for others)
+    // Synced status changes
     if (typeof incoming.status === "string") {
       if (incoming.status === "suspended" || incoming.status === "banned") {
         updates.is_blocked = true;

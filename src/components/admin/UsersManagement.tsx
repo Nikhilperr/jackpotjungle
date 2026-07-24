@@ -185,20 +185,14 @@ export function UsersManagementView({ meId }: { meId: string }) {
 
   const canEditSelectedUser = useMemo(() => {
     if (!selectedUser) return false;
-    
-    // Rule 1: "you must not show efit things for super admin ok only others"
+    // Super admin targets are always read-only.
     if (selectedUser.role === "super_admin") return false;
-    
-    // Rule 2: "admins cannot edit each other things but super admin can edit anyone"
-    if (selectedUser.role === "admin") {
-      return isSuperAdmin;
-    }
-    
-    return true;
+    // Only super admins may edit any user / admin account.
+    return isSuperAdmin;
   }, [selectedUser, isSuperAdmin]);
 
-  /** Security tab: password / email / ban / delete / roles — super admins only. */
-  const canManageSecurity = isSuperAdmin && canEditSelectedUser;
+  /** Security / VIP / delete — same gate (super admin + editable target). */
+  const canManageSecurity = canEditSelectedUser;
 
   // Load user records
   const loadUsers = async () => {
@@ -319,24 +313,20 @@ export function UsersManagementView({ meId }: { meId: string }) {
         avatar_url: editAvatarUrl,
         cover_photo: editCoverPhoto,
         referred_by: editReferredBy,
+        vip_status: editVipStatus,
+        coins: Number(editCoins),
+        xp: Number(editXp),
+        wallet_balance: Number(editWalletBalance),
+        verified: editVerified,
+        status: editStatus,
       };
-
-      // Security / account-standing fields — super admin only
-      if (isSuperAdmin) {
-        profileUpdates.vip_status = editVipStatus;
-        profileUpdates.coins = Number(editCoins);
-        profileUpdates.xp = Number(editXp);
-        profileUpdates.wallet_balance = Number(editWalletBalance);
-        profileUpdates.verified = editVerified;
-        profileUpdates.status = editStatus;
-      }
 
       await updateFn({
         data: {
           targetUserId: selectedUser.id,
           profileUpdates: profileUpdates as any,
-          roleUpdate: isSuperAdmin ? (editRole as any) : undefined,
-          permissionsUpdate: isSuperAdmin && editRole === "admin" ? editPermissions : undefined
+          roleUpdate: editRole as any,
+          permissionsUpdate: editRole === "admin" ? editPermissions : undefined
         }
       });
       toast.success("User profile successfully updated.");
@@ -830,9 +820,11 @@ export function UsersManagementView({ meId }: { meId: string }) {
                     <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 select-none">
                       <p className="text-xs text-amber-500 font-semibold flex items-center gap-1.5 leading-relaxed">
                         <ShieldAlert className="h-4 w-4 shrink-0" />
-                        {selectedUser?.role === "super_admin" 
+                        {selectedUser?.role === "super_admin"
                           ? "Super Administrator accounts are read-only and cannot be modified."
-                          : "Administrator accounts are read-only and can only be modified by Super Admins."}
+                          : isSuperAdmin
+                            ? "This account cannot be edited."
+                            : "Only super admins can edit user accounts. You can view details only."}
                       </p>
                     </div>
                   )}
