@@ -33,6 +33,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppVerifyOtpRouteImport } from './routes/app/verify-otp'
 import { Route as AppResetPasswordRouteImport } from './routes/app/reset-password'
+import { Route as AppRecoverRouteImport } from './routes/app/recover'
 import { Route as AppForgotPasswordRouteImport } from './routes/app/forgot-password'
 import { Route as AppAuthCallbackRouteImport } from './routes/app/auth-callback'
 import { Route as AppAuthRouteImport } from './routes/app/auth'
@@ -186,6 +187,11 @@ const AppVerifyOtpRoute = AppVerifyOtpRouteImport.update({
 const AppResetPasswordRoute = AppResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRecoverRoute = AppRecoverRouteImport.update({
+  id: '/recover',
+  path: '/recover',
   getParentRoute: () => AppRoute,
 } as any)
 const AppForgotPasswordRoute = AppForgotPasswordRouteImport.update({
@@ -406,6 +412,7 @@ export interface FileRoutesByFullPath {
   '/app/auth': typeof AppAuthRoute
   '/app/auth-callback': typeof AppAuthCallbackRoute
   '/app/forgot-password': typeof AppForgotPasswordRoute
+  '/app/recover': typeof AppRecoverRoute
   '/app/reset-password': typeof AppResetPasswordRoute
   '/app/verify-otp': typeof AppVerifyOtpRoute
   '/app/': typeof AppIndexRoute
@@ -464,6 +471,7 @@ export interface FileRoutesByTo {
   '/app/auth': typeof AppAuthRoute
   '/app/auth-callback': typeof AppAuthCallbackRoute
   '/app/forgot-password': typeof AppForgotPasswordRoute
+  '/app/recover': typeof AppRecoverRoute
   '/app/reset-password': typeof AppResetPasswordRoute
   '/app/verify-otp': typeof AppVerifyOtpRoute
   '/chat/$friendId': typeof AuthenticatedChatFriendIdRoute
@@ -524,6 +532,7 @@ export interface FileRoutesById {
   '/app/auth': typeof AppAuthRoute
   '/app/auth-callback': typeof AppAuthCallbackRoute
   '/app/forgot-password': typeof AppForgotPasswordRoute
+  '/app/recover': typeof AppRecoverRoute
   '/app/reset-password': typeof AppResetPasswordRoute
   '/app/verify-otp': typeof AppVerifyOtpRoute
   '/app/': typeof AppIndexRoute
@@ -585,6 +594,7 @@ export interface FileRouteTypes {
     | '/app/auth'
     | '/app/auth-callback'
     | '/app/forgot-password'
+    | '/app/recover'
     | '/app/reset-password'
     | '/app/verify-otp'
     | '/app/'
@@ -643,6 +653,7 @@ export interface FileRouteTypes {
     | '/app/auth'
     | '/app/auth-callback'
     | '/app/forgot-password'
+    | '/app/recover'
     | '/app/reset-password'
     | '/app/verify-otp'
     | '/chat/$friendId'
@@ -702,6 +713,7 @@ export interface FileRouteTypes {
     | '/app/auth'
     | '/app/auth-callback'
     | '/app/forgot-password'
+    | '/app/recover'
     | '/app/reset-password'
     | '/app/verify-otp'
     | '/app/'
@@ -925,6 +937,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/app/reset-password'
       preLoaderRoute: typeof AppResetPasswordRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/recover': {
+      id: '/app/recover'
+      path: '/recover'
+      fullPath: '/app/recover'
+      preLoaderRoute: typeof AppRecoverRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/forgot-password': {
@@ -1280,6 +1299,7 @@ interface AppRouteChildren {
   AppAuthRoute: typeof AppAuthRoute
   AppAuthCallbackRoute: typeof AppAuthCallbackRoute
   AppForgotPasswordRoute: typeof AppForgotPasswordRoute
+  AppRecoverRoute: typeof AppRecoverRoute
   AppResetPasswordRoute: typeof AppResetPasswordRoute
   AppVerifyOtpRoute: typeof AppVerifyOtpRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -1290,6 +1310,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAuthRoute: AppAuthRoute,
   AppAuthCallbackRoute: AppAuthCallbackRoute,
   AppForgotPasswordRoute: AppForgotPasswordRoute,
+  AppRecoverRoute: AppRecoverRoute,
   AppResetPasswordRoute: AppResetPasswordRoute,
   AppVerifyOtpRoute: AppVerifyOtpRoute,
   AppIndexRoute: AppIndexRoute,

@@ -57,7 +57,8 @@ function ForgotPage() {
               </div>
 
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Enter your email address below and we'll send you a 6-digit verification code to reset your password.
+                Enter your email and we'll send a verification code plus a one-tap link.
+                Opening the link verifies automatically and takes you to set a new password.
               </p>
 
               <AuthInput
@@ -96,7 +97,8 @@ function ForgotPage() {
               <div className="space-y-1.5">
                 <h3 className="font-bold text-lg text-foreground">Code Sent!</h3>
                 <p className="text-xs text-muted-foreground max-w-[280px]">
-                  Please check your inbox at <span className="font-semibold text-foreground">{email}</span> for the verification code.
+                  Check <span className="font-semibold text-foreground">{email}</span> for a code
+                  and a button/link that opens the app and verifies automatically.
                 </p>
               </div>
             </motion.div>

@@ -3,6 +3,7 @@ import { createHash, randomInt } from "node:crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendTransactionalMail } from "@/lib/mail.server";
+import { SERVICES_CONFIG } from "@/config";
 
 function hashCode(email: string, code: string) {
   return createHash("sha256").update(`${email}:${code}`).digest("hex");
@@ -46,31 +47,79 @@ export async function disableAllMfaFactorsForUser(userId: string): Promise<numbe
   return removed;
 }
 
+function recoveryLinks(email: string, code: string) {
+  const q = new URLSearchParams({ email, code, type: "recovery" });
+  const web = `${SERVICES_CONFIG.CHAT}/app/recover?${q.toString()}`;
+  const app = `app.lovable.jackpotjungle://app/recover?${q.toString()}`;
+  return { web, app };
+}
+
 async function sendCodeEmail(opts: {
   email: string;
   code: string;
   kind: "login" | "recovery";
 }) {
   const isLogin = opts.kind === "login";
-  return sendTransactionalMail({
-    to: opts.email,
-    fromName: "Jackpot Jungle",
-    subject: isLogin
-      ? `${opts.code} is your Jackpot Jungle verification code`
-      : `${opts.code} is your Jackpot Jungle password reset code`,
-    text: isLogin
-      ? `Your Jackpot Jungle verification code is: ${opts.code}\n\nThis code expires in 10 minutes.`
-      : `Your Jackpot Jungle password reset code is: ${opts.code}\n\nThis code expires in 10 minutes.`,
-    html: `
+  const links = !isLogin ? recoveryLinks(opts.email, opts.code) : null;
+
+  const text = isLogin
+    ? `Your Jackpot Jungle verification code is: ${opts.code}\n\nThis code expires in 10 minutes.`
+    : [
+        `Your Jackpot Jungle password reset code is: ${opts.code}`,
+        ``,
+        `Open this link to verify automatically and set a new password:`,
+        links!.web,
+        ``,
+        `Or open in the Jackpot Jungle app:`,
+        links!.app,
+        ``,
+        `This expires in 10 minutes. If you did not request a reset, ignore this email.`,
+      ].join("\n");
+
+  const html = isLogin
+    ? `
       <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-        <h2 style="margin: 0 0 12px; color: #111;">${isLogin ? "Verify your sign-in" : "Reset your password"}</h2>
+        <h2 style="margin: 0 0 12px; color: #111;">Verify your sign-in</h2>
         <div style="font-size: 32px; letter-spacing: 0.35em; font-weight: 800; text-align: center;
                     background: #f4f4f5; border-radius: 12px; padding: 16px 12px; margin: 20px 0; color: #111;">
           ${opts.code}
         </div>
         <p style="color: #888; font-size: 12px;">Expires in 10 minutes.</p>
       </div>
-    `,
+    `
+    : `
+      <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+        <h2 style="margin: 0 0 12px; color: #111;">Reset your password</h2>
+        <p style="color: #444; font-size: 14px; line-height: 1.5;">
+          Tap the button below to verify automatically and open the new-password screen.
+          You can also enter this code manually:
+        </p>
+        <div style="font-size: 32px; letter-spacing: 0.35em; font-weight: 800; text-align: center;
+                    background: #f4f4f5; border-radius: 12px; padding: 16px 12px; margin: 20px 0; color: #111;">
+          ${opts.code}
+        </div>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${links!.web}"
+             style="display: inline-block; background: #16a34a; color: #fff; text-decoration: none;
+                    font-weight: 700; font-size: 15px; padding: 14px 28px; border-radius: 12px;">
+            Open reset in app / browser
+          </a>
+        </div>
+        <p style="color: #666; font-size: 12px; line-height: 1.5; text-align: center;">
+          Prefer the app? <a href="${links!.app}" style="color: #16a34a;">Open Jackpot Jungle app</a>
+        </p>
+        <p style="color: #888; font-size: 12px; margin-top: 20px;">Expires in 10 minutes.</p>
+      </div>
+    `;
+
+  return sendTransactionalMail({
+    to: opts.email,
+    fromName: "Jackpot Jungle",
+    subject: isLogin
+      ? `${opts.code} is your Jackpot Jungle verification code`
+      : `${opts.code} — reset your Jackpot Jungle password`,
+    text,
+    html,
   });
 }
 
@@ -92,7 +141,6 @@ export const sendLoginEmailOtp = createServerFn({ method: "POST" })
     const code = makeSixDigitCode();
     const prev = user.user_metadata || {};
 
-    // Store hash + send mail in parallel for speed.
     const [updateRes, sent] = await Promise.all([
       supabaseAdmin.auth.admin.updateUserById(context.userId, {
         user_metadata: {
@@ -143,7 +191,7 @@ export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Forgot-password OTP via Hostinger HTTPS + Auth recovery code. */
+/** Forgot-password OTP via Hostinger HTTPS + Auth recovery code + deep link. */
 export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
   .validator((d: { email: string }) => d)
   .handler(async ({ data }) => {
@@ -157,6 +205,9 @@ export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
       const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
         type: "recovery",
         email,
+        options: {
+          redirectTo: `${SERVICES_CONFIG.CHAT}/app/reset-password`,
+        },
       });
       if (linkErr) {
         console.warn("[AuthOTP] recovery generateLink:", linkErr.message);

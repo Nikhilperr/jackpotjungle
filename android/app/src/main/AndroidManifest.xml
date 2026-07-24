@@ -38,6 +38,17 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="app.lovable.jackpotjungle" />
             </intent-filter>
+
+            <!-- HTTPS recover links from email → open app when possible -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="chat.playjackpotjungle.com"
+                    android:pathPrefix="/app/recover" />
+            </intent-filter>
         </activity>
 
         <provider

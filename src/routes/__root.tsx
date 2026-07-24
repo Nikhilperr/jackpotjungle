@@ -331,7 +331,7 @@ function RootComponent() {
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
         toast.info("Password recovery link detected. Set your new password.");
-        navigate({ to: "/reset-password" });
+        navigate({ to: "/app/reset-password" });
         return;
       }
       if (event === "SIGNED_OUT") {

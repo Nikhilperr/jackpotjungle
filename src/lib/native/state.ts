@@ -41,19 +41,34 @@ export function initLifecycleMonitoring(router: any) {
   App.addListener("appUrlOpen", (data: { url: string }) => {
     console.log("[NativeBridge] App opened with URL:", data.url);
     try {
-      // The url will look like: "app.lovable.jackpotjungle://auth-callback?code=..."
-      // We extract the path and route params to pass to the router
-      const parsedUrl = new URL(data.url);
-      const path = parsedUrl.pathname;
-      const search = parsedUrl.search;
-      const hash = parsedUrl.hash;
-
-      let relativePath = path;
-      if (!relativePath.startsWith("/")) {
-        relativePath = "/" + relativePath;
+      // Examples:
+      //   app.lovable.jackpotjungle://app/recover?email=x&code=123456
+      //   app.lovable.jackpotjungle:///app/recover?email=x&code=123456
+      //   app.lovable.jackpotjungle://auth-callback#access_token=...
+      const raw = data.url;
+      const parsedUrl = new URL(raw.includes("://") ? raw : `app:///${raw}`);
+      let path = parsedUrl.pathname || "";
+      const host = parsedUrl.hostname || "";
+      // Custom schemes often put first segment in hostname: scheme://app/recover → host=app path=/recover
+      if (host && host !== "localhost" && !host.includes(".")) {
+        path = `/${host}${path.startsWith("/") ? path : `/${path}`}`.replace(/\/+/g, "/");
       }
+      const search = parsedUrl.search || "";
+      const hash = parsedUrl.hash || "";
+
+      let relativePath = path || "/";
+      if (!relativePath.startsWith("/")) relativePath = `/${relativePath}`;
       if (relativePath.includes("auth-callback")) {
         relativePath = "/app/auth-callback";
+      }
+      if (relativePath === "/recover" || relativePath.endsWith("/recover")) {
+        relativePath = "/app/recover";
+      }
+      if (!relativePath.startsWith("/app/") && relativePath !== "/") {
+        // Keep absolute app routes; otherwise prefix
+        if (["/auth", "/forgot-password", "/reset-password", "/verify-otp"].some((p) => relativePath.startsWith(p))) {
+          relativePath = `/app${relativePath}`;
+        }
       }
 
       console.log(`[NativeBridge] Navigating to deep link route: ${relativePath}${search}${hash}`);
