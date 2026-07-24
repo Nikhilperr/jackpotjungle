@@ -3,7 +3,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { toCDNUrl } from "@/config";
 import { CachedImage } from "@/components/messenger/CachedImage";
 import { ChatMediaBubble } from "@/components/messenger/ChatMediaBubble";
+import { ChatImagePreview } from "@/components/messenger/ChatImagePreview";
 import { supabase } from "@/integrations/supabase/client";
+import { copyChatMessage } from "@/lib/chat-clipboard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Sparkles, ArrowLeft, Loader2, X, Phone, Video, Pin, Reply, Info, Bell, Search, ChevronUp, ChevronDown, Trash2, Forward, Copy, MoreHorizontal, Edit } from "lucide-react";
@@ -435,8 +437,7 @@ function PageChatView() {
   }, []);
 
   const handleCopy = useCallback((text: string) => {
-    navigator.clipboard.writeText(text || "");
-    toast.success("Copied to clipboard");
+    void copyChatMessage({ content: text });
   }, []);
 
   const handleDelete = useCallback((id: string) => {
@@ -1381,8 +1382,7 @@ function PageChatView() {
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(m.content || "");
-                    toast.success("Copied to clipboard");
+                    void copyChatMessage(m);
                     setActiveMsgMenu(null);
                   }}
                   className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
@@ -1580,14 +1580,7 @@ function PageChatView() {
         </div>
       )}
 
-      {preview && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
-          <button onClick={() => setPreview(null)} className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
-          <img src={preview} alt="" className="max-h-full max-w-full object-contain" />
-        </div>
-      )}
+      {preview && <ChatImagePreview url={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

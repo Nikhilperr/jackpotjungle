@@ -3,7 +3,9 @@ import { createFileRoute, useParams, Link, useNavigate } from "@tanstack/react-r
 import { toCDNUrl } from "@/config";
 import { CachedImage } from "@/components/messenger/CachedImage";
 import { ChatMediaBubble } from "@/components/messenger/ChatMediaBubble";
+import { ChatImagePreview } from "@/components/messenger/ChatImagePreview";
 import { supabase } from "@/integrations/supabase/client";
+import { copyChatMessage } from "@/lib/chat-clipboard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, X, Search, ChevronUp, ChevronDown, Phone, Video, Pin, Reply, Trash2, Forward, Copy, MoreHorizontal, Info, Bell, Sparkles, BookOpen, Megaphone, Check, Users, UserMinus, ShieldAlert, LogOut, Camera, Share2, QrCode, RefreshCw, Download, MessageCircle, Edit, Shield, ShieldCheck, User } from "lucide-react";
@@ -2105,8 +2107,7 @@ function ChatView() {
   }, []);
 
   const handleCopy = useCallback((text: string) => {
-    navigator.clipboard.writeText(text || "");
-    toast.success("Copied to clipboard");
+    void copyChatMessage({ content: text });
   }, []);
 
   const handleDelete = useCallback((id: string) => {
@@ -3434,14 +3435,7 @@ function ChatView() {
         </MessengerComposer>
       )}
 
-      {preview && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
-          <button onClick={() => setPreview(null)} className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
-          <img src={preview} alt="" className="max-h-full max-w-full object-contain" />
-        </div>
-      )}
+      {preview && <ChatImagePreview url={preview} onClose={() => setPreview(null)} />}
 
       {/* Message Context Menu & Reactions */}
       {activeMsgMenu && (() => {
@@ -3512,8 +3506,7 @@ function ChatView() {
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(m.content || "");
-                    toast.success("Copied to clipboard");
+                    void copyChatMessage(m);
                     setActiveMsgMenu(null);
                   }}
                   className="w-full h-10 px-3 rounded-lg flex items-center gap-3 text-sm font-medium hover:bg-secondary text-foreground transition-colors"
