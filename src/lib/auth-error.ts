@@ -9,6 +9,9 @@ export function formatAuthError(err: unknown, fallback: string): string {
     const t = raw.trim();
     if (!t || t === "{}" || t === "null" || t === "[object Object]") return "";
     // nginx / gateway HTML error pages
+    if (/GoogleAuth Native Bridge Timeout|plugin did not respond|took too long|session.*timeout/i.test(t)) {
+      return "Google sign-in took too long. Please tap Continue with Google once more.";
+    }
     if (/connection timeout|etimedout|econnrefused|enotfound/i.test(t)) {
       return "Mail server connection timed out on the VPS. Rebuild the app so OTP uses the Auth mailer, then try Resend.";
     }

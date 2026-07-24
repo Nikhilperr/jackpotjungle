@@ -9,11 +9,54 @@ import type { Session } from "@supabase/supabase-js";
 let _sharedSessionPromise: Promise<Session | null> | null = null;
 
 export function getSharedInitialSession(): Promise<Session | null> {
+  // OAuth / magic-link returns with tokens in the hash. Never cache a premature
+  // null from getSession() racing ahead of Supabase parsing that hash — that
+  // forced a second login attempt on web Google auth.
+  if (typeof window !== "undefined") {
+    const hash = window.location.hash || "";
+    const search = window.location.search || "";
+    if (
+      (hash.includes("access_token=") && hash.includes("refresh_token=")) ||
+      search.includes("code=")
+    ) {
+      _sharedSessionPromise = null;
+    }
+  }
+
   if (!_sharedSessionPromise) {
-    _sharedSessionPromise = supabase.auth
-      .getSession()
-      .then(({ data }) => data.session ?? null)
-      .catch(() => null);
+    _sharedSessionPromise = (async () => {
+      if (typeof window !== "undefined") {
+        const hash = window.location.hash || "";
+        if (hash.includes("access_token=") && hash.includes("refresh_token=")) {
+          const cleanHash = hash.startsWith("#") ? hash.substring(1) : hash;
+          const params = new URLSearchParams(cleanHash);
+          const accessToken = params.get("access_token");
+          const refreshToken = params.get("refresh_token");
+          if (accessToken && refreshToken) {
+            try {
+              const { data } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+              window.history.replaceState(
+                null,
+                "",
+                window.location.pathname + window.location.search,
+              );
+              if (data.session) return data.session;
+            } catch (e) {
+              console.error("Failed to set session from URL hash:", e);
+            }
+          }
+        }
+      }
+      try {
+        const { data } = await supabase.auth.getSession();
+        return data.session ?? null;
+      } catch {
+        return null;
+      }
+    })();
   }
   return _sharedSessionPromise;
 }

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getVerifiedStatus, setVerifiedStatus } from "@/lib/auth-wait";
+import { getVerifiedStatus, setVerifiedStatus, setSharedSessionCache } from "@/lib/auth-wait";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { Mail, Lock, User, CheckSquare, Square, Sparkles, Shield } from "lucide-react";
@@ -16,6 +16,7 @@ import { Capacitor } from "@capacitor/core";
 import { registerBackAction } from "@/lib/native";
 import { signalShellReady } from "@/lib/shell-ready";
 import { consumeForcedLogoutMessage } from "@/lib/session-kill";
+import { ensureNativeGoogleAuth, nativeGoogleIdToken } from "@/lib/google-auth-native";
 import { z } from "zod";
 
 const searchSchema = z.object({
@@ -195,39 +196,32 @@ function AuthPage() {
   }, [user, loading, isAdmin, roleLoading, navigate]);
 
   async function signInWithGoogle() {
+    if (googleBusy) return;
     setGoogleBusy(true);
     if (typeof window !== "undefined") {
       localStorage.setItem("jj_google_session", "true");
     }
     try {
-      const nativeCheck = Capacitor.isNativePlatform();
-
-      if (nativeCheck) {
-        // Use native Google Sign-In on mobile devices
-        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
-        try {
-          await GoogleAuth.initialize({
-            clientId: "877420815591-feisfm6hjc1n8omdhrbv9li9tdk1v63t.apps.googleusercontent.com",
-            scopes: ["profile", "email"],
-            grantOfflineAccess: true,
-          });
-        } catch (e) {
-          // If already initialized, it might throw, which is fine to ignore
-          console.log("GoogleAuth initialized or already active:", e);
-        }
-        
-        const signInPromise = GoogleAuth.signIn();
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("GoogleAuth Native Bridge Timeout: The plugin did not respond.")), 15000));
-        
-        const userResult = await Promise.race([signInPromise, timeoutPromise]) as any;
-        const idToken = userResult.authentication.idToken;
-        if (!idToken) throw new Error("Google Sign-In did not return an ID token.");
-
-        const { error } = await supabase.auth.signInWithIdToken({
+      if (Capacitor.isNativePlatform()) {
+        const idToken = await nativeGoogleIdToken();
+        const { data, error } = await supabase.auth.signInWithIdToken({
           provider: "google",
           token: idToken,
         });
         if (error) throw error;
+
+        // One-shot success: mark verified + warm session cache + navigate immediately
+        // so a slow role fetch / remount cannot force a second Google tap.
+        setVerifiedStatus(true);
+        if (data.session) setSharedSessionCache(data.session);
+
+        const uid = data.user?.id || data.session?.user?.id;
+        if (uid) {
+          const { resolveHomeRoute } = await import("@/lib/resolve-home-route");
+          const home = await resolveHomeRoute(uid);
+          navigate({ to: home, replace: true });
+          return;
+        }
       } else {
         // Standard browser redirection on desktop
         const { error } = await supabase.auth.signInWithOAuth({
@@ -244,9 +238,13 @@ function AuthPage() {
     } catch (err: any) {
       console.error("Google Auth error details:", err);
       // Suppress user cancellation crashes so they do not show ugly errors
-      if (err.message?.includes("cancel") || err.message?.includes("12501")) {
+      const msg = String(err?.message || err || "");
+      if (/cancel|12501|popup_closed|user_cancelled/i.test(msg)) {
         return;
       }
+      try {
+        localStorage.removeItem("jj_google_session");
+      } catch {}
       const { formatAuthError } = await import("@/lib/auth-error");
       toast.error(formatAuthError(err, "Google authentication failed."));
     } finally {
@@ -257,6 +255,10 @@ function AuthPage() {
   useEffect(() => {
     // Hide native splash as soon as auth chrome can paint — don't wait on role fetch.
     signalShellReady();
+    // Warm Google Auth plugin so the first tap doesn't pay init latency.
+    if (Capacitor.isNativePlatform()) {
+      void ensureNativeGoogleAuth().catch(() => {});
+    }
   }, []);
 
   // Keep LoginForm mounted during roleLoading — unmounting it wiped 2FA/OTP state
