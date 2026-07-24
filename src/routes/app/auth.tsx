@@ -547,38 +547,28 @@ function LoginForm({
         throw new Error("Enter the 6-digit code from your email.");
       }
 
-      // GoTrue-delivered codes → verifyOtp; SMTP-fallback codes → server hash verify.
+      // Fast path: our Hostinger OTP is verified via server hash (skip slow GoTrue verifyOtp first).
       const token = otpCode.trim();
-      let verified = false;
-      const otpRes = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: "email",
-      });
-      if (!otpRes.error) {
-        verified = true;
-      } else {
-        try {
-          const { verifyLoginEmailOtp } = await import("@/lib/auth-otp.functions");
-          await verifyLoginEmailOtp({ data: { email, code: token } });
-          verified = true;
-        } catch {
-          throw otpRes.error;
-        }
+      try {
+        const { verifyLoginEmailOtp } = await import("@/lib/auth-otp.functions");
+        await verifyLoginEmailOtp({ data: { email, code: token } });
+      } catch (hashErr) {
+        const otpRes = await supabase.auth.verifyOtp({
+          email,
+          token,
+          type: "email",
+        });
+        if (otpRes.error) throw hashErr;
       }
-      if (!verified) throw new Error("Invalid or expired verification code.");
 
       if (typeof window !== "undefined") {
         setVerifiedStatus(true);
       }
 
-      // Send recent login notification email!
-      try {
-        const { notifyRecentLogin } = await import("@/lib/email-notification.functions");
-        await notifyRecentLogin({ email });
-      } catch (e: any) {
-        console.warn("Failed to send login notification email:", e.message);
-      }
+      // Recent-login notify must not block sign-in (Hostinger SMTP path can be slow/blocked).
+      void import("@/lib/email-notification.functions")
+        .then(({ notifyRecentLogin }) => notifyRecentLogin({ email }))
+        .catch((e: any) => console.warn("Failed to send login notification email:", e?.message || e));
 
       try {
         const userRes = await supabase.auth.getUser();

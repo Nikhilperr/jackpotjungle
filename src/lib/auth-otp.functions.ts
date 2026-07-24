@@ -1,11 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createHash } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendTransactionalMail } from "@/lib/mail.server";
 
 function hashCode(email: string, code: string) {
   return createHash("sha256").update(`${email}:${code}`).digest("hex");
+}
+
+function makeSixDigitCode() {
+  return String(randomInt(0, 1_000_000)).padStart(6, "0");
 }
 
 async function assertSessionOwnsEmail(userId: string, email: string) {
@@ -71,55 +75,46 @@ async function sendCodeEmail(opts: {
 }
 
 /**
- * Login email OTP after password.
- * generateLink (works) + HTTPS mail (Brevo/Resend/webhook) — skips GoTrue /otp (504 on DO).
+ * Login email OTP after password — fast path:
+ * local 6-digit code + Hostinger HTTPS (no slow generateLink / GoTrue /otp).
  */
 export const sendLoginEmailOtp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((d: { email: string }) => d)
   .handler(async ({ data, context }) => {
+    const t0 = Date.now();
     const email = data.email?.trim().toLowerCase();
     if (!email || !email.includes("@")) {
       throw new Error("A valid email address is required.");
     }
 
     const user = await assertSessionOwnsEmail(context.userId, email);
-
-    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
-      email,
-    });
-    if (linkErr) {
-      throw new Error(linkErr.message || "Could not generate verification code.");
-    }
-
-    const code = String(
-      (linkData as any)?.properties?.email_otp || (linkData as any)?.email_otp || "",
-    ).slice(0, 8);
-    if (code.length < 6) {
-      throw new Error("Auth did not return an email code.");
-    }
-
+    const code = makeSixDigitCode();
     const prev = user.user_metadata || {};
-    await supabaseAdmin.auth.admin.updateUserById(context.userId, {
-      user_metadata: {
-        ...prev,
-        jj_login_otp_hash: hashCode(email, code),
-        jj_login_otp_exp: Date.now() + 10 * 60 * 1000,
-      },
-    });
 
-    try {
-      const sent = await sendCodeEmail({ email, code, kind: "login" });
-      console.log(`[AuthOTP] Login OTP to ${email} via ${sent.via}`);
-      return { sent: true, via: sent.via };
-    } catch (e: any) {
-      console.error("[AuthOTP] send failed:", e?.message || e);
-      throw new Error(e?.message || "Could not send the verification email.");
+    // Store hash + send mail in parallel for speed.
+    const [updateRes, sent] = await Promise.all([
+      supabaseAdmin.auth.admin.updateUserById(context.userId, {
+        user_metadata: {
+          ...prev,
+          jj_login_otp_hash: hashCode(email, code),
+          jj_login_otp_exp: Date.now() + 10 * 60 * 1000,
+        },
+      }),
+      sendCodeEmail({ email, code, kind: "login" }),
+    ]);
+
+    if (updateRes.error) {
+      throw new Error(updateRes.error.message || "Could not store verification code.");
     }
+
+    console.log(
+      `[AuthOTP] Login OTP to ${email} via ${sent.via} in ${Date.now() - t0}ms`,
+    );
+    return { sent: true, via: sent.via, ms: Date.now() - t0 };
   });
 
-/** Verify SMTP/HTTPS-fallback login codes (hashed in user_metadata). */
+/** Verify login email OTP (hashed in user_metadata). */
 export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((d: { email: string; code: string }) => d)
@@ -148,10 +143,11 @@ export const verifyLoginEmailOtp = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Forgot-password OTP — same HTTPS mail path. */
+/** Forgot-password OTP via Hostinger HTTPS + Auth recovery code. */
 export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
   .validator((d: { email: string }) => d)
   .handler(async ({ data }) => {
+    const t0 = Date.now();
     const email = data.email?.trim().toLowerCase();
     if (!email || !email.includes("@")) {
       throw new Error("A valid email address is required.");
@@ -176,8 +172,10 @@ export const sendPasswordResetEmailOtp = createServerFn({ method: "POST" })
       }
 
       const sent = await sendCodeEmail({ email, code, kind: "recovery" });
-      console.log(`[AuthOTP] Recovery OTP to ${email} via ${sent.via}`);
-      return { sent: true, via: sent.via };
+      console.log(
+        `[AuthOTP] Recovery OTP to ${email} via ${sent.via} in ${Date.now() - t0}ms`,
+      );
+      return { sent: true, via: sent.via, ms: Date.now() - t0 };
     } catch (e: any) {
       console.error("[AuthOTP] Recovery send failed:", e?.message || e);
       throw new Error(e?.message || "Could not send the verification email.");

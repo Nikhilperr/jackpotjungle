@@ -6,7 +6,10 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 function createSupabaseAdminClient() {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
+  // Prefer loopback Kong — much faster than public HTTPS for OTP admin calls.
+  const SUPABASE_URL =
+    process.env.SUPABASE_INTERNAL_URL?.replace(/\/$/, "") ||
+    process.env.SUPABASE_URL;
   const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -18,6 +21,8 @@ function createSupabaseAdminClient() {
     console.error(`[Supabase] ${message}`);
     throw new Error(message);
   }
+
+  console.log(`[SupabaseAdmin] Using ${SUPABASE_URL}`);
 
   const client = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
@@ -31,6 +36,7 @@ function createSupabaseAdminClient() {
   });
 
   // Intercept storage client public URLs to serve from the CDN subdomain
+  const publicUrl = process.env.SUPABASE_URL || SUPABASE_URL;
   const originalFrom = client.storage.from.bind(client.storage);
   client.storage.from = (id: string) => {
     const bucketClient = originalFrom(id);
@@ -39,7 +45,7 @@ function createSupabaseAdminClient() {
       const res = originalGetPublicUrl(path, options);
       if (res.data?.publicUrl) {
         const cdnUrl = "https://cdn.playjackpotjungle.com";
-        const storagePrefix = `${SUPABASE_URL}/storage/v1/object/public`;
+        const storagePrefix = `${publicUrl}/storage/v1/object/public`;
         if (res.data.publicUrl.startsWith(storagePrefix)) {
           res.data.publicUrl = res.data.publicUrl.replace(storagePrefix, cdnUrl);
         }
