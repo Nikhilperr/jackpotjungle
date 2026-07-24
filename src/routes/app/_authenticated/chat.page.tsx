@@ -11,7 +11,7 @@ import { MessengerComposer } from "@/components/messenger/MessengerComposer";
 import { VoiceMessage } from "@/components/messenger/VoiceMessage";
 import { CallMessage } from "@/components/messenger/CallMessage";
 import { useCalls } from "@/components/messenger/CallProvider";
-import { uploadAndSign } from "@/lib/chat-media";
+import { uploadAndSign, CHAT_IMAGE_ALLOWED_MIMES, CHAT_IMAGE_ALLOWED_EXTS, isAnimatedGif } from "@/lib/chat-media";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { unsendPageMessagesServer } from "@/lib/messages.functions";
@@ -21,6 +21,8 @@ import { NetworkManager, generateUUID } from "@/lib/network-manager";
 import { attachPageMessagesLive, mergeIncomingPageMessage } from "@/lib/live-page-messages";
 import { useTrackActiveConversation } from "@/lib/active-conversation";
 import { shouldShowDaySeparator, formatChatDaySeparator } from "@/lib/chat-helpers";
+import { prefetchChatMedia } from "@/lib/media-cache";
+import { messageBubbleSelectClass, messageTextSelectClass, onMessageContextMenu } from "@/lib/desktop-text-select";
 
 type CallRow = {
   id: string;
@@ -668,6 +670,15 @@ function PageChatView() {
     }
   }, [messages, convId]);
 
+  useEffect(() => {
+    prefetchChatMedia(
+      messages.flatMap((m) => [
+        m.image_url ? toCDNUrl(m.image_url) : null,
+        m.audio_url ? toCDNUrl(m.audio_url) : null,
+      ]),
+    );
+  }, [messages]);
+
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -861,14 +872,14 @@ function PageChatView() {
     // Static image validation
     const fileMime = file.type.toLowerCase();
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    if (fileMime === "image/gif" || ext === "gif") {
+    if (fileMime === "image/gif" || ext === "gif" || isAnimatedGif(file, file.name)) {
       alert("GIF files are not supported. Please choose a static image.");
       return;
     }
-    const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
-    const allowedExts = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+    const allowedMimes = CHAT_IMAGE_ALLOWED_MIMES as readonly string[];
+    const allowedExts = CHAT_IMAGE_ALLOWED_EXTS as readonly string[];
     if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
-      alert("Unsupported format. Please choose a JPEG, PNG, WEBP, or HEIC image.");
+      alert("Unsupported format. Please choose a JPEG, PNG, WEBP, AVIF, or HEIC image.");
       return;
     }
 
@@ -2039,8 +2050,12 @@ const PageMessageItem = React.memo(function PageMessageItem({
             onPointerUp={selectionMode ? undefined : cancelPress}
             onPointerMove={selectionMode ? undefined : cancelPress}
             onPointerLeave={selectionMode ? undefined : cancelPress}
-            onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) onMenuOpen(m.id); }}
-            className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
+            onContextMenu={(e) => {
+              onMessageContextMenu(e, () => {
+                if (!selectionMode) onMenuOpen(m.id);
+              });
+            }}
+            className={`relative ${messageBubbleSelectClass()} ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
             onClick={() => {
               if (!selectionMode) {
                 setShowSelfTime(!showSelfTime);
@@ -2054,7 +2069,7 @@ const PageMessageItem = React.memo(function PageMessageItem({
                   alt=""
                   className="block max-h-80 w-[200px] object-cover rounded-2xl"
                   style={{ width: "200px", height: "auto", maxHeight: "320px" }}
-                  cachePolicy="volatile"
+                  cachePolicy="persistent"
                 />
               </button>
             ) : m.audio_url ? (
@@ -2085,7 +2100,7 @@ const PageMessageItem = React.memo(function PageMessageItem({
               </div>
             ) : (
               <div className={`max-w-[240px] px-4 py-2 rounded-2xl ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"}`}>
-                <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
+                <p className={`text-[14px] whitespace-pre-wrap break-words leading-relaxed ${messageTextSelectClass()}`}>
                   {m.content}
                   {m.is_edited && (
                     <span className="text-[10px] opacity-60 ml-1.5 select-none font-medium text-inherit italic">

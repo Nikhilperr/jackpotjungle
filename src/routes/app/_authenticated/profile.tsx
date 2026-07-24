@@ -221,23 +221,17 @@ function ProfilePage() {
     e.target.value = "";
     if (!file || !profile) return;
 
-    // Static image validation
-    const fileMime = file.type.toLowerCase();
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    if (fileMime === "image/gif" || ext === "gif") {
-      return toast.error("GIF files are not supported. Please choose a static image.");
-    }
-    const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
-    const allowedExts = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
-    if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
-      return toast.error("Unsupported format. Please choose a JPEG, PNG, WEBP, or HEIC image.");
-    }
+    // Static image validation — no animated GIFs for profile pictures
+    const { validateAvatarFile } = await import("@/lib/chat-media");
+    const err = validateAvatarFile(file, file.name);
+    if (err) return toast.error(err);
 
+    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
     if (file.size > 5 * 1024 * 1024) return toast.error("Max 5MB.");
     setUploading(true);
     try {
       const { uploadAndSign } = await import("@/lib/chat-media");
-      const url = await uploadAndSign("avatars", profile.id, file, ext, file.type);
+      const url = await uploadAndSign("avatars", profile.id, file, ext, file.type, { filename: file.name });
       const { error: updErr } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", profile.id);
       if (updErr) throw updErr;
       setProfile({ ...profile, avatar_url: url });
@@ -288,7 +282,7 @@ function ProfilePage() {
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.avif,.heic,.heif"
                 onChange={onPickFile}
                 className="hidden"
               />

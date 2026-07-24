@@ -1836,8 +1836,10 @@ export const getAllEmailsAdmin = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { data: callerRoles } = await context.supabase
       .from("user_roles").select("role").eq("user_id", context.userId);
-    const isAdmin = (callerRoles ?? []).some((r: any) => r.role === "admin" || r.role === "super_admin");
-    if (!isAdmin) throw new Error("Admins only");
+    const isSuperAdmin = (callerRoles ?? []).some((r: any) => r.role === "super_admin");
+    if (!isSuperAdmin) {
+      throw new Error("Only super admins can export user email addresses.");
+    }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 

@@ -257,12 +257,13 @@ export function UsersManagementView({ meId }: { meId: string }) {
     if (!file || !selectedUser) return;
     if (file.size > 5 * 1024 * 1024) return toast.error("Max file size is 5MB.");
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    if (ext === "gif") return toast.error("GIFs are not supported.");
 
     setUploadingAvatar(true);
     try {
-      const { uploadAndSign } = await import("@/lib/chat-media");
-      const url = await uploadAndSign("avatars", `${selectedUser.id}-${Date.now()}`, file, ext, file.type);
+      const { uploadAndSign, validateAvatarFile } = await import("@/lib/chat-media");
+      const err = validateAvatarFile(file, file.name);
+      if (err) throw new Error(err);
+      const url = await uploadAndSign("avatars", `${selectedUser.id}-${Date.now()}`, file, ext, file.type, { filename: file.name });
       setEditAvatarUrl(url);
       toast.success("Profile image staged! Remember to click Save Changes.");
     } catch (err: any) {
@@ -407,6 +408,10 @@ export function UsersManagementView({ meId }: { meId: string }) {
   };
 
   const handleExportEmails = async () => {
+    if (!isSuperAdmin) {
+      toast.error("Only super admins can export email addresses.");
+      return;
+    }
     setDownloadingEmails(true);
     try {
       const result = await getEmailsFn();
@@ -537,14 +542,16 @@ export function UsersManagementView({ meId }: { meId: string }) {
             <span className="text-xs font-semibold text-muted-foreground">{totalCount} registered players</span>
           </div>
 
-          <Button
-            onClick={() => setDownloadEmailsOpen(true)}
-            variant="outline"
-            className="rounded-full gap-1.5 h-10 text-xs font-bold font-sans bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20"
-          >
-            <Mail className="h-4 w-4" />
-            <span>Download Emails</span>
-          </Button>
+          {isSuperAdmin && (
+            <Button
+              onClick={() => setDownloadEmailsOpen(true)}
+              variant="outline"
+              className="rounded-full gap-1.5 h-10 text-xs font-bold font-sans bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20"
+            >
+              <Mail className="h-4 w-4" />
+              <span>Download Emails</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1354,7 +1361,8 @@ export function UsersManagementView({ meId }: { meId: string }) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Download Emails Dialog */}
+      {/* Download Emails Dialog — super admin only */}
+      {isSuperAdmin && (
       <Dialog open={downloadEmailsOpen} onOpenChange={setDownloadEmailsOpen}>
         <DialogContent className="w-full max-w-sm p-6 bg-card border border-border rounded-3xl shadow-2xl flex flex-col gap-4 text-foreground select-none">
           <div className="flex flex-col items-center gap-2 text-center border-b border-border pb-3">
@@ -1438,6 +1446,7 @@ export function UsersManagementView({ meId }: { meId: string }) {
           </div>
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }

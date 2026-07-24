@@ -80,7 +80,7 @@ export function MessengerComposer({
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.avif,.heic,.heif"
         onChange={onFileChange}
         className="hidden"
       />

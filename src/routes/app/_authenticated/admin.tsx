@@ -141,6 +141,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { getSupportLinks, updateSupportLinksAdmin } from "@/lib/admin-super.functions";
 import { ChatListSkeleton } from "@/components/messenger/ChatListSkeleton";
 import { signalShellReady } from "@/lib/shell-ready";
+import { prefetchChatMedia } from "@/lib/media-cache";
+import { messageBubbleSelectClass, messageTextSelectClass, onMessageContextMenu } from "@/lib/desktop-text-select";
 
 // Lazy-load chat UI modules so admin route does not pull chat.$friendId into the
 // critical user-path parse graph when autoCodeSplitting is on.
@@ -4234,6 +4236,14 @@ function Conversation({
     threadMessagesRef.current = messages;
   }, [messages]);
   useEffect(() => {
+    prefetchChatMedia(
+      messages.flatMap((m: any) => [
+        m.image_url ? toCDNUrl(m.image_url) : null,
+        m.audio_url ? toCDNUrl(m.audio_url) : null,
+      ]),
+    );
+  }, [messages]);
+  useEffect(() => {
     activeIdRef.current = conv.conversationId;
     if (!isGroup && !isTeamChat) {
       const cacheKey = `admin-page-${conv.conversationId}`;
@@ -7405,8 +7415,12 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
             onPointerUp={selectionMode ? undefined : cancelPress}
             onPointerMove={selectionMode ? undefined : cancelPress}
             onPointerLeave={selectionMode ? undefined : cancelPress}
-            onContextMenu={(e) => { e.preventDefault(); if (!selectionMode) onMenuOpen(m.id); }}
-            className={`relative select-none ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
+            onContextMenu={(e) => {
+              onMessageContextMenu(e, () => {
+                if (!selectionMode) onMenuOpen(m.id);
+              });
+            }}
+            className={`relative ${messageBubbleSelectClass()} ${selectionMode ? "pointer-events-none" : "cursor-pointer"}`}
             onClick={() => {
               if (!selectionMode) {
                 setShowSelfTime(!showSelfTime);
@@ -7420,7 +7434,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
                   alt=""
                   className="block max-h-72 w-[200px] object-cover rounded-2xl"
                   style={{ width: "200px", height: "auto", maxHeight: "288px" }}
-                  cachePolicy="volatile"
+                  cachePolicy="persistent"
                 />
               </button>
             ) : m.audio_url ? (
@@ -7448,8 +7462,8 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
                 </p>
               </div>
             ) : (
-              <div className={`max-w-[240px] rounded-2xl px-4 py-2 text-sm select-none cursor-pointer ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
-                <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed">
+              <div className={`max-w-[240px] rounded-2xl px-4 py-2 text-sm cursor-pointer ${messageBubbleSelectClass()} ${mine ? "bg-bubble-me text-bubble-me-foreground" : "bg-bubble-them text-bubble-them-foreground"} ${isActiveMatch ? "ring-2 ring-primary" : ""}`}>
+                <p className={`text-[14px] whitespace-pre-wrap break-words leading-relaxed ${messageTextSelectClass()}`}>
                   {m.content ? renderContentWithMentions(m.content, onMentionClick, isMatch, highlight, searchQuery.trim(), mine) : ""}
                   {m.is_edited && (
                     <span className="text-[10px] opacity-60 ml-1.5 select-none font-medium text-inherit italic">

@@ -501,4 +501,16 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+/* Desktop browser: allow selecting / copying chat message text (Messenger Web).
+   Native apps keep select-none via utility classes on bubbles. */
+html:not(.native-android):not(.native-ios) .jj-msg-text {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+html:not(.native-android):not(.native-ios) .jj-msg-bubble {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 

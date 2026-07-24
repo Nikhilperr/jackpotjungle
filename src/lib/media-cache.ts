@@ -1,6 +1,6 @@
 const CACHE_NAME = "jj-media-cache";
-const MAX_CACHE_ITEMS = 400;
-const EVICT_TARGET_ITEMS = 360;
+const MAX_CACHE_ITEMS = 600;
+const EVICT_TARGET_ITEMS = 500;
 const METADATA_KEY = "jj_media_cache_metadata";
 
 // Memory maps to store resolved blob URLs
@@ -167,4 +167,16 @@ export function releaseCachedMedia(url: string): void {
 export function prefetchAvatar(url: string | null | undefined) {
   if (!url || typeof window === "undefined") return;
   void getCachedMedia(url, "persistent").catch(() => {});
+}
+
+/**
+ * Warm persistent cache for chat attachment URLs so reopening a thread feels instant.
+ */
+export function prefetchChatMedia(urls: Array<string | null | undefined>) {
+  if (typeof window === "undefined") return;
+  const unique = Array.from(new Set(urls.filter((u): u is string => !!u && u.length > 8)));
+  // Cap per batch so we don't hammer the network on huge histories
+  for (const url of unique.slice(0, 40)) {
+    void getCachedMedia(url, "persistent").catch(() => {});
+  }
 }

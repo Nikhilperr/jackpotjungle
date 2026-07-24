@@ -1540,23 +1540,16 @@ export function AdminProfileView({ userId, email }: { userId: string; email: str
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f || !profile) return;
 
-    // Static image validation
-    const fileMime = f.type.toLowerCase();
-    const ext = f.name.split(".").pop()?.toLowerCase() || "";
-    if (fileMime === "image/gif" || ext === "gif") {
-      return toast.error("GIF files are not supported. Please choose a static image.");
-    }
-    const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
-    const allowedExts = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
-    if (!allowedMimes.includes(fileMime) && !allowedExts.includes(ext)) {
-      return toast.error("Unsupported format. Please choose a JPEG, PNG, WEBP, or HEIC image.");
-    }
+    // Static image validation — no animated GIFs for profile pictures
+    const { validateAvatarFile, uploadAndSign } = await import("@/lib/chat-media");
+    const err = validateAvatarFile(f, f.name);
+    if (err) return toast.error(err);
 
+    const ext = f.name.split(".").pop()?.toLowerCase() || "jpg";
     if (f.size > 5 * 1024 * 1024) return toast.error("Max 5MB");
     setUploading(true);
     try {
-      const { uploadAndSign } = await import("@/lib/chat-media");
-      const url = await uploadAndSign("avatars", profile.id, f, ext, f.type);
+      const url = await uploadAndSign("avatars", profile.id, f, ext, f.type, { filename: f.name });
       await sb.from("profiles").update({ avatar_url: url }).eq("id", profile.id);
       setProfile({ ...profile, avatar_url: url });
       toast.success("Avatar updated");

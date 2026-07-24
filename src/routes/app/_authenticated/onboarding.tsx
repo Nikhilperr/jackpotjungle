@@ -219,8 +219,14 @@ function OnboardingPage() {
 
     setUploadingAvatar(true);
     try {
+      const { validateAvatarFile } = await import("@/lib/chat-media");
+      const err = validateAvatarFile(file, file.name);
+      if (err) {
+        toast.error(err);
+        return;
+      }
       const ext = file.name.split(".").pop() || "jpg";
-      const publicUrl = await uploadAndSign("avatars", meId, file, ext, file.type);
+      const publicUrl = await uploadAndSign("avatars", meId, file, ext, file.type, { filename: file.name });
       setAvatarUrl(publicUrl);
       toast.success("Profile picture uploaded!");
     } catch (err: any) {
@@ -349,7 +355,7 @@ function OnboardingPage() {
               type="file" 
               ref={fileInputRef} 
               onChange={handleFileChange} 
-              accept="image/*" 
+              accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.avif,.heic,.heif" 
               className="hidden" 
             />
             <span className="text-[11px] font-medium text-muted-foreground">Upload Profile Photo (Optional)</span>
