@@ -20,6 +20,7 @@ import { getCachedPageMessages, setCachedPageMessages } from "@/lib/chat-cache";
 import { NetworkManager, generateUUID } from "@/lib/network-manager";
 import { attachPageMessagesLive, mergeIncomingPageMessage } from "@/lib/live-page-messages";
 import { useTrackActiveConversation } from "@/lib/active-conversation";
+import { shouldShowDaySeparator, formatChatDaySeparator } from "@/lib/chat-helpers";
 
 type CallRow = {
   id: string;
@@ -1098,7 +1099,7 @@ function PageChatView() {
 
             return items.map((it, i) => {
               const prev = items[i - 1];
-              const showTime = !prev || new Date(it.at).getTime() - new Date(prev.at).getTime() > 5 * 60 * 1000;
+              const showTime = shouldShowDaySeparator(prev?.at, it.at);
               if (it.kind === "call") {
                 const c = it.call;
                 const mine = c.caller_id === meId;
@@ -1107,7 +1108,7 @@ function PageChatView() {
                     {showTime && c.created_at && !isNaN(new Date(c.created_at).getTime()) && (
                       <div className="flex justify-center py-3 select-none">
                         <span className="premium-date-header">
-                          {format(new Date(c.created_at), "MMM d, h:mm a")}
+                          {formatChatDaySeparator(c.created_at)}
                         </span>
                       </div>
                     )}
@@ -2004,7 +2005,7 @@ const PageMessageItem = React.memo(function PageMessageItem({
         {showTime && m.created_at && !isNaN(new Date(m.created_at).getTime()) && (
           <div className="flex justify-center py-3 select-none">
             <span className="premium-date-header">
-              {format(new Date(m.created_at), "MMM d, h:mm a")}
+              {formatChatDaySeparator(m.created_at)}
             </span>
           </div>
         )}

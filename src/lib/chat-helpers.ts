@@ -67,6 +67,53 @@ export function isSystemMessage(content: string): boolean {
   );
 }
 
+/** Local calendar day key: YYYY-MM-DD */
+export function calendarDayKey(iso: string | Date | null | undefined): string | null {
+  if (!iso) return null;
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** True when a Messenger-style day separator should appear before `current`. */
+export function shouldShowDaySeparator(
+  previousIso: string | Date | null | undefined,
+  currentIso: string | Date | null | undefined,
+): boolean {
+  const cur = calendarDayKey(currentIso);
+  if (!cur) return false;
+  const prev = calendarDayKey(previousIso);
+  return !prev || prev !== cur;
+}
+
+/**
+ * Day separator label: Today / Yesterday / Jul 24 / Jul 24, 2025
+ * No time — one label per calendar day.
+ */
+export function formatChatDaySeparator(iso: string | Date): string {
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (isNaN(d.getTime())) return "";
+
+  const startOfLocalDay = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+  const today = startOfLocalDay(new Date());
+  const target = startOfLocalDay(d);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const diffDays = Math.round((today - target) / dayMs);
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const label = `${months[d.getMonth()]} ${d.getDate()}`;
+  return sameYear ? label : `${label}, ${d.getFullYear()}`;
+}
+
 export async function downloadQRCode(link: string, filename: string) {
   try {
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(link)}`;

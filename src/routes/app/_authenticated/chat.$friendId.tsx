@@ -30,7 +30,7 @@ import { unsendMessagesServer } from "@/lib/messages.functions";
 import { getUserAIResponse } from "@/lib/user-ai.functions";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { downloadQRCode } from "@/lib/chat-helpers";
+import { downloadQRCode, shouldShowDaySeparator, formatChatDaySeparator } from "@/lib/chat-helpers";
 import { CreateGroupModal } from "./chat";
 import {
   getCachedProfile,
@@ -3138,7 +3138,7 @@ function ChatView() {
 
           return items.map((it, i) => {
             const prev = items[i - 1];
-            const showTime = !prev || new Date(it.at).getTime() - new Date(prev.at).getTime() > 5 * 60 * 1000;
+            const showTime = shouldShowDaySeparator(prev?.at, it.at);
 
             if (it.kind === "call") {
               const c = it.call;
@@ -3148,7 +3148,7 @@ function ChatView() {
                   {showTime && c.created_at && !isNaN(new Date(c.created_at).getTime()) && (
                     <div className="flex justify-center py-3 select-none">
                       <span className="premium-date-header">
-                        {format(new Date(c.created_at), "MMM d, h:mm a")}
+                        {formatChatDaySeparator(c.created_at)}
                       </span>
                     </div>
                   )}
@@ -4472,7 +4472,7 @@ const MessageItem = React.memo(function MessageItem({
         {showTime && m.created_at && !isNaN(new Date(m.created_at).getTime()) && (
           <div className="flex justify-center py-3 select-none">
             <span className="premium-date-header">
-              {format(new Date(m.created_at), "MMM d, h:mm a")}
+              {formatChatDaySeparator(m.created_at)}
             </span>
           </div>
         )}

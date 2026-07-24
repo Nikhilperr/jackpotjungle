@@ -3,7 +3,7 @@ import { toCDNUrl } from "@/config";
 import { CachedImage } from "@/components/messenger/CachedImage";
 import React, { useEffect, useRef, useState, useMemo, useCallback, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { formatSystemMessage, isSystemMessage } from "@/lib/chat-helpers";
+import { formatSystemMessage, isSystemMessage, shouldShowDaySeparator, formatChatDaySeparator } from "@/lib/chat-helpers";
 import { useRole, type AppRole } from "@/hooks/useRole";
 import { useAuth } from "@/hooks/useAuth";
 import { Capacitor } from "@capacitor/core";
@@ -5255,7 +5255,7 @@ function Conversation({
 
           return items.map((it, i) => {
             const prev = items[i - 1];
-            const showTime = !prev || new Date(it.at).getTime() - new Date(prev.at).getTime() > 5 * 60 * 1000;
+            const showTime = shouldShowDaySeparator(prev?.at, it.at);
 
             if (it.kind === "call") {
               const c = it.call;
@@ -5265,7 +5265,7 @@ function Conversation({
                   {showTime && (
                     <div className="flex justify-center py-3 select-none">
                       <span className="premium-date-header">
-                        {format(new Date(c.created_at), "MMM d, h:mm a")}
+                        {formatChatDaySeparator(c.created_at)}
                       </span>
                     </div>
                   )}
@@ -7339,7 +7339,7 @@ const AdminConversationMessageItem = React.memo(function AdminConversationMessag
         {showTime && (
           <div className="flex justify-center py-3 select-none">
             <span className="premium-date-header">
-              {format(new Date(m.created_at), "MMM d, h:mm a")}
+              {formatChatDaySeparator(m.created_at)}
             </span>
           </div>
         )}
